@@ -17,7 +17,6 @@ fn load_config(name: &str) -> Config {
 fn default_env() -> HostEnv {
     HostEnv {
         uid: 1000,
-        username: "bet".into(),
         xdg_runtime_dir: PathBuf::from("/run/user/1000"),
         wayland_display: Some("wayland-0".into()),
         wayland_socket: Some(PathBuf::from("/run/user/1000/wayland-0")),

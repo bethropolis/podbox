@@ -185,8 +185,6 @@ fn run() -> Result<()> {
             if cli.dry_run {
                 let exec_args: Vec<OsString> = vec![
                     "exec".into(),
-                    "-u".into(),
-                    env.username.clone().into(),
                     tty_flag,
                     name.clone().into(),
                     config.container.shell.clone().into(),
@@ -197,8 +195,6 @@ fn run() -> Result<()> {
             ensure_running(&name, cli.dry_run)?;
             let exec_args: Vec<OsString> = vec![
                 "exec".into(),
-                "-u".into(),
-                env.username.clone().into(),
                 tty_flag,
                 name.clone().into(),
                 config.container.shell.clone().into(),
@@ -215,7 +211,7 @@ fn run() -> Result<()> {
             };
             if cli.dry_run {
                 let mut exec_args: Vec<OsString> =
-                    vec!["exec".into(), "-u".into(), env.username.clone().into(), tty_flag.clone(), name.clone().into()];
+                    vec!["exec".into(), tty_flag.clone(), name.clone().into()];
                 for a in cmd_args {
                     exec_args.push(a.into());
                 }
@@ -224,7 +220,7 @@ fn run() -> Result<()> {
             }
             ensure_running(&name, cli.dry_run)?;
             let mut exec_args: Vec<OsString> =
-                vec!["exec".into(), "-u".into(), env.username.clone().into(), tty_flag.clone(), name.clone().into()];
+                vec!["exec".into(), tty_flag.clone(), name.clone().into()];
             for a in cmd_args {
                 exec_args.push(a.into());
             }
@@ -236,8 +232,6 @@ fn run() -> Result<()> {
             if cli.dry_run {
                 let mut exec_args: Vec<OsString> = vec![
                     "exec".into(),
-                    "-u".into(),
-                    env.username.clone().into(),
                     "-d".into(),
                     name.clone().into(),
                     app.clone().into(),
@@ -251,8 +245,6 @@ fn run() -> Result<()> {
             ensure_running(&name, cli.dry_run)?;
             let mut exec_args: Vec<OsString> = vec![
                 "exec".into(),
-                "-u".into(),
-                env.username.clone().into(),
                 "-d".into(),
                 name.clone().into(),
                 app.clone().into(),

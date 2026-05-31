@@ -7,7 +7,6 @@ use nix::unistd::getuid;
 /// Resolved host environment for socket and path detection.
 pub struct HostEnv {
     pub uid: u32,
-    pub username: String,
     pub xdg_runtime_dir: PathBuf,
     pub wayland_display: Option<String>,
     pub wayland_socket: Option<PathBuf>,
@@ -25,9 +24,6 @@ pub struct HostEnv {
 /// Detects presence of Wayland, PipeWire, PulseAudio, and D-Bus sockets.
 pub fn resolve() -> Result<HostEnv> {
     let uid = getuid().as_raw();
-    let username = env::var("USER")
-        .or_else(|_| env::var("LOGNAME"))
-        .unwrap_or_else(|_| "user".into());
 
     let xdg_runtime_dir: PathBuf = env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -60,7 +56,6 @@ pub fn resolve() -> Result<HostEnv> {
 
     Ok(HostEnv {
         uid,
-        username,
         xdg_runtime_dir,
         wayland_display,
         wayland_socket,
