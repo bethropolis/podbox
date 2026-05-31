@@ -77,7 +77,7 @@ pub fn generate_container(
     }
 
     // D-Bus proxy dependency
-    if config.integration.dbus {
+    if config.use_dbus_proxy() {
         lines.push(format!("Requires={}-proxy.service", name));
         lines.push(format!("After={}-proxy.service", name));
     }
@@ -188,16 +188,21 @@ pub fn generate_container(
         }
     }
 
-    // D-Bus (always through proxy, never unfiltered `%t/bus`)
+    // D-Bus
     if config.integration.dbus && env.dbus_socket.is_some() {
-        lines.push(format!(
-            "Volume=%t/podmgr/{}-dbus.sock:/run/podmgr/dbus.sock:ro",
-            name
-        ));
-        lines.push(
-            "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podmgr/dbus.sock"
-                .into(),
-        );
+        if config.use_dbus_proxy() {
+            lines.push(format!(
+                "Volume=%t/podmgr/{}-dbus.sock:/run/podmgr/dbus.sock:ro",
+                name
+            ));
+            lines.push(
+                "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podmgr/dbus.sock"
+                    .into(),
+            );
+        } else {
+            lines.push("Volume=%t/bus:%t/bus".into());
+            lines.push("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus".into());
+        }
         lines.push(String::new());
     }
 
@@ -210,7 +215,18 @@ pub fn generate_container(
 
     // Extra user env
     for (key, value) in &config.container.env {
-        lines.push(format!("Environment={}={}", key, value));
+        if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            let clean = value.replace('\n', " ").replace('\r', "");
+            let escaped = clean.replace('\\', "\\\\").replace('"', "\\\"");
+            let env_val = if escaped.contains(' ') || escaped.is_empty() {
+                format!("\"{}\"", escaped)
+            } else {
+                escaped
+            };
+            lines.push(format!("Environment={}={}", key, env_val));
+        } else {
+            eprintln!("Warning: ignoring invalid environment variable key '{}'", key);
+        }
     }
     lines.push(format!(
         "Environment=PODMGR_CONTAINER={}",
@@ -290,7 +306,7 @@ pub fn generate_container(
 ///
 /// Returns `None` when D-Bus integration is disabled.
 pub fn generate_dbus_proxy_service(name: &str, config: &Config) -> Option<String> {
-    if !config.integration.dbus {
+    if !config.use_dbus_proxy() {
         return None;
     }
 

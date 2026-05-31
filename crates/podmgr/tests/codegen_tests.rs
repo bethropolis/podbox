@@ -147,10 +147,10 @@ fn quadlet_audio_volumes_present() {
 fn quadlet_dbus_present() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    // D-Bus is always through proxy, never unfiltered %t/bus
-    assert!(!q.contains("Volume=%t/bus:%t/bus"));
-    assert!(q.contains("Volume=%t/podmgr/myenv-dbus.sock:/run/podmgr/dbus.sock:ro"));
-    assert!(q.contains("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podmgr/dbus.sock"));
+    // No rules means unfiltered %t/bus
+    assert!(q.contains("Volume=%t/bus:%t/bus"));
+    assert!(q.contains("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"));
+    assert!(!q.contains("Volume=%t/podmgr/myenv-dbus.sock:/run/podmgr/dbus.sock:ro"));
 }
 
 #[test]
@@ -342,10 +342,9 @@ fn quadlet_systemd_dependencies_absent_by_default() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     let requires_lines: Vec<&str> = q.lines().filter(|l| l.starts_with("Requires=")).collect();
-    // Socket + proxy Requires should be present
-    assert_eq!(requires_lines.len(), 2);
+    // Socket Requires should be present, proxy service absent
+    assert_eq!(requires_lines.len(), 1);
     assert!(requires_lines.iter().any(|l| l.ends_with(".socket")));
-    assert!(requires_lines.iter().any(|l| l.ends_with("-proxy.service")));
 }
 
 #[test]
@@ -364,6 +363,8 @@ fn quadlet_visual_themes_present() {
 
 #[test]
 fn quadlet_visual_icons_present() {
+    let home = dirs::home_dir().unwrap();
+    let _ = std::fs::create_dir_all(home.join(".icons")).ok();
     let config = load_config("full.toml");
     let mut config = config.clone();
     config.integration.sync_icons = true;
@@ -373,6 +374,9 @@ fn quadlet_visual_icons_present() {
 
 #[test]
 fn quadlet_visual_fonts_present() {
+    let home = dirs::home_dir().unwrap();
+    let _ = std::fs::create_dir_all(home.join(".fonts")).ok();
+    let _ = std::fs::create_dir_all(home.join(".config/fontconfig")).ok();
     let config = load_config("full.toml");
     let mut config = config.clone();
     config.integration.sync_fonts = true;
@@ -407,7 +411,8 @@ fn quadlet_dbus_proxy_when_configured() {
 
 #[test]
 fn quadlet_dbus_proxy_deps_in_unit() {
-    let config = load_config("full.toml");
+    let mut config = load_config("full.toml");
+    config.dbus.talk = vec!["org.freedesktop.Notifications".into()];
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("Requires=myenv-proxy.service"));
     assert!(q.contains("After=myenv-proxy.service"));
@@ -443,11 +448,12 @@ fn quadlet_dbus_proxy_unit_none_when_dbus_disabled() {
 
 #[test]
 fn quadlet_dbus_proxy_unit_generated_when_dbus_enabled() {
-    let config = load_config("full.toml");
+    let mut config = load_config("full.toml");
+    config.dbus.talk = vec!["org.freedesktop.Notifications".into()];
     let unit = quadlet::generate_dbus_proxy_service("myenv", &config)
         .expect("proxy service should be generated when dbus enabled");
     assert!(unit.contains("--filter"));
-    assert!(!unit.contains("--talk="));
+    assert!(unit.contains("--talk="));
     assert!(!unit.contains("--own="));
 }
 

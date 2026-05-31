@@ -297,6 +297,9 @@ fn run() -> Result<()> {
                 ExportCommand::Bin { name: bin_name } => {
                     podmgr::export::export_bin(&name, bin_name)?;
                 }
+                ExportCommand::Clean => {
+                    podmgr::export::unexport_all(&name)?;
+                }
             }
         }
 
@@ -369,9 +372,13 @@ fn run() -> Result<()> {
                 println!("podmgr serve {}", serve_name);
                 return Ok(());
             }
-            let config_dir = config::config_dir();
-            let config_path = config_dir.join(format!("{}.toml", serve_name));
-            let serve_config = Config::load(&config_path)?;
+            let serve_config = if let Some(ref path) = cli.config {
+                Config::load(path)?
+            } else {
+                let config_dir = config::config_dir();
+                let config_path = config_dir.join(format!("{}.toml", serve_name));
+                Config::load(&config_path)?
+            };
             let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
                 .unwrap_or_else(|_| "/run/user/1000".into());
             let socket_path = std::path::PathBuf::from(&xdg_runtime)
@@ -490,7 +497,14 @@ fn translate_path(
     to_host: bool,
     path_str: &str,
 ) -> Result<()> {
-    let home_in_container = "/root";
+    let username = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "root".to_string());
+    let home_in_container = if username == "root" {
+        "/root".to_string()
+    } else {
+        format!("/home/{}", username)
+    };
     let host_path = Path::new(path_str);
 
     if to_container {

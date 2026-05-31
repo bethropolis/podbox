@@ -36,10 +36,15 @@ pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()>
                 stream.set_nonblocking(false)?;
                 let cfg = config.clone();
                 if handles.len() >= MAX_CONCURRENT {
-                    let _ = std::mem::take(&mut handles)
-                        .into_iter()
-                        .filter(|h| !h.is_finished())
-                        .collect::<Vec<_>>();
+                    let mut active_handles = Vec::new();
+                    for h in std::mem::take(&mut handles) {
+                        if h.is_finished() {
+                            let _ = h.join();
+                        } else {
+                            active_handles.push(h);
+                        }
+                    }
+                    handles = active_handles;
                 }
                 let handle = thread::spawn(move || {
                     if let Err(e) = handle_connection(&mut stream, &cfg) {
@@ -114,12 +119,13 @@ fn handle_connection(stream: &mut UnixStream, _config: &IntegrationConfig) -> an
                     .show();
             }
             GuestMessage::XdgOpen { uri } => {
-                let validated = validate_uri(&uri);
-                if let Ok(mut child) = std::process::Command::new("xdg-open")
-                    .arg(&validated)
-                    .spawn()
-                {
-                    let _ = child.wait();
+                if let Some(validated) = validate_uri(&uri) {
+                    if let Ok(mut child) = std::process::Command::new("xdg-open")
+                        .arg(&validated)
+                        .spawn()
+                    {
+                        let _ = child.wait();
+                    }
                 }
             }
             GuestMessage::ClipboardSet { text } => {
@@ -144,17 +150,34 @@ fn handle_connection(stream: &mut UnixStream, _config: &IntegrationConfig) -> an
     Ok(())
 }
 
-fn validate_uri(uri: &str) -> String {
+fn validate_uri(uri: &str) -> Option<String> {
     let allowed_schemes = ["http", "https", "mailto"];
-    if let Some(scheme) = uri.split(':').next() {
+    let trimmed = uri.trim();
+    if trimmed.starts_with('/') || trimmed.starts_with('.') {
+        return None;
+    }
+    if let Some(idx) = trimmed.find("://") {
+        let scheme = &trimmed[..idx];
         if allowed_schemes.contains(&scheme) {
-            return uri.to_string();
+            return Some(trimmed.to_string());
+        }
+        return None;
+    }
+    if trimmed.starts_with("mailto:") {
+        return Some(trimmed.to_string());
+    }
+    if let Some(colon_idx) = trimmed.find(':') {
+        let scheme = &trimmed[..colon_idx];
+        if allowed_schemes.contains(&scheme) {
+            return Some(trimmed.to_string());
+        }
+        if scheme.chars().all(|c| c.is_alphabetic()) {
+            return None;
         }
     }
-    let trimmed = uri.trim();
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        format!("https://{}", uri)
+    if !trimmed.is_empty() {
+        Some(format!("https://{}", trimmed))
     } else {
-        uri.to_string()
+        None
     }
 }

@@ -39,12 +39,28 @@ fn default_prebuilt_repo() -> String {
     "yourname/podmgr-images".into()
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PackageConfig {
     #[serde(default)]
     pub install: Vec<String>,
     #[serde(default)]
     pub remove: Vec<String>,
+    #[serde(default = "default_package_manager")]
+    pub manager: String,
+}
+
+impl Default for PackageConfig {
+    fn default() -> Self {
+        Self {
+            install: Vec::new(),
+            remove: Vec::new(),
+            manager: default_package_manager(),
+        }
+    }
+}
+
+fn default_package_manager() -> String {
+    "dnf".into()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -330,7 +346,7 @@ pub struct Config {
 impl Config {
     /// Returns `true` when D-Bus integration is active (proxy unit is generated).
     pub fn use_dbus_proxy(&self) -> bool {
-        self.integration.dbus
+        self.integration.dbus && (!self.dbus.talk.is_empty() || !self.dbus.own.is_empty())
     }
 }
 
@@ -455,8 +471,15 @@ pub fn find_definition() -> Option<PathBuf> {
             .collect();
 
         entries.sort();
-        if let Some(first) = entries.into_iter().next() {
-            return Some(first);
+        if !entries.is_empty() {
+            if entries.len() > 1 {
+                eprintln!(
+                    "Warning: multiple configuration files found in {}. Selecting '{}' alphabetically. Use --config to specify a different file.",
+                    config_dir.display(),
+                    entries[0].display()
+                );
+            }
+            return Some(entries.remove(0));
         }
     }
 
@@ -765,7 +788,7 @@ base = "fedora:41"
         let cfg = Config::embedded();
         assert!(cfg.dbus.talk.is_empty());
         assert!(cfg.dbus.own.is_empty());
-        assert!(cfg.use_dbus_proxy());
+        assert!(!cfg.use_dbus_proxy());
     }
 
     #[test]

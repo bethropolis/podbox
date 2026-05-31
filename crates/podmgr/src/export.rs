@@ -69,7 +69,7 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
 
     let shim = format!(
         "#!/bin/sh\nexec podmgr --container \"{}\" exec -- \"{}\" \"$@\"\n",
-        container_name, bin
+        container_name.replace('"', "\\\""), bin.replace('"', "\\\"")
     );
 
     let shim_path = bin_dir.join(bin);
@@ -137,7 +137,7 @@ fn rewrite_exec_line(content: &str, container_name: &str, _app: &str) -> String 
         .lines()
         .map(|line| {
             if let Some(original) = line.strip_prefix("Exec=") {
-                format!("Exec=podmgr --container \"{}\" exec -- {}", container_name, original)
+                format!("Exec=podmgr --container \"{}\" exec -- {}", container_name.replace('"', "\\\""), original)
             } else {
                 line.to_string()
             }

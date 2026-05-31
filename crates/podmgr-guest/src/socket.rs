@@ -1,13 +1,10 @@
-use std::os::fd::{AsRawFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-
-use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
 use crate::error::GuestError;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
 
-/// Connect to the host socket with retries using poll-based backoff.
+/// Connect to the host socket with retries using sleep-based backoff.
 pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
     for attempt in 1..=3 {
         match UnixStream::connect(socket_path) {
@@ -20,11 +17,7 @@ pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
                     e
                 );
                 if attempt < 3 {
-                    let dev_null = std::fs::File::open("/dev/null")
-                        .map_err(GuestError::IO)?;
-                    let fd = unsafe { BorrowedFd::borrow_raw(dev_null.as_raw_fd()) };
-                    let mut poll_fds = [PollFd::new(fd, PollFlags::empty())];
-                    let _ = poll(&mut poll_fds, PollTimeout::from(500u16));
+                    std::thread::sleep(std::time::Duration::from_millis(500));
                 }
             }
         }

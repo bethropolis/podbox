@@ -39,19 +39,30 @@ fn generate_custom(config: &Config) -> String {
     lines.push(format!("FROM {}", config.image.base));
     lines.push(String::new());
 
+    let manager = config.image.packages.manager.as_str();
+
     // Packages
     if !config.image.packages.install.is_empty() {
         let pkgs = config.image.packages.install.join(" ");
-        lines.push(format!(
-            "RUN dnf install -y {} && dnf clean all",
-            pkgs
-        ));
+        let cmd = match manager {
+            "apt" | "apt-get" => format!("apt-get update && apt-get install -y {} && rm -rf /var/lib/apt/lists/*", pkgs),
+            "apk" => format!("apk add --no-cache {}", pkgs),
+            "pacman" => format!("pacman -Syu --noconfirm {} && pacman -Scc --noconfirm", pkgs),
+            _ => format!("dnf install -y {} && dnf clean all", pkgs),
+        };
+        lines.push(format!("RUN {}", cmd));
         lines.push(String::new());
     }
 
     if !config.image.packages.remove.is_empty() {
         let pkgs = config.image.packages.remove.join(" ");
-        lines.push(format!("RUN dnf remove -y {} && dnf clean all", pkgs));
+        let cmd = match manager {
+            "apt" | "apt-get" => format!("apt-get purge -y {} && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*", pkgs),
+            "apk" => format!("apk del {}", pkgs),
+            "pacman" => format!("pacman -Rns --noconfirm {}", pkgs),
+            _ => format!("dnf remove -y {} && dnf clean all", pkgs),
+        };
+        lines.push(format!("RUN {}", cmd));
         lines.push(String::new());
     }
 
@@ -85,9 +96,4 @@ fn generate_custom(config: &Config) -> String {
     ));
 
     lines.join("\n")
-}
-
-/// Generate the entry script that is copied into the build context.
-pub fn generate_entry_script() -> String {
-    String::new()
 }

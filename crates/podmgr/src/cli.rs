@@ -154,6 +154,8 @@ pub enum ExportCommand {
     App { name: String },
     /// Export a binary shim.
     Bin { name: String },
+    /// Remove all exports for the container.
+    Clean,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

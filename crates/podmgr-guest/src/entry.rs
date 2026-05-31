@@ -53,8 +53,13 @@ pub fn run(cmd: &[String]) -> ! {
 
             let program = CString::new("/usr/local/bin/podmgr-guest").unwrap();
             let arg = CString::new("--daemon").unwrap();
-            let _ = execv(&program, &[&program, &arg]);
-            unsafe { libc::_exit(1) }
+            match execv(&program, &[&program, &arg]) {
+                Ok(_) => unreachable!(),
+                Err(e) => {
+                    eprintln!("podmgr-guest: failed to execute daemon /usr/local/bin/podmgr-guest: {}", e);
+                    unsafe { libc::_exit(1) }
+                }
+            }
         }
         Ok(ForkResult::Parent { .. }) => {
             // Parent: drop privileges before execing the user command
@@ -77,20 +82,31 @@ pub fn run(cmd: &[String]) -> ! {
                     }))
                     .collect();
                 let args_refs: Vec<&CString> = args.iter().collect();
-                let _ = execvp(args_refs[0], &args_refs);
+                match execvp(args_refs[0], &args_refs) {
+                    Ok(_) => unreachable!(),
+                    Err(e) => {
+                        eprintln!("podmgr-guest: failed to execute command: {}", e);
+                        std::process::exit(1);
+                    }
+                }
             } else if is_tty {
                 // Interactive with no explicit CMD: start a login shell
                 let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
                 let program = CString::new(shell.as_bytes()).unwrap();
                 let arg0 = CString::new(format!("-{}", shell)).unwrap();
-                let _ = execv(&program, &[&arg0]);
+                match execv(&program, &[&arg0]) {
+                    Ok(_) => unreachable!(),
+                    Err(e) => {
+                        eprintln!("podmgr-guest: failed to execute shell {}: {}", shell, e);
+                        std::process::exit(1);
+                    }
+                }
             } else {
                 // Background (e.g. systemd): keep PID 1 alive
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(3600));
                 }
             }
-            std::process::exit(1)
         }
         Err(_) => {
             std::process::exit(1)
@@ -108,13 +124,15 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .map(|c| c.lines().any(|l| l.starts_with(&format!("{}:", user))))
         .unwrap_or(false);
     if !group_exists {
-        let _ = std::process::Command::new("groupadd")
+        let status = std::process::Command::new("groupadd")
             .args(["-g", &gid.to_string(), user])
             .status();
-        // fallback for Alpine/busybox
-        let _ = std::process::Command::new("addgroup")
-            .args(["-g", &gid.to_string(), user])
-            .status();
+        if status.is_err() || !status.unwrap().success() {
+            // fallback for Alpine/busybox
+            let _ = std::process::Command::new("addgroup")
+                .args(["-g", &gid.to_string(), user])
+                .status();
+        }
     }
 
     // 2. User
@@ -122,7 +140,7 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .map(|c| c.lines().any(|l| l.starts_with(&format!("{}:", user))))
         .unwrap_or(false);
     if !user_exists {
-        let _ = std::process::Command::new("useradd")
+        let status = std::process::Command::new("useradd")
             .args([
                 "-u", &uid.to_string(),
                 "-g", &gid.to_string(),
@@ -131,17 +149,19 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
                 "-m", user,
             ])
             .status();
-        // fallback for Alpine/busybox
-        let _ = std::process::Command::new("adduser")
-            .args([
-                "-u", &uid.to_string(),
-                "-D",
-                "-G", user,
-                "-h", &format!("/home/{}", user),
-                "-s", "/bin/bash",
-                user,
-            ])
-            .status();
+        if status.is_err() || !status.unwrap().success() {
+            // fallback for Alpine/busybox
+            let _ = std::process::Command::new("adduser")
+                .args([
+                    "-u", &uid.to_string(),
+                    "-D",
+                    "-G", user,
+                    "-h", &format!("/home/{}", user),
+                    "-s", "/bin/bash",
+                    user,
+                ])
+                .status();
+        }
     }
 
     // 3. Supplementary groups
