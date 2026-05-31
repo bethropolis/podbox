@@ -1,0 +1,19 @@
+[workspace]
+members  = ["crates/podmgr", "crates/podmgr-guest"]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.0"
+
+[workspace.dependencies]
+serde      = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow     = "1.0"
+thiserror  = "1.0"
+nix        = { version = "0.29", features = ["process", "signal", "fs", "poll", "user"] }
+
+[profile.release]
+opt-level = "z"
+strip     = true
+lto       = true
+panic     = "abort"

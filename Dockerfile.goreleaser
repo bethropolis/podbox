@@ -1,0 +1,12 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG TARGETPLATFORM
+
+COPY $TARGETPLATFORM/podmgr-guest /usr/local/bin/podmgr-guest
+COPY podmgr-entry.sh /usr/local/bin/podmgr-entry
+
+RUN chmod +x /usr/local/bin/podmgr-entry
+
+ENTRYPOINT ["/usr/local/bin/podmgr-entry"]
+CMD ["/bin/bash"]

@@ -1,0 +1,12 @@
+[image]
+base = "ubuntu:22.04"
+name = "nowl"
+
+[container]
+name = "nowl"
+home = "~/containers/nowl"
+
+[integration]
+wayland = false
+audio   = false
+dbus    = false

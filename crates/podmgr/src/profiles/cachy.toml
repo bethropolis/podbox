@@ -1,0 +1,32 @@
+[image]
+name = "cachy"
+base = "cachy"
+prebuilt = true
+prebuilt_registry = "ghcr.io"
+prebuilt_repo = "podmgr-images"
+
+[container]
+name = "cachy"
+home = "~/containers/cachy"
+shell = "/bin/bash"
+
+[integration]
+wayland = true
+audio = true
+gpu = true
+sync_themes = true
+sync_icons = true
+sync_fonts = true
+
+[integration.xdg_dirs]
+documents = true
+downloads = true
+pictures = true
+music = true
+videos = true
+desktop = true
+
+[lifecycle]
+quadlet = true
+autostart = true
+auto_update = true

@@ -1,0 +1,49 @@
+[image]
+base = "fedora:41"
+name = "myenv"
+
+[image.packages]
+install = ["git", "gcc", "ripgrep", "mesa-dri-drivers", "libwayland-client"]
+remove  = []
+
+[image.run]
+commands = ["dnf clean all"]
+
+[container]
+name  = "myenv"
+home  = "~/containers/myenv"
+shell = "bash"
+
+[container.mounts]
+extra = ["~/Work:/home/user/Work:z"]
+
+[container.env]
+EDITOR = "nvim"
+TERM   = "xterm-256color"
+
+[integration]
+wayland   = true
+audio     = true
+gpu       = false
+dbus      = true
+notify    = true
+xdg_open  = true
+clipboard = true
+
+[integration.xdg_dirs]
+documents = true
+downloads = true
+pictures  = false
+music     = false
+videos    = false
+desktop   = false
+
+[integration.export]
+apps = ["gedit", "nautilus"]
+bins = ["rg", "gcc"]
+
+[lifecycle]
+quadlet     = true
+autostart   = true
+on_stop     = "keep"
+auto_update = false

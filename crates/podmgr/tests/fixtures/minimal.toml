@@ -1,0 +1,7 @@
+[image]
+base = "fedora:41"
+name = "minimal"
+
+[container]
+name = "minimal"
+home = "~/containers/minimal"

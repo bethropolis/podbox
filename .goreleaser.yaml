@@ -1,0 +1,113 @@
+version: 2
+
+project_name: podmgr
+
+before:
+  hooks:
+    - rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl
+
+builds:
+  - id: podmgr
+    builder: rust
+    command: build
+    binary: podmgr
+    targets:
+      - x86_64-unknown-linux-gnu
+    flags:
+      - --release
+      - -p=podmgr
+
+  - id: podmgr-guest
+    builder: rust
+    command: build
+    binary: podmgr-guest
+    targets:
+      - x86_64-unknown-linux-musl
+    flags:
+      - --release
+      - -p=podmgr-guest
+
+archives:
+  - id: podmgr
+    ids:
+      - podmgr
+    name_template: "podmgr-{{ .Tag }}-linux-x86_64"
+    formats: ["tar.gz"]
+  - id: podmgr-guest
+    ids:
+      - podmgr-guest
+    name_template: "podmgr-guest-{{ .Tag }}-linux-x86_64-musl"
+    formats: ["tar.gz"]
+
+checksum:
+  name_template: "checksums.txt"
+
+dockers_v2:
+  - id: cachy
+    ids:
+      - podmgr-guest
+    images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podmgr-images"
+    tags:
+      - "cachy-{{ .Tag }}"
+      - "cachy-latest"
+    dockerfile: Dockerfile.goreleaser
+    platforms:
+      - linux/amd64
+    build_args:
+      BASE_IMAGE: docker.io/cachyos/cachyos:latest
+    labels:
+      org.opencontainers.image.source: "{{ .Env.GITHUB_SERVER_URL }}/{{ .Env.GITHUB_REPOSITORY }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Tag }}"
+      podmgr.guest_version: "{{ .Tag }}"
+      podmgr.protocol_version: "1"
+      podmgr.integration.wayland: "true"
+      podmgr.integration.audio: "true"
+      podmgr.integration.gpu: "true"
+      podmgr.integration.dbus: "true"
+      podmgr.shell: "/bin/bash"
+      podmgr.default_shell: "/bin/bash"
+    extra_files:
+      - images/_base/podmgr-entry.sh
+
+  - id: fedora
+    ids:
+      - podmgr-guest
+    images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podmgr-images"
+    tags:
+      - "fedora-{{ .Tag }}"
+      - "fedora-latest"
+    dockerfile: Dockerfile.goreleaser
+    platforms:
+      - linux/amd64
+    build_args:
+      BASE_IMAGE: docker.io/library/fedora:44
+    labels:
+      org.opencontainers.image.source: "{{ .Env.GITHUB_SERVER_URL }}/{{ .Env.GITHUB_REPOSITORY }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Tag }}"
+      podmgr.guest_version: "{{ .Tag }}"
+      podmgr.protocol_version: "1"
+      podmgr.integration.wayland: "true"
+      podmgr.integration.audio: "true"
+      podmgr.integration.gpu: "true"
+      podmgr.integration.dbus: "true"
+      podmgr.shell: "/bin/bash"
+      podmgr.default_shell: "/bin/bash"
+    extra_files:
+      - images/_base/podmgr-entry.sh
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: podmgr
+  extra_files:
+    - glob: ./dist/*.tar.gz
+    - glob: ./dist/*.txt
+
+changelog:
+  use: github

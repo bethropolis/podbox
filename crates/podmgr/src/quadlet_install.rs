@@ -1,0 +1,159 @@
+use std::path::PathBuf;
+
+use anyhow::Result;
+
+use crate::codegen::quadlet;
+use crate::config::Config;
+use crate::env::HostEnv;
+use crate::xdg::ResolvedXdgDirs;
+
+/// Directory for user Quadlet files.
+fn quadlet_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .join("containers/systemd")
+}
+
+/// Install Quadlet files for a container.
+pub fn install(
+    config: &Config,
+    env: &HostEnv,
+    xdg: &ResolvedXdgDirs,
+    dry_run: bool,
+) -> Result<()> {
+    let name = &config.container.name;
+    let qdir = quadlet_dir();
+    let context_dir = crate::build::build_context_dir(name);
+    let containerfile_path = context_dir.join("Containerfile");
+
+    let build_content = quadlet::generate_build(config, &containerfile_path);
+    let socket_content = quadlet::generate_socket(config);
+    let container_content = quadlet::generate_container(config, env, xdg);
+    let host_service_content = quadlet::generate_host_service(name);
+    let dbus_proxy_content = quadlet::generate_dbus_proxy_service(name, config);
+
+    if dry_run {
+        println!("=== {}.build ===", name);
+        println!("{}", build_content);
+        println!();
+        println!("=== {}.socket ===", name);
+        println!("{}", socket_content);
+        println!();
+        println!("=== {}.container ===", name);
+        println!("{}", container_content);
+        println!();
+        println!("=== {}-host.service ===", name);
+        println!("{}", host_service_content);
+        if let Some(ref proxy) = dbus_proxy_content {
+            println!();
+            println!("=== {}-proxy.service ===", name);
+            println!("{}", proxy);
+        }
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&qdir)?;
+
+    std::fs::write(qdir.join(format!("{}.build", name)), build_content)?;
+    std::fs::write(qdir.join(format!("{}.socket", name)), socket_content)?;
+    std::fs::write(
+        qdir.join(format!("{}.container", name)),
+        container_content,
+    )?;
+    std::fs::write(
+        qdir.join(format!("{}-host.service", name)),
+        host_service_content,
+    )?;
+    if let Some(ref proxy) = dbus_proxy_content {
+        std::fs::write(qdir.join(format!("{}-proxy.service", name)), proxy)?;
+    }
+
+    println!("Quadlet files installed to {}", qdir.display());
+
+    // Auto-export apps and bins
+    for app in &config.integration.export.apps {
+        if let Err(e) = crate::export::export_app(name, app) {
+            eprintln!("Warning: auto-export app '{}' failed: {}", app, e);
+        }
+    }
+    for bin in &config.integration.export.bins {
+        if let Err(e) = crate::export::export_bin(name, bin) {
+            eprintln!("Warning: auto-export bin '{}' failed: {}", bin, e);
+        }
+    }
+
+    // daemon-reload
+    let reload_args: Vec<std::ffi::OsString> = vec![
+        "--user".into(),
+        "daemon-reload".into(),
+    ];
+    if which::which("systemctl").is_ok() {
+        let output = crate::process::run_piped("systemctl", &reload_args)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("Warning: daemon-reload failed: {}", stderr);
+        } else {
+            println!("systemd daemon-reload complete.");
+        }
+    } else {
+        eprintln!("Warning: systemctl not found. Skipping daemon-reload.");
+    }
+
+    // linger
+    if config.lifecycle.autostart {
+        let whoami = std::env::var("USER").unwrap_or_default();
+        if !whoami.is_empty() && which::which("loginctl").is_ok() {
+            let args: Vec<std::ffi::OsString> = vec![
+                "enable-linger".into(),
+                whoami.into(),
+            ];
+            let output = crate::process::run_piped("loginctl", &args)?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("Warning: enable-linger failed: {}", stderr);
+            } else {
+                println!("Linger enabled for user.");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Remove Quadlet files for a container.
+pub fn uninstall(name: &str) -> Result<()> {
+    let qdir = quadlet_dir();
+
+    for ext in ["build", "socket", "container"] {
+        let path = qdir.join(format!("{}.{}", name, ext));
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+    }
+
+    // Host socket server companion service
+    let host_path = qdir.join(format!("{}-host.service", name));
+    if host_path.exists() {
+        std::fs::remove_file(&host_path)?;
+    }
+
+    // D-Bus proxy companion service
+    let proxy_path = qdir.join(format!("{}-proxy.service", name));
+    if proxy_path.exists() {
+        std::fs::remove_file(&proxy_path)?;
+    }
+
+    // daemon-reload
+    if which::which("systemctl").is_ok() {
+        let args: Vec<std::ffi::OsString> = vec![
+            "--user".into(),
+            "daemon-reload".into(),
+        ];
+        if let Err(e) = crate::process::run_piped("systemctl", &args) {
+            eprintln!("Warning: daemon-reload failed: {}", e);
+        }
+    }
+
+    println!("Quadlet files for '{}' removed.", name);
+    Ok(())
+}

@@ -1,0 +1,25 @@
+# Rust/Cargo build artifacts
+/target/
+
+# GoReleaser build output
+/dist/
+
+# Local tool config
+.commandcode/
+
+# Editor cruft
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Environment files
+.env
+*.env.local
+
+# OS metadata
+Thumbs.db
+ehthumbs.db
+Desktop.ini

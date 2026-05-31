@@ -1,0 +1,160 @@
+use std::io::Write;
+use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::Path;
+use std::thread;
+
+use crate::config::IntegrationConfig;
+use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+
+/// Max number of concurrent host threads handling guest connections.
+const MAX_CONCURRENT: usize = 4;
+
+/// Run the host socket server for a container.
+///
+/// Uses systemd socket activation when `LISTEN_FDS` is set (FD 3).
+/// Falls back to creating the socket at `socket_path` directly.
+pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()> {
+    let path = socket_path.to_path_buf();
+    let config = config.clone();
+
+    let listener = match listen_fd() {
+        Some(fd) => unsafe { UnixListener::from_raw_fd(fd) },
+        None => {
+            let _ = std::fs::remove_file(&path);
+            UnixListener::bind(&path)?
+        }
+    };
+
+    listener.set_nonblocking(true)?;
+
+    let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
+
+    loop {
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                stream.set_nonblocking(false)?;
+                let cfg = config.clone();
+                if handles.len() >= MAX_CONCURRENT {
+                    let _ = std::mem::take(&mut handles)
+                        .into_iter()
+                        .filter(|h| !h.is_finished())
+                        .collect::<Vec<_>>();
+                }
+                let handle = thread::spawn(move || {
+                    if let Err(e) = handle_connection(&mut stream, &cfg) {
+                        eprintln!("Error handling guest connection: {}", e);
+                    }
+                });
+                handles.push(handle);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => {
+                eprintln!("Socket accept failed: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn listen_fd() -> Option<RawFd> {
+    let pid = std::env::var("LISTEN_PID").ok()?.parse::<u32>().ok()?;
+    if pid != std::process::id() {
+        return None;
+    }
+    let fds = std::env::var("LISTEN_FDS").ok()?.parse::<u32>().ok()?;
+    if fds == 0 {
+        return None;
+    }
+    Some(3)
+}
+
+fn handle_connection(stream: &mut UnixStream, _config: &IntegrationConfig) -> anyhow::Result<()> {
+    while let Some(msg_bytes) = read_frame(stream)? {
+        let msg: GuestMessage = serde_json::from_slice(&msg_bytes)?;
+
+        match msg {
+            GuestMessage::Hello {
+                protocol_version,
+                guest_version,
+                container,
+                capabilities,
+            } => {
+                if protocol_version != crate::protocol::PROTOCOL_VERSION {
+                    eprintln!(
+                        "Host: protocol mismatch — got v{}, expected v{}",
+                        protocol_version,
+                        crate::protocol::PROTOCOL_VERSION
+                    );
+                    write_frame(stream, &HostMessage::Shutdown)?;
+                    return Ok(());
+                }
+                eprintln!(
+                    "Host: Guest hello (v{}, container: {}, caps: {:?})",
+                    guest_version, container, capabilities
+                );
+                let response = HostMessage::HelloAck {
+                    accepted: vec!["notify".into(), "xdg_open".into(), "clipboard".into()],
+                    rejected: vec![],
+                };
+                write_frame(stream, &response)?;
+            }
+            GuestMessage::Notify {
+                summary,
+                body,
+                urgency: _,
+            } => {
+                let _ = notify_rust::Notification::new()
+                    .summary(&summary)
+                    .body(&body)
+                    .show();
+            }
+            GuestMessage::XdgOpen { uri } => {
+                let validated = validate_uri(&uri);
+                if let Ok(mut child) = std::process::Command::new("xdg-open")
+                    .arg(&validated)
+                    .spawn()
+                {
+                    let _ = child.wait();
+                }
+            }
+            GuestMessage::ClipboardSet { text } => {
+                let mut child = std::process::Command::new("wl-copy")
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()?;
+                if let Some(ref mut stdin) = child.stdin {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                let _ = child.wait();
+            }
+            GuestMessage::ClipboardGet => {
+                let output = std::process::Command::new("wl-paste").output()?;
+                let text = String::from_utf8_lossy(&output.stdout);
+                let response = HostMessage::ClipboardData {
+                    text: text.trim().to_string(),
+                };
+                write_frame(stream, &response)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_uri(uri: &str) -> String {
+    let allowed_schemes = ["http", "https", "mailto"];
+    if let Some(scheme) = uri.split(':').next() {
+        if allowed_schemes.contains(&scheme) {
+            return uri.to_string();
+        }
+    }
+    let trimmed = uri.trim();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        format!("https://{}", uri)
+    } else {
+        uri.to_string()
+    }
+}
