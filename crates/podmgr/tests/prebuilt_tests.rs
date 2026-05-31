@@ -8,7 +8,7 @@ fn load_config(name: &str) -> Config {
         .join("tests/fixtures")
         .join(name);
     let content = std::fs::read_to_string(path).unwrap();
-    Config::from_str(&content).unwrap()
+    Config::parse(&content).unwrap()
 }
 
 // ---- Shorthand resolver ----
@@ -63,8 +63,7 @@ fn containerfile_prebuilt_generates_minimal() {
     // Prebuilt Containerfile does NOT COPY the guest binary
     // (the image already has it embedded)
     assert!(!cf.contains("COPY podmgr-guest"));
-    assert!(!cf.contains("COPY podmgr-entry.sh"));
-    assert!(cf.contains("ENTRYPOINT [\"/usr/local/bin/podmgr-entry\"]"));
+    assert!(cf.contains(r#"ENTRYPOINT ["/usr/local/bin/podmgr-guest", "--entry"]"#));
     assert!(cf.contains(r#"CMD ["/bin/bash"]"#));
     assert!(cf.contains("ENV PODMGR_CONTAINER=prebuilt"));
     // Prebuilt should NOT include packages or RUN commands
@@ -81,7 +80,6 @@ fn containerfile_custom_has_packages() {
     assert!(cf.contains("RUN "));
     // Custom Containerfile should COPY the guest binary
     assert!(cf.contains("COPY podmgr-guest /usr/local/bin/podmgr-guest"));
-    assert!(cf.contains("COPY podmgr-entry.sh /usr/local/bin/podmgr-entry"));
 }
 
 // ---- Label defaults ----
@@ -225,7 +223,7 @@ fn quadlet_has_environment_home() {
 #[test]
 fn profile_cachy_parses() {
     let profile = podmgr::profiles::find("cachy").expect("cachy profile exists");
-    let cfg = Config::from_str(&profile.toml).unwrap();
+    let cfg = Config::parse(&profile.toml).unwrap();
     assert_eq!(cfg.image.base, "cachy-latest");
     assert!(cfg.image.prebuilt);
     assert_eq!(cfg.container.shell, "/bin/bash");
@@ -234,7 +232,7 @@ fn profile_cachy_parses() {
 #[test]
 fn profile_fedora_parses() {
     let profile = podmgr::profiles::find("fedora").expect("fedora profile exists");
-    let cfg = Config::from_str(&profile.toml).unwrap();
+    let cfg = Config::parse(&profile.toml).unwrap();
     assert_eq!(cfg.image.base, "fedora-latest");
     assert!(cfg.image.prebuilt);
 }
@@ -242,7 +240,7 @@ fn profile_fedora_parses() {
 #[test]
 fn profile_gaming_parses() {
     let profile = podmgr::profiles::find("gaming").expect("gaming profile exists");
-    let cfg = Config::from_str(&profile.toml).unwrap();
+    let cfg = Config::parse(&profile.toml).unwrap();
     assert_eq!(cfg.image.base, "cachy-latest");
     assert!(cfg.integration.wayland);
     assert_eq!(cfg.integration.gpu, podmgr::config::GpuMode::Enabled);

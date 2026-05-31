@@ -24,7 +24,7 @@ fn generate_prebuilt(config: &Config) -> String {
     ));
     lines.push(String::new());
 
-    lines.push("ENTRYPOINT [\"/usr/local/bin/podmgr-entry\"]".into());
+    lines.push("ENTRYPOINT [\"/usr/local/bin/podmgr-guest\", \"--entry\"]".into());
     lines.push(format!(
         "CMD [\"{}\"]",
         config.container.shell
@@ -65,9 +65,8 @@ fn generate_custom(config: &Config) -> String {
 
     // Integration layer
     lines.push("COPY podmgr-guest /usr/local/bin/podmgr-guest".into());
-    lines.push("COPY podmgr-entry.sh /usr/local/bin/podmgr-entry".into());
     lines.push(
-        "RUN chmod +x /usr/local/bin/podmgr-guest /usr/local/bin/podmgr-entry".into(),
+        "RUN chmod +x /usr/local/bin/podmgr-guest".into(),
     );
     lines.push(String::new());
 
@@ -79,7 +78,7 @@ fn generate_custom(config: &Config) -> String {
     lines.push(String::new());
 
     // ENTRYPOINT and CMD
-    lines.push("ENTRYPOINT [\"/usr/local/bin/podmgr-entry\"]".into());
+    lines.push("ENTRYPOINT [\"/usr/local/bin/podmgr-guest\", \"--entry\"]".into());
     lines.push(format!(
         "CMD [\"{}\"]",
         config.container.shell
@@ -90,8 +89,5 @@ fn generate_custom(config: &Config) -> String {
 
 /// Generate the entry script that is copied into the build context.
 pub fn generate_entry_script() -> String {
-    r#"#!/bin/sh
-exec /usr/local/bin/podmgr-guest --entry "$@"
-"#
-    .into()
+    String::new()
 }

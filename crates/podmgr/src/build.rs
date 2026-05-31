@@ -167,15 +167,11 @@ fn run_build(
     }
 
     let containerfile = containerfile::generate(config, "podmgr-guest");
-    let entry_script = containerfile::generate_entry_script();
 
     if dry_run {
         println!("=== Build context: {} ===", context_dir.display());
         println!("=== Containerfile ===");
         println!("{}", containerfile);
-        println!();
-        println!("=== podmgr-entry.sh ===");
-        println!("{}", entry_script);
         println!();
         println!("=== Files to copy ===");
         println!("{} -> podmgr-guest", guest_bin.display());
@@ -189,21 +185,13 @@ fn run_build(
 
     std::fs::create_dir_all(&context_dir)
         .map_err(|e| PodmgrError::HomeCreateFailed(context_dir.clone(), e))?;
-    #[allow(clippy::octal_literals)]
+    #[allow(clippy::print_literal)]
     {
         let _ = std::fs::set_permissions(&context_dir, std::fs::Permissions::from_mode(0o700));
     }
 
     std::fs::write(&containerfile_path, containerfile)
         .with_context(|| format!("failed to write Containerfile to '{}'", containerfile_path.display()))?;
-
-    let entry_path = context_dir.join("podmgr-entry.sh");
-    std::fs::write(&entry_path, entry_script)
-        .with_context(|| format!("failed to write entry script to '{}'", entry_path.display()))?;
-    #[allow(clippy::octal_literals)]
-    {
-        let _ = std::fs::set_permissions(&entry_path, std::fs::Permissions::from_mode(0o755));
-    }
 
     let guest_dest = context_dir.join("podmgr-guest");
     std::fs::copy(&guest_bin, &guest_dest)

@@ -262,18 +262,12 @@ impl Default for LifecycleConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum OnStop {
-    #[serde(rename = "keep")]
+    #[default]
     Keep,
-    #[serde(rename = "remove")]
     Remove,
-}
-
-impl Default for OnStop {
-    fn default() -> Self {
-        OnStop::Keep
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +336,7 @@ impl Config {
 
 impl Config {
     /// Parse a TOML definition from a string.
-    pub fn from_str(content: &str) -> Result<Config> {
+    pub fn parse(content: &str) -> Result<Config> {
         let config: Config = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
         Ok(config)
@@ -357,12 +351,12 @@ impl Config {
         }
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read definition file '{}'", path.display()))?;
-        Self::from_str(&content)
+        Self::parse(&content)
     }
 
     /// Return the built-in embedded default definition.
     pub fn embedded() -> Config {
-        Self::from_str(EMBEDDED_DEFAULT).expect("embedded default is valid TOML")
+        Self::parse(EMBEDDED_DEFAULT).expect("embedded default is valid TOML")
     }
 }
 
@@ -496,7 +490,7 @@ name = "myenv"
 name = "myenv"
 home = "~/containers/myenv"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.image.base, "fedora:41");
         assert_eq!(cfg.image.name, "myenv");
         assert_eq!(cfg.container.name, "myenv");
@@ -521,7 +515,7 @@ name = "myenv"
 name = "myenv"
 home = "~/containers/myenv"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         let home = dirs::home_dir().unwrap();
         assert!(cfg.container.home.starts_with(&home));
         assert!(cfg.container.home.to_string_lossy().contains("containers/myenv"));
@@ -538,7 +532,7 @@ name = "myenv"
 name = "myenv"
 home = "~/containers/myenv"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.lifecycle.on_stop, OnStop::Keep);
     }
 
@@ -553,7 +547,7 @@ name = "myenv"
 name = "myenv"
 home = "~/containers/myenv"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert!(!cfg.integration.xdg_dirs.documents);
         assert!(!cfg.integration.xdg_dirs.downloads);
         assert!(!cfg.integration.xdg_dirs.pictures);
@@ -573,7 +567,7 @@ name = "myenv"
 name = "myenv"
 home = "~/containers/myenv"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert!(cfg.integration.wayland);
         assert!(cfg.integration.audio);
     }
@@ -603,7 +597,7 @@ home = "~/env"
 [integration]
 gpu = true
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.integration.gpu, GpuMode::Enabled);
     }
 
@@ -619,7 +613,7 @@ home = "~/env"
 [integration]
 gpu = false
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.integration.gpu, GpuMode::Disabled);
     }
 
@@ -635,7 +629,7 @@ home = "~/env"
 [integration]
 gpu = "auto"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.integration.gpu, GpuMode::Auto);
     }
 
@@ -651,7 +645,7 @@ home = "~/env"
 [integration]
 gpu = "nvidia"
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.integration.gpu, GpuMode::Nvidia);
     }
 
@@ -714,7 +708,7 @@ home = "~/env"
 requires = ["db.service", "cache.service"]
 after = ["network.target"]
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.systemd.requires, vec!["db.service", "cache.service"]);
         assert_eq!(cfg.systemd.after, vec!["network.target"]);
     }
@@ -733,7 +727,7 @@ sync_themes = true
 sync_icons = true
 sync_fonts = true
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert!(cfg.integration.sync_themes);
         assert!(cfg.integration.sync_icons);
         assert!(cfg.integration.sync_fonts);
@@ -745,7 +739,7 @@ sync_fonts = true
 [image
 base = "fedora:41"
 "#;
-        assert!(Config::from_str(toml).is_err());
+        assert!(Config::parse(toml).is_err());
     }
 
     #[test]
@@ -754,7 +748,7 @@ base = "fedora:41"
 [image]
 base = "fedora:41"
 "#;
-        assert!(Config::from_str(toml).is_err());
+        assert!(Config::parse(toml).is_err());
     }
 
     #[test]
@@ -787,7 +781,7 @@ home = "~/env"
 talk = ["org.freedesktop.Notifications", "org.mpris.MediaPlayer2.*"]
 own = ["org.mpris.MediaPlayer2.podmgr_app"]
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(
             cfg.dbus.talk,
             vec!["org.freedesktop.Notifications", "org.mpris.MediaPlayer2.*"]
@@ -808,7 +802,7 @@ home = "~/env"
 [dbus]
 talk = ["org.freedesktop.Notifications"]
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert_eq!(cfg.dbus.talk.len(), 1);
         assert!(cfg.dbus.own.is_empty());
         assert!(cfg.use_dbus_proxy());
@@ -826,7 +820,7 @@ home = "~/env"
 [dbus]
 own = ["org.example.Service"]
 "#;
-        let cfg = Config::from_str(toml).unwrap();
+        let cfg = Config::parse(toml).unwrap();
         assert!(cfg.dbus.talk.is_empty());
         assert_eq!(cfg.dbus.own.len(), 1);
         assert!(cfg.use_dbus_proxy());

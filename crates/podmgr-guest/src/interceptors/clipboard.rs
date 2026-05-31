@@ -13,7 +13,7 @@ pub fn run(args: &[String]) {
     match args[1].as_str() {
         "set" => {
             let mut text = String::new();
-            if let Ok(_) = std::io::stdin().read_to_string(&mut text) {
+            if std::io::stdin().read_to_string(&mut text).is_ok() {
                 let msg = GuestMessage::ClipboardSet {
                     text: text.trim().to_string(),
                 };

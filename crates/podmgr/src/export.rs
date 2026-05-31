@@ -74,7 +74,7 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
 
     let shim_path = bin_dir.join(bin);
     std::fs::write(&shim_path, shim)?;
-    #[allow(clippy::octal_literals)]
+    #[allow(clippy::print_literal)]
     {
         let _ = std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755));
     }

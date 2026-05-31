@@ -588,7 +588,7 @@ fn run_init(dry_run: bool, profile: Option<&str>, name: Option<&str>) -> Result<
         }
     };
 
-    let cfg = Config::from_str(&profile)?;
+    let cfg = Config::parse(&profile)?;
     let container_name = name.unwrap_or(&cfg.container.name).to_string();
     let config_dir = config::config_dir();
     let config_path = config_dir.join(format!("{}.toml", container_name));

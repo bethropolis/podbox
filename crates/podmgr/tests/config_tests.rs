@@ -12,7 +12,7 @@ fn fixtures_dir() -> PathBuf {
 fn parses_full_config() {
     let path = fixtures_dir().join("full.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert_eq!(cfg.image.base, "fedora:41");
     assert_eq!(cfg.image.name, "myenv");
@@ -24,7 +24,7 @@ fn parses_full_config() {
 fn home_tilde_is_expanded() {
     let path = fixtures_dir().join("full.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     let home = dirs::home_dir().unwrap();
     assert!(cfg.container.home.starts_with(&home));
@@ -35,7 +35,7 @@ fn home_tilde_is_expanded() {
 fn parses_minimal_config() {
     let path = fixtures_dir().join("minimal.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert_eq!(cfg.image.base, "fedora:41");
     assert_eq!(cfg.container.name, "minimal");
@@ -50,7 +50,7 @@ fn parses_minimal_config() {
 fn on_stop_defaults_to_keep() {
     let path = fixtures_dir().join("minimal.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     use podmgr::config::OnStop;
     assert_eq!(cfg.lifecycle.on_stop, OnStop::Keep);
@@ -60,7 +60,7 @@ fn on_stop_defaults_to_keep() {
 fn xdg_dirs_default_all_false() {
     let path = fixtures_dir().join("minimal.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert!(!cfg.integration.xdg_dirs.documents);
     assert!(!cfg.integration.xdg_dirs.downloads);
@@ -74,7 +74,7 @@ fn xdg_dirs_default_all_false() {
 fn wayland_default_is_true() {
     let path = fixtures_dir().join("minimal.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert!(cfg.integration.wayland);
     assert!(cfg.integration.audio);
@@ -84,7 +84,7 @@ fn wayland_default_is_true() {
 fn no_wayland_config() {
     let path = fixtures_dir().join("no_wayland.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert!(!cfg.integration.wayland);
     assert!(!cfg.integration.audio);
@@ -95,7 +95,7 @@ fn no_wayland_config() {
 fn full_config_packages() {
     let path = fixtures_dir().join("full.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert_eq!(cfg.image.packages.install.len(), 5);
     assert!(cfg.image.packages.install.contains(&"git".into()));
@@ -106,7 +106,7 @@ fn full_config_packages() {
 fn full_config_env() {
     let path = fixtures_dir().join("full.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert_eq!(cfg.container.env.get("EDITOR"), Some(&"nvim".into()));
     assert_eq!(cfg.container.env.get("TERM"), Some(&"xterm-256color".into()));
@@ -116,7 +116,7 @@ fn full_config_env() {
 fn full_config_export() {
     let path = fixtures_dir().join("full.toml");
     let content = std::fs::read_to_string(path).unwrap();
-    let cfg = Config::from_str(&content).unwrap();
+    let cfg = Config::parse(&content).unwrap();
 
     assert_eq!(cfg.integration.export.apps, vec!["gedit", "nautilus"]);
     assert_eq!(cfg.integration.export.bins, vec!["rg", "gcc"]);

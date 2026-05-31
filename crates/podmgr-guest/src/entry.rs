@@ -88,7 +88,7 @@ pub fn run(cmd: &[String]) -> ! {
                     }))
                     .collect();
                 let args_refs: Vec<&CString> = args.iter().collect();
-                let _ = execvp(&args_refs[0], &args_refs);
+                let _ = execvp(args_refs[0], &args_refs);
             }
             std::process::exit(1)
         }

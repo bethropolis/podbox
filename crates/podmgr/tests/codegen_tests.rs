@@ -11,7 +11,7 @@ fn load_config(name: &str) -> Config {
         .join("tests/fixtures")
         .join(name);
     let content = std::fs::read_to_string(path).unwrap();
-    Config::from_str(&content).unwrap()
+    Config::parse(&content).unwrap()
 }
 
 fn default_env() -> HostEnv {
@@ -58,13 +58,6 @@ fn containerfile_copies_guest_binary() {
 }
 
 #[test]
-fn containerfile_copies_entry_script() {
-    let config = load_config("full.toml");
-    let cf = containerfile::generate(&config, "podmgr-guest");
-    assert!(cf.contains("COPY podmgr-entry.sh /usr/local/bin/podmgr-entry"));
-}
-
-#[test]
 fn containerfile_sets_container_name_env() {
     let config = load_config("full.toml");
     let cf = containerfile::generate(&config, "podmgr-guest");
@@ -75,7 +68,7 @@ fn containerfile_sets_container_name_env() {
 fn containerfile_has_entrypoint() {
     let config = load_config("full.toml");
     let cf = containerfile::generate(&config, "podmgr-guest");
-    assert!(cf.contains(r#"ENTRYPOINT ["/usr/local/bin/podmgr-entry"]"#));
+    assert!(cf.contains(r#"ENTRYPOINT ["/usr/local/bin/podmgr-guest", "--entry"]"#));
 }
 
 #[test]
