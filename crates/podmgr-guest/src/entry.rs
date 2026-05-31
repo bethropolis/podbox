@@ -65,21 +65,10 @@ pub fn run(cmd: &[String]) -> ! {
                 drop_privileges(uid, gid, user);
             }
 
-            if cmd.is_empty() {
-                // No explicit command — decide interactive vs background
-                let is_tty = nix::unistd::isatty(0).unwrap_or(false);
-                if is_tty {
-                    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
-                    let program = CString::new(shell.as_bytes()).unwrap();
-                    let arg0 = CString::new(format!("-{}", shell)).unwrap();
-                    let _ = execv(&program, &[&arg0]);
-                } else {
-                    // Background mode (started by systemd): keep container alive
-                    loop {
-                        std::thread::sleep(std::time::Duration::from_secs(3600));
-                    }
-                }
-            } else {
+            let is_tty = nix::unistd::isatty(0).unwrap_or(false);
+
+            if is_tty && !cmd.is_empty() {
+                // Interactive: exec the requested command
                 let args: Vec<CString> = cmd
                     .iter()
                     .map(|s| CString::new(s.as_bytes()).unwrap_or_else(|_| {
@@ -89,6 +78,17 @@ pub fn run(cmd: &[String]) -> ! {
                     .collect();
                 let args_refs: Vec<&CString> = args.iter().collect();
                 let _ = execvp(args_refs[0], &args_refs);
+            } else if is_tty {
+                // Interactive with no explicit CMD: start a login shell
+                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
+                let program = CString::new(shell.as_bytes()).unwrap();
+                let arg0 = CString::new(format!("-{}", shell)).unwrap();
+                let _ = execv(&program, &[&arg0]);
+            } else {
+                // Background (e.g. systemd): keep PID 1 alive
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3600));
+                }
             }
             std::process::exit(1)
         }
