@@ -177,6 +177,7 @@ fn run() -> Result<()> {
         }
 
         Command::Shell | Command::Enter { .. } => {
+            let env = podmgr::env::resolve()?;
             let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
                 OsString::from("-it")
             } else {
@@ -186,6 +187,8 @@ fn run() -> Result<()> {
                 let exec_args: Vec<OsString> = vec![
                     "exec".into(),
                     tty_flag,
+                    "-u".into(),
+                    env.username.into(),
                     name.clone().into(),
                     config.container.shell.clone().into(),
                 ];
@@ -196,6 +199,8 @@ fn run() -> Result<()> {
             let exec_args: Vec<OsString> = vec![
                 "exec".into(),
                 tty_flag,
+                "-u".into(),
+                env.username.into(),
                 name.clone().into(),
                 config.container.shell.clone().into(),
             ];
@@ -204,6 +209,7 @@ fn run() -> Result<()> {
         }
 
         Command::Exec { args: cmd_args } => {
+            let env = podmgr::env::resolve()?;
             let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
                 OsString::from("-it")
             } else {
@@ -211,7 +217,7 @@ fn run() -> Result<()> {
             };
             if cli.dry_run {
                 let mut exec_args: Vec<OsString> =
-                    vec!["exec".into(), tty_flag.clone(), name.clone().into()];
+                    vec!["exec".into(), tty_flag.clone(), "-u".into(), env.username.clone().into(), name.clone().into()];
                 for a in cmd_args {
                     exec_args.push(a.into());
                 }
@@ -220,7 +226,7 @@ fn run() -> Result<()> {
             }
             ensure_running(&name, cli.dry_run)?;
             let mut exec_args: Vec<OsString> =
-                vec!["exec".into(), tty_flag.clone(), name.clone().into()];
+                vec!["exec".into(), tty_flag.clone(), "-u".into(), env.username.clone().into(), name.clone().into()];
             for a in cmd_args {
                 exec_args.push(a.into());
             }
@@ -229,10 +235,13 @@ fn run() -> Result<()> {
         }
 
         Command::Run { app, app_args } => {
+            let env = podmgr::env::resolve()?;
             if cli.dry_run {
                 let mut exec_args: Vec<OsString> = vec![
                     "exec".into(),
                     "-d".into(),
+                    "-u".into(),
+                    env.username.clone().into(),
                     name.clone().into(),
                     app.clone().into(),
                 ];
@@ -246,6 +255,8 @@ fn run() -> Result<()> {
             let mut exec_args: Vec<OsString> = vec![
                 "exec".into(),
                 "-d".into(),
+                "-u".into(),
+                env.username.clone().into(),
                 name.clone().into(),
                 app.clone().into(),
             ];

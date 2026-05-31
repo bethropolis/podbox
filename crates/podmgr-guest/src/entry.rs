@@ -3,8 +3,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use nix::libc;
-use nix::unistd::{execv, execvp, fork, ForkResult, Gid, Uid};
+use nix::unistd::{execv, execvp, fork, ForkResult};
 
 /// Fork a daemon process, then exec the user command.
 ///
@@ -36,20 +35,15 @@ pub fn run(cmd: &[String]) -> ! {
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
             // Child: become the daemon
-            let dev_null_r = std::fs::File::open("/dev/null").unwrap_or_else(|_| unsafe { libc::_exit(1) });
+            let dev_null_r = std::fs::File::open("/dev/null").unwrap_or_else(|_| std::process::exit(1));
             let dev_null_w = std::fs::OpenOptions::new()
                 .write(true)
                 .open("/dev/null")
-                .unwrap_or_else(|_| unsafe { libc::_exit(1) });
+                .unwrap_or_else(|_| std::process::exit(1));
 
             let _ = nix::unistd::dup2(dev_null_r.as_raw_fd(), 0);
             let _ = nix::unistd::dup2(dev_null_w.as_raw_fd(), 1);
             let _ = nix::unistd::dup2(dev_null_w.as_raw_fd(), 2);
-
-            // Drop daemon privileges to the host user
-            if let Some((uid, gid, ref user)) = drop {
-                drop_privileges(uid, gid, user);
-            }
 
             let program = CString::new("/usr/local/bin/podmgr-guest").unwrap();
             let arg = CString::new("--daemon").unwrap();
@@ -57,17 +51,16 @@ pub fn run(cmd: &[String]) -> ! {
                 Ok(_) => unreachable!(),
                 Err(e) => {
                     eprintln!("podmgr-guest: failed to execute daemon /usr/local/bin/podmgr-guest: {}", e);
-                    unsafe { libc::_exit(1) }
+                    std::process::exit(1)
                 }
             }
         }
         Ok(ForkResult::Parent { .. }) => {
-            // Parent: drop privileges before execing the user command
-            if let Some((uid, gid, ref user)) = drop {
+            // Parent: set env vars for the user command (stays as root)
+            if let Some((_uid, _gid, ref user)) = drop {
                 std::env::set_var("HOME", format!("/home/{}", user));
                 std::env::set_var("USER", user);
                 std::env::set_var("LOGNAME", user);
-                drop_privileges(uid, gid, user);
             }
 
             let is_tty = nix::unistd::isatty(0).unwrap_or(false);
@@ -186,23 +179,6 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .args(["-R", &format!("{}:{}", uid, gid), &home_dir.to_string_lossy()])
         .status();
 
-    // 6. Create and chown /run/user/<uid>
-    let run_dir = Path::new("/run/user").join(uid.to_string());
-    let _ = std::fs::create_dir_all(&run_dir);
-    let _ = std::process::Command::new("chown")
-        .args(["-R", &format!("{}:{}", uid, gid), &run_dir.to_string_lossy()])
-        .status();
 }
 
-/// Drop privileges from root to the specified UID/GID.
-///
-/// Sets supplementary groups via initgroups, then gid, then uid.
-fn drop_privileges(uid: u32, gid: u32, user: &str) {
-    let c_user = CString::new(user).unwrap_or_default();
-    let c_gid = gid as libc::gid_t;
-    unsafe {
-        let _ = libc::initgroups(c_user.as_ptr(), c_gid);
-    }
-    let _ = nix::unistd::setgid(Gid::from_raw(gid));
-    let _ = nix::unistd::setuid(Uid::from_raw(uid));
-}
+
