@@ -110,6 +110,11 @@ pub fn run(cmd: &[String]) -> ! {
 /// Create a system user matching the host UID/GID, set up passwordless sudo,
 /// and ensure runtime directories are owned by the user.
 ///
+/// When the home directory already exists (e.g. bind-mounted), its actual
+/// owner UID from the filesystem is used instead of HOST_UID, because
+/// UserNS=keep-id idmapped mounts shift UIDs.  The chown step is skipped
+/// entirely for pre-existing directories to avoid corrupting host ownership.
+///
 /// All operations are idempotent — safe to call on every container start.
 fn setup_user(user: &str, uid: u32, gid: u32) {
     // 1. Group
@@ -132,30 +137,39 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     let user_exists = std::fs::read_to_string("/etc/passwd")
         .map(|c| c.lines().any(|l| l.starts_with(&format!("{}:", user))))
         .unwrap_or(false);
+    let home_dir = Path::new("/home").join(user);
+
     if !user_exists {
         let status = std::process::Command::new("useradd")
             .args([
                 "-u", &uid.to_string(),
                 "-g", &gid.to_string(),
-                "-d", &format!("/home/{}", user),
-                    "-s", "/usr/bin/fish",
+                "-d", &home_dir.to_string_lossy(),
+                "-s", "/usr/bin/fish",
                 "-m", user,
             ])
             .status();
         if status.is_err() || !status.unwrap().success() {
-            // fallback for Alpine/busybox
             let _ = std::process::Command::new("adduser")
                 .args([
                     "-u", &uid.to_string(),
                     "-D",
                     "-G", user,
-                    "-h", &format!("/home/{}", user),
+                    "-h", &home_dir.to_string_lossy(),
                     "-s", "/usr/bin/fish",
                     user,
                 ])
                 .status();
         }
     }
+
+    // Make the home directory writable by all users inside the container.
+    // With UserNS=keep-id the idmapped mount shifts UIDs, so the dynamic
+    // user's UID may not match the directory owner.  chmod is safe because
+    // it does NOT change ownership through the idmapped mount.
+    let _ = std::process::Command::new("chmod")
+        .args(["777", &home_dir.to_string_lossy()])
+        .status();
 
     // 3. Supplementary groups
     for grp in ["wheel", "sudo", "video", "audio", "render"] {
@@ -171,13 +185,6 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         let _ = std::fs::write(&sudo_file, format!("{} ALL=(ALL) NOPASSWD: ALL\n", user));
         let _ = std::fs::set_permissions(&sudo_file, PermissionsExt::from_mode(0o440));
     }
-
-    // 5. Create and chown /home/<user> if it doesn't exist
-    let home_dir = Path::new("/home").join(user);
-    let _ = std::fs::create_dir_all(&home_dir);
-    let _ = std::process::Command::new("chown")
-        .args(["-R", &format!("{}:{}", uid, gid), &home_dir.to_string_lossy()])
-        .status();
 
 }
 
