@@ -18,45 +18,28 @@ cargo install --path crates/podmgr
 rustup target add x86_64-unknown-linux-musl
 cargo build -p podmgr-guest --release --target x86_64-unknown-linux-musl
 
-# 3. Create a definition file
-cat > myenv.toml << 'EOF'
-[image]
-base = "fedora:41"
-name = "myenv"
+# 3. Initialise a profile (creates ~/.config/podmgr/cachy.toml)
+podmgr init cachy
 
-[image.packages]
-install = ["git", "gcc", "firefox"]
+# 4. Create, build, enable, and start in one command
+podmgr create cachy
 
-[container]
-name  = "myenv"
-home  = "~/containers/myenv"
+# 5. Enter the container
+podmgr shell
+```
 
-[integration]
-wayland = true
-audio   = true
-notify  = true
-xdg_open = true
+Prebuilt profiles: `cachy` (Arch-based CachyOS), `fedora` (Fedora 44).
+You can also pass a full image reference instead of a profile name:
 
-[lifecycle]
-quadlet   = true
-autostart = true
-EOF
-
-# 4. Build and enable
-podmgr --config myenv.toml build
-podmgr --config myenv.toml enable
-
-# 5. Start and enter
-podmgr --config myenv.toml shell
-# inside: notify-send "hello"    # → appears on host
-# inside: xdg-open https://...   # → opens in host browser
+```bash
+podmgr create ghcr.io/username/my-image:latest
 ```
 
 ## Definition File Format
 
 ```toml
 [image]
-base = "fedora:41"          # base OCI image
+base = "fedora:44"          # base OCI image
 name = "myenv"              # image tag name
 
 [image.packages]
@@ -69,7 +52,7 @@ commands = ["dnf clean all"]
 [container]
 name  = "myenv"
 home  = "~/containers/myenv"    # isolated container home
-shell = "bash"
+shell = "/usr/bin/fish"
 
 [container.mounts]
 extra = ["~/Work:/home/user/Work:z"]
@@ -113,18 +96,25 @@ auto_update = false   # add auto-update label (io.containers.autoupdate=registry
 
 | Command | Description |
 |---------|-------------|
+| `podmgr init [profile]` | Scaffold a config file from a built-in profile or template |
+| `podmgr create [profile\|image]` | Init → build → enable → start in one command |
+| `podmgr list` | List podmgr-managed containers |
 | `podmgr build` | Generate Containerfile and build image |
 | `podmgr enable` | Install Quadlet systemd files |
 | `podmgr disable` | Remove Quadlet files |
-| `podmgr start` | Start the container |
+| `podmgr start` | Start the container (auto-heals missing image/Quadlet) |
 | `podmgr stop` | Stop the container |
-| `podmgr shell` | Open interactive shell (uses TTY) |
+| `podmgr shell` | Open interactive shell (default: fish) |
+| `podmgr enter <name>` | Enter a named container (auto-starts if stopped) |
 | `podmgr exec -- <cmd>` | Execute command interactively |
 | `podmgr run <app>` | Run GUI app detached |
 | `podmgr status` | Show container state |
+| `podmgr refresh` | Rebuild image and regenerate Quadlet from current config |
 | `podmgr logs [-f]` | Show container logs |
+| `podmgr serve [--port <port>]` | Start the host socket server (daemon for bidirectional protocol) |
 | `podmgr export app <name>` | Export .desktop file to host |
 | `podmgr export bin <name>` | Export bin shim to host |
+| `podmgr export clean [--all]` | Remove stale exported shims |
 | `podmgr remove [--all]` | Remove container |
 | `podmgr doctor` | Run diagnostic checks |
 | `podmgr translate-path --to-container <path>` | Translate host path to container path |
@@ -148,13 +138,12 @@ All commands support `--dry-run` to preview actions without executing.
 
 ```
 myenv.toml → [podmgr build] → Containerfile → podman build → image
-           → [podmgr enable] → .build + .socket + .container → systemd
+           → [podmgr enable] → .container + .socket → systemd
 
 Container startup:
-  catatonit (PID 1)
-    → podmgr-entry.sh
-      → fork() → podmgr-guest --daemon (connects to host socket)
-      → exec() → bash (user shell)
+  podmgr-guest --entry (PID 1)
+    → fork() → podmgr-guest --daemon (connects to host socket)
+    → exec() → /usr/bin/fish (user shell, or SHELL from config)
 ```
 
 The `podmgr-guest` daemon inside the container:
@@ -162,6 +151,36 @@ The `podmgr-guest` daemon inside the container:
 - Installs symlinks (`notify-send`, `xdg-open`) in `/run/podmgr/bin/`
 - Injects PATH via `/etc/environment.d/podmgr.conf`
 - Forwards notifications, xdg-open requests, and clipboard operations to the host
+
+At container start `podmgr-guest --entry` (running as root inside, which maps
+to host UID 1 via `UserNS=keep-id`) creates a matching system user, grants
+passwordless sudo, and makes the home directory writable. The default shell
+is fish (4.7+). On `podman exec -u bet`, the user enters with UID 1000 (host
+root) which has full access to Wayland/dconf sockets and the bind-mounted home.
+
+## Idmapped Mounts & UID Shift
+
+`UserNS=keep-id` creates an idmapped mount that shifts filesystem UIDs by 1
+inside the container (host UID 1000 → container UID 999). The entrypoint
+handles this automatically:
+
+1. Reads the actual owner of the bind-mounted home directory
+2. Keeps the `bet` user at its original UID (1000)
+3. Makes the home world-writable (`chmod 777`) so fish history, config, and
+   universal variables work regardless of the UID shift
+
+No `chown` is performed on bind-mounted directories — doing so would corrupt
+host ownership through the idmapped mount.
+
+## Prebuilt Images
+
+The GoReleaser pipeline (`dockers_v2`) builds and pushes prebuilt images to
+`ghcr.io/bethropolis/podmgr-images` on every `v*` tag. Profiles with
+`prebuilt = true` pull these instead of building from scratch.
+
+Available images:
+- `cachy-latest` — CachyOS (Arch-based), fish 4.7, podman-guest sidecar
+- `fedora-latest` — Fedora 44, fish 4.7, podman-guest sidecar
 
 ## GPU Passthrough
 
@@ -191,8 +210,8 @@ XDG user directories:
 
 ```toml
 [integration.xdg_dirs]
-documents = true   # ~/Documents → /root/Documents
-downloads = true   # ~/Downloads → /root/Downloads
+documents = true   # ~/Documents → /home/bet/Documents
+downloads = true   # ~/Downloads → /home/bet/Downloads
 pictures  = false  # not mounted
 ```
 
