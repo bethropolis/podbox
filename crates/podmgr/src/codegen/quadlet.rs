@@ -94,6 +94,7 @@ pub fn generate_container(
     }
     lines.push(format!("ContainerName={}", name));
     lines.push("UserNS=keep-id".into());
+    lines.push("User=root".into());
     lines.push("SecurityLabelDisable=true".into());
     lines.push(format!("Environment=HOME={}", home_in_container));
     lines.push("Environment=HOST_USER=%u".into());
