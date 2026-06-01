@@ -39,7 +39,7 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("no such container") {
+        if stderr.contains("no such container") || stderr.contains("no such object") {
             return Ok(ContainerState::Missing);
         }
         return Err(PodmgrError::PodmanInspectFailed {

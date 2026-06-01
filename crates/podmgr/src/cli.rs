@@ -102,6 +102,21 @@ pub enum Command {
         name: String,
     },
 
+    /// Create and start a container from a profile or image in one step.
+    Create {
+        /// Profile name (fedora, cachy) or full image reference.
+        image: String,
+        /// Override the container name.
+        #[arg(long, short)]
+        name: Option<String>,
+        /// Skip starting the container after setup.
+        #[arg(long)]
+        no_start: bool,
+    },
+
+    /// List all managed containers.
+    List,
+
     /// Initialize a new container config from a profile.
     Init {
         /// Profile name (cachy, fedora, gaming, or full path).

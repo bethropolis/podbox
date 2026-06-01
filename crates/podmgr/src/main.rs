@@ -76,6 +76,24 @@ fn run() -> Result<()> {
             return run_init(cli.dry_run, profile.as_deref(), name.as_deref());
         }
 
+        Command::Create { image, name, no_start } => {
+            return run_create(cli.dry_run, image, name.as_deref(), *no_start);
+        }
+
+        Command::List => {
+            let status = std::process::Command::new("podman")
+                .args(["ps", "-a", "--filter", "label=podmgr.protocol_version", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}"])
+                .stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .status()
+                .map_err(|_| PodmgrError::PodmanNotFound)?;
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            return Ok(());
+        }
+
         _ => {}
     }
 
@@ -149,6 +167,24 @@ fn run() -> Result<()> {
                 println!("systemctl --user start {}", name);
                 return Ok(());
             }
+
+            // Auto-heal: build image if missing
+            let local_tag = format!("localhost/podmgr-{}:latest", config.image.name);
+            if !podmgr::podman::image_exists(&local_tag).unwrap_or(false) {
+                println!("Image not found, building first...");
+                podmgr::build::run(&config, &env, &xdg, false, false)?;
+            }
+
+            // Auto-heal: install Quadlet files if missing
+            let qdir = dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("~/.config"))
+                .join("containers/systemd");
+            let container_file = qdir.join(format!("{}.container", name));
+            if !container_file.exists() {
+                println!("Quadlet files not found, installing...");
+                podmgr::quadlet_install::install(&config, &env, &xdg, false)?;
+            }
+
             if which::which("systemctl").is_ok() {
                 let args: Vec<OsString> =
                     vec!["--user".into(), "start".into(), name.clone().into()];
@@ -460,7 +496,7 @@ fn run() -> Result<()> {
             translate_path(&config, &xdg, *to_container, *to_host, path)?;
         }
 
-        Command::FindDefinition | Command::Completions { .. } | Command::Init { .. } => unreachable!(),
+        Command::FindDefinition | Command::Completions { .. } | Command::Init { .. } | Command::Create { .. } | Command::List => unreachable!(),
     }
 
     Ok(())
@@ -469,7 +505,7 @@ fn run() -> Result<()> {
 fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
     match query_state(name)? {
         ContainerState::Running => Ok(()),
-        ContainerState::Stopped => {
+        ContainerState::Stopped | ContainerState::Missing => {
             if dry_run {
                 if which::which("systemctl").is_ok() {
                     println!("systemctl --user start {}", name);
@@ -486,11 +522,17 @@ fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
                 let args: Vec<OsString> = vec!["start".into(), name.into()];
                 podmgr::process::spawn_interactive("podman", &args)?;
             }
-            Ok(())
+            // Verify it's actually running now
+            match query_state(name)? {
+                ContainerState::Running => Ok(()),
+                state => Err(
+                    anyhow::anyhow!(
+                        "Failed to start container '{}' (state: {:?})",
+                        name, state
+                    )
+                ),
+            }
         }
-        ContainerState::Missing => Err(
-            podmgr::error::PodmgrError::ContainerMissing(name.into()).into()
-        ),
     }
 }
 
@@ -628,11 +670,118 @@ fn run_init(dry_run: bool, profile: Option<&str>, name: Option<&str>) -> Result<
     std::fs::write(&config_path, &profile)?;
     println!("Created config: {}", config_path.display());
     println!();
-    println!("Next steps:");
-    println!("  1. podmgr build -- pull the prebuilt image and set up the container");
-    println!("  2. podmgr enable -- install Quadlet systemd files");
-    println!("  3. systemctl --user start {}", container_name);
+    println!("Profile created! Run `podmgr create {}` or `podmgr start` to spin it up.", container_name);
 
+    Ok(())
+}
+
+fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) -> Result<()> {
+    // Determine if profile name or full image ref
+    let is_profile = !image.contains('/') && !image.contains('\\');
+
+    if is_profile && podmgr::profiles::find(image).is_some() {
+            // Treat as profile — run init pipeline
+            let profile_content = if image.contains('/') || image.contains('\\') {
+                let path = Path::new(image);
+                std::fs::read_to_string(path)
+                    .with_context(|| format!("failed to read profile '{}'", path.display()))?
+            } else {
+                let found = podmgr::profiles::find(image).ok_or_else(|| {
+                    let names = podmgr::profiles::list_names();
+                    anyhow::anyhow!(
+                        "Unknown profile '{}'. Available profiles: {}",
+                        image,
+                        names.join(", ")
+                    )
+                })?;
+                found.toml
+            };
+
+            let cfg = Config::parse(&profile_content)?;
+            let container_name = name.unwrap_or(&cfg.container.name).to_string();
+            let config_dir = config::config_dir();
+            let config_path = config_dir.join(format!("{}.toml", container_name));
+
+            if config_path.exists() && !dry_run {
+                eprintln!("Config already exists at '{}'. Reusing existing config.", config_path.display());
+            } else {
+                if dry_run {
+                    println!("Would create config: {}", config_path.display());
+                } else {
+                    std::fs::create_dir_all(&config_dir)?;
+                    std::fs::write(&config_path, &profile_content)?;
+                    println!("Created config: {}", config_path.display());
+                }
+            }
+
+            // Build image
+            if dry_run {
+                println!("podmgr build");
+            } else {
+                println!("Building image...");
+                let local_tag = format!("localhost/podmgr-{}:latest", cfg.image.name);
+                if !podmgr::podman::image_exists(&local_tag).unwrap_or(false) {
+                    let env = podmgr::env::resolve()?;
+                    let xdg = podmgr::xdg::resolve(&cfg.integration.xdg_dirs)?;
+                    podmgr::build::run(&cfg, &env, &xdg, false, false)?;
+                } else {
+                    println!("Image already exists, skipping build.");
+                }
+            }
+
+            // Install Quadlet files
+            if dry_run {
+                println!("podmgr enable");
+            } else {
+                println!("Installing Quadlet files...");
+                let env = podmgr::env::resolve()?;
+                let xdg = podmgr::xdg::resolve(&cfg.integration.xdg_dirs)?;
+                podmgr::quadlet_install::install(&cfg, &env, &xdg, false)?;
+            }
+
+            // Start container
+            if no_start {
+                println!("Container created but not started (--no-start).");
+                println!("Run `podmgr start {}` or `systemctl --user start {}` to start it.", container_name, container_name);
+            } else if dry_run {
+                println!("systemctl --user start {}", container_name);
+            } else {
+                println!("Starting container...");
+                if which::which("systemctl").is_ok() {
+                    let args: Vec<OsString> =
+                        vec!["--user".into(), "start".into(), container_name.clone().into()];
+                    podmgr::process::spawn_interactive("systemctl", &args)?;
+                } else {
+                    let args: Vec<OsString> = vec!["start".into(), container_name.clone().into()];
+                    podmgr::process::spawn_interactive("podman", &args)?;
+                }
+            println!("Container '{}' is running!", container_name);
+                println!("Run `podmgr shell` to enter.");
+            }
+
+            return Ok(());
+        }
+
+    // If not a profile, treat as full image reference
+    if dry_run {
+        println!("podman pull {}", image);
+        return Ok(());
+    }
+
+    println!("Pulling image...");
+    let status = std::process::Command::new("podman")
+        .args(["pull", image])
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .map_err(|_| PodmgrError::PullFailed(image.into()))?;
+
+    if !status.success() {
+        return Err(PodmgrError::PullFailed(image.into()).into());
+    }
+
+    println!("Image '{}' pulled. Create a config with `podmgr init --profile <name>` to use it.", image);
     Ok(())
 }
 
