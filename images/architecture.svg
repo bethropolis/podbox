@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 390" width="100%" height="auto">
   <defs>
     <filter id="text-shadow">
-      <feDropShadow dx="0" dy="1.5" stdDeviation="1" flood-color="#000000" flood-opacity="0.65"/>
+      <feDropShadow dx="0" dy="1" stdDeviation="0.5" flood-color="#000000" flood-opacity="0.35"/>
     </filter>
     <!-- Gradients for modern UI accents -->
     <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -41,7 +41,7 @@
     .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
     .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
     .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
-    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #ffffff; text-anchor: middle; filter: url(#text-shadow); }
+    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #e2e8f0; text-anchor: middle; filter: url(#text-shadow); }
     .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
     .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 1.5px; stroke-dasharray: 4,4; }
     
