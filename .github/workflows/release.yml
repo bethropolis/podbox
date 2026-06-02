@@ -29,8 +29,8 @@ jobs:
         run: |
           curl -sSfL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz | sudo tar -xJ -C /opt
           sudo ln -sf /opt/zig-linux-x86_64-0.14.0/zig /usr/local/bin/zig
-          printf '#!/bin/bash\nexec zig cc -target aarch64-linux-musl "$@"\n' | sudo tee /usr/local/bin/aarch64-linux-musl-gcc >/dev/null
-          printf '#!/bin/bash\nexec zig cc -target aarch64-linux-musl "$@"\n' | sudo tee /usr/local/bin/aarch64-linux-musl-g++ >/dev/null
+          printf '#!/bin/bash\nexec zig cc -nostartfiles -target aarch64-linux-musl "$@"\n' | sudo tee /usr/local/bin/aarch64-linux-musl-gcc >/dev/null
+          printf '#!/bin/bash\nexec zig cc -nostartfiles -target aarch64-linux-musl "$@"\n' | sudo tee /usr/local/bin/aarch64-linux-musl-g++ >/dev/null
           printf '#!/bin/bash\nexec zig ar "$@"\n' | sudo tee /usr/local/bin/aarch64-linux-musl-ar >/dev/null
           sudo chmod +x /usr/local/bin/aarch64-linux-musl-gcc /usr/local/bin/aarch64-linux-musl-g++ /usr/local/bin/aarch64-linux-musl-ar
 
