@@ -65,7 +65,9 @@ fn dry_enable_shows_quadlet_socket_section() {
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("[Socket]"))
-        .stdout(predicates::str::contains("ListenStream=%t/podmgr/myenv.sock"));
+        .stdout(predicates::str::contains(
+            "ListenStream=%t/podmgr/myenv.sock",
+        ));
 }
 
 #[test]
@@ -80,7 +82,9 @@ fn dry_enable_shows_quadlet_build_section() {
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("[Build]"))
-        .stdout(predicates::str::contains("ImageTag=localhost/podmgr-myenv:latest"));
+        .stdout(predicates::str::contains(
+            "ImageTag=localhost/podmgr-myenv:latest",
+        ));
 }
 
 #[test]

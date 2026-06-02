@@ -49,7 +49,11 @@ fn resolve_shorthand_uses_custom_registry() {
 #[test]
 fn resolve_full_from_config() {
     let config = load_config("prebuilt.toml");
-    let ref_str = config::resolve_image_ref(&config.image.base, &config.image.prebuilt_registry, &config.image.prebuilt_repo);
+    let ref_str = config::resolve_image_ref(
+        &config.image.base,
+        &config.image.prebuilt_registry,
+        &config.image.prebuilt_repo,
+    );
     assert_eq!(ref_str, "ghcr.io/bethropolis/podmgr-images:cachy-latest");
 }
 
@@ -101,9 +105,7 @@ fn label_apply_defaults_prebuilt() {
 #[test]
 fn label_apply_defaults_empty_does_not_override() {
     let mut config = load_config("prebuilt.toml");
-    let labels = std::collections::HashMap::from([
-        ("podmgr.schema".to_string(), "1".to_string()),
-    ]);
+    let labels = std::collections::HashMap::from([("podmgr.schema".to_string(), "1".to_string())]);
     labels::apply_defaults(&mut config, &labels);
     // Should keep existing defaults
     assert_eq!(config.container.shell, "/usr/bin/fish");
@@ -113,9 +115,8 @@ fn label_apply_defaults_empty_does_not_override() {
 #[test]
 fn label_apply_defaults_schema_mismatch_returns_early() {
     let mut config = load_config("prebuilt.toml");
-    let labels = std::collections::HashMap::from([
-        ("podmgr.protocol_version".to_string(), "2".to_string()),
-    ]);
+    let labels =
+        std::collections::HashMap::from([("podmgr.protocol_version".to_string(), "2".to_string())]);
     // No podmgr.schema label -> apply_defaults returns early
     labels::apply_defaults(&mut config, &labels);
     assert!(config.image.prebuilt);

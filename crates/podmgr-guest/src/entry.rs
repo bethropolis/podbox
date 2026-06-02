@@ -16,8 +16,12 @@ use nix::unistd::{execv, execvp, fork, ForkResult};
 ///         execs `podmgr-guest --daemon`.
 pub fn run(cmd: &[String]) -> ! {
     let host_user = std::env::var("HOST_USER").ok();
-    let host_uid = std::env::var("HOST_UID").ok().and_then(|s| s.parse::<u32>().ok());
-    let host_gid = std::env::var("HOST_GID").ok().and_then(|s| s.parse::<u32>().ok());
+    let host_uid = std::env::var("HOST_UID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok());
+    let host_gid = std::env::var("HOST_GID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok());
 
     // If running as root and host info is available, create the user and drop privileges.
     let drop = if let (Some(ref user), Some(uid), Some(gid)) = (&host_user, host_uid, host_gid) {
@@ -35,7 +39,8 @@ pub fn run(cmd: &[String]) -> ! {
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
             // Child: become the daemon
-            let dev_null_r = std::fs::File::open("/dev/null").unwrap_or_else(|_| std::process::exit(1));
+            let dev_null_r =
+                std::fs::File::open("/dev/null").unwrap_or_else(|_| std::process::exit(1));
             let dev_null_w = std::fs::OpenOptions::new()
                 .write(true)
                 .open("/dev/null")
@@ -50,7 +55,10 @@ pub fn run(cmd: &[String]) -> ! {
             match execv(&program, &[&program, &arg]) {
                 Ok(_) => unreachable!(),
                 Err(e) => {
-                    eprintln!("podmgr-guest: failed to execute daemon /usr/local/bin/podmgr-guest: {}", e);
+                    eprintln!(
+                        "podmgr-guest: failed to execute daemon /usr/local/bin/podmgr-guest: {}",
+                        e
+                    );
                     std::process::exit(1)
                 }
             }
@@ -69,10 +77,12 @@ pub fn run(cmd: &[String]) -> ! {
                 // Interactive: exec the requested command
                 let args: Vec<CString> = cmd
                     .iter()
-                    .map(|s| CString::new(s.as_bytes()).unwrap_or_else(|_| {
-                        eprintln!("podmgr-guest: command argument contains null byte");
-                        std::process::exit(1)
-                    }))
+                    .map(|s| {
+                        CString::new(s.as_bytes()).unwrap_or_else(|_| {
+                            eprintln!("podmgr-guest: command argument contains null byte");
+                            std::process::exit(1)
+                        })
+                    })
                     .collect();
                 let args_refs: Vec<&CString> = args.iter().collect();
                 match execvp(args_refs[0], &args_refs) {
@@ -101,9 +111,7 @@ pub fn run(cmd: &[String]) -> ! {
                 }
             }
         }
-        Err(_) => {
-            std::process::exit(1)
-        }
+        Err(_) => std::process::exit(1),
     }
 }
 
@@ -142,21 +150,30 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     if !user_exists {
         let status = std::process::Command::new("useradd")
             .args([
-                "-u", &uid.to_string(),
-                "-g", &gid.to_string(),
-                "-d", &home_dir.to_string_lossy(),
-                "-s", "/usr/bin/fish",
-                "-m", user,
+                "-u",
+                &uid.to_string(),
+                "-g",
+                &gid.to_string(),
+                "-d",
+                &home_dir.to_string_lossy(),
+                "-s",
+                "/usr/bin/fish",
+                "-m",
+                user,
             ])
             .status();
         if status.is_err() || !status.unwrap().success() {
             let _ = std::process::Command::new("adduser")
                 .args([
-                    "-u", &uid.to_string(),
+                    "-u",
+                    &uid.to_string(),
                     "-D",
-                    "-G", user,
-                    "-h", &home_dir.to_string_lossy(),
-                    "-s", "/usr/bin/fish",
+                    "-G",
+                    user,
+                    "-h",
+                    &home_dir.to_string_lossy(),
+                    "-s",
+                    "/usr/bin/fish",
                     user,
                 ])
                 .status();
@@ -188,8 +205,8 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
 
     // 5. Make runtime directory writable by all
     //    Needed so glib/dconf/Wayland proxy can create sockets at runtime.
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| format!("/run/user/{}", uid));
+    let runtime_dir =
+        std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{}", uid));
     let _ = std::process::Command::new("chmod")
         .args(["777", &runtime_dir])
         .status();
@@ -198,11 +215,13 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     let dconf_dir = Path::new(&runtime_dir).join("dconf");
     let _ = std::fs::create_dir_all(&dconf_dir);
     let _ = std::process::Command::new("chown")
-        .args([uid.to_string().as_str(), gid.to_string().as_str(), dconf_dir.to_str().unwrap_or_default()])
+        .args([
+            uid.to_string().as_str(),
+            gid.to_string().as_str(),
+            dconf_dir.to_str().unwrap_or_default(),
+        ])
         .status();
     let _ = std::process::Command::new("chmod")
         .args(["700", &dconf_dir.to_string_lossy()])
         .status();
 }
-
-

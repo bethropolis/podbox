@@ -28,7 +28,11 @@ fn home_tilde_is_expanded() {
 
     let home = dirs::home_dir().unwrap();
     assert!(cfg.container.home.starts_with(&home));
-    assert!(cfg.container.home.to_string_lossy().contains("containers/myenv"));
+    assert!(cfg
+        .container
+        .home
+        .to_string_lossy()
+        .contains("containers/myenv"));
 }
 
 #[test]
@@ -110,7 +114,10 @@ fn full_config_env() {
     let cfg = Config::parse(&content).unwrap();
 
     assert_eq!(cfg.container.env.get("EDITOR"), Some(&"nvim".into()));
-    assert_eq!(cfg.container.env.get("TERM"), Some(&"xterm-256color".into()));
+    assert_eq!(
+        cfg.container.env.get("TERM"),
+        Some(&"xterm-256color".into())
+    );
 }
 
 #[test]

@@ -141,7 +141,11 @@ impl<'de> Deserialize<'de> for GpuMode {
             }
 
             fn visit_bool<E: de::Error>(self, v: bool) -> Result<GpuMode, E> {
-                Ok(if v { GpuMode::Enabled } else { GpuMode::Disabled })
+                Ok(if v {
+                    GpuMode::Enabled
+                } else {
+                    GpuMode::Disabled
+                })
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<GpuMode, E> {
@@ -150,7 +154,10 @@ impl<'de> Deserialize<'de> for GpuMode {
                     "nvidia" => Ok(GpuMode::Nvidia),
                     "true" => Ok(GpuMode::Enabled),
                     "false" => Ok(GpuMode::Disabled),
-                    _ => Err(de::Error::unknown_variant(v, &["auto", "nvidia", "true", "false"])),
+                    _ => Err(de::Error::unknown_variant(
+                        v,
+                        &["auto", "nvidia", "true", "false"],
+                    )),
                 }
             }
         }
@@ -365,9 +372,7 @@ impl Config {
     /// Load a definition from a file path.
     pub fn load(path: &Path) -> Result<Config> {
         if !path.exists() {
-            return Err(
-                PodmgrError::DefinitionNotFound(path.to_path_buf()).into()
-            );
+            return Err(PodmgrError::DefinitionNotFound(path.to_path_buf()).into());
         }
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read definition file '{}'", path.display()))?;
@@ -429,8 +434,7 @@ pub fn config_dir() -> PathBuf {
 pub fn resolve_image_ref(base: &str, registry: &str, repo: &str) -> String {
     // Full URI already: contains `/` OR contains `:` + domain-like prefix
     if base.contains('/')
-        || (base.contains(':')
-            && base.split(':').next().unwrap_or("").contains('.'))
+        || (base.contains(':') && base.split(':').next().unwrap_or("").contains('.'))
     {
         return base.to_string();
     }
@@ -444,7 +448,11 @@ pub fn resolve_image_ref(base: &str, registry: &str, repo: &str) -> String {
 }
 
 pub fn resolve_image_ref_full(config: &Config) -> String {
-    resolve_image_ref(&config.image.base, &config.image.prebuilt_registry, &config.image.prebuilt_repo)
+    resolve_image_ref(
+        &config.image.base,
+        &config.image.prebuilt_registry,
+        &config.image.prebuilt_repo,
+    )
 }
 
 /// Find a definition file.
@@ -469,7 +477,10 @@ pub fn find_definition() -> Option<PathBuf> {
             .flatten()
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.path().extension().map(|ext| ext == "toml").unwrap_or(false)
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "toml")
+                    .unwrap_or(false)
             })
             .map(|e| e.path())
             .collect();
@@ -545,7 +556,11 @@ home = "~/containers/myenv"
         let cfg = Config::parse(toml).unwrap();
         let home = dirs::home_dir().unwrap();
         assert!(cfg.container.home.starts_with(&home));
-        assert!(cfg.container.home.to_string_lossy().contains("containers/myenv"));
+        assert!(cfg
+            .container
+            .home
+            .to_string_lossy()
+            .contains("containers/myenv"));
     }
 
     #[test]
@@ -681,16 +696,23 @@ gpu = "nvidia"
         assert_eq!(serde_json::to_string(&GpuMode::Auto).unwrap(), "\"auto\"");
         assert_eq!(serde_json::to_string(&GpuMode::Enabled).unwrap(), "true");
         assert_eq!(serde_json::to_string(&GpuMode::Disabled).unwrap(), "false");
-        assert_eq!(serde_json::to_string(&GpuMode::Nvidia).unwrap(), "\"nvidia\"");
+        assert_eq!(
+            serde_json::to_string(&GpuMode::Nvidia).unwrap(),
+            "\"nvidia\""
+        );
         // Verify TOML serialization works inside a table
         #[derive(Serialize)]
         struct Wrapper {
             gpu: GpuMode,
         }
-        let wrapper = Wrapper { gpu: GpuMode::Nvidia };
+        let wrapper = Wrapper {
+            gpu: GpuMode::Nvidia,
+        };
         let toml_out = toml::to_string(&wrapper).unwrap();
         assert!(toml_out.contains("gpu = \"nvidia\""));
-        let wrapper = Wrapper { gpu: GpuMode::Enabled };
+        let wrapper = Wrapper {
+            gpu: GpuMode::Enabled,
+        };
         let toml_out = toml::to_string(&wrapper).unwrap();
         assert!(toml_out.contains("gpu = true"));
     }

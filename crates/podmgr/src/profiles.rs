@@ -42,7 +42,8 @@ fn user_profiles() -> Vec<Profile> {
             let path = entry.path();
             if path.extension().map(|e| e == "toml").unwrap_or(false) {
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    let name = path.file_stem()
+                    let name = path
+                        .file_stem()
                         .map(|s| s.to_string_lossy().to_lowercase())
                         .unwrap_or_default();
                     profiles.push(Profile {

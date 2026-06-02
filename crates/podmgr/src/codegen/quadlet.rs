@@ -17,10 +17,7 @@ pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
         "ImageTag=localhost/podmgr-{}:latest",
         config.image.name
     ));
-    lines.push(format!(
-        "File={}",
-        containerfile_path.to_string_lossy()
-    ));
+    lines.push(format!("File={}", containerfile_path.to_string_lossy()));
 
     lines.join("\n")
 }
@@ -32,10 +29,7 @@ pub fn generate_socket(config: &Config) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     lines.push("[Unit]".into());
-    lines.push(format!(
-        "Description=podmgr host-guest socket -- {}",
-        name
-    ));
+    lines.push(format!("Description=podmgr host-guest socket -- {}", name));
     lines.push(String::new());
 
     lines.push("[Socket]".into());
@@ -54,11 +48,7 @@ pub fn generate_socket(config: &Config) -> String {
 /// Generate the `.container` Quadlet file.
 ///
 /// Pure function: all paths via HostEnv and ResolvedXdgDirs.
-pub fn generate_container(
-    config: &Config,
-    env: &HostEnv,
-    xdg: &ResolvedXdgDirs,
-) -> String {
+pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs) -> String {
     let name = &config.container.name;
     let home_in_container = "/home/%u";
     let mut lines: Vec<String> = Vec::new();
@@ -104,9 +94,7 @@ pub fn generate_container(
 
     // Isolated custom home
     let host_home = config.container.home.to_string_lossy().to_string();
-    lines.push(format!(
-        "Volume={host_home}:{home_in_container}:Z",
-    ));
+    lines.push(format!("Volume={host_home}:{home_in_container}:Z",));
     lines.push(String::new());
 
     // Selective XDG dirs
@@ -151,23 +139,20 @@ pub fn generate_container(
             lines.push(format!("Volume=%h/.fonts:{home_in_container}/.fonts:ro"));
         }
     }
-    if config.integration.sync_themes || config.integration.sync_icons || config.integration.sync_fonts {
+    if config.integration.sync_themes
+        || config.integration.sync_icons
+        || config.integration.sync_fonts
+    {
         lines.push(String::new());
     }
 
     // Wayland
     if config.integration.wayland {
         if let Some(ref display) = env.wayland_display {
-            lines.push(format!(
-                "Environment=WAYLAND_DISPLAY={}",
-                display
-            ));
+            lines.push(format!("Environment=WAYLAND_DISPLAY={}", display));
             lines.push("Environment=XDG_RUNTIME_DIR=%t".into());
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
-            lines.push(format!(
-                "Volume=%t/{}:%t/{}",
-                display, display
-            ));
+            lines.push(format!("Volume=%t/{}:%t/{}", display, display));
             lines.push(String::new());
         }
     }
@@ -195,8 +180,7 @@ pub fn generate_container(
                 name
             ));
             lines.push(
-                "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podmgr/dbus.sock"
-                    .into(),
+                "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podmgr/dbus.sock".into(),
             );
         } else {
             lines.push("Volume=%t/bus:%t/bus".into());
@@ -224,13 +208,13 @@ pub fn generate_container(
             };
             lines.push(format!("Environment={}={}", key, env_val));
         } else {
-            eprintln!("Warning: ignoring invalid environment variable key '{}'", key);
+            eprintln!(
+                "Warning: ignoring invalid environment variable key '{}'",
+                key
+            );
         }
     }
-    lines.push(format!(
-        "Environment=PODMGR_CONTAINER={}",
-        name
-    ));
+    lines.push(format!("Environment=PODMGR_CONTAINER={}", name));
     lines.push(String::new());
 
     // Extra mounts

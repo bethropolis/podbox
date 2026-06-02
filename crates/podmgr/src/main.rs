@@ -37,8 +37,7 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
             PodmgrError::BuildFailed(_) | PodmgrError::PodmanInspectFailed { .. } => {
                 ExitCode::from(4)
             }
-            PodmgrError::GuestBinaryNotFound
-            | PodmgrError::PodmanNotFound => ExitCode::from(5),
+            PodmgrError::GuestBinaryNotFound | PodmgrError::PodmanNotFound => ExitCode::from(5),
             PodmgrError::PullFailed(..) | PodmgrError::TagFailed(..) => ExitCode::from(6),
             _ => ExitCode::FAILURE,
         }
@@ -63,12 +62,7 @@ fn run() -> Result<()> {
             let mut cmd = <Cli as clap::CommandFactory>::command();
             let name = cmd.get_name().to_string();
             let shell_generator: clap_complete::shells::Shell = (*shell).into();
-            generate(
-                shell_generator,
-                &mut cmd,
-                name,
-                &mut std::io::stdout(),
-            );
+            generate(shell_generator, &mut cmd, name, &mut std::io::stdout());
             return Ok(());
         }
 
@@ -76,13 +70,24 @@ fn run() -> Result<()> {
             return run_init(cli.dry_run, profile.as_deref(), name.as_deref());
         }
 
-        Command::Create { image, name, no_start } => {
+        Command::Create {
+            image,
+            name,
+            no_start,
+        } => {
             return run_create(cli.dry_run, image, name.as_deref(), *no_start);
         }
 
         Command::List => {
             let status = std::process::Command::new("podman")
-                .args(["ps", "-a", "--filter", "label=podmgr.protocol_version", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}"])
+                .args([
+                    "ps",
+                    "-a",
+                    "--filter",
+                    "label=podmgr.protocol_version",
+                    "--format",
+                    "table {{.Names}}\t{{.Image}}\t{{.Status}}",
+                ])
                 .stdin(std::process::Stdio::inherit())
                 .stdout(std::process::Stdio::inherit())
                 .stderr(std::process::Stdio::inherit())
@@ -107,8 +112,14 @@ fn run() -> Result<()> {
     let mut config = if let Some(ref path) = cli.config {
         match Config::load(path) {
             Ok(cfg) => cfg,
-            Err(e) if e.downcast_ref::<PodmgrError>().is_some_and(|pe| matches!(pe, PodmgrError::DefinitionNotFound(_))) => {
-                eprintln!("Warning: config file not found at '{}', using embedded default.", path.display());
+            Err(e)
+                if e.downcast_ref::<PodmgrError>()
+                    .is_some_and(|pe| matches!(pe, PodmgrError::DefinitionNotFound(_))) =>
+            {
+                eprintln!(
+                    "Warning: config file not found at '{}', using embedded default.",
+                    path.display()
+                );
                 Config::embedded()
             }
             Err(e) => return Err(e),
@@ -190,8 +201,7 @@ fn run() -> Result<()> {
                     vec!["--user".into(), "start".into(), name.clone().into()];
                 podmgr::process::spawn_interactive("systemctl", &args)?;
             } else {
-                let args: Vec<OsString> =
-                    vec!["start".into(), name.clone().into()];
+                let args: Vec<OsString> = vec!["start".into(), name.clone().into()];
                 podmgr::process::spawn_interactive("podman", &args)?;
             }
         }
@@ -202,12 +212,10 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             if which::which("systemctl").is_ok() {
-                let args: Vec<OsString> =
-                    vec!["--user".into(), "stop".into(), name.clone().into()];
+                let args: Vec<OsString> = vec!["--user".into(), "stop".into(), name.clone().into()];
                 podmgr::process::spawn_interactive("systemctl", &args)?;
             } else {
-                let args: Vec<OsString> =
-                    vec!["stop".into(), name.clone().into()];
+                let args: Vec<OsString> = vec!["stop".into(), name.clone().into()];
                 podmgr::process::spawn_interactive("podman", &args)?;
             }
         }
@@ -252,8 +260,13 @@ fn run() -> Result<()> {
                 OsString::from("-i")
             };
             if cli.dry_run {
-                let mut exec_args: Vec<OsString> =
-                    vec!["exec".into(), tty_flag.clone(), "-u".into(), env.username.clone().into(), name.clone().into()];
+                let mut exec_args: Vec<OsString> = vec![
+                    "exec".into(),
+                    tty_flag.clone(),
+                    "-u".into(),
+                    env.username.clone().into(),
+                    name.clone().into(),
+                ];
                 for a in cmd_args {
                     exec_args.push(a.into());
                 }
@@ -261,8 +274,13 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             ensure_running(&name, cli.dry_run)?;
-            let mut exec_args: Vec<OsString> =
-                vec!["exec".into(), tty_flag.clone(), "-u".into(), env.username.clone().into(), name.clone().into()];
+            let mut exec_args: Vec<OsString> = vec![
+                "exec".into(),
+                tty_flag.clone(),
+                "-u".into(),
+                env.username.clone().into(),
+                name.clone().into(),
+            ];
             for a in cmd_args {
                 exec_args.push(a.into());
             }
@@ -304,10 +322,7 @@ fn run() -> Result<()> {
 
         Command::Status => {
             if cli.dry_run {
-                println!(
-                    "podman inspect --format {{{{.State.Status}}}} {}",
-                    name
-                );
+                println!("podman inspect --format {{{{.State.Status}}}} {}", name);
                 return Ok(());
             }
             let state = query_state(&name)?;
@@ -336,19 +351,17 @@ fn run() -> Result<()> {
             podmgr::process::spawn_interactive("podman", &args)?;
         }
 
-        Command::Export { export_cmd } => {
-            match export_cmd {
-                ExportCommand::App { name: app_name } => {
-                    podmgr::export::export_app(&name, app_name)?;
-                }
-                ExportCommand::Bin { name: bin_name } => {
-                    podmgr::export::export_bin(&name, bin_name)?;
-                }
-                ExportCommand::Clean => {
-                    podmgr::export::unexport_all(&name)?;
-                }
+        Command::Export { export_cmd } => match export_cmd {
+            ExportCommand::App { name: app_name } => {
+                podmgr::export::export_app(&name, app_name)?;
             }
-        }
+            ExportCommand::Bin { name: bin_name } => {
+                podmgr::export::export_bin(&name, bin_name)?;
+            }
+            ExportCommand::Clean => {
+                podmgr::export::unexport_all(&name)?;
+            }
+        },
 
         Command::Remove { all, force } => {
             if cli.dry_run {
@@ -373,22 +386,18 @@ fn run() -> Result<()> {
             }
 
             // Stop first, then remove
-            let stop_args: Vec<OsString> =
-                vec!["stop".into(), name.clone().into()];
+            let stop_args: Vec<OsString> = vec!["stop".into(), name.clone().into()];
             let _ = podmgr::process::run_piped("podman", &stop_args);
 
-            let rm_args: Vec<OsString> =
-                vec!["rm".into(), name.clone().into()];
+            let rm_args: Vec<OsString> = vec!["rm".into(), name.clone().into()];
             let output = podmgr::process::run_piped("podman", &rm_args)?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(
-                    podmgr::error::PodmgrError::ContainerRemoveFailed(
-                        name.clone(),
-                        stderr.to_string(),
-                    )
-                    .into(),
-                );
+                return Err(podmgr::error::PodmgrError::ContainerRemoveFailed(
+                    name.clone(),
+                    stderr.to_string(),
+                )
+                .into());
             }
             println!("Container '{}' removed.", name);
 
@@ -396,10 +405,7 @@ fn run() -> Result<()> {
                 let home = &config.container.home;
                 if home.exists() {
                     if !force {
-                        print!(
-                            "Remove home directory '{}'? [y/N] ",
-                            home.display()
-                        );
+                        print!("Remove home directory '{}'? [y/N] ", home.display());
                         std::io::stdout().flush()?;
                         let mut input = String::new();
                         std::io::stdin().read_line(&mut input)?;
@@ -426,8 +432,8 @@ fn run() -> Result<()> {
                 let config_path = config_dir.join(format!("{}.toml", serve_name));
                 Config::load(&config_path)?
             };
-            let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
-                .unwrap_or_else(|_| "/run/user/1000".into());
+            let xdg_runtime =
+                std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".into());
             let socket_path = std::path::PathBuf::from(&xdg_runtime)
                 .join("podmgr")
                 .join(format!("{}.sock", serve_name));
@@ -436,12 +442,19 @@ fn run() -> Result<()> {
 
         Command::Pull { image } => {
             let image_ref = match image {
-                Some(ref img) => config::resolve_image_ref(img, &config.image.prebuilt_registry, &config.image.prebuilt_repo),
+                Some(ref img) => config::resolve_image_ref(
+                    img,
+                    &config.image.prebuilt_registry,
+                    &config.image.prebuilt_repo,
+                ),
                 None => config::resolve_image_ref_full(&config),
             };
             if cli.dry_run {
                 println!("podman pull {}", image_ref);
-                println!("podman tag {} localhost/podmgr-{}:latest", image_ref, config.image.name);
+                println!(
+                    "podman tag {} localhost/podmgr-{}:latest",
+                    image_ref, config.image.name
+                );
                 return Ok(());
             }
             let local_tag = format!("localhost/podmgr-{}:latest", config.image.name);
@@ -496,7 +509,11 @@ fn run() -> Result<()> {
             translate_path(&config, &xdg, *to_container, *to_host, path)?;
         }
 
-        Command::FindDefinition | Command::Completions { .. } | Command::Init { .. } | Command::Create { .. } | Command::List => unreachable!(),
+        Command::FindDefinition
+        | Command::Completions { .. }
+        | Command::Init { .. }
+        | Command::Create { .. }
+        | Command::List => unreachable!(),
     }
 
     Ok(())
@@ -515,8 +532,7 @@ fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
                 return Ok(());
             }
             if which::which("systemctl").is_ok() {
-                let args: Vec<OsString> =
-                    vec!["--user".into(), "start".into(), name.into()];
+                let args: Vec<OsString> = vec!["--user".into(), "start".into(), name.into()];
                 podmgr::process::spawn_interactive("systemctl", &args)?;
             } else {
                 let args: Vec<OsString> = vec!["start".into(), name.into()];
@@ -525,12 +541,11 @@ fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
             // Verify it's actually running now
             match query_state(name)? {
                 ContainerState::Running => Ok(()),
-                state => Err(
-                    anyhow::anyhow!(
-                        "Failed to start container '{}' (state: {:?})",
-                        name, state
-                    )
-                ),
+                state => Err(anyhow::anyhow!(
+                    "Failed to start container '{}' (state: {:?})",
+                    name,
+                    state
+                )),
             }
         }
     }
@@ -575,7 +590,8 @@ fn translate_path(
 
         for (dir_name, host_dir) in &host_to_container {
             if let Ok(relative) = host_path.strip_prefix(host_dir) {
-                let container_path = format!("{}/{}/{}", home_in_container, dir_name, relative.display());
+                let container_path =
+                    format!("{}/{}/{}", home_in_container, dir_name, relative.display());
                 println!("{container_path}");
                 return Ok(());
             }
@@ -670,7 +686,10 @@ fn run_init(dry_run: bool, profile: Option<&str>, name: Option<&str>) -> Result<
     std::fs::write(&config_path, &profile)?;
     println!("Created config: {}", config_path.display());
     println!();
-    println!("Profile created! Run `podmgr create {}` or `podmgr start` to spin it up.", container_name);
+    println!(
+        "Profile created! Run `podmgr create {}` or `podmgr start` to spin it up.",
+        container_name
+    );
 
     Ok(())
 }
@@ -680,87 +699,96 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
     let is_profile = !image.contains('/') && !image.contains('\\');
 
     if is_profile && podmgr::profiles::find(image).is_some() {
-            // Treat as profile — run init pipeline
-            let profile_content = if image.contains('/') || image.contains('\\') {
-                let path = Path::new(image);
-                std::fs::read_to_string(path)
-                    .with_context(|| format!("failed to read profile '{}'", path.display()))?
-            } else {
-                let found = podmgr::profiles::find(image).ok_or_else(|| {
-                    let names = podmgr::profiles::list_names();
-                    anyhow::anyhow!(
-                        "Unknown profile '{}'. Available profiles: {}",
-                        image,
-                        names.join(", ")
-                    )
-                })?;
-                found.toml
-            };
+        // Treat as profile — run init pipeline
+        let profile_content = if image.contains('/') || image.contains('\\') {
+            let path = Path::new(image);
+            std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read profile '{}'", path.display()))?
+        } else {
+            let found = podmgr::profiles::find(image).ok_or_else(|| {
+                let names = podmgr::profiles::list_names();
+                anyhow::anyhow!(
+                    "Unknown profile '{}'. Available profiles: {}",
+                    image,
+                    names.join(", ")
+                )
+            })?;
+            found.toml
+        };
 
-            let cfg = Config::parse(&profile_content)?;
-            let container_name = name.unwrap_or(&cfg.container.name).to_string();
-            let config_dir = config::config_dir();
-            let config_path = config_dir.join(format!("{}.toml", container_name));
+        let cfg = Config::parse(&profile_content)?;
+        let container_name = name.unwrap_or(&cfg.container.name).to_string();
+        let config_dir = config::config_dir();
+        let config_path = config_dir.join(format!("{}.toml", container_name));
 
-            if config_path.exists() && !dry_run {
-                eprintln!("Config already exists at '{}'. Reusing existing config.", config_path.display());
-            } else {
-                if dry_run {
-                    println!("Would create config: {}", config_path.display());
-                } else {
-                    std::fs::create_dir_all(&config_dir)?;
-                    std::fs::write(&config_path, &profile_content)?;
-                    println!("Created config: {}", config_path.display());
-                }
-            }
-
-            // Build image
+        if config_path.exists() && !dry_run {
+            eprintln!(
+                "Config already exists at '{}'. Reusing existing config.",
+                config_path.display()
+            );
+        } else {
             if dry_run {
-                println!("podmgr build");
+                println!("Would create config: {}", config_path.display());
             } else {
-                println!("Building image...");
-                let local_tag = format!("localhost/podmgr-{}:latest", cfg.image.name);
-                if !podmgr::podman::image_exists(&local_tag).unwrap_or(false) {
-                    let env = podmgr::env::resolve()?;
-                    let xdg = podmgr::xdg::resolve(&cfg.integration.xdg_dirs)?;
-                    podmgr::build::run(&cfg, &env, &xdg, false, false)?;
-                } else {
-                    println!("Image already exists, skipping build.");
-                }
+                std::fs::create_dir_all(&config_dir)?;
+                std::fs::write(&config_path, &profile_content)?;
+                println!("Created config: {}", config_path.display());
             }
+        }
 
-            // Install Quadlet files
-            if dry_run {
-                println!("podmgr enable");
-            } else {
-                println!("Installing Quadlet files...");
+        // Build image
+        if dry_run {
+            println!("podmgr build");
+        } else {
+            println!("Building image...");
+            let local_tag = format!("localhost/podmgr-{}:latest", cfg.image.name);
+            if !podmgr::podman::image_exists(&local_tag).unwrap_or(false) {
                 let env = podmgr::env::resolve()?;
                 let xdg = podmgr::xdg::resolve(&cfg.integration.xdg_dirs)?;
-                podmgr::quadlet_install::install(&cfg, &env, &xdg, false)?;
-            }
-
-            // Start container
-            if no_start {
-                println!("Container created but not started (--no-start).");
-                println!("Run `podmgr start {}` or `systemctl --user start {}` to start it.", container_name, container_name);
-            } else if dry_run {
-                println!("systemctl --user start {}", container_name);
+                podmgr::build::run(&cfg, &env, &xdg, false, false)?;
             } else {
-                println!("Starting container...");
-                if which::which("systemctl").is_ok() {
-                    let args: Vec<OsString> =
-                        vec!["--user".into(), "start".into(), container_name.clone().into()];
-                    podmgr::process::spawn_interactive("systemctl", &args)?;
-                } else {
-                    let args: Vec<OsString> = vec!["start".into(), container_name.clone().into()];
-                    podmgr::process::spawn_interactive("podman", &args)?;
-                }
-            println!("Container '{}' is running!", container_name);
-                println!("Run `podmgr shell` to enter.");
+                println!("Image already exists, skipping build.");
             }
-
-            return Ok(());
         }
+
+        // Install Quadlet files
+        if dry_run {
+            println!("podmgr enable");
+        } else {
+            println!("Installing Quadlet files...");
+            let env = podmgr::env::resolve()?;
+            let xdg = podmgr::xdg::resolve(&cfg.integration.xdg_dirs)?;
+            podmgr::quadlet_install::install(&cfg, &env, &xdg, false)?;
+        }
+
+        // Start container
+        if no_start {
+            println!("Container created but not started (--no-start).");
+            println!(
+                "Run `podmgr start {}` or `systemctl --user start {}` to start it.",
+                container_name, container_name
+            );
+        } else if dry_run {
+            println!("systemctl --user start {}", container_name);
+        } else {
+            println!("Starting container...");
+            if which::which("systemctl").is_ok() {
+                let args: Vec<OsString> = vec![
+                    "--user".into(),
+                    "start".into(),
+                    container_name.clone().into(),
+                ];
+                podmgr::process::spawn_interactive("systemctl", &args)?;
+            } else {
+                let args: Vec<OsString> = vec!["start".into(), container_name.clone().into()];
+                podmgr::process::spawn_interactive("podman", &args)?;
+            }
+            println!("Container '{}' is running!", container_name);
+            println!("Run `podmgr shell` to enter.");
+        }
+
+        return Ok(());
+    }
 
     // If not a profile, treat as full image reference
     if dry_run {
@@ -781,7 +809,10 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         return Err(PodmgrError::PullFailed(image.into()).into());
     }
 
-    println!("Image '{}' pulled. Create a config with `podmgr init --profile <name>` to use it.", image);
+    println!(
+        "Image '{}' pulled. Create a config with `podmgr init --profile <name>` to use it.",
+        image
+    );
     Ok(())
 }
 
@@ -883,9 +914,7 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
                 }
             }
         } else {
-            println!(
-                "[WARN] Wayland socket not found (WAYLAND_DISPLAY may not be set)"
-            );
+            println!("[WARN] Wayland socket not found (WAYLAND_DISPLAY may not be set)");
         }
     }
 
@@ -932,7 +961,11 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
             if !username.is_empty() {
                 if let Ok(output) = podmgr::process::run_piped(
                     "loginctl",
-                    &["show-user".into(), username.into(), "--property=Linger".into()],
+                    &[
+                        "show-user".into(),
+                        username.into(),
+                        "--property=Linger".into(),
+                    ],
                 ) {
                     let out = String::from_utf8_lossy(&output.stdout);
                     if out.contains("yes") {
@@ -954,8 +987,7 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
         let qdir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("~/.config"))
             .join("containers/systemd");
-        let container_file =
-            qdir.join(format!("{}.container", config.container.name));
+        let container_file = qdir.join(format!("{}.container", config.container.name));
         if container_file.exists() {
             println!("[PASS] Quadlet files installed");
             passes += 1;
@@ -973,9 +1005,9 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
 }
 
 fn fix_wayland_socket_ownership(socket: &std::path::Path) -> Result<()> {
-    let runtime_dir = socket.parent().ok_or_else(|| {
-        anyhow::anyhow!("Cannot determine runtime directory from socket path")
-    })?;
+    let runtime_dir = socket
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine runtime directory from socket path"))?;
 
     let output = std::process::Command::new("podman")
         .args(["unshare", "chown", "0:0"])

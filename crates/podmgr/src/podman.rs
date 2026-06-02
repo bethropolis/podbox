@@ -49,7 +49,9 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
         .into());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_lowercase();
     match stdout.as_str() {
         "running" => Ok(ContainerState::Running),
         "stopped" | "exited" => Ok(ContainerState::Stopped),

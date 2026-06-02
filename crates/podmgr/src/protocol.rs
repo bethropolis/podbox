@@ -116,7 +116,11 @@ mod tests {
         let payload = read_frame(&mut &buf[..]).unwrap().unwrap();
         let decoded: GuestMessage = serde_json::from_slice(&payload).unwrap();
         match decoded {
-            GuestMessage::Notify { summary, body, urgency } => {
+            GuestMessage::Notify {
+                summary,
+                body,
+                urgency,
+            } => {
                 assert_eq!(summary, "hello");
                 assert_eq!(body, "world");
                 assert_eq!(urgency, "normal");

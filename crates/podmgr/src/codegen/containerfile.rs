@@ -18,17 +18,11 @@ fn generate_prebuilt(config: &Config) -> String {
     lines.extend(generate_package_remove_lines(config));
     lines.extend(generate_run_command_lines(config));
 
-    lines.push(format!(
-        "ENV PODMGR_CONTAINER={}",
-        config.container.name
-    ));
+    lines.push(format!("ENV PODMGR_CONTAINER={}", config.container.name));
     lines.push(String::new());
 
     lines.push("ENTRYPOINT [\"/usr/local/bin/podmgr-guest\", \"--entry\"]".into());
-    lines.push(format!(
-        "CMD [\"{}\"]",
-        config.container.shell
-    ));
+    lines.push(format!("CMD [\"{}\"]", config.container.shell));
 
     lines.join("\n")
 }
@@ -45,22 +39,14 @@ fn generate_custom(config: &Config) -> String {
 
     // Integration layer
     lines.push("COPY podmgr-guest /usr/local/bin/podmgr-guest".into());
-    lines.push(
-        "RUN chmod +x /usr/local/bin/podmgr-guest".into(),
-    );
+    lines.push("RUN chmod +x /usr/local/bin/podmgr-guest".into());
     lines.push(String::new());
 
-    lines.push(format!(
-        "ENV PODMGR_CONTAINER={}",
-        config.container.name
-    ));
+    lines.push(format!("ENV PODMGR_CONTAINER={}", config.container.name));
     lines.push(String::new());
 
     lines.push("ENTRYPOINT [\"/usr/local/bin/podmgr-guest\", \"--entry\"]".into());
-    lines.push(format!(
-        "CMD [\"{}\"]",
-        config.container.shell
-    ));
+    lines.push(format!("CMD [\"{}\"]", config.container.shell));
 
     lines.join("\n")
 }
@@ -71,9 +57,15 @@ fn generate_package_install_lines(config: &Config) -> Vec<String> {
     if !config.image.packages.install.is_empty() {
         let pkgs = config.image.packages.install.join(" ");
         let cmd = match manager {
-            "apt" | "apt-get" => format!("apt-get update && apt-get install -y {} && rm -rf /var/lib/apt/lists/*", pkgs),
+            "apt" | "apt-get" => format!(
+                "apt-get update && apt-get install -y {} && rm -rf /var/lib/apt/lists/*",
+                pkgs
+            ),
             "apk" => format!("apk add --no-cache {}", pkgs),
-            "pacman" => format!("pacman -Syu --noconfirm {} && pacman -Scc --noconfirm", pkgs),
+            "pacman" => format!(
+                "pacman -Syu --noconfirm {} && pacman -Scc --noconfirm",
+                pkgs
+            ),
             _ => format!("dnf install -y {} && dnf clean all", pkgs),
         };
         lines.push(format!("RUN {}", cmd));
@@ -88,7 +80,10 @@ fn generate_package_remove_lines(config: &Config) -> Vec<String> {
     if !config.image.packages.remove.is_empty() {
         let pkgs = config.image.packages.remove.join(" ");
         let cmd = match manager {
-            "apt" | "apt-get" => format!("apt-get purge -y {} && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*", pkgs),
+            "apt" | "apt-get" => format!(
+                "apt-get purge -y {} && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*",
+                pkgs
+            ),
             "apk" => format!("apk del {}", pkgs),
             "pacman" => format!("pacman -Rns --noconfirm {}", pkgs),
             _ => format!("dnf remove -y {} && dnf clean all", pkgs),

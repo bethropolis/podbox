@@ -16,5 +16,4 @@ pub enum GuestError {
 
     #[error("handshake failed: {0}")]
     HandshakeFailed(String),
-
 }

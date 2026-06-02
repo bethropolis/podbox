@@ -51,14 +51,34 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
     apply_bool(labels, "podmgr.integration.clipboard", &mut int.clipboard);
     apply_bool(labels, "podmgr.integration.sync_fonts", &mut int.sync_fonts);
     apply_bool(labels, "podmgr.integration.sync_icons", &mut int.sync_icons);
-    apply_bool(labels, "podmgr.integration.sync_themes", &mut int.sync_themes);
+    apply_bool(
+        labels,
+        "podmgr.integration.sync_themes",
+        &mut int.sync_themes,
+    );
 
-    apply_bool(labels, "podmgr.xdg_dirs.documents", &mut int.xdg_dirs.documents);
-    apply_bool(labels, "podmgr.xdg_dirs.downloads", &mut int.xdg_dirs.downloads);
-    apply_bool(labels, "podmgr.xdg_dirs.pictures", &mut int.xdg_dirs.pictures);
+    apply_bool(
+        labels,
+        "podmgr.xdg_dirs.documents",
+        &mut int.xdg_dirs.documents,
+    );
+    apply_bool(
+        labels,
+        "podmgr.xdg_dirs.downloads",
+        &mut int.xdg_dirs.downloads,
+    );
+    apply_bool(
+        labels,
+        "podmgr.xdg_dirs.pictures",
+        &mut int.xdg_dirs.pictures,
+    );
     apply_bool(labels, "podmgr.xdg_dirs.music", &mut int.xdg_dirs.music);
     apply_bool(labels, "podmgr.xdg_dirs.videos", &mut int.xdg_dirs.videos);
-    apply_bool(labels, "podmgr.xdg_dirs.projects", &mut int.xdg_dirs.projects);
+    apply_bool(
+        labels,
+        "podmgr.xdg_dirs.projects",
+        &mut int.xdg_dirs.projects,
+    );
 
     if let Some(gpu_str) = labels.get("podmgr.integration.gpu") {
         if config.integration.gpu == GpuMode::Auto {

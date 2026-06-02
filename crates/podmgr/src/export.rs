@@ -19,7 +19,7 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
     let output = crate::process::run_piped("podman", &args)?;
     if !output.status.success() {
         return Err(
-            PodmgrError::ExportFailed(format!("app {} not found in container", app)).into()
+            PodmgrError::ExportFailed(format!("app {} not found in container", app)).into(),
         );
     }
     let desktop_content = String::from_utf8_lossy(&output.stdout);
@@ -69,7 +69,8 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
 
     let shim = format!(
         "#!/bin/sh\nexec podmgr --container \"{}\" exec -- \"{}\" \"$@\"\n",
-        container_name.replace('"', "\\\""), bin.replace('"', "\\\"")
+        container_name.replace('"', "\\\""),
+        bin.replace('"', "\\\"")
     );
 
     let shim_path = bin_dir.join(bin);
@@ -138,7 +139,11 @@ fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> Stri
         .lines()
         .map(|line| {
             if let Some(original) = line.strip_prefix("Exec=") {
-                format!("Exec=podmgr --container \"{}\" exec -- {}", container_name.replace('"', "\\\""), original)
+                format!(
+                    "Exec=podmgr --container \"{}\" exec -- {}",
+                    container_name.replace('"', "\\\""),
+                    original
+                )
             } else if let Some((key, val)) = line.split_once('=') {
                 if (key == "Name" || key.starts_with("Name[")) && !val.contains(&suffix) {
                     format!("{}={} ({})", key, val, container_name)
@@ -154,16 +159,12 @@ fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> Stri
 }
 
 fn extract_icon_name(content: &str) -> Option<String> {
-    content.lines().find_map(|line| {
-        line.strip_prefix("Icon=").map(|s| s.to_string())
-    })
+    content
+        .lines()
+        .find_map(|line| line.strip_prefix("Icon=").map(|s| s.to_string()))
 }
 
-fn copy_icon_from_container(
-    container_name: &str,
-    icon_name: &str,
-    _profile: &str,
-) -> Result<()> {
+fn copy_icon_from_container(container_name: &str, icon_name: &str, _profile: &str) -> Result<()> {
     // Sanitize icon name: refuse path separators to prevent traversal
     if icon_name.contains('/') || icon_name.contains("..") {
         return Err(anyhow::anyhow!(

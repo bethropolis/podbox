@@ -22,12 +22,7 @@ fn systemd_user_dir() -> PathBuf {
 }
 
 /// Install systemd service and socket files for a container.
-pub fn install(
-    config: &Config,
-    env: &HostEnv,
-    xdg: &ResolvedXdgDirs,
-    dry_run: bool,
-) -> Result<()> {
+pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: bool) -> Result<()> {
     let name = &config.container.name;
     let qdir = quadlet_dir();
     let sdir = systemd_user_dir();
@@ -68,18 +63,19 @@ pub fn install(
     }
 
     // Ensure home and runtime dirs exist
-    std::fs::create_dir_all(&config.container.home)
-        .with_context(|| format!("failed to create home dir '{}'", config.container.home.display()))?;
+    std::fs::create_dir_all(&config.container.home).with_context(|| {
+        format!(
+            "failed to create home dir '{}'",
+            config.container.home.display()
+        )
+    })?;
 
     // Quadlet source files → ~/.config/containers/systemd/
     std::fs::create_dir_all(&qdir)?;
     if let Some(ref bc) = build_content {
         std::fs::write(qdir.join(format!("{}.build", name)), bc)?;
     }
-    std::fs::write(
-        qdir.join(format!("{}.container", name)),
-        container_content,
-    )?;
+    std::fs::write(qdir.join(format!("{}.container", name)), container_content)?;
 
     // Systemd unit files → ~/.config/systemd/user/
     std::fs::create_dir_all(&sdir)?;
@@ -109,10 +105,7 @@ pub fn install(
 
     // daemon-reload + reset-failed
     if which::which("systemctl").is_ok() {
-        let reload_args: Vec<std::ffi::OsString> = vec![
-            "--user".into(),
-            "daemon-reload".into(),
-        ];
+        let reload_args: Vec<std::ffi::OsString> = vec!["--user".into(), "daemon-reload".into()];
         let output = crate::process::run_piped("systemctl", &reload_args)?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -137,10 +130,7 @@ pub fn install(
     if config.lifecycle.autostart {
         let whoami = std::env::var("USER").unwrap_or_default();
         if !whoami.is_empty() && which::which("loginctl").is_ok() {
-            let args: Vec<std::ffi::OsString> = vec![
-                "enable-linger".into(),
-                whoami.into(),
-            ];
+            let args: Vec<std::ffi::OsString> = vec!["enable-linger".into(), whoami.into()];
             let output = crate::process::run_piped("loginctl", &args)?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -180,10 +170,7 @@ pub fn uninstall(name: &str) -> Result<()> {
 
     // daemon-reload
     if which::which("systemctl").is_ok() {
-        let args: Vec<std::ffi::OsString> = vec![
-            "--user".into(),
-            "daemon-reload".into(),
-        ];
+        let args: Vec<std::ffi::OsString> = vec!["--user".into(), "daemon-reload".into()];
         if let Err(e) = crate::process::run_piped("systemctl", &args) {
             eprintln!("Warning: daemon-reload failed: {}", e);
         }

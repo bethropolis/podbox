@@ -11,14 +11,15 @@ use crate::protocol::HostMessage;
 use crate::socket;
 
 pub fn run() -> Result<(), GuestError> {
-    let container_name = std::env::var("PODMGR_CONTAINER")
-        .map_err(|_| GuestError::ContainerNameMissing)?;
+    let container_name =
+        std::env::var("PODMGR_CONTAINER").map_err(|_| GuestError::ContainerNameMissing)?;
 
     let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
         .unwrap_or_else(|_| format!("/run/user/{}", nix::unistd::getuid()));
 
-    let host_socket_path =
-        PathBuf::from(&xdg_runtime).join("podmgr").join(format!("{}.sock", container_name));
+    let host_socket_path = PathBuf::from(&xdg_runtime)
+        .join("podmgr")
+        .join(format!("{}.sock", container_name));
 
     let bin_dir = PathBuf::from("/run/podmgr/bin");
 
@@ -51,7 +52,10 @@ pub fn run() -> Result<(), GuestError> {
     Ok(())
 }
 
-fn install_interceptors(accepted: &HashSet<String>, bin_dir: &std::path::Path) -> std::io::Result<()> {
+fn install_interceptors(
+    accepted: &HashSet<String>,
+    bin_dir: &std::path::Path,
+) -> std::io::Result<()> {
     let self_path = std::env::current_exe()?;
     let self_path_str = self_path.to_string_lossy();
 
@@ -76,10 +80,7 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
     let conf_dir = std::path::PathBuf::from("/etc/profile.d");
     std::fs::create_dir_all(&conf_dir)?;
     let conf_path = conf_dir.join("podmgr.sh");
-    let content = format!(
-        "export PATH={}:$PATH\n",
-        bin_dir.to_string_lossy()
-    );
+    let content = format!("export PATH={}:$PATH\n", bin_dir.to_string_lossy());
     std::fs::write(conf_path, content)?;
     Ok(())
 }
@@ -89,9 +90,10 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
         .expect("5-minute timeout fits in i32");
 
     loop {
-        let mut fds = [
-            PollFd::new(unsafe { BorrowedFd::borrow_raw(host_stream.as_raw_fd()) }, PollFlags::POLLIN),
-        ];
+        let mut fds = [PollFd::new(
+            unsafe { BorrowedFd::borrow_raw(host_stream.as_raw_fd()) },
+            PollFlags::POLLIN,
+        )];
 
         match poll(&mut fds, idle_timeout) {
             Ok(0) => {

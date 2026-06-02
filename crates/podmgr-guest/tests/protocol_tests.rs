@@ -1,8 +1,6 @@
 use std::io::Cursor;
 
-use podmgr_guest::protocol::{
-    read_frame, write_frame, GuestMessage, HostMessage,
-};
+use podmgr_guest::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
 
 #[test]
 fn hello_serializes_with_type_tag() {
@@ -48,7 +46,11 @@ fn roundtrip_notify_message() {
     let payload = read_frame(&mut Cursor::new(&buf)).unwrap().unwrap();
     let decoded: GuestMessage = serde_json::from_slice(&payload).unwrap();
     match decoded {
-        GuestMessage::Notify { summary, body, urgency } => {
+        GuestMessage::Notify {
+            summary,
+            body,
+            urgency,
+        } => {
             assert_eq!(summary, "hello");
             assert_eq!(body, "world");
             assert_eq!(urgency, "normal");
