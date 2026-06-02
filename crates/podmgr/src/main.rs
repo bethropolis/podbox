@@ -66,8 +66,17 @@ fn run() -> Result<()> {
             return Ok(());
         }
 
-        Command::Init { profile, name } => {
-            return run_init(cli.dry_run, profile.as_deref(), name.as_deref());
+        Command::Init {
+            profile,
+            name,
+            interactive,
+        } => {
+            return run_init(
+                cli.dry_run,
+                profile.as_deref(),
+                name.as_deref(),
+                *interactive,
+            );
         }
 
         Command::Create {
@@ -642,10 +651,52 @@ fn translate_path(
     Ok(())
 }
 
-fn run_init(dry_run: bool, profile: Option<&str>, name: Option<&str>) -> Result<()> {
+fn run_init(
+    dry_run: bool,
+    profile: Option<&str>,
+    name: Option<&str>,
+    interactive: bool,
+) -> Result<()> {
+    let shell_info = podmgr::init_wizard::detect_host_shell();
+    if !shell_info.detected && !interactive {
+        eprintln!("Note: $SHELL not set or unrecognized, defaulting to fish.");
+    }
+
+    if interactive {
+        if !nix::unistd::isatty(0).unwrap_or(false) {
+            anyhow::bail!("--interactive requires a TTY (stdin is not a terminal)");
+        }
+        let profiles = podmgr::profiles::all();
+        let result = podmgr::init_wizard::run_wizard(&profiles, &shell_info)?;
+        if !result.confirmed {
+            let toml = toml::to_string_pretty(&result.config)?;
+            println!("{}", toml);
+            return Ok(());
+        }
+        let config_dir = config::config_dir();
+        let config_path = config_dir.join(format!("{}.toml", result.name));
+        if config_path.exists() && !dry_run {
+            anyhow::bail!(
+                "Config already exists at '{}'. Remove it first.",
+                config_path.display()
+            );
+        }
+        if dry_run {
+            let toml = toml::to_string_pretty(&result.config)?;
+            println!("Would write to: {}", config_path.display());
+            println!("---\n{}", toml);
+            return Ok(());
+        }
+        std::fs::create_dir_all(&config_dir)?;
+        let toml = toml::to_string_pretty(&result.config)?;
+        std::fs::write(&config_path, &toml)?;
+        println!("Created: {}", config_path.display());
+        println!("Run `podmgr create {}` to build and start.", result.name);
+        return Ok(());
+    }
+
     let profile = match profile {
         Some(s) if s.contains('/') || s.contains('\\') => {
-            // Treat as file path
             let path = Path::new(s);
             let content = std::fs::read_to_string(path)
                 .with_context(|| format!("failed to read profile '{}'", path.display()))?;
@@ -672,7 +723,9 @@ fn run_init(dry_run: bool, profile: Option<&str>, name: Option<&str>) -> Result<
         }
     };
 
-    let cfg = Config::parse(&profile)?;
+    let mut cfg = Config::parse(&profile)?;
+    podmgr::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+    let profile_with_shell = toml::to_string_pretty(&cfg)?;
     let container_name = name.unwrap_or(&cfg.container.name).to_string();
     let config_dir = config::config_dir();
     let config_path = config_dir.join(format!("{}.toml", container_name));
@@ -687,12 +740,12 @@ fn run_init(dry_run: bool, profile: Option<&str>, name: Option<&str>) -> Result<
     if dry_run {
         println!("Would create: {}", config_path.display());
         println!("---");
-        println!("{}", profile);
+        println!("{}", profile_with_shell);
         return Ok(());
     }
 
     std::fs::create_dir_all(&config_dir)?;
-    std::fs::write(&config_path, &profile)?;
+    std::fs::write(&config_path, &profile_with_shell)?;
     println!("Created config: {}", config_path.display());
     println!();
     println!(
@@ -725,7 +778,13 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
             found.toml
         };
 
-        let cfg = Config::parse(&profile_content)?;
+        let shell_info = podmgr::init_wizard::detect_host_shell();
+        if !shell_info.detected {
+            eprintln!("Note: $SHELL not set or unrecognized, defaulting to fish.");
+        }
+
+        let mut cfg = Config::parse(&profile_content)?;
+        podmgr::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
         let config_dir = config::config_dir();
         let config_path = config_dir.join(format!("{}.toml", container_name));
@@ -736,11 +795,13 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
                 config_path.display()
             );
         } else {
+            let config_toml = toml::to_string_pretty(&cfg)?;
             if dry_run {
                 println!("Would create config: {}", config_path.display());
+                println!("---\n{}", config_toml);
             } else {
                 std::fs::create_dir_all(&config_dir)?;
-                std::fs::write(&config_path, &profile_content)?;
+                std::fs::write(&config_path, &config_toml)?;
                 println!("Created config: {}", config_path.display());
             }
         }

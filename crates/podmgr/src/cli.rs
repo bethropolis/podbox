@@ -124,6 +124,9 @@ pub enum Command {
         profile: Option<String>,
         /// Container name (defaults to profile name).
         name: Option<String>,
+        /// Run an interactive wizard to build the config.
+        #[arg(long, short = 'i', conflicts_with = "profile")]
+        interactive: bool,
     },
 
     /// Pull a prebuilt image without building.
