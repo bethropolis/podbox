@@ -3,21 +3,21 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 
 use crate::codegen::quadlet;
-use crate::config::Config;
+use crate::config::{self, Config};
 use crate::env::HostEnv;
 use crate::xdg::ResolvedXdgDirs;
 
 /// Directory for user Quadlet source files.
 fn quadlet_dir() -> PathBuf {
     dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .unwrap_or_else(|| config::expand_tilde("~/.config"))
         .join("containers/systemd")
 }
 
 /// Directory for user systemd unit files.
 fn systemd_user_dir() -> PathBuf {
     dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .unwrap_or_else(|| config::expand_tilde("~/.config"))
         .join("systemd/user")
 }
 

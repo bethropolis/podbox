@@ -188,7 +188,7 @@ fn run() -> Result<()> {
 
             // Auto-heal: install Quadlet files if missing
             let qdir = dirs::config_dir()
-                .unwrap_or_else(|| PathBuf::from("~/.config"))
+                .unwrap_or_else(|| podmgr::config::expand_tilde("~/.config"))
                 .join("containers/systemd");
             let container_file = qdir.join(format!("{}.container", name));
             if !container_file.exists() {
@@ -432,8 +432,10 @@ fn run() -> Result<()> {
                 let config_path = config_dir.join(format!("{}.toml", serve_name));
                 Config::load(&config_path)?
             };
-            let xdg_runtime =
-                std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".into());
+            let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                let uid = nix::unistd::getuid().as_raw();
+                format!("/run/user/{}", uid)
+            });
             let socket_path = std::path::PathBuf::from(&xdg_runtime)
                 .join("podmgr")
                 .join(format!("{}.sock", serve_name));
@@ -573,7 +575,13 @@ fn translate_path(
     } else {
         format!("/home/{}", username)
     };
-    let host_path = Path::new(path_str);
+    let host_path = if Path::new(path_str).is_relative() {
+        std::env::current_dir()
+            .map(|d| d.join(path_str))
+            .unwrap_or_else(|_| PathBuf::from(path_str))
+    } else {
+        PathBuf::from(path_str)
+    };
 
     if to_container {
         let host_to_container: Vec<(&str, &PathBuf)> = vec![
@@ -583,6 +591,7 @@ fn translate_path(
             ("Music", &xdg.music),
             ("Videos", &xdg.videos),
             ("Desktop", &xdg.desktop),
+            ("Projects", &xdg.projects),
         ]
         .into_iter()
         .filter_map(|(name, opt)| opt.as_ref().map(|p| (name, p)))
@@ -790,6 +799,14 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         return Ok(());
     }
 
+    if is_profile {
+        eprintln!(
+            "Note: '{}' is not a known profile (available: {}). Treating it as an image reference to pull.",
+            image,
+            podmgr::profiles::list_names().join(", ")
+        );
+    }
+
     // If not a profile, treat as full image reference
     if dry_run {
         println!("podman pull {}", image);
@@ -985,7 +1002,7 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
     if config.lifecycle.quadlet {
         checks += 1;
         let qdir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.config"))
+            .unwrap_or_else(|| podmgr::config::expand_tilde("~/.config"))
             .join("containers/systemd");
         let container_file = qdir.join(format!("{}.container", config.container.name));
         if container_file.exists() {

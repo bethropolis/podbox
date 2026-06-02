@@ -3,7 +3,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use nix::unistd::{execv, execvp, fork, ForkResult};
+use nix::unistd::{execv, execvp, fork, setgid, setuid, ForkResult, Gid, Uid};
 
 /// Fork a daemon process, then exec the user command.
 ///
@@ -64,11 +64,12 @@ pub fn run(cmd: &[String]) -> ! {
             }
         }
         Ok(ForkResult::Parent { .. }) => {
-            // Parent: set env vars for the user command (stays as root)
-            if let Some((_uid, _gid, ref user)) = drop {
+            if let Some((uid, gid, ref user)) = drop {
                 std::env::set_var("HOME", format!("/home/{}", user));
                 std::env::set_var("USER", user);
                 std::env::set_var("LOGNAME", user);
+                let _ = setgid(Gid::from_raw(gid));
+                let _ = setuid(Uid::from_raw(uid));
             }
 
             let is_tty = nix::unistd::isatty(0).unwrap_or(false);
@@ -189,11 +190,9 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .status();
 
     // 3. Supplementary groups
-    for grp in ["wheel", "sudo", "video", "audio", "render"] {
-        let _ = std::process::Command::new("usermod")
-            .args(["-aG", grp, user])
-            .status();
-    }
+    let _ = std::process::Command::new("usermod")
+        .args(["-aG", "wheel,sudo,video,audio,render", user])
+        .status();
 
     // 4. Passwordless sudo
     let sudoers_dir = Path::new("/etc/sudoers.d");

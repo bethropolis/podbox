@@ -2,7 +2,6 @@ use std::io::Write;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::thread;
 
 use crate::config::IntegrationConfig;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
@@ -26,14 +25,11 @@ pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()>
         }
     };
 
-    listener.set_nonblocking(true)?;
-
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
-                stream.set_nonblocking(false)?;
                 let cfg = config.clone();
                 if handles.len() >= MAX_CONCURRENT {
                     let mut active_handles = Vec::new();
@@ -46,15 +42,12 @@ pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()>
                     }
                     handles = active_handles;
                 }
-                let handle = thread::spawn(move || {
+                let handle = std::thread::spawn(move || {
                     if let Err(e) = handle_connection(&mut stream, &cfg) {
                         eprintln!("Error handling guest connection: {}", e);
                     }
                 });
                 handles.push(handle);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(std::time::Duration::from_millis(100));
             }
             Err(e) => {
                 eprintln!("Socket accept failed: {}", e);
@@ -78,7 +71,7 @@ fn listen_fd() -> Option<RawFd> {
     Some(3)
 }
 
-fn handle_connection(stream: &mut UnixStream, _config: &IntegrationConfig) -> anyhow::Result<()> {
+fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> anyhow::Result<()> {
     while let Some(msg_bytes) = read_frame(stream)? {
         let msg: GuestMessage = serde_json::from_slice(&msg_bytes)?;
 
@@ -102,10 +95,22 @@ fn handle_connection(stream: &mut UnixStream, _config: &IntegrationConfig) -> an
                     "Host: Guest hello (v{}, container: {}, caps: {:?})",
                     guest_version, container, capabilities
                 );
-                let response = HostMessage::HelloAck {
-                    accepted: vec!["notify".into(), "xdg_open".into(), "clipboard".into()],
-                    rejected: vec![],
-                };
+                let mut accepted = Vec::new();
+                let mut rejected = Vec::new();
+                for cap in capabilities {
+                    let enabled = match cap.as_str() {
+                        "notify" => config.notify,
+                        "xdg_open" => config.xdg_open,
+                        "clipboard" => config.clipboard,
+                        _ => false,
+                    };
+                    if enabled {
+                        accepted.push(cap);
+                    } else {
+                        rejected.push(cap);
+                    }
+                }
+                let response = HostMessage::HelloAck { accepted, rejected };
                 write_frame(stream, &response)?;
             }
             GuestMessage::Notify {

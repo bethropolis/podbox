@@ -99,9 +99,7 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
 }
 
 fn apply_bool(labels: &LabelMap, key: &str, field: &mut bool) {
-    if !*field {
-        if let Some(v) = labels.get(key) {
-            *field = v == "true";
-        }
+    if let Some(v) = labels.get(key) {
+        *field = v == "true";
     }
 }

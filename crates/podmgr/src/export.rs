@@ -68,7 +68,7 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
     std::fs::create_dir_all(&bin_dir)?;
 
     let shim = format!(
-        "#!/bin/sh\nexec podmgr --container \"{}\" exec -- \"{}\" \"$@\"\n",
+        "#!/bin/sh\nexec podmgr --container \"{}\" run \"{}\" \"$@\"\n",
         container_name.replace('"', "\\\""),
         bin.replace('"', "\\\"")
     );
@@ -118,7 +118,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
 
     // Remove shims that reference this container
-    let shim_marker = format!("--container \"{}\"", container_name);
+    let shim_marker = format!("podmgr --container \"{}\"", container_name);
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
             if let Ok(content) = std::fs::read_to_string(entry.path()) {

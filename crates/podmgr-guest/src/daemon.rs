@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::os::fd::{AsRawFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
@@ -86,20 +85,13 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
 }
 
 fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
-    let idle_timeout = PollTimeout::try_from(Duration::from_millis(300_000))
-        .expect("5-minute timeout fits in i32");
-
     loop {
         let mut fds = [PollFd::new(
             unsafe { BorrowedFd::borrow_raw(host_stream.as_raw_fd()) },
             PollFlags::POLLIN,
         )];
 
-        match poll(&mut fds, idle_timeout) {
-            Ok(0) => {
-                eprintln!("podmgr-guest: idle timeout, exiting.");
-                return Ok(());
-            }
+        match poll(&mut fds, PollTimeout::from(None::<u16>)) {
             Ok(_) => {
                 let revents = fds[0].revents().unwrap_or(PollFlags::empty());
                 if revents.contains(PollFlags::POLLHUP) || revents.contains(PollFlags::POLLERR) {
