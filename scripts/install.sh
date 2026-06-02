@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# podmgr — install script
+# podbox — install script
 # Install to ~/.local/bin or $PREFIX/bin
 set -euo pipefail
 
@@ -69,16 +69,17 @@ asroot() { if [ -n "${SUDO:-}" ]; then command sudo "$@"; else "$@"; fi }
 # ── Banner ───────────────────────────────────────────────
 banner() {
   printf "\n"
-  printf "  ${TC0} ▒▒███                                               ${RST}\n"
-  printf "  ${TC1}████████   ██████   ███████  █████████████    ███████ ████████${RST}\n"
-  printf "  ${TC2}▒▒███▒▒███ ███▒▒███ ███▒▒███ ▒▒███▒▒███▒▒███  ███▒▒███▒▒███▒▒███${RST}\n"
-  printf "  ${TC2} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███ ▒███ ▒███ ▒███ ▒███ ▒▒▒ ${RST}\n"
-  printf "  ${TC3} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███ ▒███ ▒███ ▒███ ▒███     ${RST}\n"
-  printf "  ${TC3} ▒███████ ▒▒██████ ▒▒████████ █████▒███ █████▒▒███████ █████    ${RST}\n"
-  printf "  ${TC4} ▒███▒▒▒   ▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒ ▒▒▒▒▒ ▒▒▒ ▒▒▒▒▒  ▒▒▒▒▒███▒▒▒▒▒     ${RST}\n"
-  printf "  ${TC4} ▒███                                         ███ ▒███          ${RST}\n"
-  printf "  ${TC5} █████                                       ▒▒██████           ${RST}\n"
-  printf "  ${TC5} ▒▒▒▒▒                                         ▒▒▒▒▒▒           ${RST}\n"
+  printf "  ${TC0}                        █████ █████                         ${RST}\n"
+  printf "  ${TC1}                       ▒▒███ ▒▒███                          ${RST}\n"
+  printf "  ${TC2} ████████   ██████   ███████  ▒███████   ██████  █████ █████${RST}\n"
+  printf "  ${TC2}▒▒███▒▒███ ███▒▒███ ███▒▒███  ▒███▒▒███ ███▒▒███▒▒███ ▒▒███ ${RST}\n"
+  printf "  ${TC3} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███▒███ ▒███ ▒▒▒█████▒  ${RST}\n"
+  printf "  ${TC3} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███▒███ ▒███  ███▒▒▒███ ${RST}\n"
+  printf "  ${TC4} ▒███████ ▒▒██████ ▒▒████████ ████████ ▒▒██████  █████ █████${RST}\n"
+  printf "  ${TC4} ▒███▒▒▒   ▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒   ▒▒▒▒▒▒  ▒▒▒▒▒ ▒▒▒▒▒ ${RST}\n"
+  printf "  ${TC5} ▒███                                                       ${RST}\n"
+  printf "  ${TC5} █████                                                      ${RST}\n"
+  printf "  ${TC5}▒▒▒▒▒                                                       ${RST}\n"
   printf "\n"
   printf "  ${DIM}${GRAY}Podman-native container environment manager${RST}\n"
   printf "\n"
@@ -136,7 +137,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --system)     SYSTEM=true ;;
-    --skip-build) PODMGR_SKIP_BUILD=1 ;;
+    --skip-build) PODBOX_SKIP_BUILD=1 ;;
     --help|-h)    usage ;;
     *)            printf "  ${RED}Unknown option:${RST} %s\n" "$1"; usage ;;
   esac
@@ -153,33 +154,33 @@ fi
 
 # ── Build ─────────────────────────────────────────────────
 build_binaries() {
-  if [ -n "${PODMGR_SKIP_BUILD:-}" ]; then
-    info "Skipping build ${DIM}(PODMGR_SKIP_BUILD is set)${RST}"
-    GUEST_SRC="${GUEST_SRC:-$PWD/target/x86_64-unknown-linux-musl/release/podmgr-guest}"
+  if [ -n "${PODBOX_SKIP_BUILD:-}" ]; then
+    info "Skipping build ${DIM}(PODBOX_SKIP_BUILD is set)${RST}"
+    GUEST_SRC="${GUEST_SRC:-$PWD/target/x86_64-unknown-linux-musl/release/podbox-guest}"
     return
   fi
 
   step "Building binaries"
 
-  printf "     ${GRAY}cargo build --release -p podmgr${RST}\n"
-  if cargo build --release -p podmgr 2>&1 | \
+  printf "     ${GRAY}cargo build --release -p podbox${RST}\n"
+  if cargo build --release -p podbox 2>&1 | \
       grep -E "^(error|warning\[)" | \
       while IFS= read -r line; do detail "$line"; done; [ "${PIPESTATUS[0]}" -eq 0 ]; then
-    ok "podmgr"
+    ok "podbox"
   else
-    cargo build --release -p podmgr || die "podmgr build failed"
-    ok "podmgr"
+    cargo build --release -p podbox || die "podbox build failed"
+    ok "podbox"
   fi
 
-  printf "     ${GRAY}cargo build --release --target x86_64-unknown-linux-musl -p podmgr-guest${RST}\n"
-  if cargo build --release --target x86_64-unknown-linux-musl -p podmgr-guest 2>/dev/null; then
-    GUEST_SRC="$PWD/target/x86_64-unknown-linux-musl/release/podmgr-guest"
-    ok "podmgr-guest  ${DIM}(musl / static)${RST}"
+  printf "     ${GRAY}cargo build --release --target x86_64-unknown-linux-musl -p podbox-guest${RST}\n"
+  if cargo build --release --target x86_64-unknown-linux-musl -p podbox-guest 2>/dev/null; then
+    GUEST_SRC="$PWD/target/x86_64-unknown-linux-musl/release/podbox-guest"
+    ok "podbox-guest  ${DIM}(musl / static)${RST}"
   else
     warn "musl target unavailable — falling back to default target"
-    cargo build --release -p podmgr-guest || die "podmgr-guest build failed"
-    GUEST_SRC="$PWD/target/release/podmgr-guest"
-    ok "podmgr-guest  ${DIM}(dynamic, host target)${RST}"
+    cargo build --release -p podbox-guest || die "podbox-guest build failed"
+    GUEST_SRC="$PWD/target/release/podbox-guest"
+    ok "podbox-guest  ${DIM}(dynamic, host target)${RST}"
   fi
 }
 
@@ -189,17 +190,17 @@ install_binaries() {
 
   asroot mkdir -p "$BIN_DIR"
 
-  local podmgr_src="${PODMGR_BIN:-$PWD/target/release/podmgr}"
-  local guest_src="${PODMGR_GUEST_BIN:-${GUEST_SRC:-$PWD/target/x86_64-unknown-linux-musl/release/podmgr-guest}}"
+  local podbox_src="${PODBOX_BIN:-$PWD/target/release/podbox}"
+  local guest_src="${PODBOX_GUEST_BIN:-${GUEST_SRC:-$PWD/target/x86_64-unknown-linux-musl/release/podbox-guest}}"
 
-  [ -f "$podmgr_src" ]  || die "Binary not found: $podmgr_src  (hint: set PODMGR_BIN)"
-  [ -f "$guest_src"  ]  || die "Binary not found: $guest_src  (hint: set PODMGR_GUEST_BIN)"
+  [ -f "$podbox_src" ]  || die "Binary not found: $podbox_src  (hint: set PODBOX_BIN)"
+  [ -f "$guest_src"  ]  || die "Binary not found: $guest_src  (hint: set PODBOX_GUEST_BIN)"
 
-  asroot install -m 755 "$podmgr_src" "$BIN_DIR/podmgr"
-  ok "podmgr        ${DIM}→ $BIN_DIR/podmgr${RST}"
+  asroot install -m 755 "$podbox_src" "$BIN_DIR/podbox"
+  ok "podbox        ${DIM}→ $BIN_DIR/podbox${RST}"
 
-  asroot install -m 755 "$guest_src" "$BIN_DIR/podmgr-guest"
-  ok "podmgr-guest  ${DIM}→ $BIN_DIR/podmgr-guest${RST}"
+  asroot install -m 755 "$guest_src" "$BIN_DIR/podbox-guest"
+  ok "podbox-guest  ${DIM}→ $BIN_DIR/podbox-guest${RST}"
 }
 
 # ── Completions ───────────────────────────────────────────
@@ -208,20 +209,20 @@ install_completions() {
 
   asroot mkdir -p "$COMP_DIR" "$FISH_COMP_DIR"
 
-  if "$BIN_DIR/podmgr" completions bash 2>/dev/null | asroot tee "$COMP_DIR/podmgr" >/dev/null; then
-    ok "bash          ${DIM}→ $COMP_DIR/podmgr${RST}"
+  if "$BIN_DIR/podbox" completions bash 2>/dev/null | asroot tee "$COMP_DIR/podbox" >/dev/null; then
+    ok "bash          ${DIM}→ $COMP_DIR/podbox${RST}"
   else
     warn "bash completions skipped"
   fi
 
-  if "$BIN_DIR/podmgr" completions fish 2>/dev/null | asroot tee "$FISH_COMP_DIR/podmgr.fish" >/dev/null; then
-    ok "fish          ${DIM}→ $FISH_COMP_DIR/podmgr.fish${RST}"
+  if "$BIN_DIR/podbox" completions fish 2>/dev/null | asroot tee "$FISH_COMP_DIR/podbox.fish" >/dev/null; then
+    ok "fish          ${DIM}→ $FISH_COMP_DIR/podbox.fish${RST}"
   else
     warn "fish completions skipped"
   fi
 
-  if "$BIN_DIR/podmgr" completions zsh 2>/dev/null | asroot tee "$COMP_DIR/_podmgr" >/dev/null; then
-    ok "zsh           ${DIM}→ $COMP_DIR/_podmgr${RST}"
+  if "$BIN_DIR/podbox" completions zsh 2>/dev/null | asroot tee "$COMP_DIR/_podbox" >/dev/null; then
+    ok "zsh           ${DIM}→ $COMP_DIR/_podbox${RST}"
   else
     warn "zsh completions skipped"
   fi
@@ -248,8 +249,8 @@ print_summary() {
   printf "  ${GRAY}${SYM_V}${RST}\n"
   printf "  ${GRAY}${SYM_V}${RST}  ${GRAY}Get started:${RST}\n"
   printf "  ${GRAY}${SYM_V}${RST}\n"
-  printf "  ${GRAY}${SYM_V}${RST}  ${SYM_ARR}  ${CYAN}podmgr doctor${RST}   ${DIM}verify the installation${RST}\n"
-  printf "  ${GRAY}${SYM_V}${RST}  ${SYM_ARR}  ${CYAN}podmgr init${RST}     ${DIM}create your first container${RST}\n"
+  printf "  ${GRAY}${SYM_V}${RST}  ${SYM_ARR}  ${CYAN}podbox doctor${RST}   ${DIM}verify the installation${RST}\n"
+  printf "  ${GRAY}${SYM_V}${RST}  ${SYM_ARR}  ${CYAN}podbox init${RST}     ${DIM}create your first container${RST}\n"
   printf "  ${GRAY}${SYM_BL}${RST}\n"
   printf "\n"
 }

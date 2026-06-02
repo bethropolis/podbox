@@ -1,6 +1,6 @@
 # Desktop Integration (Export)
 
-`podmgr` can expose applications and binaries from inside the container to
+`podbox` can expose applications and binaries from inside the container to
 the host desktop — generating `.desktop` files, extracting icons, and
 creating shell shims.
 
@@ -10,8 +10,8 @@ creating shell shims.
 
 | Command | Description |
 |---------|-------------|
-| `podmgr export app <name>` | Export a `.desktop` application |
-| `podmgr export bin <name>` | Create a binary shim in `~/.local/bin` |
+| `podbox export app <name>` | Export a `.desktop` application |
+| `podbox export bin <name>` | Create a binary shim in `~/.local/bin` |
 
 Applications and binaries are declared in the config under
 `[integration.export]`:
@@ -24,7 +24,7 @@ bins = ["rg", "gcc"]
 
 ---
 
-## App Export (`podmgr export app`)
+## App Export (`podbox export app`)
 
 ### What it does
 
@@ -32,14 +32,14 @@ bins = ["rg", "gcc"]
    `/usr/share/applications/<name>.desktop` via `podman exec`.
 
 2. **Rewrites the `Exec=` line** so that launching the desktop entry runs
-   through `podmgr exec` inside the container:
+   through `podbox exec` inside the container:
 
    ```
    Exec=gedit %F
    ```
    becomes:
    ```
-   Exec=podmgr --container myenv exec -- gedit %F
+   Exec=podbox --container myenv exec -- gedit %F
    ```
 
    All other keys (`Name=`, `Icon=`, `MimeType=`, etc.) are preserved
@@ -52,12 +52,12 @@ bins = ["rg", "gcc"]
    ```
    The first match is copied to:
    ```
-   ~/.local/share/icons/podmgr/<container>/<name>.<ext>
+   ~/.local/share/icons/podbox/<container>/<name>.<ext>
    ```
 
 4. **Writes the `.desktop` file** to:
    ```
-   ~/.local/share/applications/podmgr-<container>-<name>.desktop
+   ~/.local/share/applications/podbox-<container>-<name>.desktop
    ```
 
 5. **Runs `update-desktop-database`** on the applications directory
@@ -68,17 +68,17 @@ bins = ["rg", "gcc"]
 `MimeType=` lines in the original `.desktop` file are preserved as-is.
 The host desktop environment registers the container app as a handler
 for those MIME types. When a user opens a file of that type, the
-rewritten `Exec=` line dispatches through `podmgr exec`.
+rewritten `Exec=` line dispatches through `podbox exec`.
 
 ---
 
-## Binary Export (`podmgr export bin`)
+## Binary Export (`podbox export bin`)
 
 Creates a shell shim in `~/.local/bin/<name>`:
 
 ```sh
 #!/bin/sh
-exec podmgr --container "<name>" exec -- "<bin>" "$@"
+exec podbox --container "<name>" exec -- "<bin>" "$@"
 ```
 
 The shim is executable (`chmod 755`). If `~/.local/bin` is on the user's
@@ -92,14 +92,14 @@ if installed locally.
 Remove exported files for a container by calling:
 
 ```rust
-podmgr::export::unexport_all(container_name)
+podbox::export::unexport_all(container_name)
 ```
 
 This removes:
-- All `~/.local/share/applications/podmgr-<container>-*.desktop` files
-- `~/.local/share/icons/podmgr/<container>/` directory tree
+- All `~/.local/share/applications/podbox-<container>-*.desktop` files
+- `~/.local/share/icons/podbox/<container>/` directory tree
 - Any shims in `~/.local/bin/` whose content references the container name
 
-Note: `podmgr remove` does **not** automatically call unexport. Run
-`podmgr export` commands or call `unexport_all` separately before
+Note: `podbox remove` does **not** automatically call unexport. Run
+`podbox export` commands or call `unexport_all` separately before
 removing the container.

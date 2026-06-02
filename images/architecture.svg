@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 390" width="100%" height="auto">
+  <defs>
+    <filter id="text-shadow">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1" flood-color="#000000" flood-opacity="0.65"/>
+    </filter>
+    <!-- Gradients for modern UI accents -->
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#d946ef"/>
+    </linearGradient>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    :root {
+      --bg-canvas: #ffffff;
+      --bg-box: #f8fafc;
+      --border-box: #cbd5e1;
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      --line: #94a3b8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-canvas: #0d1117;
+        --bg-box: #161b22;
+        --border-box: #30363d;
+        --text-main: #c9d1d9;
+        --text-sub: #8b949e;
+        --line: #484f58;
+      }
+    }
+    
+    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
+    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
+    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
+    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #ffffff; text-anchor: middle; filter: url(#text-shadow); }
+    .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
+    .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 1.5px; stroke-dasharray: 4,4; }
+    
+    .accent-gradient-1 { fill: url(#grad1); stroke: #334155; stroke-width: 1px; }
+    .accent-gradient-2 { fill: url(#grad2); stroke: #334155; stroke-width: 1px; }
+    .accent-gradient-3 { fill: url(#grad3); stroke: #334155; stroke-width: 1px; }
+  </style>
+
+  <!-- Connection Markers -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--line)"/>
+    </marker>
+  </defs>
+
+  <!-- Step 1: Input Profile -->
+  <g transform="translate(30, 40)">
+    <rect class="box-bg" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38">cachy.toml</text>
+    <text class="text-desc" x="75" y="56">Declarative Config</text>
+  </g>
+
+  <!-- Step 2: CLI Compiler -->
+  <g transform="translate(230, 40)">
+    <rect class="accent-gradient-1" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38" fill="#ffffff">podbox build</text>
+    <text class="text-desc-shadow" x="75" y="56">Pure Codegen CLI</text>
+  </g>
+
+  <!-- Step 3a: OCI Image Build -->
+  <g transform="translate(430, 40)">
+    <rect class="accent-gradient-2" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38" fill="#ffffff">OCI Image</text>
+    <text class="text-desc-shadow" x="75" y="56">Bakes App Packages</text>
+  </g>
+
+  <!-- Step 3b: Quadlet File Generation -->
+  <g transform="translate(430, 170)">
+    <rect class="accent-gradient-3" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="34" fill="#ffffff">Quadlet Files</text>
+    <text class="text-desc-shadow" x="75" y="52">.container, .socket</text>
+    <text class="text-desc-shadow" x="75" y="66">and .build units</text>
+  </g>
+
+  <!-- Step 4: systemd User Session -->
+  <g transform="translate(630, 170)">
+    <rect class="box-bg" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38">systemd --user</text>
+    <text class="text-desc" x="75" y="56">Lifecycle Manager</text>
+  </g>
+
+  <!-- Step 5: Rootless Podman Container -->
+  <g transform="translate(630, 40)">
+    <rect class="box-bg" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38">Container Instance</text>
+    <text class="text-desc" x="75" y="56">Rootless Sandbox</text>
+  </g>
+
+  <!-- Host Resource Boundary -->
+  <line x1="20" y1="275" x2="800" y2="275" stroke="var(--border-box)" stroke-width="1.5" stroke-dasharray="6,6" />
+  <text x="30" y="267" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="600" fill="var(--text-sub)" letter-spacing="1">HOST SECURITY BOUNDARY</text>
+
+  <!-- Host Integrations -->
+  <g transform="translate(130, 295)">
+    <rect class="box-bg" width="150" height="60" rx="8"/>
+    <text class="text-title" x="75" y="28">Wayland / GPU</text>
+    <text class="text-desc" x="75" y="44">Hardware Graphics</text>
+  </g>
+
+  <g transform="translate(330, 295)">
+    <rect class="box-bg" width="150" height="60" rx="8"/>
+    <text class="text-title" x="75" y="28">PipeWire / Audio</text>
+    <text class="text-desc" x="75" y="44">Audio Passthrough</text>
+  </g>
+
+  <g transform="translate(530, 295)">
+    <rect class="box-bg" width="150" height="60" rx="8"/>
+    <text class="text-title" x="75" y="28">XDG Dirs / IPC</text>
+    <text class="text-desc" x="75" y="44">Isolated Home Binds</text>
+  </g>
+
+  <!-- Flow Arrows -->
+  <path class="conn-line" d="M 180 80 L 222 80" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 380 80 L 422 80" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 305 120 C 305 210, 350 210, 422 210" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 580 80 L 622 80" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 580 210 L 622 210" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 705 170 L 705 128" marker-end="url(#arrow)"/>
+
+  <!-- Passthroughs from Container down to Host Tier via clean center channel -->
+  <path class="conn-line-dashed" d="M 640 120 C 600 120, 600 130, 600 160 L 600 240 C 600 270, 205 260, 205 287" marker-end="url(#arrow)"/>
+  <path class="conn-line-dashed" d="M 660 120 C 610 120, 610 130, 610 160 L 610 240 C 610 270, 405 260, 405 287" marker-end="url(#arrow)"/>
+  <path class="conn-line-dashed" d="M 680 120 C 620 120, 620 130, 620 160 L 620 240 C 620 270, 605 260, 605 287" marker-end="url(#arrow)"/>
+</svg>

@@ -3,14 +3,14 @@ FROM ${BASE_IMAGE}
 
 ARG TARGETPLATFORM
 
-COPY $TARGETPLATFORM/podmgr-guest /usr/local/bin/podmgr-guest
+COPY $TARGETPLATFORM/podbox-guest /usr/local/bin/podbox-guest
 
 RUN (command -v pacman && pacman -Syu --noconfirm fish && pacman -Scc --noconfirm) || \
     (command -v dnf && dnf install -y fish && dnf clean all) || \
     (command -v apt-get && apt-get update && apt-get install -y fish && rm -rf /var/lib/apt/lists/*) || \
     true
 
-RUN chmod +x /usr/local/bin/podmgr-guest
+RUN chmod +x /usr/local/bin/podbox-guest
 
-ENTRYPOINT ["/usr/local/bin/podmgr-guest", "--entry"]
+ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/usr/bin/fish"]

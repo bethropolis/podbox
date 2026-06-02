@@ -950,7 +950,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "podmgr"
+name = "podbox"
 version = "0.2.13"
 dependencies = [
  "anyhow",
@@ -973,7 +973,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "podmgr-guest"
+name = "podbox-guest"
 version = "0.2.13"
 dependencies = [
  "anyhow",

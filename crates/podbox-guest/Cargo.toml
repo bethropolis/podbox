@@ -1,0 +1,19 @@
+[package]
+name    = "podbox-guest"
+version.workspace = true
+edition = "2021"
+
+[lib]
+name = "podbox_guest"
+path = "src/lib.rs"
+
+[[bin]]
+name = "podbox-guest"
+path = "src/main.rs"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+anyhow     = { workspace = true }
+nix        = { workspace = true }
+thiserror  = { workspace = true }

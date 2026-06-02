@@ -1,10 +1,10 @@
 # Configuration Reference
 
-`podmgr` searches for a definition file in this order:
+`podbox` searches for a definition file in this order:
 
-1. `./.podmgr.toml` (project-local)
-2. `~/.config/podmgr/*.toml` (first file, sorted by name)
-3. Embedded default (`fedora:44`, name `podmgr`)
+1. `./.podbox.toml` (project-local)
+2. `~/.config/podbox/*.toml` (first file, sorted by name)
+3. Embedded default (`fedora:44`, name `podbox`)
 
 ---
 
@@ -153,7 +153,7 @@ bins = ["rg", "gcc"]
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `quadlet` | bool | `false` | Generate Quadlet systemd files on `podmgr enable` |
+| `quadlet` | bool | `false` | Generate Quadlet systemd files on `podbox enable` |
 | `autostart` | bool | `false` | Start container on user login (`WantedBy=default.target`) |
 | `on_stop` | string | `"keep"` | Container behavior on stop (`"keep"` or `"remove"`) |
 | `auto_update` | bool | `false` | Add `Label=io.containers.autoupdate=registry` for auto-updates |
@@ -201,7 +201,7 @@ talk = [
     "org.mpris.MediaPlayer2.*",
 ]
 own = [
-    "org.mpris.MediaPlayer2.podmgr_app",
+    "org.mpris.MediaPlayer2.podbox_app",
 ]
 ```
 

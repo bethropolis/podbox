@@ -1,6 +1,6 @@
 # Guest Daemon Architecture
 
-The guest daemon (`podmgr-guest`) runs inside the container. It bridges
+The guest daemon (`podbox-guest`) runs inside the container. It bridges
 container capabilities (notifications, URI opening, clipboard) to the host
 via a Unix socket connection.
 
@@ -8,12 +8,12 @@ via a Unix socket connection.
 
 ## Entry Point (`entry.rs`)
 
-The container starts with `podmgr-guest --entry [<command>...]`.
+The container starts with `podbox-guest --entry [<command>...]`.
 
 1. **`fork()`** splits into two processes:
 
    - **Child** (daemon process): redirects stdio to `/dev/null`, then
-     execs `podmgr-guest --daemon` (re-exec). Runs the event loop.
+     execs `podbox-guest --daemon` (re-exec). Runs the event loop.
 
    - **Parent** (shell/command process): if a command was given, execs it
      via `execv`. If empty, execs a login shell (`$SHELL` or `/bin/bash`,
@@ -28,15 +28,15 @@ The container starts with `podmgr-guest --entry [<command>...]`.
 
 ### Startup sequence
 
-1. **Create `/run/podmgr/bin/`** — directory for interceptor symlinks
-2. **Connect to host socket** — `$XDG_RUNTIME_DIR/podmgr/<container>.sock`
+1. **Create `/run/podbox/bin/`** — directory for interceptor symlinks
+2. **Connect to host socket** — `$XDG_RUNTIME_DIR/podbox/<container>.sock`
    with poll-based retry (3 attempts, 500ms interval, zero CPU)
 3. **Handshake** — sends capability list (`notify`, `xdg_open`, `clipboard`)
    to host; host responds with accepted subset
-4. **Install interceptors** — creates symlinks in `/run/podmgr/bin/` for
+4. **Install interceptors** — creates symlinks in `/run/podbox/bin/` for
    each accepted capability
-5. **PATH injection** — writes `/etc/environment.d/podmgr.conf` that
-   prepends `/run/podmgr/bin` to `PATH`
+5. **PATH injection** — writes `/etc/environment.d/podbox.conf` that
+   prepends `/run/podbox/bin` to `PATH`
 6. **Event loop** — polls the host socket for messages
 
 ### Event loop
@@ -62,7 +62,7 @@ The daemon consumes **0% CPU** when idle — it is parked in the kernel by
 ## Socket Protocol
 
 The daemon connects to the host socket at
-`$XDG_RUNTIME_DIR/podmgr/<container>.sock`. Messages are length-prefixed
+`$XDG_RUNTIME_DIR/podbox/<container>.sock`. Messages are length-prefixed
 JSON over a Unix stream socket (see [protocol.md](protocol.md) for the wire
 format).
 
@@ -79,24 +79,24 @@ format).
 
 ### Symlink dispatch
 
-The daemon creates symlinks in `/run/podmgr/bin/` pointing to the
-`podmgr-guest` binary:
+The daemon creates symlinks in `/run/podbox/bin/` pointing to the
+`podbox-guest` binary:
 
 | Symlink | Target | Capability |
 |---------|--------|------------|
-| `/run/podmgr/bin/notify-send` | `podmgr-guest` | `notify` |
-| `/run/podmgr/bin/xdg-open` | `podmgr-guest` | `xdg_open` |
-| `/run/podmgr/bin/podmgr-clipboard` | `podmgr-guest` | `clipboard` |
+| `/run/podbox/bin/notify-send` | `podbox-guest` | `notify` |
+| `/run/podbox/bin/xdg-open` | `podbox-guest` | `xdg_open` |
+| `/run/podbox/bin/podbox-clipboard` | `podbox-guest` | `clipboard` |
 
 The binary detects which name was used to invoke it via `argv[0]` and
 dispatches to the appropriate interceptor module (`main.rs`).
 
 ### PATH injection
 
-`/etc/environment.d/podmgr.conf` is written with:
+`/etc/environment.d/podbox.conf` is written with:
 
 ```
-PATH=/run/podmgr/bin:$PATH
+PATH=/run/podbox/bin:$PATH
 ```
 
 This ensures the interceptor symlinks take precedence over system-installed
@@ -108,7 +108,7 @@ binaries.
 |-------------|------|-------------|
 | `notify-send` | `interceptors/notify.rs` | Parses CLI args, sends `GuestMessage::Notify` to host |
 | `xdg-open` | `interceptors/xdg_open.rs` | Sends URI in `GuestMessage::XdgOpen` to host |
-| `podmgr-clipboard` | `interceptors/clipboard.rs` | `set`: reads stdin, sends `ClipboardSet`; `get`: sends `ClipboardGet`, writes response to stdout |
+| `podbox-clipboard` | `interceptors/clipboard.rs` | `set`: reads stdin, sends `ClipboardSet`; `get`: sends `ClipboardGet`, writes response to stdout |
 
 Each interceptor opens a **direct, ephemeral** Unix socket connection to
 the host socket (not the daemon's persistent connection), sends its

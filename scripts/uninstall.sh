@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# podmgr — uninstall script
+# podbox — uninstall script
 # Removes binaries, completions, and optionally config/data/quadlet files.
 set -euo pipefail
 
@@ -77,16 +77,17 @@ asroot() { if [ -n "${SUDO:-}" ]; then command sudo "$@"; else "$@"; fi }
 # ── Banner ───────────────────────────────────────────────
 banner() {
   printf "\n"
-  printf "  ${TC0} ▒▒███                                               ${RST}\n"
-  printf "  ${TC1}████████   ██████   ███████  █████████████    ███████ ████████${RST}\n"
-  printf "  ${TC2}▒▒███▒▒███ ███▒▒███ ███▒▒███ ▒▒███▒▒███▒▒███  ███▒▒███▒▒███▒▒███${RST}\n"
-  printf "  ${TC2} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███ ▒███ ▒███ ▒███ ▒███ ▒▒▒ ${RST}\n"
-  printf "  ${TC3} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███ ▒███ ▒███ ▒███ ▒███     ${RST}\n"
-  printf "  ${TC3} ▒███████ ▒▒██████ ▒▒████████ █████▒███ █████▒▒███████ █████    ${RST}\n"
-  printf "  ${TC4} ▒███▒▒▒   ▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒ ▒▒▒▒▒ ▒▒▒ ▒▒▒▒▒  ▒▒▒▒▒███▒▒▒▒▒     ${RST}\n"
-  printf "  ${TC4} ▒███                                         ███ ▒███          ${RST}\n"
-  printf "  ${TC5} █████                                       ▒▒██████           ${RST}\n"
-  printf "  ${TC5} ▒▒▒▒▒                                         ▒▒▒▒▒▒           ${RST}\n"
+  printf "  ${TC0}                        █████ █████                         ${RST}\n"
+  printf "  ${TC1}                       ▒▒███ ▒▒███                          ${RST}\n"
+  printf "  ${TC2} ████████   ██████   ███████  ▒███████   ██████  █████ █████${RST}\n"
+  printf "  ${TC2}▒▒███▒▒███ ███▒▒███ ███▒▒███  ▒███▒▒███ ███▒▒███▒▒███ ▒▒███ ${RST}\n"
+  printf "  ${TC3} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███▒███ ▒███ ▒▒▒█████▒  ${RST}\n"
+  printf "  ${TC3} ▒███ ▒███▒███ ▒███▒███ ▒███  ▒███ ▒███▒███ ▒███  ███▒▒▒███ ${RST}\n"
+  printf "  ${TC4} ▒███████ ▒▒██████ ▒▒████████ ████████ ▒▒██████  █████ █████${RST}\n"
+  printf "  ${TC4} ▒███▒▒▒   ▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒   ▒▒▒▒▒▒  ▒▒▒▒▒ ▒▒▒▒▒ ${RST}\n"
+  printf "  ${TC5} ▒███                                                       ${RST}\n"
+  printf "  ${TC5} █████                                                      ${RST}\n"
+  printf "  ${TC5}▒▒▒▒▒                                                       ${RST}\n"
   printf "\n"
   printf "  ${DIM}${GRAY}Podman-native container environment manager — uninstall${RST}\n"
   printf "\n"
@@ -100,11 +101,11 @@ BIN_DIR="$PREFIX/bin"
 COMP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
 FISH_COMP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
 
-PODMGR_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/podmgr"
-PODMGR_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/podmgr"
-PODMGR_ICONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/podmgr"
-PODMGR_APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-PODMGR_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/podmgr"
+PODBOX_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/podbox"
+PODBOX_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/podbox"
+PODBOX_ICONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/podbox"
+PODBOX_APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+PODBOX_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/podbox"
 
 # ── Parse flags ──────────────────────────────────────────
 REMOVE_CONFIG=false
@@ -116,8 +117,8 @@ usage() {
   printf "\n  ${BOLD}Usage:${RST} %s [options]\n\n" "$0"
   printf "  ${GRAY}Options:${RST}\n"
   printf "    ${CYAN}--system${RST}      Uninstall from /usr/local ${DIM}(requires sudo)${RST}\n"
-  printf "    ${CYAN}--config${RST}      Remove config files ${DIM}(~/.config/podmgr)${RST}\n"
-  printf "    ${CYAN}--data${RST}        Remove data files ${DIM}(~/.local/share/podmgr, icons, .desktop)${RST}\n"
+  printf "    ${CYAN}--config${RST}      Remove config files ${DIM}(~/.config/podbox)${RST}\n"
+  printf "    ${CYAN}--data${RST}        Remove data files ${DIM}(~/.local/share/podbox, icons, .desktop)${RST}\n"
   printf "    ${CYAN}--quadlet${RST}     Disable and remove Quadlet systemd files\n"
   printf "    ${CYAN}--all${RST}         Remove everything ${DIM}(config + data + quadlet)${RST}\n"
   printf "    ${CYAN}--force${RST}       Skip confirmation prompts\n"
@@ -159,7 +160,7 @@ confirm() {
 remove_binaries() {
   step "Removing binaries"
   local removed=false
-  for bin in podmgr podmgr-guest; do
+  for bin in podbox podbox-guest; do
     if [ -f "$BIN_DIR/$bin" ]; then
       asroot rm -f "$BIN_DIR/$bin"
       ok "$bin  ${DIM}← $BIN_DIR/$bin${RST}"
@@ -175,27 +176,27 @@ remove_binaries() {
 remove_completions() {
   step "Removing shell completions"
 
-  if [ -f "$COMP_DIR/podmgr" ]; then
-    asroot rm -f "$COMP_DIR/podmgr"
-    ok "bash  ${DIM}← $COMP_DIR/podmgr${RST}"
+  if [ -f "$COMP_DIR/podbox" ]; then
+    asroot rm -f "$COMP_DIR/podbox"
+    ok "bash  ${DIM}← $COMP_DIR/podbox${RST}"
   fi
-  if [ -f "$COMP_DIR/_podmgr" ]; then
-    asroot rm -f "$COMP_DIR/_podmgr"
-    ok "zsh  ${DIM}← $COMP_DIR/_podmgr${RST}"
+  if [ -f "$COMP_DIR/_podbox" ]; then
+    asroot rm -f "$COMP_DIR/_podbox"
+    ok "zsh  ${DIM}← $COMP_DIR/_podbox${RST}"
   fi
-  if [ -f "$FISH_COMP_DIR/podmgr.fish" ]; then
-    asroot rm -f "$FISH_COMP_DIR/podmgr.fish"
-    ok "fish  ${DIM}← $FISH_COMP_DIR/podmgr.fish${RST}"
+  if [ -f "$FISH_COMP_DIR/podbox.fish" ]; then
+    asroot rm -f "$FISH_COMP_DIR/podbox.fish"
+    ok "fish  ${DIM}← $FISH_COMP_DIR/podbox.fish${RST}"
   fi
 }
 
 # ── Remove config ────────────────────────────────────────
 remove_config() {
   step "Removing config"
-  if [ -d "$PODMGR_CONFIG_DIR" ]; then
-    if confirm "Remove $PODMGR_CONFIG_DIR?"; then
-      rm -rf "$PODMGR_CONFIG_DIR"
-      ok "Removed $PODMGR_CONFIG_DIR"
+  if [ -d "$PODBOX_CONFIG_DIR" ]; then
+    if confirm "Remove $PODBOX_CONFIG_DIR?"; then
+      rm -rf "$PODBOX_CONFIG_DIR"
+      ok "Removed $PODBOX_CONFIG_DIR"
     else
       info "Skipped"
     fi
@@ -209,25 +210,25 @@ remove_data() {
   step "Removing data"
   local removed=false
 
-  if [ -d "$PODMGR_DATA_DIR" ]; then
-    if confirm "Remove $PODMGR_DATA_DIR?"; then
-      rm -rf "$PODMGR_DATA_DIR"
-      ok "Removed $PODMGR_DATA_DIR"
+  if [ -d "$PODBOX_DATA_DIR" ]; then
+    if confirm "Remove $PODBOX_DATA_DIR?"; then
+      rm -rf "$PODBOX_DATA_DIR"
+      ok "Removed $PODBOX_DATA_DIR"
       removed=true
     else
       info "Skipped"
     fi
   fi
 
-  if [ -d "$PODMGR_ICONS_DIR" ]; then
-    rm -rf "$PODMGR_ICONS_DIR"
-    ok "Removed $PODMGR_ICONS_DIR"
+  if [ -d "$PODBOX_ICONS_DIR" ]; then
+    rm -rf "$PODBOX_ICONS_DIR"
+    ok "Removed $PODBOX_ICONS_DIR"
     removed=true
   fi
 
-  if [ -d "$PODMGR_APPS_DIR" ]; then
+  if [ -d "$PODBOX_APPS_DIR" ]; then
     local count=0
-    for f in "$PODMGR_APPS_DIR"/podmgr-*.desktop; do
+    for f in "$PODBOX_APPS_DIR"/podbox-*.desktop; do
       [ -f "$f" ] || continue
       rm -f "$f"
       count=$((count + 1))
@@ -238,9 +239,9 @@ remove_data() {
     fi
   fi
 
-  if [ -d "$PODMGR_STATE_DIR" ]; then
-    rm -rf "$PODMGR_STATE_DIR"
-    ok "Removed $PODMGR_STATE_DIR"
+  if [ -d "$PODBOX_STATE_DIR" ]; then
+    rm -rf "$PODBOX_STATE_DIR"
+    ok "Removed $PODBOX_STATE_DIR"
     removed=true
   fi
 
@@ -250,9 +251,9 @@ remove_data() {
 # ── Remove Quadlet ───────────────────────────────────────
 remove_quadlet() {
   step "Disabling Quadlet files"
-  if command -v podmgr &>/dev/null; then
-    if confirm "Disable and remove Quadlet systemd files (podmgr disable)?"; then
-      podmgr disable 2>/dev/null && ok "Quadlet files disabled" || warn "podmgr disable failed"
+  if command -v podbox &>/dev/null; then
+    if confirm "Disable and remove Quadlet systemd files (podbox disable)?"; then
+      podbox disable 2>/dev/null && ok "Quadlet files disabled" || warn "podbox disable failed"
     else
       info "Skipped"
     fi
@@ -260,7 +261,7 @@ remove_quadlet() {
     local qdir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
     if [ -d "$qdir" ]; then
       local count=0
-      for f in "$qdir"/podmgr-*.{container,service,socket,build}; do
+      for f in "$qdir"/podbox-*.{container,service,socket,build}; do
         [ -f "$f" ] || continue
         rm -f "$f"
         count=$((count + 1))
@@ -291,7 +292,7 @@ print_summary() {
   else
     printf "  ${GRAY}${SYM_V}${RST}\n"
     printf "  ${GRAY}${SYM_V}${RST}  ${GRAY}Cleanup tip:${RST}\n"
-    printf "  ${GRAY}${SYM_V}${RST}  ${SYM_ARR}  ${CYAN}podman rmi localhost/podmgr-*${RST}  ${DIM}remove leftover images${RST}\n"
+    printf "  ${GRAY}${SYM_V}${RST}  ${SYM_ARR}  ${CYAN}podman rmi localhost/podbox-*${RST}  ${DIM}remove leftover images${RST}\n"
     printf "  ${GRAY}${SYM_BL}${RST}\n"
   fi
   printf "\n"

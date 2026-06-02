@@ -1,43 +1,43 @@
 version: 2
 
-project_name: podmgr
+project_name: podbox
 
 before:
   hooks:
     - rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl
 
 builds:
-  - id: podmgr
+  - id: podbox
     builder: rust
     command: build
-    binary: podmgr
+    binary: podbox
     targets:
       - x86_64-unknown-linux-gnu
     flags:
       - --release
-      - -p=podmgr
+      - -p=podbox
 
-  - id: podmgr-guest
+  - id: podbox-guest
     builder: rust
     command: build
-    binary: podmgr-guest
+    binary: podbox-guest
     targets:
       - x86_64-unknown-linux-musl
     flags:
       - --release
-      - -p=podmgr-guest
+      - -p=podbox-guest
 
 archives:
-  - id: podmgr
+  - id: podbox
     ids:
-      - podmgr
-    name_template: "podmgr-{{ .Tag }}-linux-x86_64"
+      - podbox
+    name_template: "podbox-{{ .Tag }}-linux-x86_64"
     formats: ["tar.gz"]
     wrap_in_directory: false
-  - id: podmgr-guest
+  - id: podbox-guest
     ids:
-      - podmgr-guest
-    name_template: "podmgr-guest-{{ .Tag }}-linux-x86_64-musl"
+      - podbox-guest
+    name_template: "podbox-guest-{{ .Tag }}-linux-x86_64-musl"
     formats: ["tar.gz"]
     wrap_in_directory: false
 
@@ -47,9 +47,9 @@ checksum:
 dockers_v2:
   - id: cachy
     ids:
-      - podmgr-guest
+      - podbox-guest
     images:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podmgr-images"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podbox"
     tags:
       - "cachy-{{ .Tag }}"
       - "cachy-latest"
@@ -63,20 +63,20 @@ dockers_v2:
       org.opencontainers.image.created: "{{ .Date }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.version: "{{ .Tag }}"
-      podmgr.guest_version: "{{ .Tag }}"
-      podmgr.protocol_version: "1"
-      podmgr.integration.wayland: "true"
-      podmgr.integration.audio: "true"
-      podmgr.integration.gpu: "true"
-      podmgr.integration.dbus: "true"
-      podmgr.shell: "/usr/bin/fish"
-      podmgr.default_shell: "/usr/bin/fish"
+      podbox.guest_version: "{{ .Tag }}"
+      podbox.protocol_version: "1"
+      podbox.integration.wayland: "true"
+      podbox.integration.audio: "true"
+      podbox.integration.gpu: "true"
+      podbox.integration.dbus: "true"
+      podbox.shell: "/usr/bin/fish"
+      podbox.default_shell: "/usr/bin/fish"
 
   - id: fedora
     ids:
-      - podmgr-guest
+      - podbox-guest
     images:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podmgr-images"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podbox"
     tags:
       - "fedora-{{ .Tag }}"
       - "fedora-latest"
@@ -90,19 +90,19 @@ dockers_v2:
       org.opencontainers.image.created: "{{ .Date }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.version: "{{ .Tag }}"
-      podmgr.guest_version: "{{ .Tag }}"
-      podmgr.protocol_version: "1"
-      podmgr.integration.wayland: "true"
-      podmgr.integration.audio: "true"
-      podmgr.integration.gpu: "true"
-      podmgr.integration.dbus: "true"
-      podmgr.shell: "/usr/bin/fish"
-      podmgr.default_shell: "/usr/bin/fish"
+      podbox.guest_version: "{{ .Tag }}"
+      podbox.protocol_version: "1"
+      podbox.integration.wayland: "true"
+      podbox.integration.audio: "true"
+      podbox.integration.gpu: "true"
+      podbox.integration.dbus: "true"
+      podbox.shell: "/usr/bin/fish"
+      podbox.default_shell: "/usr/bin/fish"
 
 release:
   github:
     owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
-    name: podmgr
+    name: podbox
   skip_upload: true
 
 changelog:

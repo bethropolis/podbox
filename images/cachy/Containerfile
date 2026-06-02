@@ -1,18 +1,16 @@
-FROM cachyos/cachyos:latest
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
 
-RUN pacman -Syu --noconfirm fish && \
-    pacman -Scc --noconfirm
+ARG TARGETPLATFORM
 
-COPY podmgr-guest /usr/local/bin/podmgr-guest
+ENV PODBOX_CONTAINER=1
 
-LABEL podmgr.guest_version="0.2.0"
-LABEL podmgr.protocol_version="1"
-LABEL podmgr.integration.wayland="true"
-LABEL podmgr.integration.audio="true"
-LABEL podmgr.integration.gpu="enabled"
-LABEL podmgr.integration.dbus="true"
-LABEL podmgr.shell="/usr/bin/fish"
-LABEL podmgr.default_shell="/usr/bin/fish"
+COPY $TARGETPLATFORM/podbox-guest /usr/local/bin/podbox-guest
 
-ENTRYPOINT ["/usr/local/bin/podmgr-guest", "--entry"]
+RUN pacman -Syu --noconfirm fish fastfetch btop \
+ && pacman -Scc --noconfirm
+
+RUN chmod +x /usr/local/bin/podbox-guest
+
+ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/usr/bin/fish"]

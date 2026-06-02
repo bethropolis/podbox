@@ -13,10 +13,10 @@ Length-prefixed JSON over a Unix stream socket:
 
 ## Socket Location
 
-- **Host socket:** `$XDG_RUNTIME_DIR/podmgr/<name>.sock`
+- **Host socket:** `$XDG_RUNTIME_DIR/podbox/<name>.sock`
   Created by the `.socket` Quadlet unit.
-- **Local guest socket:** `/run/podmgr/guest-<name>.sock`
-  Created by `podmgr-guest --daemon` for interceptors.
+- **Local guest socket:** `/run/podbox/guest-<name>.sock`
+  Created by `podbox-guest --daemon` for interceptors.
 
 ## Handshake
 

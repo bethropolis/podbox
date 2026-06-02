@@ -4,7 +4,7 @@ By default, `integration.dbus = true` bind-mounts the host's D-Bus session
 bus socket (`%t/bus`) directly into the container — giving the container
 **unfiltered access** to the entire host session bus.
 
-For better isolation, `podmgr` can generate a companion systemd unit that
+For better isolation, `podbox` can generate a companion systemd unit that
 runs `xdg-dbus-proxy` to filter which D-Bus services the container can
 interact with.
 
@@ -14,7 +14,7 @@ interact with.
 
 When `[dbus]` talk or own rules are configured:
 
-1. `podmgr enable` writes an additional file:
+1. `podbox enable` writes an additional file:
    ```
    ~/.config/containers/systemd/<name>-proxy.service
    ```
@@ -27,8 +27,8 @@ When `[dbus]` talk or own rules are configured:
 
 3. Instead of `Volume=%t/bus:%t/bus`, the container gets the proxy socket:
    ```
-   Volume=%t/podmgr/<name>-dbus.sock:/run/podmgr/dbus.sock:ro
-   Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podmgr/dbus.sock
+   Volume=%t/podbox/<name>-dbus.sock:/run/podbox/dbus.sock:ro
+   Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podbox/dbus.sock
    ```
 
 4. The proxy service runs `xdg-dbus-proxy`, which forwards only the
@@ -45,7 +45,7 @@ talk = [
     "org.mpris.MediaPlayer2.*",
 ]
 own = [
-    "org.mpris.MediaPlayer2.podmgr_app",
+    "org.mpris.MediaPlayer2.podbox_app",
 ]
 ```
 
@@ -75,18 +75,18 @@ When rules are present, a companion systemd service is generated at
 
 ```ini
 [Unit]
-Description=D-Bus Proxy for podmgr container <name>
+Description=D-Bus Proxy for podbox container <name>
 PartOf=<name>.service
 
 [Service]
 Type=simple
-RuntimeDirectory=podmgr
+RuntimeDirectory=podbox
 ExecStart=/usr/bin/xdg-dbus-proxy \
     unix:path=%t/bus \
-    %t/podmgr/<name>-dbus.sock \
+    %t/podbox/<name>-dbus.sock \
     --talk=org.freedesktop.Notifications \
     --talk=org.mpris.MediaPlayer2.* \
-    --own=org.mpris.MediaPlayer2.podmgr_app
+    --own=org.mpris.MediaPlayer2.podbox_app
 Restart=on-failure
 
 [Install]
@@ -117,7 +117,7 @@ gdbus call --session \
     --dest org.freedesktop.Notifications \
     --object-path /org/freedesktop/Notifications \
     --method org.freedesktop.Notifications.Notify \
-    "podmgr" 0 "" "Hello" "Proxied message." [] {} 5000
+    "podbox" 0 "" "Hello" "Proxied message." [] {} 5000
 ```
 
 This should succeed and show a desktop notification on the host.

@@ -2,7 +2,7 @@
 
 ## How It Works
 
-A definition TOML is the single source of truth. Everything podmgr generates —
+A definition TOML is the single source of truth. Everything podbox generates —
 Containerfiles, Quadlet systemd units, lock files, desktop entries — derives
 from this one file. The user never writes a raw Containerfile or systemd unit
 manually.
@@ -10,7 +10,7 @@ manually.
 ```
 Definition File (myenv.toml)
         │
-        ▼  podmgr build
+        ▼  podbox build
   ┌──────────────────┐     ┌─────────────────────────────────┐
   │  Containerfile   │     │  Quadlet files                  │
   │  (generated)     │     │  myenv.build                    │
@@ -18,25 +18,25 @@ Definition File (myenv.toml)
   └──────┬───────────┘     │  myenv.container                │
          │                 └──────────────┬──────────────────┘
          ▼                                │
-   podman build                 podmgr enable
+   podman build                 podbox enable
          │                                │
          ▼                                ▼
-  localhost/podmgr-myenv:latest    systemctl --user daemon-reload
+  localhost/podbox-myenv:latest    systemctl --user daemon-reload
          │                         systemctl --user enable --now myenv
          └──────────────────────────────────┘
                           │
                           ▼  container starts
              catatonit (PID 1, via --init)
                           │
-                   podmgr-guest --entry
-                    ├── fork → podmgr-guest --daemon
+                   podbox-guest --entry
+                    ├── fork → podbox-guest --daemon
                     │          connects to host socket
                     └── exec → bash / fish (user shell)
 ```
 
 ## Codegen Pipeline
 
-`podmgr build` runs these steps in order. Each codegen step is a **pure function**:
+`podbox build` runs these steps in order. Each codegen step is a **pure function**:
 data in, string out, no I/O. Orchestration (file writes, podman invocations) is
 separate.
 
@@ -54,9 +54,9 @@ Config struct
     └── lock::write(config_checksum, image_digest) → LockFile
 
 Then (I/O phase):
-    write build context to ~/.local/share/podmgr/<name>/
-    copy podmgr-guest binary into build context
-    podman build -t localhost/podmgr-<name>:latest <context-dir>
+    write build context to ~/.local/share/podbox/<name>/
+    copy podbox-guest binary into build context
+    podman build -t localhost/podbox-<name>:latest <context-dir>
     get digest via podman inspect
     write lock file
 ```
@@ -72,21 +72,21 @@ RUN dnf install -y git gcc ripgrep && dnf clean all
 # [image.run] custom steps
 RUN dnf clean all
 
-# podmgr integration layer — always last
-COPY podmgr-guest /usr/local/bin/podmgr-guest
-RUN chmod +x /usr/local/bin/podmgr-guest
+# podbox integration layer — always last
+COPY podbox-guest /usr/local/bin/podbox-guest
+RUN chmod +x /usr/local/bin/podbox-guest
 
-ENV PODMGR_CONTAINER=myenv
-ENTRYPOINT ["/usr/local/bin/podmgr-guest", "--entry"]
+ENV PODBOX_CONTAINER=myenv
+ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/usr/bin/bash"]
 ```
 
 ### Build Context Layout
 
 ```
-~/.local/share/podmgr/<name>/
+~/.local/share/podbox/<name>/
 ├── Containerfile
-├── podmgr-guest          # static musl binary from host
+├── podbox-guest          # static musl binary from host
 ```
 
 ## Generated Quadlet Files
@@ -97,8 +97,8 @@ Three files written to `~/.config/containers/systemd/`.
 
 ```ini
 [Build]
-ImageTag=localhost/podmgr-myenv:latest
-File=/home/user/.local/share/podmgr/myenv/Containerfile
+ImageTag=localhost/podbox-myenv:latest
+File=/home/user/.local/share/podbox/myenv/Containerfile
 ```
 
 The `.build` unit makes `myenv.service` depend on the build. Images are only
@@ -108,10 +108,10 @@ rebuilt when the Containerfile changes.
 
 ```ini
 [Unit]
-Description=podmgr host-guest socket — myenv
+Description=podbox host-guest socket — myenv
 
 [Socket]
-ListenStream=%t/podmgr/myenv.sock
+ListenStream=%t/podbox/myenv.sock
 SocketMode=0600
 DirectoryMode=0700
 
@@ -147,36 +147,36 @@ for the wire format).
 Container process
     │ runs: notify-send "hello"
     ▼
-Interceptor symlink → podmgr-guest (re-exec)
+Interceptor symlink → podbox-guest (re-exec)
     │ connects to local daemon socket
     │ sends: {"type":"notify","summary":"hello"}
     ▼
-podmgr-guest --daemon (event loop)
+podbox-guest --daemon (event loop)
     │ forwards to host socket
     ▼
 Host socket handler → desktop notification appears
 ```
 
-## Guest Daemon (podmgr-guest)
+## Guest Daemon (podbox-guest)
 
 The guest binary is a static musl binary baked into every built image.
 Its behavior is determined by `argv[0]`:
 
 | Invoked as | Mode |
 |-----------|------|
-| `podmgr-guest --entry` | Fork daemon, exec user shell/command |
-| `podmgr-guest --daemon` | Event loop, interceptor setup |
+| `podbox-guest --entry` | Fork daemon, exec user shell/command |
+| `podbox-guest --daemon` | Event loop, interceptor setup |
 | `notify-send` (symlink) | Parse args, forward to daemon |
 | `xdg-open` (symlink) | Parse args, forward to daemon |
 
 ### Daemon startup sequence
 
-1. Read `PODMGR_CONTAINER` env → derive socket paths
-2. Create `/run/podmgr/bin/` directory
+1. Read `PODBOX_CONTAINER` env → derive socket paths
+2. Create `/run/podbox/bin/` directory
 3. Connect to host socket (3 retries × 500ms)
 4. Handshake: send capabilities, receive accepted list
-5. Install interceptor symlinks in `/run/podmgr/bin/`
-6. Prepend `/run/podmgr/bin` to `$PATH` via `/etc/environment.d/podmgr.conf`
+5. Install interceptor symlinks in `/run/podbox/bin/`
+6. Prepend `/run/podbox/bin` to `$PATH` via `/etc/environment.d/podbox.conf`
 7. Enter event loop (poll-based, 0% CPU when idle, 5-min idle timeout)
 
 If the socket is absent at startup, the daemon logs a warning and exits cleanly.
@@ -197,7 +197,7 @@ LOGIN
   │
   ▼
 systemd --user starts myenv.socket
-  creates: /run/user/1000/podmgr/myenv.sock
+  creates: /run/user/1000/podbox/myenv.sock
   │
   ▼ (autostart=true)
 systemd --user starts myenv.service (from myenv.container)
@@ -207,13 +207,13 @@ podman run --init --name myenv \
   -v ~/containers/myenv:/root:Z \
   -v ~/Documents:/root/Documents:z \
   -v /run/user/1000/wayland-0:/run/user/1000/wayland-0 \
-  -v /run/user/1000/podmgr/myenv.sock:/run/user/1000/podmgr/myenv.sock \
-  ... localhost/podmgr-myenv:latest
+  -v /run/user/1000/podbox/myenv.sock:/run/user/1000/podbox/myenv.sock \
+  ... localhost/podbox-myenv:latest
   │
   ▼
-catatonit (PID 1) → podmgr-guest --entry
+catatonit (PID 1) → podbox-guest --entry
   │
-  ├── fork → podmgr-guest --daemon
+  ├── fork → podbox-guest --daemon
   │     ├── connect to host socket
   │     ├── handshake
   │     ├── install interceptors
@@ -229,10 +229,10 @@ catatonit (PID 1) → podmgr-guest --entry
 ## Project Structure
 
 ```
-podmgr/
+podbox/
 ├── Cargo.toml                    # workspace root
 ├── crates/
-│   ├── podmgr/                   # host CLI binary
+│   ├── podbox/                   # host CLI binary
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs           # entry point, dispatch
@@ -250,7 +250,7 @@ podmgr/
 │   │       ├── xdg.rs            # XDG dir resolution
 │   │       └── error.rs          # error types
 │   │
-│   └── podmgr-guest/             # static musl sidecar
+│   └── podbox-guest/             # static musl sidecar
 │       ├── Cargo.toml
 │       └── src/
 │           ├── main.rs           # argv[0] dispatch
@@ -272,9 +272,9 @@ podmgr/
   No I/O, no env reads, no filesystem access.
 - **Boundary separation:** I/O lives only in `build.rs`, `quadlet_install.rs`,
   `socket_host.rs`, `export.rs`.
-- **musl static:** `podmgr-guest` must stay statically linkable. No tokio,
+- **musl static:** `podbox-guest` must stay statically linkable. No tokio,
   no openssl, no crate that links against glibc.
-- **exec_replace for TTY:** `podmgr shell` and `podmgr exec` use
+- **exec_replace for TTY:** `podbox shell` and `podbox exec` use
   `CommandExt::exec()` to replace the process — never `spawn_interactive`.
   This preserves the TTY for readline, Ctrl+L, etc.
 

@@ -5,9 +5,9 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 
 # The guest binary must be placed in the build context before building.
-#   cargo build -p podmgr-guest --release --target x86_64-unknown-linux-musl
-#   cp target/x86_64-unknown-linux-musl/release/podmgr-guest .
-COPY podmgr-guest /usr/local/bin/podmgr-guest
+#   cargo build -p podbox-guest --release --target x86_64-unknown-linux-musl
+#   cp target/x86_64-unknown-linux-musl/release/podbox-guest .
+COPY podbox-guest /usr/local/bin/podbox-guest
 
-ENTRYPOINT ["/usr/local/bin/podmgr-guest", "--entry"]
+ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/bin/bash"]

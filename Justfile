@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-#  podmgr — development justfile
+#  podbox — development justfile
 # ──────────────────────────────────────────────
 
 alias c := check
@@ -25,15 +25,15 @@ build:
 # Build release
 release:
     cargo build --release --all-targets
-    cargo build --release -p podmgr-guest --target x86_64-unknown-linux-musl
+    cargo build --release -p podbox-guest --target x86_64-unknown-linux-musl
 
 # Build guest binary (statically linked)
 guest:
-    cargo build --release -p podmgr-guest --target x86_64-unknown-linux-musl
+    cargo build --release -p podbox-guest --target x86_64-unknown-linux-musl
 
 # Full rebuild cycle: check → build guest → build host
 cycle: check guest release
     @echo "---"
     @echo "Release artifacts:"
-    @ls -lh target/release/podmgr
-    @ls -lh target/x86_64-unknown-linux-musl/release/podmgr-guest
+    @ls -lh target/release/podbox
+    @ls -lh target/x86_64-unknown-linux-musl/release/podbox-guest

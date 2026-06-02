@@ -1,132 +1,221 @@
 <p align="center">
-  <img src="https://img.shields.io/github/v/tag/bethropolis/podmgr?label=version" alt="Version">
-  <img src="https://img.shields.io/github/actions/workflow/status/bethropolis/podmgr/ci.yml?label=CI" alt="CI">
-  <img src="https://img.shields.io/github/license/bethropolis/podmgr" alt="License">
-  <br>
-  <em>Define once. Run anywhere. No daemon.</em>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/podbox-logo.svg">
+    <img src="images/podbox-logo.svg" alt="podbox">
+  </picture>
 </p>
 
-# podmgr
+<p align="center">
+  <img src="https://img.shields.io/github/v/tag/bethropolis/podbox?label=version" alt="Version">
+  <img src="https://img.shields.io/github/actions/workflow/status/bethropolis/podbox/ci.yml?label=CI" alt="CI">
+  <img src="https://img.shields.io/github/license/bethropolis/podbox" alt="License">
+</p>
 
-A Podman-native tool that turns a single TOML config into a fully integrated,
-systemd-managed container — with Wayland, audio, GPU passthrough, XDG directory
-sharing, and GUI app export. No daemon, no privilege escalation, no mounting
-your whole home directory.
+<p align="center">
+  <em>Define once. Run anywhere. No daemon.</em>
+</p>
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/bethropolis/podmgr && cd podmgr
-scripts/install.sh
-podmgr create fedora    # pull, build, enable, start in one command
-podmgr shell            # jump into the shell
+# 1. Install via pre-built binary
+curl -fsSL https://raw.githubusercontent.com/bethropolis/podbox/main/scripts/install-online.sh | sh
+
+# 2. Build and register an environment
+podbox create cachy
+
+# 3. Jump in or run apps
+podbox shell
+podbox run firefox
 ```
 
-## What It Does
+Also available from source: `git clone https://github.com/bethropolis/podbox && cd podbox && scripts/install.sh`.
 
-| You give it... | podmgr gives you... |
-|---|---|
-| A TOML profile or OCI image reference | A systemd-managed Podman container |
-| A package name (`firefox`, `htop`, ...) | The app baked into the image |
-| `podmgr export app firefox` | `"Firefox (cachy)"` in your app launcher |
+## Why podbox?
+
+Unlike other desktop sandboxing tools, `podbox` translates a single TOML config directly into native systemd Quadlet units — no daemon, no persistent orchestrator.
+
+| | podbox | Distrobox / Toolbox | Flatpak | Raw `podman run` |
+|---|---|---|---|---|
+| **Daemonless** | Yes (systemd units) | Yes (shell shims) | Yes (systemd backend) | No |
+| **Sandbox** | Strict (declared dirs only) | Weak (full `$HOME` mount) | Tight (portal-gated) | Custom per invocation |
+| **D-Bus** | Filtered via `xdg-dbus-proxy` | Unfiltered session bus | Portal-limited | Unfiltered |
+| **Config** | Declarative TOML | Imperative CLI params | Flatpak manifest | Shell flags |
+
+## How It Works
+
+A single TOML definition is your single source of truth. `podbox build` processes it into OCI images and systemd Quadlet units — no manual Containerfile or systemd editing.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/architecture.svg">
+    <img src="images/architecture.svg" alt="podbox architecture" width="100%" style="max-width: 820px;">
+  </picture>
+</p>
+
+- **systemd lifecycle** — Translates config into `.container`, `.socket`, and `.build` Quadlet units under `~/.config/containers/systemd/`.
+- **Guest binary** — A static `podbox-guest` inside the container handles IPC, URI opening, notifications, and clipboard over UNIX sockets.
+- **Security isolation** — Only declared host resources (Wayland, PipeWire, XDG dirs) are mounted into the container.
+
+## Configuration
+
+Config files are loaded from `~/.config/podbox/<name>.toml`, a local `./.podbox.toml`, or built-in profiles. See [the config reference](docs/config.md) for all keys.
+
+```toml
+# ~/.config/podbox/cachy.toml
+[image]
+base = "ghcr.io/cachyos/cachyos-rootfs:latest"
+name = "myenv"
+
+[image.packages]
+install = ["firefox", "pipewire-alsa", "mesa-dri-drivers"]
+
+[container]
+name = "myenv"
+home = "~/containers/myenv"
+shell = "bash"
+
+[container.mounts]
+extra = ["~/Projects:/home/user/Projects:z"]
+
+[integration]
+wayland    = true
+audio      = true
+gpu        = "auto"
+dbus       = true
+notify     = true
+xdg_open   = true
+clipboard  = true
+sync_fonts = true
+
+[integration.xdg_dirs]
+documents = true
+downloads = true
+
+[integration.export]
+apps = ["firefox"]
+bins = ["rg"]
+
+[dbus]
+talk = ["org.freedesktop.Notifications"]
+```
 
 ## Usage
 
 ```bash
 # Create containers
-podmgr create cachy                      # Arch-based CachyOS
-podmgr create fedora --name dev          # custom name
-podmgr create ghcr.io/user/img           # any image
+podbox create cachy                      # Arch-based CachyOS
+podbox create fedora --name dev          # custom name
+podbox create ghcr.io/user/img           # any image
 
 # Run GUI apps
-podmgr run firefox                       # detached, Wayland/GPU/pulse
-podmgr exec -- htop                      # interactive command
-podmgr shell                             # drop into a shell
+podbox run firefox                       # detached, Wayland/GPU/audio
+podbox exec -- htop                      # interactive command
+podbox shell                             # drop into a shell
 
-# Export to your launcher
-podmgr export app firefox                # desktop entry
-podmgr export bin firefox                # terminal shim
+# Export to launcher
+podbox export app firefox                # desktop entry
+podbox export bin firefox                # terminal shim
 
-# Customize
-# Edit ~/.config/podmgr/cachy.toml:
-#   [image.packages]
-#   install = ["firefox", "htop"]
-podmgr build --rebuild
+# Customize and rebuild
+# Edit ~/.config/podbox/cachy.toml, then:
+podbox build --rebuild
 
 # Diagnostics
-podmgr doctor                            # health check
-podmgr doctor --fix                      # auto-repair
+podbox doctor
+podbox doctor --fix
 
 # Tear down
-podmgr stop && podmgr remove --all
+podbox stop && podbox remove --all
 ```
 
 ## Install
 
-**Option 1 — Online (pre-built binary, no Rust needed):**
+**Online (pre-built binary):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bethropolis/podmgr/main/scripts/install-online.sh | sh
+curl -fsSL https://raw.githubusercontent.com/bethropolis/podbox/main/scripts/install-online.sh | sh
 ```
 
-**Option 2 — Local source build:**
+**Local source build:**
 
 ```bash
 scripts/install.sh                       # ~/.local/bin
-scripts/install.sh --system              # /usr/local (requires sudo)
+scripts/install.sh --system              # /usr/local (sudo)
 ```
 
-Supports `linux/amd64`.
+Supports `linux/amd64`. Uninstall with `scripts/uninstall.sh`.
 
-**Uninstall:** `scripts/uninstall.sh` (binaries + completions only; `--all` also removes config, data, Quadlets)
+## Requirements
+
+- Podman >= 4.6 with `pasta` or `slirp4netns`
+- systemd (user session)
+- Linux with Wayland (X11 apps run via Xwayland)
+- Kernel: `kernel.unprivileged_userns_clone=1`, subuid/subgid configured
+- `xdg-dbus-proxy` (for filtered D-Bus access)
+
+## Troubleshooting
+
+### D-Bus proxy fails or container hangs
+
+Missing `xdg-dbus-proxy` on the host. Install it or set `dbus = false` under `[integration]`.
+
+### UID mismatch inside mounts
+
+`UserNS=keep-id` + `User=root` maps host UID 1000 to container UID 999. Don't `chown` inside mounts — it will corrupt host ownership.
+
+### Desktop shims or interceptors not working
+
+The `podbox-guest` daemon relies on `/run/podbox/bin` being in the guest `$PATH`. Verify the systemd socket unit is active: `systemctl --user status <name>.socket`.
 
 ## Command Reference
 
 | Command | Description |
 |---------|-------------|
-| `podmgr create <profile\|image>` | Init → build → enable → start in one command |
-| `podmgr init <profile>` | Scaffold a config file from a built-in profile |
-| `podmgr list` | List podmgr-managed containers |
-| `podmgr build [--rebuild]` | Build or rebuild the container image |
-| `podmgr enable` | Install Quadlet systemd files |
-| `podmgr disable` | Remove Quadlet files |
-| `podmgr start` / `podmgr stop` | Start / stop the container |
-| `podmgr shell` | Open interactive shell |
-| `podmgr enter <name>` | Enter a named container (auto-starts) |
-| `podmgr exec -- <cmd>` | Execute a command interactively |
-| `podmgr run <app>` | Run a GUI app detached |
-| `podmgr status` | Show container state |
-| `podmgr logs [-f]` | Show container logs |
-| `podmgr doctor [--fix]` | Run diagnostic checks, optionally auto-fix |
-| `podmgr export app <name>` | Export .desktop file to host launcher |
-| `podmgr export bin <name>` | Export bin shim to `~/.local/bin` |
-| `podmgr export clean` | Remove all exported shims and .desktop files |
-| `podmgr remove [--all]` | Remove the container (and home volume with `--all`) |
-| `podmgr translate-path --to-container <path>` | Translate host path to container path |
-| `podmgr translate-path --to-host <path>` | Translate container path to host path |
-| `podmgr completions <shell>` | Generate shell completions |
+| `podbox create <profile\|image>` | Init → build → enable → start in one command |
+| `podbox init <profile>` | Scaffold a config file from a built-in profile |
+| `podbox list` | List podbox-managed containers |
+| `podbox build [--rebuild]` | Build or rebuild the container image |
+| `podbox enable` | Install Quadlet systemd files |
+| `podbox disable` | Remove Quadlet files |
+| `podbox start` / `podbox stop` | Start / stop the container |
+| `podbox shell` | Open interactive shell |
+| `podbox enter <name>` | Enter a named container (auto-starts) |
+| `podbox exec -- <cmd>` | Execute a command interactively |
+| `podbox run <app>` | Run a GUI app detached |
+| `podbox status` | Show container state |
+| `podbox logs [-f]` | Show container logs |
+| `podbox doctor [--fix]` | Run diagnostic checks, optionally auto-fix |
+| `podbox export app <name>` | Export .desktop file to host launcher |
+| `podbox export bin <name>` | Export bin shim to `~/.local/bin` |
+| `podbox export clean` | Remove all exported shims and .desktop files |
+| `podbox remove [--all]` | Remove the container (and home volume with `--all`) |
+| `podbox translate-path --to-container <path>` | Translate host path to container path |
+| `podbox translate-path --to-host <path>` | Translate container path to host path |
+| `podbox completions <shell>` | Generate shell completions |
 
 All commands support `--dry-run` to preview without executing.
+
+## Environment
+
+- `PODBOX_CONTAINER` — set inside the container to the active container name
+- `PODBOX_VERSION` — the running launcher version
 
 ## Documentation
 
 | Doc | Description |
 |-----|-------------|
 | [Configuration Reference](docs/config.md) | All TOML keys, defaults, examples |
-| [Architecture Overview](docs/architecture.md) | How podmgr works end-to-end |
+| [Architecture Overview](docs/architecture.md) | How podbox works end-to-end |
 | [Desktop Integration](docs/export.md) | Exporting apps and binaries |
 | [Container Integration](docs/guest.md) | Guest daemon and interceptors |
 | [D-Bus Proxy](docs/dbus-proxy.md) | Filtered D-Bus access via xdg-dbus-proxy |
 | [Quadlet Reference](docs/quadlet.md) | Generated systemd units |
 | [Host-Guest Protocol](docs/protocol.md) | Wire format and message types |
 
-## Requirements
+## Contributing
 
-- Podman >= 4.6
-- systemd (user session)
-- Linux with Wayland (for GUI passthrough)
-- xdg-user-dirs
-- Rust toolchain (to build)
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

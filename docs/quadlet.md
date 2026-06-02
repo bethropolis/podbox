@@ -4,14 +4,14 @@
 
 | Key | Value | Notes |
 |-----|-------|-------|
-| `ImageTag` | `localhost/podmgr-<name>:latest` | Local tag for built image |
+| `ImageTag` | `localhost/podbox-<name>:latest` | Local tag for built image |
 | `File` | Absolute path to Containerfile | Must be absolute |
 
 ## `.socket` file
 
 | Key | Value | Notes |
 |-----|-------|-------|
-| `ListenStream` | `%t/podmgr/<name>.sock` | `%t` = `$XDG_RUNTIME_DIR` |
+| `ListenStream` | `%t/podbox/<name>.sock` | `%t` = `$XDG_RUNTIME_DIR` |
 | `SocketMode` | `0600` | User-only access |
 | `DirectoryMode` | `0700` | Parent dir permissions |
 
@@ -19,7 +19,7 @@
 
 | Key | Value | Notes |
 |-----|-------|-------|
-| `Image` | `podmgr-<name>.build` | References the `.build` unit |
+| `Image` | `podbox-<name>.build` | References the `.build` unit |
 | `ContainerName` | `<name>` | Podman container name |
 | `UserNS` | `keep-id` | Maps host UID/GID |
 | `SecurityLabelDisable` | `true` | Required for Wayland socket |
@@ -27,7 +27,7 @@
 | `Volume` | `%t/wayland-0:%t/wayland-0` | Wayland socket (conditional) |
 | `Volume` | `%t/pulse:%t/pulse` | PulseAudio (conditional) |
 | `Volume` | `%t/bus:%t/bus` | D-Bus session (conditional) |
-| `Volume` | `%t/podmgr/<name>.sock:%t/...` | Host-guest socket |
+| `Volume` | `%t/podbox/<name>.sock:%t/...` | Host-guest socket |
 | `Environment` | `WAYLAND_DISPLAY=...` | Wayland display name |
 | `Environment` | `PULSE_SERVER=unix:%t/pulse/native` | Pulse server path |
 | `Environment` | `DBUS_SESSION_BUS_ADDRESS=...` | D-Bus address |

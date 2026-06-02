@@ -14,7 +14,7 @@
 
 | Doc | What it covers |
 |-----|---------------|
-| [Architecture Overview](architecture.md) | How podmgr works end-to-end |
+| [Architecture Overview](architecture.md) | How podbox works end-to-end |
 | [Quadlet Keys](quadlet.md) | Generated systemd unit files |
 | [Host-Guest Protocol](protocol.md) | Wire format and message types |
 | [Exit Codes](architecture.md#exit-codes) | Program exit code meanings |
@@ -30,12 +30,12 @@
 ## Quick Reference
 
 ```bash
-podmgr create <profile>        # create + build + enable + start
-podmgr shell                   # open a shell
-podmgr run <app>               # run a GUI app
-podmgr doctor --fix            # fix common issues
-podmgr export app <name>       # add to host launcher
-podmgr remove --all            # full cleanup
+podbox create <profile>        # create + build + enable + start
+podbox shell                   # open a shell
+podbox run <app>               # run a GUI app
+podbox doctor --fix            # fix common issues
+podbox export app <name>       # add to host launcher
+podbox remove --all            # full cleanup
 ```
 
 See the [README](../README.md) for the full command reference.

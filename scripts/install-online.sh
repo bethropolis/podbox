@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="bethropolis/podmgr"
+REPO="bethropolis/podbox"
 BINDIR="${HOME}/.local/bin"
 
 # architecture detection
@@ -12,7 +12,7 @@ case "$ARCH" in
     aarch64|arm64)  ARCH="arm64" ;;
     *)
         echo "Unsupported architecture: $ARCH"
-        echo "podmgr is available for linux/amd64 and linux/arm64."
+        echo "podbox is available for linux/amd64 and linux/arm64."
         exit 1
         ;;
 esac
@@ -20,7 +20,7 @@ esac
 command -v curl >/dev/null 2>&1 || { echo "curl is required"; exit 1; }
 command -v sha256sum >/dev/null 2>&1 && SHASUM=sha256sum || SHASUM=""
 
-echo "Fetching latest podmgr release..."
+echo "Fetching latest podbox release..."
 
 LATEST=$(curl -sSfL "https://api.github.com/repos/${REPO}/releases/latest")
 TAG=$(echo "$LATEST" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
@@ -31,7 +31,7 @@ if [ -z "$TAG" ]; then
     exit 1
 fi
 
-echo "Downloading podmgr ${TAG} for ${OS}/${ARCH}..."
+echo "Downloading podbox ${TAG} for ${OS}/${ARCH}..."
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -39,13 +39,13 @@ cd "$TMP"
 
 BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 
-curl -sSfLO "${BASE_URL}/podmgr-${TAG}-${OS}-${ARCH}.tar.gz"
-curl -sSfLO "${BASE_URL}/podmgr-guest-${TAG}-${OS}-${ARCH}-musl.tar.gz"
+curl -sSfLO "${BASE_URL}/podbox-${TAG}-${OS}-${ARCH}.tar.gz"
+curl -sSfLO "${BASE_URL}/podbox-guest-${TAG}-${OS}-${ARCH}-musl.tar.gz"
 curl -sSfLO "${BASE_URL}/checksums.txt"
 
 # verify checksums
 if [ -n "$SHASUM" ]; then
-    grep -E "(podmgr-${TAG}-${OS}-${ARCH}|podmgr-guest-${TAG}-${OS}-${ARCH}-musl)" checksums.txt \
+    grep -E "(podbox-${TAG}-${OS}-${ARCH}|podbox-guest-${TAG}-${OS}-${ARCH}-musl)" checksums.txt \
         | sha256sum -c - 2>/dev/null || {
             echo "Checksum verification failed. Aborting."
             exit 1
@@ -55,17 +55,17 @@ fi
 
 # install
 mkdir -p "$BINDIR"
-tar -xzf "podmgr-${TAG}-${OS}-${ARCH}.tar.gz" -C "$BINDIR"
-tar -xzf "podmgr-guest-${TAG}-${OS}-${ARCH}-musl.tar.gz" -C "$BINDIR"
-chmod +x "$BINDIR/podmgr" "$BINDIR/podmgr-guest"
+tar -xzf "podbox-${TAG}-${OS}-${ARCH}.tar.gz" -C "$BINDIR"
+tar -xzf "podbox-guest-${TAG}-${OS}-${ARCH}-musl.tar.gz" -C "$BINDIR"
+chmod +x "$BINDIR/podbox" "$BINDIR/podbox-guest"
 
-echo "Installed podmgr ${TAG} to ${BINDIR}"
+echo "Installed podbox ${TAG} to ${BINDIR}"
 
 # shell completions
-if command -v "$BINDIR/podmgr" >/dev/null 2>&1; then
+if command -v "$BINDIR/podbox" >/dev/null 2>&1; then
     comp_dir="${XDG_DATA_HOME:-$HOME/.local/share}/completions"
     mkdir -p "$comp_dir" 2>/dev/null || true
-    "$BINDIR/podmgr" completions bash > "$comp_dir/podmgr.bash" 2>/dev/null || true
+    "$BINDIR/podbox" completions bash > "$comp_dir/podbox.bash" 2>/dev/null || true
 fi
 
 # PATH hint
