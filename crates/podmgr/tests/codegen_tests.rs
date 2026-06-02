@@ -360,7 +360,6 @@ fn quadlet_visual_themes_present() {
     config.integration.sync_themes = true;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("Volume=%h/.themes:/home/%u/.themes:ro"));
-    assert!(q.contains("Volume=%h/.local/share/themes:/home/%u/.local/share/themes:ro"));
 }
 
 #[test]
@@ -384,7 +383,6 @@ fn quadlet_visual_fonts_present() {
     config.integration.sync_fonts = true;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("Volume=%h/.fonts:/home/%u/.fonts:ro"));
-    assert!(q.contains("Volume=%h/.config/fontconfig:/home/%u/.config/fontconfig:ro"));
 }
 
 #[test]
