@@ -4,7 +4,7 @@ project_name: podmgr
 
 before:
   hooks:
-    - rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl
+    - rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu aarch64-unknown-linux-musl
 
 builds:
   - id: podmgr
@@ -13,6 +13,7 @@ builds:
     binary: podmgr
     targets:
       - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu
     flags:
       - --release
       - -p=podmgr
@@ -23,6 +24,7 @@ builds:
     binary: podmgr-guest
     targets:
       - x86_64-unknown-linux-musl
+      - aarch64-unknown-linux-musl
     flags:
       - --release
       - -p=podmgr-guest
@@ -31,13 +33,15 @@ archives:
   - id: podmgr
     ids:
       - podmgr
-    name_template: "podmgr-{{ .Tag }}-linux-x86_64"
+    name_template: "podmgr-{{ .Tag }}-{{ .Os }}-{{ .Arch }}"
     formats: ["tar.gz"]
+    wrap_in_directory: false
   - id: podmgr-guest
     ids:
       - podmgr-guest
-    name_template: "podmgr-guest-{{ .Tag }}-linux-x86_64-musl"
+    name_template: "podmgr-guest-{{ .Tag }}-{{ .Os }}-{{ .Arch }}-musl"
     formats: ["tar.gz"]
+    wrap_in_directory: false
 
 checksum:
   name_template: "checksums.txt"
@@ -54,6 +58,7 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     platforms:
       - linux/amd64
+      - linux/arm64
     build_args:
       BASE_IMAGE: docker.io/cachyos/cachyos:latest
     labels:
@@ -81,6 +86,7 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     platforms:
       - linux/amd64
+      - linux/arm64
     build_args:
       BASE_IMAGE: docker.io/library/fedora:44
     labels:

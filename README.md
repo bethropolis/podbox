@@ -48,14 +48,22 @@ podmgr stop && podmgr remove --all
 
 ## Install
 
+**Option 1 — Online (pre-built binary, no Rust needed):**
+
 ```bash
-scripts/install.sh                       # ~/.local/bin (recommended)
+curl -fsSL https://raw.githubusercontent.com/bethropolis/podmgr/main/scripts/install-online.sh | sh
+```
+
+**Option 2 — Local source build:**
+
+```bash
+scripts/install.sh                       # ~/.local/bin
 scripts/install.sh --system              # /usr/local (requires sudo)
 ```
 
-**Uninstall:** `scripts/uninstall.sh` (binaries + completions only; `--all` also removes config, data, Quadlets)
+Supports `linux/amd64` and `linux/arm64`.
 
-**Manual build:** `cargo build --release -p podmgr && cargo build --release --target x86_64-unknown-linux-musl -p podmgr-guest`
+**Uninstall:** `scripts/uninstall.sh` (binaries + completions only; `--all` also removes config, data, Quadlets)
 
 ## Command Reference
 
