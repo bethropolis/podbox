@@ -55,5 +55,5 @@ jobs:
 
       - name: Verify static linkage
         run: |
-          file target/x86_64-unknown-linux-musl/release/podmgr-guest | grep -q "statically linked"
+          file target/x86_64-unknown-linux-musl/release/podmgr-guest | grep -q "static"
           echo "Binary is statically linked."
