@@ -61,7 +61,7 @@ scripts/install.sh                       # ~/.local/bin
 scripts/install.sh --system              # /usr/local (requires sudo)
 ```
 
-Supports `linux/amd64` and `linux/arm64`.
+Supports `linux/amd64`.
 
 **Uninstall:** `scripts/uninstall.sh` (binaries + completions only; `--all` also removes config, data, Quadlets)
 
