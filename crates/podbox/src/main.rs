@@ -1031,9 +1031,8 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
         passes += 1;
     } else {
         println!("[FAIL] podbox-guest binary not found");
-        println!(
-            "       Build: cargo build -p podbox-guest --release --target x86_64-unknown-linux-musl"
-        );
+        println!("       Prebuilt images bundle it: podbox pull <name>");
+        println!("       Build: cargo build -p podbox-guest --release --target x86_64-unknown-linux-musl");
         failures += 1;
     }
 
