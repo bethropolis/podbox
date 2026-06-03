@@ -9,6 +9,7 @@ on:
       - 'README.md'
       - 'scripts/install-online.sh'
       - 'scripts/install.sh'
+      - 'images/**'
       - '.github/workflows/docs.yml'
 
 permissions:
@@ -39,9 +40,10 @@ jobs:
 
       - run: |
           cp README.md docs/index.md
+          cp -r images docs/images
           mkdocs build
 
-      - name: Copy install script
+      - name: Copy install script and assets
         run: |
           cp scripts/install-online.sh site/install.sh
 

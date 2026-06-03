@@ -8,22 +8,16 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   palette:
-    - scheme: slate
-      primary: teal
-      accent: cyan
+    - scheme: catppuccin-mocha
       toggle:
-        icon: material/brightness-4
+        icon: material/weather-night
         name: Switch to light mode
-    - scheme: default
-      primary: teal
-      accent: cyan
+    - scheme: catppuccin-latte
       toggle:
-        icon: material/brightness-7
+        icon: material/weather-sunny
         name: Switch to dark mode
   features:
-    - navigation.tabs
     - navigation.sections
-    - navigation.path
     - navigation.top
     - search.highlight
     - search.share
@@ -39,6 +33,9 @@ nav:
   - D-Bus Proxy: dbus-proxy.md
   - Quadlet Reference: quadlet.md
   - Protocol: protocol.md
+
+extra_css:
+  - stylesheets/catppuccin.css
 
 plugins:
   - search
