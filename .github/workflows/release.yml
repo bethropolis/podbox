@@ -60,6 +60,6 @@ jobs:
       - name: Upload release artifacts
         run: |
           gh release upload "${{ github.ref_name }}" \
-            ./dist/*.tar.gz ./dist/*.txt ./scripts/install-online.sh --clobber
+            ./dist/*.tar.gz ./dist/*.txt --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
