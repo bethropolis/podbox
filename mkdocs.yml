@@ -1,0 +1,58 @@
+site_name: podbox
+site_url: https://bethropolis.github.io/podbox/
+site_description: Podman containers the way they should work — isolated, integrated, and yours.
+repo_url: https://github.com/bethropolis/podbox
+repo_name: bethropolis/podbox
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.path
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.action.edit
+
+nav:
+  - Home: index.md
+  - Configuration: config.md
+  - Architecture: architecture.md
+  - Desktop Integration: export.md
+  - Guest Daemon: guest.md
+  - D-Bus Proxy: dbus-proxy.md
+  - Quadlet Reference: quadlet.md
+  - Protocol: protocol.md
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - toc:
+      permalink: true
