@@ -40,11 +40,9 @@ jobs:
           cp README.md docs/index.md
           mkdocs build
 
-      - name: Copy install scripts
+      - name: Copy install script
         run: |
-          mkdir -p site/scripts
-          cp scripts/install-online.sh site/scripts/
-          cp scripts/install.sh site/scripts/
+          cp scripts/install-online.sh site/install.sh
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
