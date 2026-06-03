@@ -40,15 +40,6 @@ archives:
     name_template: "podbox-guest-{{ .Tag }}-linux-x86_64-musl"
     formats: ["tar.gz"]
     wrap_in_directory: false
-
-  - id: podbox-homebrew
-    ids:
-      - podbox
-      - podbox-guest
-    name_template: "podbox-{{ .Tag }}-homebrew"
-    formats: ["tar.gz"]
-    wrap_in_directory: false
-
 checksum:
   name_template: "checksums.txt"
 
@@ -117,10 +108,9 @@ homebrew_casks:
     homepage: "https://github.com/bethropolis/podbox"
     license: "MIT"
     ids:
-      - podbox-homebrew
+      - podbox
     binaries:
       - podbox
-      - podbox-guest
     directory: Casks
     commit_msg_template: "podbox {{ .Tag }}"
 
