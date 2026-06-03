@@ -110,3 +110,26 @@
 .md-header {
   display: none;
 }
+
+/* Minimal footer */
+.md-footer {
+  background: none;
+  border-top: 1px solid var(--md-typeset-table-color);
+  padding: 0.5rem 0;
+}
+.md-footer-meta {
+  background: none;
+}
+.md-footer-copyright {
+  color: var(--md-default-fg-color--lighter);
+  font-size: 0.7rem;
+  margin: 0 auto;
+  max-width: 61rem;
+  padding: 0.4rem 1rem;
+}
+.md-footer-social {
+  display: none;
+}
+.md-footer__inner {
+  display: none;
+}
