@@ -21,7 +21,7 @@
 
 ```bash
 # 1. Install via pre-built binary
-curl -fsSL https://raw.githubusercontent.com/bethropolis/podbox/main/scripts/install-online.sh | sh
+curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 
 podbox create fedora    # pulls, builds, enables, starts
 podbox shell            # you're in
@@ -126,7 +126,7 @@ podbox export bin rg                # ripgrep available in any terminal
 **Online (pre-built binary):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bethropolis/podbox/main/scripts/install-online.sh | sh
+curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 ```
 
 **Local source build:**
