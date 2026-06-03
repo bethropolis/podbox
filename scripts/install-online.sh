@@ -8,7 +8,7 @@ BINDIR="${HOME}/.local/bin"
 OS="linux"
 ARCH=$(uname -m)
 case "$ARCH" in
-    x86_64)         ARCH="amd64" ;;
+    x86_64)         ARCH="x86_64" ;;
     aarch64|arm64)  ARCH="arm64" ;;
     *)
         echo "Unsupported architecture: $ARCH"
