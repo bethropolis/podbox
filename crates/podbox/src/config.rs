@@ -25,11 +25,20 @@ pub struct ImageConfig {
     /// Repository for shorthand resolution.
     #[serde(default = "default_prebuilt_repo")]
     pub prebuilt_repo: String,
+    /// Number of times to retry pulling the image on failure.
+    #[serde(default = "default_pull_retry")]
+    pub pull_retry: u32,
+    /// Delay between pull retries (Podman duration, e.g. "5s", "2m").
+    #[serde(default = "default_pull_retry_delay")]
+    pub pull_retry_delay: String,
     #[serde(default)]
     pub packages: PackageConfig,
     #[serde(default)]
     pub run: RunConfig,
 }
+
+fn default_pull_retry() -> u32 { 3 }
+fn default_pull_retry_delay() -> String { "5s".into() }
 
 fn default_prebuilt_registry() -> String {
     "ghcr.io".into()
@@ -80,6 +89,12 @@ pub struct ContainerConfig {
     pub home: PathBuf,
     #[serde(default = "default_shell")]
     pub shell: String,
+    /// Optional memory limit (e.g. "2g", "512m").
+    #[serde(default)]
+    pub memory: Option<String>,
+    /// Optional systemd ExecReload command.
+    #[serde(default)]
+    pub reload_cmd: Option<String>,
     #[serde(default)]
     pub mounts: MountConfig,
     #[serde(default)]
@@ -200,6 +215,10 @@ pub struct IntegrationConfig {
     pub xdg_open: bool,
     #[serde(default)]
     pub clipboard: bool,
+    #[serde(default)]
+    pub host_exec: bool,
+    #[serde(default)]
+    pub ssh_agent: bool,
     /// Bind-mount host font directory (`~/.fonts`) as read-only.
     /// Only top-level directories are mounted to keep `.local` and `.config` writable.
     #[serde(default)]
@@ -227,6 +246,8 @@ impl Default for IntegrationConfig {
             notify: false,
             xdg_open: false,
             clipboard: false,
+            host_exec: false,
+            ssh_agent: false,
             sync_fonts: false,
             sync_icons: false,
             sync_themes: false,
@@ -337,6 +358,17 @@ pub struct DbusConfig {
 }
 
 // ---------------------------------------------------------------------------
+//  SecurityConfig
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct SecurityConfig {
+    /// AppArmor profile name or path. Empty/None = use Podman default.
+    #[serde(default)]
+    pub apparmor: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 //  Config (root)
 // ---------------------------------------------------------------------------
 
@@ -352,6 +384,8 @@ pub struct Config {
     pub systemd: SystemdConfig,
     #[serde(default)]
     pub dbus: DbusConfig,
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 impl Config {
@@ -550,6 +584,8 @@ home = "~/containers/myenv"
         assert!(!cfg.integration.notify);
         assert!(!cfg.integration.xdg_open);
         assert!(!cfg.integration.clipboard);
+        assert!(!cfg.integration.host_exec);
+        assert!(!cfg.integration.ssh_agent);
     }
 
     #[test]

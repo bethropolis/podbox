@@ -1,8 +1,8 @@
 # Guest Daemon Architecture
 
 The guest daemon (`podbox-guest`) runs inside the container. It bridges
-container capabilities (notifications, URI opening, clipboard) to the host
-via a Unix socket connection.
+container capabilities (notifications, URI opening, clipboard, host execution)
+to the host via a Unix socket connection.
 
 ---
 
@@ -29,15 +29,17 @@ The container starts with `podbox-guest --entry [<command>...]`.
 ### Startup sequence
 
 1. **Create `/run/podbox/bin/`** — directory for interceptor symlinks
-2. **Connect to host socket** — `$XDG_RUNTIME_DIR/podbox/<container>.sock`
+2. **Check version drift** — compare `PODBOX_HOST_VERSION` env var against
+   `podbox-guest` version; warn on mismatch
+3. **Connect to host socket** — `$XDG_RUNTIME_DIR/podbox/<container>.sock`
    with poll-based retry (3 attempts, 500ms interval, zero CPU)
-3. **Handshake** — sends capability list (`notify`, `xdg_open`, `clipboard`)
-   to host; host responds with accepted subset
-4. **Install interceptors** — creates symlinks in `/run/podbox/bin/` for
+4. **Handshake** — sends capability list (`notify`, `xdg_open`, `clipboard`,
+   `host_exec`) to host; host responds with accepted subset
+5. **Install interceptors** — creates symlinks in `/run/podbox/bin/` for
    each accepted capability
-5. **PATH injection** — writes `/etc/environment.d/podbox.conf` that
+6. **PATH injection** — writes `/etc/environment.d/podbox.conf` that
    prepends `/run/podbox/bin` to `PATH`
-6. **Event loop** — polls the host socket for messages
+7. **Event loop** — polls the host socket for messages
 
 ### Event loop
 
@@ -69,8 +71,8 @@ format).
 ### Handshake
 
 ```
-→ {"type":"hello","version":"0.1.0","container":"myenv","capabilities":["notify","xdg_open","clipboard"]}
-← {"type":"hello_ack","accepted":["notify","xdg_open"],"rejected":["clipboard"]}
+→ {"type":"hello","version":"0.1.0","container":"myenv","capabilities":["notify","xdg_open","clipboard","host_exec"]}
+← {"type":"hello_ack","accepted":["notify","xdg_open"],"rejected":["clipboard","host_exec"]}
 ```
 
 ---
@@ -87,6 +89,7 @@ The daemon creates symlinks in `/run/podbox/bin/` pointing to the
 | `/run/podbox/bin/notify-send` | `podbox-guest` | `notify` |
 | `/run/podbox/bin/xdg-open` | `podbox-guest` | `xdg_open` |
 | `/run/podbox/bin/podbox-clipboard` | `podbox-guest` | `clipboard` |
+| `/run/podbox/bin/host-exec` | `podbox-guest` | `host_exec` |
 
 The binary detects which name was used to invoke it via `argv[0]` and
 dispatches to the appropriate interceptor module (`main.rs`).
@@ -106,9 +109,10 @@ binaries.
 
 | Interceptor | File | What it does |
 |-------------|------|-------------|
-| `notify-send` | `interceptors/notify.rs` | Parses CLI args, sends `GuestMessage::Notify` to host |
+| `notify-send` | `interceptors/notify.rs` | Parses CLI args, sends `GuestMessage::Notify` to host. Supports `--action`/`-A` for action buttons. Waits for `NotifyActionResult` response when actions are present. |
 | `xdg-open` | `interceptors/xdg_open.rs` | Sends URI in `GuestMessage::XdgOpen` to host |
 | `podbox-clipboard` | `interceptors/clipboard.rs` | `set`: reads stdin, sends `ClipboardSet`; `get`: sends `ClipboardGet`, writes response to stdout |
+| `host-exec` | `interceptors/host_exec.rs` | Connects to host socket, sends `HostExec` with command, then relays `HostExecStdout`/`HostExecStderr`/`HostExecDone` responses to stdout/stderr and exits with the remote exit code |
 
 Each interceptor opens a **direct, ephemeral** Unix socket connection to
 the host socket (not the daemon's persistent connection), sends its

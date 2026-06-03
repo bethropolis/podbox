@@ -57,6 +57,21 @@ pub fn handshake(
     }
 }
 
+/// Open a fresh connection to the host socket, send one message, and close.
+pub fn connect_and_send_oneshot(msg: &GuestMessage) -> Result<(), GuestError> {
+    let container_name = std::env::var("PODBOX_CONTAINER")
+        .or_else(|_| std::env::var("PODMGR_CONTAINER"))
+        .map_err(|_| GuestError::ContainerNameMissing)?;
+    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| format!("/run/user/{}", nix::unistd::getuid()));
+    let socket_path = std::path::PathBuf::from(&xdg_runtime)
+        .join("podbox")
+        .join(format!("{}.sock", container_name));
+    let mut stream = UnixStream::connect(&socket_path)?;
+    write_frame(&mut stream, msg)?;
+    Ok(())
+}
+
 /// Read a host message from the stream.
 pub fn read_host_message(stream: &mut UnixStream) -> Result<Option<HostMessage>, GuestError> {
     match read_frame(stream)? {

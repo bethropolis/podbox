@@ -88,22 +88,42 @@ fn run() -> Result<()> {
         }
 
         Command::List => {
-            let status = std::process::Command::new("podman")
-                .args([
-                    "ps",
-                    "-a",
-                    "--filter",
-                    "label=podbox.protocol_version",
-                    "--format",
-                    "table {{.Names}}\t{{.Image}}\t{{.Status}}",
-                ])
-                .stdin(std::process::Stdio::inherit())
-                .stdout(std::process::Stdio::inherit())
-                .stderr(std::process::Stdio::inherit())
-                .status()
-                .map_err(|_| PodboxError::PodmanNotFound)?;
-            if !status.success() {
-                std::process::exit(status.code().unwrap_or(1));
+            let ver = podbox::podman::podman_version().ok();
+            if ver.is_some_and(|v| v.at_least(5, 6)) {
+                let status = std::process::Command::new("podman")
+                    .args([
+                        "quadlet",
+                        "list",
+                        "--format",
+                        "table {{.Name}}\t{{.File}}\t{{.Kind}}\t{{.Service}}",
+                    ])
+                    .stdin(std::process::Stdio::inherit())
+                    .stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit())
+                    .status()
+                    .map_err(|_| PodboxError::PodmanNotFound)?;
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
+                }
+            } else {
+                // 5.5 fallback: list via podman ps
+                let status = std::process::Command::new("podman")
+                    .args([
+                        "ps",
+                        "-a",
+                        "--filter",
+                        "label=podbox.protocol_version",
+                        "--format",
+                        "table {{.Names}}\t{{.Image}}\t{{.Status}}",
+                    ])
+                    .stdin(std::process::Stdio::inherit())
+                    .stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit())
+                    .status()
+                    .map_err(|_| PodboxError::PodmanNotFound)?;
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
+                }
             }
             return Ok(());
         }
@@ -900,44 +920,29 @@ fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
     let mut passes = 0;
     let mut failures = 0;
 
-    // 1. podman installed
+    // 1. podman installed & version
     checks += 1;
-    match which::which("podman") {
-        Ok(_) => {
-            let output = podbox::process::run_piped(
-                "podman",
-                &["version".into(), "--format".into(), "{{.Version}}".into()],
+    match podbox::podman::podman_version() {
+        Ok(ver) if ver.at_least(5, 6) => {
+            println!(
+                "[PASS] podman {}.{}.{} (>= 5.6)",
+                ver.major, ver.minor, ver.patch
             );
-            match output {
-                Ok(o) if o.status.success() => {
-                    let version = String::from_utf8_lossy(&o.stdout);
-                    let major: u32 = version
-                        .split('.')
-                        .next()
-                        .unwrap_or("0")
-                        .parse()
-                        .unwrap_or(0);
-                    let minor: u32 = version
-                        .split('.')
-                        .nth(1)
-                        .unwrap_or("0")
-                        .parse()
-                        .unwrap_or(0);
-                    if major > 4 || (major == 4 && minor >= 6) {
-                        println!("[PASS] podman {} (>= 4.6)", version.trim());
-                        passes += 1;
-                    } else {
-                        println!(
-                            "[WARN] podman {} (< 4.6, Quadlet support limited)",
-                            version.trim()
-                        );
-                        passes += 1;
-                    }
-                }
-                _ => {
-                    println!("[WARN] podman found but could not check version");
-                }
-            }
+            passes += 1;
+        }
+        Ok(ver) if ver.at_least(5, 5) => {
+            println!(
+                "[WARN] podman {}.{}.{} (< 5.6) — upgrade to 5.6+ for Environment passthrough and native Quadlet management",
+                ver.major, ver.minor, ver.patch
+            );
+            passes += 1;
+        }
+        Ok(ver) => {
+            println!(
+                "[FAIL] podman {}.{}.{} (< 5.5) — minimum supported version is 5.5",
+                ver.major, ver.minor, ver.patch
+            );
+            failures += 1;
         }
         Err(_) => {
             println!("[FAIL] podman not found in PATH");

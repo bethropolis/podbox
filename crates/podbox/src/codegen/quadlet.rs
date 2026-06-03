@@ -18,6 +18,8 @@ pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
         config.image.name
     ));
     lines.push(format!("File={}", containerfile_path.to_string_lossy()));
+    lines.push(format!("Retry={}", config.image.pull_retry));
+    lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
 
     lines.join("\n")
 }
@@ -79,6 +81,8 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
     if config.image.prebuilt {
         let ref_str = crate::config::resolve_image_ref_full(config);
         lines.push(format!("Image={}", ref_str));
+        lines.push(format!("Retry={}", config.image.pull_retry));
+        lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
     } else {
         lines.push(format!("Image=podbox-{}.build", config.image.name));
     }
@@ -86,6 +90,12 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
     lines.push("UserNS=keep-id".into());
     lines.push("User=root".into());
     lines.push("SecurityLabelDisable=true".into());
+    if let Some(ref mem) = config.container.memory {
+        lines.push(format!("Memory={}", mem));
+    }
+    if let Some(ref profile) = config.security.apparmor {
+        lines.push(format!("AppArmor={}", profile));
+    }
     lines.push(format!("Environment=HOME={}", home_in_container));
     lines.push("Environment=HOST_USER=%u".into());
     lines.push("Environment=HOST_UID=%U".into());
@@ -167,6 +177,18 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
         if env.pipewire_socket.is_some() || env.pulse_dir.is_some() {
             lines.push(String::new());
         }
+    }
+
+    // SSH agent
+    if config.integration.ssh_agent {
+        let ver = crate::podman::podman_version().ok();
+        if ver.is_some_and(|v| v.at_least(5, 6)) {
+            lines.push("Volume=%E{SSH_AUTH_SOCK}:/run/podbox/ssh-agent.sock:ro".into());
+            lines.push("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock".into());
+        } else {
+            eprintln!("Warning: ssh_agent = true requires Podman >= 5.6 for SSH_AUTH_SOCK passthrough. Skipping SSH agent.");
+        }
+        lines.push(String::new());
     }
 
     // D-Bus
@@ -264,6 +286,12 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
     // Podman init
     lines.push("PodmanArgs=--init".into());
     lines.push(String::new());
+
+    // Reload command
+    if let Some(ref cmd) = config.container.reload_cmd {
+        lines.push(format!("ReloadCmd={}", cmd));
+        lines.push(String::new());
+    }
 
     // [Service]
     lines.push("[Service]".into());

@@ -6,6 +6,8 @@
 |-----|-------|-------|
 | `ImageTag` | `localhost/podbox-<name>:latest` | Local tag for built image |
 | `File` | Absolute path to Containerfile | Must be absolute |
+| `Retry` | From `image.pull_retry` | Pull retry count (default 3) |
+| `RetryDelay` | From `image.pull_retry_delay` | Pull retry delay (default `5s`) |
 
 ## `.socket` file
 
@@ -23,21 +25,40 @@
 | `ContainerName` | `<name>` | Podman container name |
 | `UserNS` | `keep-id` | Maps host UID/GID |
 | `SecurityLabelDisable` | `true` | Required for Wayland socket |
+| `Memory` | From `container.memory` | Memory limit (conditional) |
+| `ReloadCmd` | From `container.reload_cmd` | Reload command (conditional) |
+| `AppArmorProfile` | From `container.security.apparmor` | AppArmor profile (conditional) |
 | `Volume` | `%h/containers/<name>:/root:Z` | Isolated home (NOT host home) |
 | `Volume` | `%t/wayland-0:%t/wayland-0` | Wayland socket (conditional) |
 | `Volume` | `%t/pulse:%t/pulse` | PulseAudio (conditional) |
 | `Volume` | `%t/bus:%t/bus` | D-Bus session (conditional) |
 | `Volume` | `%t/podbox/<name>.sock:%t/...` | Host-guest socket |
+| `Volume` | `%E{SSH_AUTH_SOCK}:/run/podbox/ssh-agent.sock:ro` | SSH agent (conditional, Podman ≥ 5.6) |
 | `Environment` | `WAYLAND_DISPLAY=...` | Wayland display name |
 | `Environment` | `PULSE_SERVER=unix:%t/pulse/native` | Pulse server path |
 | `Environment` | `DBUS_SESSION_BUS_ADDRESS=...` | D-Bus address |
+| `Environment` | `SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock` | SSH agent socket (conditional, Podman ≥ 5.6) |
 | `AddDevice` | `/dev/dri` | GPU (conditional on `gpu=true`) |
 | `PodmanArgs` | `--init` | catatonit as PID 1 |
 | `Restart` | `on-failure` | Auto-restart on crash |
 | `WantedBy` | `default.target` | Autostart (conditional) |
 
+## Podman Version Targeting
+
+Podbox targets Podman 5.5+ with feature gating at 5.6:
+
+| Feature | Podman 5.5.x | Podman ≥ 5.6 |
+|---------|-------------|--------------|
+| `ssh_agent` | Warns and skips | `Volume=%E{SSH_AUTH_SOCK}` + `Environment=` |
+| Quadlet install | Manual file copy + `systemctl daemon-reload` | `podman quadlet install` |
+| Quadlet uninstall | Manual file remove + `systemctl daemon-reload` | `podman quadlet rm` |
+| Container list | `podman ps --filter label=podbox.*` | `podman quadlet list` |
+
+See `podbox doctor` to check Podman version compatibility.
+
 ## Important Notes
 
 - `%t` is the systemd specifier for `$XDG_RUNTIME_DIR` — never substitute it.
 - `%h` is the systemd specifier for the user's home — never substitute it.
+- `%E{NAME}` expands environment variable `$NAME` at container start — used for SSH agent passthrough (Podman ≥ 5.6).
 - Files go in `~/.config/containers/systemd/`, NOT `~/.config/systemd/user/`.

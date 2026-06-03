@@ -20,6 +20,10 @@ pub enum GuestMessage {
         summary: String,
         body: String,
         urgency: String,
+        #[serde(default)]
+        actions: Vec<NotifyAction>,
+        #[serde(default)]
+        app_name: String,
     },
     XdgOpen {
         uri: String,
@@ -28,6 +32,16 @@ pub enum GuestMessage {
         text: String,
     },
     ClipboardGet,
+    HostExec {
+        cmd: String,
+        args: Vec<String>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NotifyAction {
+    pub key: String,
+    pub label: String,
 }
 
 /// Messages sent from host to guest.
@@ -40,6 +54,19 @@ pub enum HostMessage {
     },
     ClipboardData {
         text: String,
+    },
+    HostExecStdout {
+        data: String,
+    },
+    HostExecStderr {
+        data: String,
+    },
+    HostExecDone {
+        exit_code: i32,
+    },
+    NotifyActionResult {
+        notification_id: u32,
+        action_key: String,
     },
     Ping,
     Shutdown,
@@ -109,6 +136,8 @@ mod tests {
             summary: "hello".into(),
             body: "world".into(),
             urgency: "normal".into(),
+            actions: vec![],
+            app_name: String::new(),
         };
         let mut buf = Vec::new();
         write_frame(&mut buf, &msg).unwrap();
@@ -120,10 +149,13 @@ mod tests {
                 summary,
                 body,
                 urgency,
+                actions,
+                app_name: _,
             } => {
                 assert_eq!(summary, "hello");
                 assert_eq!(body, "world");
                 assert_eq!(urgency, "normal");
+                assert!(actions.is_empty());
             }
             _ => panic!("wrong message type"),
         }

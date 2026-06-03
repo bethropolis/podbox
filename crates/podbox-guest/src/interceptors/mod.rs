@@ -1,4 +1,5 @@
 pub mod clipboard;
+pub mod host_exec;
 pub mod notify;
 pub mod xdg_open;
 
@@ -8,7 +9,7 @@ use std::path::PathBuf;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
 
 /// Compute the host socket path inside the container.
-fn host_socket_path() -> Result<PathBuf, crate::error::GuestError> {
+pub fn host_socket_path() -> Result<PathBuf, crate::error::GuestError> {
     let container_name = std::env::var("PODBOX_CONTAINER")
         .or_else(|_| std::env::var("PODMGR_CONTAINER"))
         .map_err(|_| crate::error::GuestError::ContainerNameMissing)?;

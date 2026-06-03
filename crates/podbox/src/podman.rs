@@ -1,6 +1,45 @@
 use std::process::Command;
+use std::sync::OnceLock;
 
 use crate::error::PodboxError;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PodmanVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+impl PodmanVersion {
+    pub fn at_least(&self, major: u32, minor: u32) -> bool {
+        (self.major, self.minor) >= (major, minor)
+    }
+}
+
+static PODMAN_VERSION: OnceLock<anyhow::Result<PodmanVersion>> = OnceLock::new();
+
+pub fn podman_version() -> anyhow::Result<&'static PodmanVersion> {
+    let res = PODMAN_VERSION.get_or_init(|| {
+        let output = std::process::Command::new("podman")
+            .args(["--version"])
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let version_str = stdout.split_whitespace().last().unwrap_or("");
+        let parts: Vec<&str> = version_str.split('.').collect();
+        Ok(PodmanVersion {
+            major: parts.first().unwrap_or(&"0").parse().unwrap_or(0),
+            minor: parts.get(1).unwrap_or(&"0").parse().unwrap_or(0),
+            patch: parts.get(2).unwrap_or(&"0").parse().unwrap_or(0),
+        })
+    });
+    res.as_ref().map_err(|e| anyhow::anyhow!("{}", e))
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) fn set_test_version(ver: PodmanVersion) {
+    PODMAN_VERSION.set(Ok(ver)).ok();
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ContainerState {

@@ -139,10 +139,11 @@ pub fn run_wizard(
 
     config.integration.xdg_dirs = prompt_xdg_dirs();
 
-    let (notify, clipboard, xdg_open) = prompt_integration_extras();
+    let (notify, clipboard, xdg_open, ssh_agent) = prompt_integration_extras();
     config.integration.notify = notify;
     config.integration.clipboard = clipboard;
     config.integration.xdg_open = xdg_open;
+    config.integration.ssh_agent = ssh_agent;
 
     config.integration.gpu = prompt_gpu();
 
@@ -253,11 +254,12 @@ fn prompt_xdg_dirs() -> XdgDirConfig {
     }
 }
 
-fn prompt_integration_extras() -> (bool, bool, bool) {
+fn prompt_integration_extras() -> (bool, bool, bool, bool) {
     let items = [
         "notify     (desktop notifications passthrough)",
         "clipboard  (wl-copy/wl-paste passthrough)",
         "xdg_open   (open URIs on host)",
+        "ssh_agent  (SSH agent forwarding)",
     ];
     let selections: Vec<usize> =
         dialoguer::MultiSelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
@@ -269,6 +271,7 @@ fn prompt_integration_extras() -> (bool, bool, bool) {
         selections.contains(&0),
         selections.contains(&1),
         selections.contains(&2),
+        selections.contains(&3),
     )
 }
 

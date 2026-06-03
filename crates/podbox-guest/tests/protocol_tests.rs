@@ -39,6 +39,8 @@ fn roundtrip_notify_message() {
         summary: "hello".into(),
         body: "world".into(),
         urgency: "normal".into(),
+        actions: vec![],
+        app_name: String::new(),
     };
     let mut buf = Vec::new();
     write_frame(&mut buf, &msg).unwrap();
@@ -50,10 +52,13 @@ fn roundtrip_notify_message() {
             summary,
             body,
             urgency,
+            actions,
+            app_name: _,
         } => {
             assert_eq!(summary, "hello");
             assert_eq!(body, "world");
             assert_eq!(urgency, "normal");
+            assert!(actions.is_empty());
         }
         _ => panic!("wrong message type"),
     }

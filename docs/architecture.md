@@ -50,6 +50,7 @@ Config struct
     ├── codegen::quadlet::generate_socket(config) → String
     │
     ├── codegen::quadlet::generate_container(config, host_env, xdg_dirs) → String
+    │       (queries podman_version() internally for SSH agent gating)
     │
     └── lock::write(config_checksum, image_digest) → LockFile
 
@@ -168,6 +169,7 @@ Its behavior is determined by `argv[0]`:
 | `podbox-guest --daemon` | Event loop, interceptor setup |
 | `notify-send` (symlink) | Parse args, forward to daemon |
 | `xdg-open` (symlink) | Parse args, forward to daemon |
+| `host-exec` (symlink) | Execute command on host, relay output |
 
 ### Daemon startup sequence
 
@@ -247,6 +249,7 @@ podbox/
 │   │       ├── process.rs        # exec_replace, run_piped, spawn
 │   │       ├── lock.rs           # build lock file
 │   │       ├── env.rs            # host env resolution
+│   │       ├── podman.rs         # Podman version detection
 │   │       ├── xdg.rs            # XDG dir resolution
 │   │       └── error.rs          # error types
 │   │
@@ -258,7 +261,7 @@ podbox/
 │           ├── daemon.rs         # event loop
 │           ├── socket.rs         # socket I/O
 │           ├── protocol.rs       # message types + framing
-│           ├── interceptors/     # notify, xdg_open, clipboard
+│           ├── interceptors/     # notify, xdg_open, clipboard, host_exec
 │           └── error.rs
 │
 ├── tests/                        # integration + unit tests

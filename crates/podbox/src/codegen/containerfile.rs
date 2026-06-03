@@ -19,6 +19,7 @@ fn generate_prebuilt(config: &Config) -> String {
     lines.extend(generate_run_command_lines(config));
 
     lines.push(format!("ENV PODBOX_CONTAINER={}", config.container.name));
+    lines.push(format!("ENV PODBOX_HOST_VERSION={}", crate::VERSION));
     lines.push(String::new());
 
     lines.push("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]".into());
@@ -43,6 +44,7 @@ fn generate_custom(config: &Config) -> String {
     lines.push(String::new());
 
     lines.push(format!("ENV PODBOX_CONTAINER={}", config.container.name));
+    lines.push(format!("ENV PODBOX_HOST_VERSION={}", crate::VERSION));
     lines.push(String::new());
 
     lines.push("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]".into());

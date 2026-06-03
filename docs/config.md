@@ -14,6 +14,8 @@
 |-----|------|---------|-------------|
 | `base` | string | *required* | Base container image (e.g. `"fedora:41"`) |
 | `name` | string | *required* | Image tag name (e.g. `"myenv"`) |
+| `pull_retry` | int | `3` | Number of pull retries on failure |
+| `pull_retry_delay` | string | `"5s"` | Delay between pull retries |
 
 ### `[image.packages]`
 
@@ -50,6 +52,8 @@ commands = ["dnf clean all"]
 | `name` | string | *required* | Container name (used for systemd unit names, socket paths) |
 | `home` | string | *required* | Host path for isolated home (`~` expands) |
 | `shell` | string | `"bash"` | Default login shell inside the container |
+| `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
+| `reload_cmd` | string | — | Command run on config reload. Passed as `ReloadCmd=` in Quadlet |
 
 ### `[container.mounts]`
 
@@ -62,6 +66,12 @@ commands = ["dnf clean all"]
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `*` | string | — | Arbitrary environment variables passed to the container |
+
+### `[container.security]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `apparmor` | string | — | AppArmor profile name. Passed as `AppArmorProfile=` in Quadlet (`"unconfined"` to disable) |
 
 ```toml
 [container]
@@ -95,6 +105,8 @@ Controls which host resources are shared with the container.
 | `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` (read-only). Only top-level dirs to keep `.local`/`.config` writable |
 | `sync_icons` | bool | `false` | Bind-mount `~/.icons` (read-only) |
 | `sync_themes` | bool | `false` | Bind-mount `~/.themes` (read-only). Only top-level dirs to keep `.local`/`.config` writable |
+| `host_exec` | bool | `false` | Allow container to execute arbitrary commands on the host (via `host-exec` interceptor) |
+| `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
 ### `GpuMode` values
 
@@ -133,6 +145,8 @@ dbus       = true
 notify     = true
 xdg_open   = true
 clipboard  = true
+host_exec  = true
+ssh_agent  = true
 sync_fonts = true
 sync_icons = true
 sync_themes = true
@@ -235,6 +249,11 @@ commands = ["dnf clean all"]
 name = "myenv"
 home = "~/containers/myenv"
 shell = "bash"
+memory = "4G"
+reload_cmd = "systemctl reload my-app"
+
+[container.security]
+apparmor = "unconfined"
 
 [container.mounts]
 extra = ["~/Work:/home/user/Work:z"]
@@ -244,13 +263,15 @@ EDITOR = "nvim"
 TERM   = "xterm-256color"
 
 [integration]
-wayland   = true
-audio     = true
-gpu       = "auto"
-dbus      = true
-notify    = true
-xdg_open  = true
-clipboard = true
+wayland    = true
+audio      = true
+gpu        = "auto"
+dbus       = true
+notify     = true
+xdg_open   = true
+clipboard  = true
+host_exec  = true
+ssh_agent  = true
 
 [integration.xdg_dirs]
 documents = true

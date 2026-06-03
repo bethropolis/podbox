@@ -35,12 +35,16 @@ pub fn run() -> Result<(), GuestError> {
         "notify".to_string(),
         "xdg_open".to_string(),
         "clipboard".to_string(),
+        "host_exec".to_string(),
     ];
     let accepted = socket::handshake(&mut host_stream, &container_name, &all_caps)?;
     let accepted_set: HashSet<String> = accepted.iter().cloned().collect();
     eprintln!("podbox-guest: accepted capabilities: {:?}", accepted);
 
-    // 4. Install interceptor symlinks for accepted capabilities
+    // 4. Check version drift
+    check_version_drift(&accepted_set, &mut host_stream, &container_name);
+
+    // 5. Install interceptor symlinks for accepted capabilities
     install_interceptors(&accepted_set, &bin_dir)?;
 
     // 5. Write PATH injection
@@ -63,6 +67,7 @@ fn install_interceptors(
         ("notify", "notify-send"),
         ("xdg_open", "xdg-open"),
         ("clipboard", "podbox-clipboard"),
+        ("host_exec", "host-exec"),
     ];
 
     for (cap, name) in symlinks {
@@ -74,6 +79,43 @@ fn install_interceptors(
     }
 
     Ok(())
+}
+
+fn check_version_drift(
+    accepted: &HashSet<String>,
+    _host_stream: &mut UnixStream,
+    container_name: &str,
+) {
+    let baked_host_version = match std::env::var("PODBOX_HOST_VERSION")
+        .or_else(|_| std::env::var("PODMGR_HOST_VERSION"))
+    {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let guest_version = crate::VERSION;
+
+    if baked_host_version == guest_version {
+        return;
+    }
+
+    let summary = "podbox: container image is outdated";
+    let body = format!(
+        "Container '{container_name}' was built with podbox {baked_host_version} but host is now {guest_version}. Run `podbox build --rebuild`."
+    );
+
+    if accepted.contains("notify") {
+        let msg = crate::protocol::GuestMessage::Notify {
+            summary: summary.to_string(),
+            body,
+            urgency: "normal".to_string(),
+            actions: vec![],
+            app_name: "podbox".to_string(),
+        };
+        let _ = crate::socket::connect_and_send_oneshot(&msg);
+    } else {
+        eprintln!("podbox-guest: image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`.");
+    }
 }
 
 fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
@@ -108,6 +150,10 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
                         Ok(Some(HostMessage::Ping)) => {}
                         Ok(Some(HostMessage::HelloAck { .. })) => {}
                         Ok(Some(HostMessage::ClipboardData { .. })) => {}
+                        Ok(Some(HostMessage::HostExecStdout { .. })) => {}
+                        Ok(Some(HostMessage::HostExecStderr { .. })) => {}
+                        Ok(Some(HostMessage::HostExecDone { .. })) => {}
+                        Ok(Some(HostMessage::NotifyActionResult { .. })) => {}
                         Ok(None) => {
                             eprintln!("podbox-guest: host disconnected.");
                             return Ok(());

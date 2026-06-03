@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use crate::codegen::quadlet;
 use crate::config::{self, Config};
 use crate::env::HostEnv;
+use crate::podman::{podman_version, PodmanVersion};
 use crate::xdg::ResolvedXdgDirs;
 
 /// Directory for user Quadlet source files.
@@ -24,6 +25,11 @@ fn systemd_user_dir() -> PathBuf {
 /// Install systemd service and socket files for a container.
 pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: bool) -> Result<()> {
     let name = &config.container.name;
+    let ver = podman_version().unwrap_or(&PodmanVersion {
+        major: 5,
+        minor: 5,
+        patch: 0,
+    });
     let qdir = quadlet_dir();
     let sdir = systemd_user_dir();
     let context_dir = crate::build::build_context_dir(name);
@@ -70,26 +76,45 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         )
     })?;
 
-    // Quadlet source files → ~/.config/containers/systemd/
-    std::fs::create_dir_all(&qdir)?;
-    if let Some(ref bc) = build_content {
-        std::fs::write(qdir.join(format!("{}.build", name)), bc)?;
-    }
-    std::fs::write(qdir.join(format!("{}.container", name)), container_content)?;
+    if ver.at_least(5, 6) {
+        // 5.6+: podman quadlet install handles file placement + daemon-reload
+        let tmp = std::env::temp_dir().join(format!("podbox-install-{}", name));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp)?;
+        if let Some(ref bc) = build_content {
+            std::fs::write(tmp.join(format!("{}.build", name)), bc)?;
+        }
+        std::fs::write(tmp.join(format!("{}.container", name)), container_content)?;
 
-    // Systemd unit files → ~/.config/systemd/user/
-    std::fs::create_dir_all(&sdir)?;
-    std::fs::write(sdir.join(format!("{}.socket", name)), socket_content)?;
-    std::fs::write(
-        sdir.join(format!("{}-host.service", name)),
-        host_service_content,
-    )?;
-    if let Some(ref proxy) = dbus_proxy_content {
-        std::fs::write(sdir.join(format!("{}-proxy.service", name)), proxy)?;
-    }
+        let args: Vec<std::ffi::OsString> =
+            vec!["quadlet".into(), "install".into(), tmp.into()];
+        let output = crate::process::run_piped("podman", &args)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("podman quadlet install failed: {}", stderr);
+        }
+        println!("Quadlet files installed via podman quadlet install.");
+    } else {
+        // 5.5 fallback: copy files manually
+        std::fs::create_dir_all(&qdir)?;
+        if let Some(ref bc) = build_content {
+            std::fs::write(qdir.join(format!("{}.build", name)), bc)?;
+        }
+        std::fs::write(qdir.join(format!("{}.container", name)), container_content)?;
 
-    println!("Quadlet files installed to {}", qdir.display());
-    println!("Systemd units installed to {}", sdir.display());
+        std::fs::create_dir_all(&sdir)?;
+        std::fs::write(sdir.join(format!("{}.socket", name)), socket_content)?;
+        std::fs::write(
+            sdir.join(format!("{}-host.service", name)),
+            host_service_content,
+        )?;
+        if let Some(ref proxy) = dbus_proxy_content {
+            std::fs::write(sdir.join(format!("{}-proxy.service", name)), proxy)?;
+        }
+
+        println!("Quadlet files installed to {}", qdir.display());
+        println!("Systemd units installed to {}", sdir.display());
+    }
 
     // Auto-export apps and bins
     for app in &config.integration.export.apps {
@@ -103,8 +128,8 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         }
     }
 
-    // daemon-reload + reset-failed
-    if which::which("systemctl").is_ok() {
+    // daemon-reload + reset-failed (5.5 fallback path only)
+    if !ver.at_least(5, 6) && which::which("systemctl").is_ok() {
         let reload_args: Vec<std::ffi::OsString> = vec!["--user".into(), "daemon-reload".into()];
         let output = crate::process::run_piped("systemctl", &reload_args)?;
         if !output.status.success() {
@@ -122,8 +147,6 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             format!("{}-proxy.service", name).into(),
         ];
         let _ = crate::process::run_piped("systemctl", &reset_args);
-    } else {
-        eprintln!("Warning: systemctl not found. Skipping daemon-reload.");
     }
 
     // linger
@@ -146,36 +169,55 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
 /// Remove Quadlet and systemd files for a container.
 pub fn uninstall(name: &str) -> Result<()> {
+    let ver = podman_version().unwrap_or(&PodmanVersion {
+        major: 5,
+        minor: 5,
+        patch: 0,
+    });
     let qdir = quadlet_dir();
     let sdir = systemd_user_dir();
 
-    // Remove from Quadlet dir
-    for ext in ["build", "container"] {
-        let path = qdir.join(format!("{}.{}", name, ext));
-        if path.exists() {
-            std::fs::remove_file(&path)?;
+    if ver.at_least(5, 6) {
+        let args: Vec<std::ffi::OsString> = vec![
+            "quadlet".into(),
+            "rm".into(),
+            format!("{}.container", name).into(),
+        ];
+        let output = crate::process::run_piped("podman", &args)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("podman quadlet rm failed: {}", stderr);
         }
+        println!("Quadlet files removed via podman quadlet rm.");
+    } else {
+        // 5.5 fallback: remove files manually
+        for ext in ["build", "container"] {
+            let path = qdir.join(format!("{}.{}", name, ext));
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+        }
+
+        let socket_path = sdir.join(format!("{}.socket", name));
+        let host_path = sdir.join(format!("{}-host.service", name));
+        let proxy_path = sdir.join(format!("{}-proxy.service", name));
+
+        for path in [socket_path, host_path, proxy_path] {
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+        }
+
+        // daemon-reload
+        if which::which("systemctl").is_ok() {
+            let args: Vec<std::ffi::OsString> = vec!["--user".into(), "daemon-reload".into()];
+            if let Err(e) = crate::process::run_piped("systemctl", &args) {
+                eprintln!("Warning: daemon-reload failed: {}", e);
+            }
+        }
+
+        println!("Files for '{}' removed.", name);
     }
 
-    // Remove from systemd user unit dir
-    let socket_path = sdir.join(format!("{}.socket", name));
-    let host_path = sdir.join(format!("{}-host.service", name));
-    let proxy_path = sdir.join(format!("{}-proxy.service", name));
-
-    for path in [socket_path, host_path, proxy_path] {
-        if path.exists() {
-            std::fs::remove_file(&path)?;
-        }
-    }
-
-    // daemon-reload
-    if which::which("systemctl").is_ok() {
-        let args: Vec<std::ffi::OsString> = vec!["--user".into(), "daemon-reload".into()];
-        if let Err(e) = crate::process::run_piped("systemctl", &args) {
-            eprintln!("Warning: daemon-reload failed: {}", e);
-        }
-    }
-
-    println!("Files for '{}' removed.", name);
     Ok(())
 }

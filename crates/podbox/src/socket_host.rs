@@ -102,6 +102,7 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                         "notify" => config.notify,
                         "xdg_open" => config.xdg_open,
                         "clipboard" => config.clipboard,
+                        "host_exec" => config.host_exec,
                         _ => false,
                     };
                     if enabled {
@@ -117,11 +118,39 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                 summary,
                 body,
                 urgency: _,
+                actions,
+                app_name: _,
             } => {
-                let _ = notify_rust::Notification::new()
-                    .summary(&summary)
-                    .body(&body)
-                    .show();
+                if actions.is_empty() {
+                    let _ = notify_rust::Notification::new()
+                        .summary(&summary)
+                        .body(&body)
+                        .show();
+                } else {
+                    let mut notif = notify_rust::Notification::new();
+                    notif.summary(&summary).body(&body);
+                    for action in &actions {
+                        notif.action(&action.key, &action.label);
+                    }
+                    let handle = match notif.show() {
+                        Ok(h) => h,
+                        Err(_) => {
+                            let _ = write_frame(stream, &HostMessage::NotifyActionResult {
+                                notification_id: 0,
+                                action_key: String::new(),
+                            });
+                            return Ok(());
+                        }
+                    };
+                    let mut chosen_key = String::new();
+                    handle.wait_for_action(|action| {
+                        chosen_key = action.to_string();
+                    });
+                    let _ = write_frame(stream, &HostMessage::NotifyActionResult {
+                        notification_id: 0,
+                        action_key: chosen_key,
+                    });
+                }
             }
             GuestMessage::XdgOpen { uri } => {
                 if let Some(validated) = validate_uri(&uri) {
@@ -149,6 +178,41 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                     text: text.trim().to_string(),
                 };
                 write_frame(stream, &response)?;
+            }
+            GuestMessage::HostExec { cmd, args } => {
+                if !config.host_exec {
+                    write_frame(stream, &HostMessage::Shutdown)?;
+                    return Ok(());
+                }
+
+                match std::process::Command::new(&cmd)
+                    .args(&args)
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                {
+                    Ok(child) => {
+                        let output = child.wait_with_output()?;
+                        if !output.stdout.is_empty() {
+                            write_frame(stream, &HostMessage::HostExecStdout {
+                                data: String::from_utf8_lossy(&output.stdout).to_string(),
+                            })?;
+                        }
+                        if !output.stderr.is_empty() {
+                            write_frame(stream, &HostMessage::HostExecStderr {
+                                data: String::from_utf8_lossy(&output.stderr).to_string(),
+                            })?;
+                        }
+                        let code = output.status.code().unwrap_or(1);
+                        write_frame(stream, &HostMessage::HostExecDone { exit_code: code })?;
+                    }
+                    Err(e) => {
+                        write_frame(stream, &HostMessage::HostExecStderr {
+                            data: format!("host-exec: failed to execute '{}': {}", cmd, e),
+                        })?;
+                        write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+                    }
+                }
             }
         }
     }

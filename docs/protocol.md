@@ -22,12 +22,12 @@ Length-prefixed JSON over a Unix stream socket:
 
 Guest sends:
 ```json
-{"type": "hello", "version": "0.1.0", "container": "myenv", "capabilities": ["notify", "xdg_open", "clipboard"]}
+{"type": "hello", "version": "0.1.0", "container": "myenv", "capabilities": ["notify", "xdg_open", "clipboard", "host_exec"]}
 ```
 
 Host responds:
 ```json
-{"type": "hello_ack", "accepted": ["notify", "xdg_open"], "rejected": ["clipboard"]}
+{"type": "hello_ack", "accepted": ["notify", "xdg_open"], "rejected": ["clipboard", "host_exec"]}
 ```
 
 ## Message Types
@@ -37,10 +37,15 @@ Host responds:
 | type | fields |
 |------|--------|
 | `hello` | `version`, `container`, `capabilities` |
-| `notify` | `summary`, `body`, `urgency` |
+| `notify` | `summary`, `body`, `urgency`, `actions` (optional), `app_name` (optional) |
+| `notify_action_result` | `key` |
 | `xdg_open` | `uri` |
 | `clipboard_set` | `text` |
 | `clipboard_get` | — |
+| `host_exec` | `command` |
+| `host_exec_stdout` | `data` |
+| `host_exec_stderr` | `data` |
+| `host_exec_done` | `exit_code` |
 
 ### Host → Guest
 
@@ -50,3 +55,17 @@ Host responds:
 | `clipboard_data` | `text` |
 | `ping` | — |
 | `shutdown` | — |
+
+### `notify` actions field
+
+When present, `actions` is an array of `{ "key": "...", "label": "..." }` objects.
+The guest sends `notify_action_result` with the selected `key` back to the host.
+
+### Capabilities
+
+| Capability | Interceptor | Description |
+|------------|-------------|-------------|
+| `notify` | `notify-send` | Desktop notification forwarding |
+| `xdg_open` | `xdg-open` | URI opening via host |
+| `clipboard` | `podbox-clipboard` | Clipboard sharing |
+| `host_exec` | `host-exec` | Execute commands on host |

@@ -37,6 +37,10 @@ fn main() {
             interceptors::notify::run(&args);
             Ok(())
         }
+        "host-exec" => {
+            interceptors::host_exec::run(&args);
+            Ok(())
+        }
         "xdg-open" => {
             interceptors::xdg_open::run(&args);
             Ok(())

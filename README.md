@@ -33,12 +33,12 @@ Also available from source: `git clone https://github.com/bethropolis/podbox && 
 
 Unlike other desktop sandboxing tools, `podbox` translates a single TOML config directly into native systemd Quadlet units — no daemon, no persistent orchestrator.
 
-| | podbox | Distrobox / Toolbox | Flatpak | Raw `podman run` |
-|---|---|---|---|---|
-| **Daemonless** | Yes (systemd units) | Yes (shell shims) | Yes (systemd backend) | No |
-| **Sandbox** | Strict (declared dirs only) | Weak (full `$HOME` mount) | Tight (portal-gated) | Custom per invocation |
-| **D-Bus** | Filtered via `xdg-dbus-proxy` | Unfiltered session bus | Portal-limited | Unfiltered |
-| **Config** | Declarative TOML | Imperative CLI params | Flatpak manifest | Shell flags |
+| | podbox | Distrobox / Toolbox | Raw `podman run` |
+|---|---|---|---|
+| **Daemonless** | Yes (systemd units) | Yes (shell shims) | No |
+| **Sandbox** | Strict (declared dirs only) | Weak (full `$HOME` mount) | Custom per invocation |
+| **D-Bus** | Filtered via `xdg-dbus-proxy` | Unfiltered session bus | Unfiltered |
+| **Config** | Declarative TOML | Imperative CLI params | Shell flags |
 
 ## How It Works
 
@@ -81,6 +81,8 @@ dbus       = true
 notify     = true
 xdg_open   = true
 clipboard  = true
+host_exec  = true
+ssh_agent  = true
 sync_fonts = true
 
 [integration.xdg_dirs]
@@ -138,7 +140,7 @@ Supports `linux/x86_64`. Uninstall with `scripts/uninstall.sh`.
 
 ## Requirements
 
-- Podman >= 4.6 with `pasta` or `slirp4netns`
+- Podman >= 5.5 (SSH agent requires >= 5.6)
 - systemd (user session)
 - Linux with Wayland (X11 apps run via Xwayland)
 - Kernel: `kernel.unprivileged_userns_clone=1`, subuid/subgid configured
@@ -190,6 +192,7 @@ All commands support `--dry-run` to preview without executing.
 
 - `PODBOX_CONTAINER` — set inside the container to the active container name
 - `PODBOX_VERSION` — the running launcher version
+- `PODBOX_HOST_VERSION` — set inside the container at build time; checked at guest daemon startup
 
 ## Documentation
 
