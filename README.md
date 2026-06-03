@@ -6,9 +6,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/tag/bethropolis/podbox?label=version" alt="Version">
-  <img src="https://img.shields.io/github/actions/workflow/status/bethropolis/podbox/ci.yml?label=CI" alt="CI">
-  <img src="https://img.shields.io/github/license/bethropolis/podbox" alt="License">
+  <a href="https://github.com/bethropolis/podbox/releases"><img src="https://img.shields.io/github/v/tag/bethropolis/podbox?label=Version&style=for-the-badge&logo=github&color=3b82f6&labelColor=1e293b&logoColor=white" alt="Version"></a>
+  <a href="https://github.com/bethropolis/podbox/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/bethropolis/podbox/ci.yml?label=CI&style=for-the-badge&logo=githubactions&labelColor=1e293b&logoColor=white" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-8b5cf6?style=for-the-badge&logo=opensourceinitiative&labelColor=1e293b&logoColor=white" alt="License"></a>
+  <img src="https://img.shields.io/badge/Podman-Native-6366f1?style=for-the-badge&logo=podman&labelColor=1e293b&logoColor=white" alt="Podman Native">
+  <img src="https://img.shields.io/badge/Platform-Linux-6e40c9?style=for-the-badge&logoColor=white&labelColor=1e293b" alt="Platform">
 </p>
 
 <p align="center">
@@ -103,6 +105,9 @@ talk = ["org.freedesktop.Notifications"]
 ## Usage
 
 ```bash
+# Interactive setup
+podbox init -i                           # guided config generator
+
 # Create containers
 podbox create cachy                      # Arch-based CachyOS
 podbox create fedora --name dev          # custom name

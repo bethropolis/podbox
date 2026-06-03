@@ -67,8 +67,12 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
     std::fs::create_dir_all(&bin_dir)?;
 
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "podbox".to_string());
     let shim = format!(
-        "#!/bin/sh\nexec podbox --container \"{}\" run \"{}\" \"$@\"\n",
+        "#!/bin/sh\nexec {} --container \"{}\" run \"{}\" \"$@\"\n",
+        exe,
         container_name.replace('"', "\\\""),
         bin.replace('"', "\\\"")
     );
@@ -128,15 +132,12 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
 
-    // Remove shims that reference this container (both new and old marker)
-    let markers = [
-        format!("podbox --container \"{}\"", container_name),
-        format!("podmgr --container \"{}\"", container_name),
-    ];
+    // Remove shims that reference this container
+    let marker = format!("--container \"{}\"", container_name);
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
             if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                if markers.iter().any(|m| content.contains(m)) {
+                if content.contains(&marker) {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }
@@ -148,13 +149,17 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
 }
 
 fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> String {
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "podbox".to_string());
     let suffix = format!("({})", container_name);
     content
         .lines()
         .map(|line| {
             if let Some(original) = line.strip_prefix("Exec=") {
                 format!(
-                    "                    Exec=podbox --container \"{}\" exec -- {}",
+                    "                    Exec={} --container \"{}\" exec -- {}",
+                    exe,
                     container_name.replace('"', "\\\""),
                     original
                 )
