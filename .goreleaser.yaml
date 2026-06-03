@@ -112,6 +112,9 @@ homebrew_casks:
     binaries:
       - podbox
     directory: Casks
+    caveats: |
+      Run 'podbox pull' to fetch prebuilt images (the only supported image type).
+      Run 'podbox doctor' to verify your setup.
     commit_msg_template: "podbox {{ .Tag }}"
 
 release:
