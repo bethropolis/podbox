@@ -9,6 +9,7 @@ on:
       - 'README.md'
       - 'scripts/install-online.sh'
       - 'scripts/install.sh'
+      - '.github/workflows/docs.yml'
 
 permissions:
   contents: read
