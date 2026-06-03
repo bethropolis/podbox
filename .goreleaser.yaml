@@ -41,6 +41,14 @@ archives:
     formats: ["tar.gz"]
     wrap_in_directory: false
 
+  - id: podbox-homebrew
+    ids:
+      - podbox
+      - podbox-guest
+    name_template: "podbox-{{ .Tag }}-homebrew"
+    formats: ["tar.gz"]
+    wrap_in_directory: false
+
 checksum:
   name_template: "checksums.txt"
 
@@ -98,6 +106,23 @@ dockers_v2:
       podbox.integration.dbus: "true"
       podbox.shell: "/usr/bin/fish"
       podbox.default_shell: "/usr/bin/fish"
+
+homebrew_casks:
+  - repository:
+      owner: bethropolis
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    name: podbox
+    description: "Podman-native container environment manager"
+    homepage: "https://github.com/bethropolis/podbox"
+    license: "MIT"
+    ids:
+      - podbox-homebrew
+    binaries:
+      - podbox
+      - podbox-guest
+    directory: Casks
+    commit_msg_template: "podbox {{ .Tag }}"
 
 release:
   github:
