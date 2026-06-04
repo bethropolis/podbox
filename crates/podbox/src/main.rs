@@ -546,8 +546,14 @@ fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
                 println!("podman start {}", name);
                 return Ok(());
             }
-            let args: Vec<OsString> = vec!["start".into(), name.into()];
-            podbox::process::spawn_interactive("podman", &args)?;
+            if which::which("systemctl").is_ok() {
+                let args: Vec<OsString> =
+                    vec!["--user".into(), "start".into(), name.into()];
+                podbox::process::spawn_interactive("systemctl", &args)?;
+            } else {
+                let args: Vec<OsString> = vec!["start".into(), name.into()];
+                podbox::process::spawn_interactive("podman", &args)?;
+            }
             match query_state(name)? {
                 ContainerState::Running => Ok(()),
                 state => Err(anyhow::anyhow!(
@@ -770,6 +776,7 @@ fn run_init(
         .unwrap_or_else(|| PathBuf::from("~"))
         .join("containers")
         .join(&container_name);
+    cfg.image.packages.manager = detect_package_manager(base).to_string();
 
     podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
     let toml_str = toml::to_string_pretty(&cfg)?;
@@ -820,6 +827,24 @@ fn derive_container_name(image: &str, custom_name: Option<&str>) -> String {
     }
 }
 
+/// Guess the package manager from the base image name.
+fn detect_package_manager(image: &str) -> &'static str {
+    let lower = image.to_lowercase();
+    if lower.contains("ubuntu") || lower.contains("debian") {
+        "apt"
+    } else if lower.contains("fedora") || lower.contains("centos") || lower.contains("rhel") {
+        "dnf"
+    } else if lower.contains("arch") || lower.contains("cachy") || lower.contains("manjaro") {
+        "pacman"
+    } else if lower.contains("alpine") {
+        "apk"
+    } else if lower.contains("opensuse") {
+        "zypper"
+    } else {
+        "apt"
+    }
+}
+
 /// Build image, install Quadlet, and start the container.
 fn finish_create(
     cfg: &Config,
@@ -862,8 +887,16 @@ fn finish_create(
         println!("podman start {}", container_name);
     } else {
         println!("Starting container...");
-        let args: Vec<OsString> = vec!["start".into(), container_name.into()];
-        podbox::process::spawn_interactive("podman", &args)?;
+        if which::which("systemctl").is_ok() {
+            // Quadlet hasn't created the container yet — use systemctl to
+            // trigger Quadlet's create-and-start pipeline.
+            let args: Vec<OsString> =
+                vec!["--user".into(), "start".into(), container_name.into()];
+            podbox::process::spawn_interactive("systemctl", &args)?;
+        } else {
+            let args: Vec<OsString> = vec!["start".into(), container_name.into()];
+            podbox::process::spawn_interactive("podman", &args)?;
+        }
         println!("Container '{}' is running!", container_name);
         println!("Run `podbox shell` to enter.");
     }
@@ -958,13 +991,16 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         let shell_info = podbox::init_wizard::detect_host_shell();
         let mut cfg = Config::embedded();
         cfg.image.base = image.to_string();
-        cfg.image.prebuilt = true;
+        // User-pulled images are custom (non-prebuilt) — podbox build adds the
+        // guest binary and runs any configured packages/commands via Containerfile.
+        cfg.image.prebuilt = false;
         cfg.image.name = container_name.clone();
         cfg.container.name = container_name.clone();
         cfg.container.home = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("~"))
             .join("containers")
             .join(&container_name);
+        cfg.image.packages.manager = detect_package_manager(image).to_string();
         podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
 
         let config_dir = config::config_dir();
