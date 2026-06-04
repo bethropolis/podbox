@@ -97,7 +97,7 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
         lines.push(format!("AppArmor={}", profile));
     }
     lines.push(format!("Environment=HOME={}", home_in_container));
-    lines.push("Environment=HOST_USER=%u".into());
+    lines.push(format!("Environment=HOST_USER={}", env.username));
     lines.push("Environment=HOST_UID=%U".into());
     lines.push("Environment=HOST_GID=%G".into());
     lines.push(String::new());

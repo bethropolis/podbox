@@ -162,7 +162,7 @@ fn quadlet_xdg_dir_present_when_enabled() {
     assert!(q.contains("Volume=/home/user/Documents:/home/%u/Documents:z"));
     assert!(q.contains("Volume=/home/user/Downloads:/home/%u/Downloads:z"));
     assert!(q.contains("Environment=HOME=/home/%u"));
-    assert!(q.contains("Environment=HOST_USER=%u"));
+    assert!(q.contains("Environment=HOST_USER=testuser"));
     assert!(q.contains("Environment=HOST_UID=%U"));
     assert!(q.contains("Environment=HOST_GID=%G"));
 }
