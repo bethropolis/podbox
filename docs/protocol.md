@@ -1,3 +1,7 @@
+---
+description: podbox host-guest Unix socket protocol — wire format, handshake, message types, capability negotiation, and notify action callbacks.
+---
+
 # Host-Guest Socket Protocol
 
 ## Wire Format

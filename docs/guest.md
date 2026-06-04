@@ -1,3 +1,7 @@
+---
+description: podbox-guest daemon internals — startup sequence, event loop, socket protocol, and interceptors for notifications, clipboard, xdg-open, and host-exec.
+---
+
 # Guest Daemon Architecture
 
 The guest daemon (`podbox-guest`) runs inside the container. It bridges

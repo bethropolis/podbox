@@ -50,9 +50,10 @@ jobs:
               sed -i 's|"assets/|"../assets/|g' {} +
           done
 
-      - name: Copy install script and assets
+      - name: Copy install script, contributing, and assets
         run: |
           cp scripts/install-online.sh site/install.sh
+          cp CONTRIBUTING.md site/CONTRIBUTING.md
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

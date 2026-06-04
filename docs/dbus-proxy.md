@@ -1,3 +1,7 @@
+---
+description: Filtered D-Bus access for podbox containers via xdg-dbus-proxy — configuration, allowed services, and security model.
+---
+
 # D-Bus Proxy
 
 By default, `integration.dbus = true` bind-mounts the host's D-Bus session

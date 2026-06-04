@@ -1,3 +1,7 @@
+---
+description: Complete TOML configuration reference for podbox — all keys, defaults, and examples for image, container, integration, lifecycle, and D-Bus settings.
+---
+
 # Configuration Reference
 
 `podbox` searches for a definition file in this order:

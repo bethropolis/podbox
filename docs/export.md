@@ -1,3 +1,7 @@
+---
+description: Export apps and binaries from podbox containers to your host desktop — .desktop files, launcher icons, binary shims, and MIME type handling.
+---
+
 # Desktop Integration (Export)
 
 `podbox` can expose applications and binaries from inside the container to the host desktop — generating `.desktop` files, extracting icons, and creating shell shims.
@@ -24,6 +28,9 @@ bins = ["rg", "gcc"]
 ## App Export
 
 `podbox export app` extracts a desktop application from the container and makes it launchable from the host.
+
+!!! info ""
+    The container must be running to export an app — `podbox export app` uses `podman exec` to read the `.desktop` file from inside the container. Start the container first if it is stopped.
 
 ### Step-by-step
 

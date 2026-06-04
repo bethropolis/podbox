@@ -1,6 +1,6 @@
 site_name: podbox
 site_url: https://bethropolis.github.io/podbox/
-site_description: Podman containers the way they should work — isolated, integrated, and yours.
+site_description: Podman-native container tool with Wayland passthrough, systemd Quadlet management, and declarative TOML config. No daemon, no home mounting.
 site_author: bethropolis
 repo_url: https://github.com/bethropolis/podbox
 repo_name: bethropolis/podbox

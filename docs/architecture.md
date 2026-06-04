@@ -1,3 +1,7 @@
+---
+description: How podbox works — codegen pipeline, generated Containerfile and Quadlet units, host-guest socket protocol, UID mapping, and project structure.
+---
+
 # Architecture
 
 ## How It Works
@@ -176,11 +180,10 @@ podbox/
 │   │       ├── export.rs         # .desktop + bin shim
 │   │       ├── quadlet_install.rs
 │   │       ├── socket_host.rs    # host-side socket handler
-│   │       ├── podman.rs         # podman subcommand wrappers
+│   │       ├── podman.rs         # version detection + subcommand wrappers
 │   │       ├── process.rs        # exec_replace, run_piped, spawn
 │   │       ├── lock.rs           # build lock file
 │   │       ├── env.rs            # host env resolution
-│   │       ├── podman.rs         # Podman version detection
 │   │       ├── xdg.rs            # XDG dir resolution
 │   │       └── error.rs          # error types
 │   │
