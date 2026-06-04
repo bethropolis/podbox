@@ -9,7 +9,7 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   logo: assets/podbox-logo.svg
-  favicon: assets/podbox-logo.svg
+  favicon: assets/favicon.svg
   palette:
     - scheme: catppuccin-mocha
       toggle:
