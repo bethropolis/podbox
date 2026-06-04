@@ -208,7 +208,7 @@ All commands support `--dry-run` to preview without executing.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [Contributing](https://github.com/bethropolis/podbox?tab=contributing-ov-file).
 
 ## License
 
