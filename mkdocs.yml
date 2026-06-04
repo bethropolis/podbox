@@ -31,6 +31,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Configuration: config.md
+  - Baked-in Base Packages: baked-in-packages.md
   - Architecture: architecture.md
   - Desktop Integration: export.md
   - Guest Daemon: guest.md
