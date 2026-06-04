@@ -127,6 +127,16 @@ pub fn run(cmd: &[String]) -> ! {
 /// All operations are idempotent — safe to call on every container start.
 fn setup_user(user: &str, uid: u32, gid: u32) {
     let home_dir = Path::new("/home").join(user);
+
+    // /run is tmpfs, so this marker is recreated on every container
+    // boot, not on every exec into a running container.  Skipping
+    // setup_user on subsequent execs removes a noticeable amount of
+    // per-exec latency (useradd/groupadd/chmod on every shell entry).
+    let marker = Path::new("/run/podbox/.setup_done");
+    if marker.exists() {
+        return;
+    }
+
     let passwd = || std::fs::read_to_string("/etc/passwd").unwrap_or_default();
     let group_file = || std::fs::read_to_string("/etc/group").unwrap_or_default();
 
@@ -252,4 +262,11 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     let _ = std::process::Command::new("chmod")
         .args(["700", &dconf_dir.to_string_lossy()])
         .status();
+
+    // 7. Mark setup complete so subsequent execs in the same container
+    // skip this whole block.  /run is tmpfs — re-runs once per boot.
+    if let Some(parent) = marker.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(marker, b"");
 }
