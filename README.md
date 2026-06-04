@@ -124,14 +124,15 @@ podbox init fedora:44 --name myenv  # scaffold a non-prebuilt config
 podbox create myenv                 # build, enable, start
 ```
 
+**One-shot with any OCI image:**
+```bash
+podbox create ubuntu:24.04 --name dev  # pulls, configures, enables, starts
+podbox create ghcr.io/user/img --name myenv
+```
+
 **Interactive wizard (both paths):**
 ```bash
 podbox init -i                      # pick "Custom" or a profile
-```
-
-**Or pull any OCI image directly:**
-```bash
-podbox create ghcr.io/user/img      # any OCI image
 ```
 
 **Run things:**
@@ -185,7 +186,9 @@ For detailed guides on specific issues (container won't start, D-Bus proxy, Wayl
 | Command | Description |
 |---------|-------------|
 | `podbox create <profile\|image>` | Init → build → enable → start in one command |
-| `podbox init [image]` | Scaffold a config file (base image or default) |
+| `podbox create <image> --name <n>` | Pull + create config + enable + start in one step |
+| `podbox init` | List available profiles |
+| `podbox init <image>` | Scaffold a custom config from a base image |
 | `podbox init -i` | Interactive wizard (custom or profile) |
 | `podbox init --profile <name>` | Scaffold from a prebuilt profile |
 | `podbox list` | List podbox-managed containers |

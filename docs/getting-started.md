@@ -68,10 +68,7 @@ Build a container from a plain distro image with your own packages and configura
 # Create a config from a base image
 podbox init fedora:44 --name myenv
 
-# Or start from defaults
-podbox init
-
-# Build the image and start the container
+# Or in one step — build and start
 podbox build
 podbox start
 podbox shell
@@ -81,8 +78,8 @@ Or in one step with `create`:
 
 ```bash
 # podbox create works with any OCI image reference
-podbox create myenv                    # uses local config
-podbox create ubuntu:24.04 --name dev  # pull any image directly
+podbox create myenv                     # uses local config
+podbox create ubuntu:24.04 --name dev   # pull + configure + enable + start
 ```
 
 ### Interactive
@@ -125,6 +122,19 @@ projects = true
 quadlet = true
 autostart = false
 ```
+
+### Container naming
+
+When `podbox init <image>` is called without `--name`, the container name is derived from the image tag:
+
+| Image ref | Container name |
+|-----------|---------------|
+| `fedora:44` | `fedora-44` |
+| `fedora:latest` | `fedora` |
+| `ubuntu:24.04` | `ubuntu-24-04` |
+| `ghcr.io/user/img:v1` | `img-v1` |
+
+This avoids name conflicts when creating containers from different tags of the same base image. Use `--name` to override explicitly.
 
 ### What happens
 
@@ -171,10 +181,12 @@ podbox start
 
 | Command | Description |
 |---------|-------------|
-| `podbox init [image]` | Scaffold a config file (optional base image) |
+| `podbox init` | List available profiles |
+| `podbox init <image>` | Scaffold a custom config from a base image |
 | `podbox init -i` | Interactive wizard (custom or profile) |
 | `podbox init --profile <name>` | Scaffold from a prebuilt profile |
 | `podbox create <name>` | Init → build → enable → start in one step |
+| `podbox create <image> --name <n>` | Pull + create config + enable + start |
 | `podbox build` | Build the container image |
 | `podbox enable` | Install Quadlet systemd files |
 | `podbox start / stop` | Start / stop the container |

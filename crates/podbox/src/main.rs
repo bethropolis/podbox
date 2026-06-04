@@ -742,11 +742,24 @@ fn run_init(
         return Ok(());
     }
 
+    // No image, no profile, no interactive: list available profiles
+    if image.is_none() {
+        let profiles = podbox::profiles::all();
+        println!("Available profiles:");
+        for p in &profiles {
+            println!("  {:<8} {}  —  {}", p.name, p.label, p.description);
+        }
+        println!();
+        println!("Usage:");
+        println!("  podbox init <image>         Create a custom container (e.g. fedora:44)");
+        println!("  podbox init --profile <name>  Create from a prebuilt profile");
+        println!("  podbox init -i               Interactive wizard");
+        anyhow::bail!("Specify a base image or use --profile.");
+    }
+
     // Non-prebuilt mode: create a custom config from a base image
-    let base = image.unwrap_or("fedora:44");
-    let base_name = base.split(':').next().unwrap_or(base)
-        .split('/').last().unwrap_or(base);
-    let container_name = name.unwrap_or(base_name).to_string();
+    let base = image.unwrap();
+    let container_name = derive_container_name(base, name);
 
     let mut cfg = Config::embedded();
     cfg.image.base = base.to_string();
@@ -764,9 +777,12 @@ fn run_init(
     let config_path = config_dir.join(format!("{}.toml", container_name));
 
     if config_path.exists() && !dry_run {
+        let alt = format!("{}-alt", container_name);
         anyhow::bail!(
-            "Config already exists at '{}'. Remove it first or use a different name.",
-            config_path.display()
+            "Config already exists at '{}'.\n\
+             Use --name to specify a different name (e.g. --name {}).",
+            config_path.display(),
+            alt
         );
     }
 
@@ -788,8 +804,74 @@ fn run_init(
     Ok(())
 }
 
+/// Derive a container name from an image reference.
+/// "ubuntu:24.04" → "ubuntu-24-04", "fedora:latest" → "fedora".
+fn derive_container_name(image: &str, custom_name: Option<&str>) -> String {
+    if let Some(name) = custom_name {
+        return name.to_string();
+    }
+    let image_part = image.split_once(':').map(|(n, _)| n).unwrap_or(image);
+    let short = image_part.split('/').last().unwrap_or(image_part);
+    let tag = image.split_once(':').map(|(_, t)| t).unwrap_or("latest");
+    if tag == "latest" || tag.is_empty() {
+        short.to_string()
+    } else {
+        format!("{}-{}", short, tag.replace('.', "-"))
+    }
+}
+
+/// Build image, install Quadlet, and start the container.
+fn finish_create(
+    cfg: &Config,
+    container_name: &str,
+    dry_run: bool,
+    no_start: bool,
+) -> Result<()> {
+    // Build / tag image
+    if dry_run {
+        println!("podbox build");
+    } else {
+        let local_tag = format!("localhost/podbox-{}:latest", cfg.image.name);
+        if !podbox::podman::image_exists(&local_tag).unwrap_or(false) {
+            let env = podbox::env::resolve()?;
+            let xdg = podbox::xdg::resolve(&cfg.integration.xdg_dirs)?;
+            podbox::build::run(cfg, &env, &xdg, false, false)?;
+        } else {
+            println!("Image already exists, skipping build.");
+        }
+    }
+
+    // Install Quadlet files
+    if dry_run {
+        println!("podbox enable");
+    } else {
+        println!("Installing Quadlet files...");
+        let env = podbox::env::resolve()?;
+        let xdg = podbox::xdg::resolve(&cfg.integration.xdg_dirs)?;
+        podbox::quadlet_install::install(cfg, &env, &xdg, false)?;
+    }
+
+    // Start container
+    if no_start {
+        println!("Container created but not started (--no-start).");
+        println!(
+            "Run `podbox shell {}` to start and enter it.",
+            container_name
+        );
+    } else if dry_run {
+        println!("podman start {}", container_name);
+    } else {
+        println!("Starting container...");
+        let args: Vec<OsString> = vec!["start".into(), container_name.into()];
+        podbox::process::spawn_interactive("podman", &args)?;
+        println!("Container '{}' is running!", container_name);
+        println!("Run `podbox shell` to enter.");
+    }
+
+    Ok(())
+}
+
 fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) -> Result<()> {
-    // Determine if profile name or full image ref
     let is_profile = !image.contains('/') && !image.contains('\\');
 
     if is_profile && podbox::profiles::find(image).is_some() {
@@ -818,6 +900,8 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         let mut cfg = Config::parse(&profile_content)?;
         podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
+        cfg.container.name = container_name.clone();
+        cfg.image.name = container_name.clone();
         let config_dir = config::config_dir();
         let config_path = config_dir.join(format!("{}.toml", container_name));
 
@@ -838,49 +922,7 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
             }
         }
 
-        // Build image
-        if dry_run {
-            println!("podbox build");
-        } else {
-            println!("Building image...");
-            let local_tag = format!("localhost/podbox-{}:latest", cfg.image.name);
-            if !podbox::podman::image_exists(&local_tag).unwrap_or(false) {
-                let env = podbox::env::resolve()?;
-                let xdg = podbox::xdg::resolve(&cfg.integration.xdg_dirs)?;
-                podbox::build::run(&cfg, &env, &xdg, false, false)?;
-            } else {
-                println!("Image already exists, skipping build.");
-            }
-        }
-
-        // Install Quadlet files
-        if dry_run {
-            println!("podbox enable");
-        } else {
-            println!("Installing Quadlet files...");
-            let env = podbox::env::resolve()?;
-            let xdg = podbox::xdg::resolve(&cfg.integration.xdg_dirs)?;
-            podbox::quadlet_install::install(&cfg, &env, &xdg, false)?;
-        }
-
-        // Start container
-        if no_start {
-            println!("Container created but not started (--no-start).");
-            println!(
-                "Run `podbox shell {}` to start and enter it.",
-                container_name
-            );
-        } else if dry_run {
-            println!("podman start {}", container_name);
-        } else {
-            println!("Starting container...");
-            let args: Vec<OsString> = vec!["start".into(), container_name.clone().into()];
-            podbox::process::spawn_interactive("podman", &args)?;
-            println!("Container '{}' is running!", container_name);
-            println!("Run `podbox shell` to enter.");
-        }
-
-        return Ok(());
+        return finish_create(&cfg, &container_name, dry_run, no_start);
     }
 
     if is_profile {
@@ -891,7 +933,7 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         );
     }
 
-    // If not a profile, treat as full image reference
+    // Pull the image first
     if dry_run {
         println!("podman pull {}", image);
         return Ok(());
@@ -910,9 +952,45 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         return Err(PodboxError::PullFailed(image.into()).into());
     }
 
+    // If --name was provided, auto-create a config and continue to enable/start
+    if let Some(n) = name {
+        let container_name = n.to_string();
+        let shell_info = podbox::init_wizard::detect_host_shell();
+        let mut cfg = Config::embedded();
+        cfg.image.base = image.to_string();
+        cfg.image.prebuilt = true;
+        cfg.image.name = container_name.clone();
+        cfg.container.name = container_name.clone();
+        cfg.container.home = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("~"))
+            .join("containers")
+            .join(&container_name);
+        podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+
+        let config_dir = config::config_dir();
+        let config_path = config_dir.join(format!("{}.toml", container_name));
+        if config_path.exists() {
+            eprintln!(
+                "Config already exists at '{}'. Reusing existing config.",
+                config_path.display()
+            );
+        } else {
+            std::fs::create_dir_all(&config_dir)?;
+            let toml_str = toml::to_string_pretty(&cfg)?;
+            std::fs::write(&config_path, &toml_str)?;
+            println!("Created config: {}", config_path.display());
+        }
+
+        println!("Image '{}' pulled and configured.", image);
+        return finish_create(&cfg, &container_name, dry_run, no_start);
+    }
+
+    // No --name: just report the pull and tell user how to proceed
+    println!("Image '{}' pulled.", image);
+    let suggested = derive_container_name(image, None);
     println!(
-        "Image '{}' pulled. Create a config with `podbox init --profile <name>` to use it.",
-        image
+        "Run `podbox init {} --name <name>` to create a config (e.g. --name {}).",
+        image, suggested
     );
     Ok(())
 }
