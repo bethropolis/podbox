@@ -604,3 +604,13 @@ fn containerfile_includes_base_packages() {
     assert!(cf.contains("sed"));
     assert!(cf.contains("gawk"));
 }
+
+#[test]
+fn quadlet_dbus_proxy_unit_has_restart_sec() {
+    let mut config = load_config("full.toml");
+    config.dbus.talk = vec!["org.freedesktop.Notifications".into()];
+    let unit = quadlet::generate_dbus_proxy_service("myenv", &config)
+        .expect("proxy service should be generated");
+    assert!(unit.contains("Restart=on-failure"));
+    assert!(unit.contains("RestartSec=1s"));
+}

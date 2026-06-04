@@ -378,6 +378,7 @@ Type=simple
 RuntimeDirectory=podbox
 ExecStart={exec_start}
 Restart=on-failure
+RestartSec=1s
 
 [Install]
 WantedBy={name}.service
