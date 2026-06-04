@@ -233,8 +233,9 @@ fn run() -> Result<()> {
                 podbox::quadlet_install::install(&config, &env, &xdg, false)?;
             }
 
-            let args: Vec<OsString> = vec!["start".into(), name.clone().into()];
-            podbox::process::spawn_interactive("podman", &args)?;
+            println!("Starting container...");
+            ensure_running(&name, false)?;
+            println!("Container '{}' is running!", name);
         }
 
         Command::Stop => {
