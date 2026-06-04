@@ -24,7 +24,7 @@
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 
 podbox create fedora    # pulls, enables, starts
-podbox shell            # you're in
+podbox enter fedora     # you're in
 ```
 
 Also available from source: `git clone https://github.com/bethropolis/podbox && cd podbox && scripts/install.sh`.
@@ -138,7 +138,7 @@ podbox init -i                      # pick "Custom" or a profile
 **Run things:**
 
 ```bash
-podbox shell                        # interactive shell
+podbox enter myenv                  # interactive shell
 podbox exec -- htop                 # run a command
 podbox run firefox                  # GUI app, detached
 ```
@@ -196,8 +196,8 @@ For detailed guides on specific issues (container won't start, D-Bus proxy, Wayl
 | `podbox enable` | Install Quadlet systemd files |
 | `podbox disable` | Remove Quadlet files |
 | `podbox start` / `podbox stop` | Start / stop the container |
-| `podbox shell` | Open interactive shell |
 | `podbox enter <name>` | Enter a named container (auto-starts) |
+| `podbox shell` | Open interactive shell (auto-detect) |
 | `podbox exec -- <cmd>` | Execute a command interactively |
 | `podbox run <app>` | Run a GUI app detached |
 | `podbox status` | Show container state |

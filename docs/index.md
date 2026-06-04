@@ -31,7 +31,7 @@
 
 ```bash
 podbox create <profile>        # create + build + enable + start
-podbox shell                   # open a shell
+podbox enter <name>            # open a shell
 podbox run <app>               # run a GUI app
 podbox doctor --fix            # fix common issues
 podbox export app <name>       # add to host launcher

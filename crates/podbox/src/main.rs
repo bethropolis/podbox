@@ -259,6 +259,8 @@ fn run() -> Result<()> {
                 let exec_args: Vec<OsString> = vec![
                     "exec".into(),
                     tty_flag,
+                    "-u".into(),
+                    env.username.clone().into(),
                     "--workdir".into(),
                     home_in_container.clone(),
                     name.clone().into(),
@@ -271,6 +273,8 @@ fn run() -> Result<()> {
             let exec_args: Vec<OsString> = vec![
                 "exec".into(),
                 tty_flag,
+                "-u".into(),
+                env.username.clone().into(),
                 "--workdir".into(),
                 home_in_container.clone(),
                 name.clone().into(),
@@ -290,6 +294,8 @@ fn run() -> Result<()> {
                 let mut exec_args: Vec<OsString> = vec![
                     "exec".into(),
                     tty_flag.clone(),
+                    "-u".into(),
+                    env.username.clone().into(),
                     name.clone().into(),
                 ];
                 for a in cmd_args {
@@ -302,6 +308,8 @@ fn run() -> Result<()> {
             let mut exec_args: Vec<OsString> = vec![
                 "exec".into(),
                 tty_flag.clone(),
+                "-u".into(),
+                env.username.clone().into(),
                 name.clone().into(),
             ];
             for a in cmd_args {
@@ -316,6 +324,8 @@ fn run() -> Result<()> {
                 let mut exec_args: Vec<OsString> = vec![
                     "exec".into(),
                     "-d".into(),
+                    "-u".into(),
+                    env.username.clone().into(),
                     name.clone().into(),
                     app.clone().into(),
                 ];
@@ -329,6 +339,8 @@ fn run() -> Result<()> {
             let mut exec_args: Vec<OsString> = vec![
                 "exec".into(),
                 "-d".into(),
+                "-u".into(),
+                env.username.clone().into(),
                 name.clone().into(),
                 app.clone().into(),
             ];

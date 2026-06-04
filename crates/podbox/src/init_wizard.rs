@@ -210,6 +210,7 @@ fn prompt_profile(profiles: &[profiles::Profile]) -> ProfileChoice<'_> {
         for p in profiles {
             v.push(format!("{}  —  {}", p.label, p.description));
         }
+        
         v
     };
     let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())

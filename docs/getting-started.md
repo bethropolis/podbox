@@ -54,7 +54,7 @@ podbox create dev
 
 1. `podbox init` scaffolds a config file (`~/.config/podbox/<name>.toml`)
 2. `podbox create` pulls the prebuilt image, installs Quadlet systemd units, and starts the container
-3. `podbox shell` drops you into an interactive shell
+3. `podbox enter <name>` drops you into an interactive shell
 
 ---
 
@@ -71,7 +71,7 @@ podbox init fedora:44 --name myenv
 # Or in one step — build and start
 podbox build
 podbox start
-podbox shell
+podbox enter myenv
 ```
 
 Or in one step with `create`:
@@ -142,7 +142,7 @@ This avoids name conflicts when creating containers from different tags of the s
 2. `podbox build` auto-generates a Containerfile, copies in the guest binary, and runs `podman build`
 3. `podbox enable` installs Quadlet systemd units (socket + container + host service)
 4. `podbox start` starts the container via `podman start`
-5. `podbox shell` opens an interactive shell
+5. `podbox enter <name>` opens an interactive shell
 
 ---
 
@@ -150,7 +150,7 @@ This avoids name conflicts when creating containers from different tags of the s
 
 ```bash
 # Open a shell
-podbox shell
+podbox enter myenv
 
 # Run a command
 podbox exec -- htop
@@ -190,7 +190,8 @@ podbox start
 | `podbox build` | Build the container image |
 | `podbox enable` | Install Quadlet systemd files |
 | `podbox start / stop` | Start / stop the container |
-| `podbox shell` | Open interactive shell |
+| `podbox enter <name>` | Enter a running container (auto-starts) |
+| `podbox shell` | Open interactive shell (auto-detect) |
 | `podbox exec -- <cmd>` | Run a command |
 | `podbox run <app>` | Launch a GUI app |
 | `podbox export app / bin` | Export to host |
