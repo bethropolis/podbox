@@ -211,10 +211,8 @@ fn run_build(
 
     std::fs::create_dir_all(&context_dir)
         .map_err(|e| PodboxError::HomeCreateFailed(context_dir.clone(), e))?;
-    #[allow(clippy::print_literal)]
-    {
-        let _ = std::fs::set_permissions(&context_dir, std::fs::Permissions::from_mode(0o700));
-    }
+    // Best-effort permission tightening: ignore failure (e.g. on FAT mounts).
+    let _ = std::fs::set_permissions(&context_dir, std::fs::Permissions::from_mode(0o700));
 
     std::fs::write(&containerfile_path, containerfile).with_context(|| {
         format!(
