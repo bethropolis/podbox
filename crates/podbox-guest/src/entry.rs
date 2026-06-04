@@ -203,12 +203,13 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         }
     }
 
-    // Make the home directory writable by all users inside the container.
-    // With UserNS=keep-id the idmapped mount shifts UIDs, so the dynamic
-    // user's UID may not match the directory owner.  chmod is safe because
-    // it does NOT change ownership through the idmapped mount.
+    // Make the home directory accessible (read+execute) to other users
+    // and writable by the dynamic user.  755 (not 777) limits damage if
+    // an untrusted process runs inside the container — it can read config
+    // but cannot clobber the home directory.  chmod is safe because it
+    // does NOT change ownership through the idmapped mount.
     let _ = std::process::Command::new("chmod")
-        .args(["777", &home_dir.to_string_lossy()])
+        .args(["755", &home_dir.to_string_lossy()])
         .status();
 
     // 3. Supplementary groups — try common group names portably
