@@ -47,32 +47,11 @@ pub fn resolve() -> Result<HostEnv> {
         .map(|d| xdg_runtime_dir.join(d))
         .filter(|p| p.exists());
 
-    let pipewire_socket = {
-        let p = xdg_runtime_dir.join("pipewire-0");
-        if p.exists() {
-            Some(p)
-        } else {
-            None
-        }
-    };
+    let pipewire_socket = Some(xdg_runtime_dir.join("pipewire-0")).filter(|p| p.exists());
 
-    let pulse_dir = {
-        let p = xdg_runtime_dir.join("pulse");
-        if p.join("native").exists() {
-            Some(p)
-        } else {
-            None
-        }
-    };
+    let pulse_dir = Some(xdg_runtime_dir.join("pulse")).filter(|p| p.join("native").exists());
 
-    let dbus_socket = {
-        let p = xdg_runtime_dir.join("bus");
-        if p.exists() {
-            Some(p)
-        } else {
-            None
-        }
-    };
+    let dbus_socket = Some(xdg_runtime_dir.join("bus")).filter(|p| p.exists());
 
     let gpu_has_dri = Path::new("/dev/dri").exists();
     let gpu_has_nvidia = Path::new("/dev/nvidiactl").exists();
