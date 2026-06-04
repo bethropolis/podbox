@@ -440,9 +440,7 @@ impl Config {
     pub fn use_dbus_proxy(&self) -> bool {
         self.integration.dbus && (!self.dbus.talk.is_empty() || !self.dbus.own.is_empty())
     }
-}
 
-impl Config {
     /// Parse a TOML definition from a string.
     pub fn parse(content: &str) -> Result<Config> {
         let config: Config = toml::from_str(content)
