@@ -515,12 +515,7 @@ fn run() -> Result<()> {
             let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
             let digest = podbox::podman::image_digest(&local_tag)?;
             let lock = podbox::lock::LockFile {
-                config_checksum: {
-                    use sha2::Digest;
-                    let mut hasher = sha2::Sha256::new();
-                    hasher.update(image_ref.as_bytes());
-                    hex::encode(hasher.finalize())
-                },
+                config_checksum: podbox::build::checksum(&image_ref),
                 image_digest: digest,
             };
             let lock_path = context_dir.join(".podbox.lock");

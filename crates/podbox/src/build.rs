@@ -49,7 +49,8 @@ fn find_guest_binary() -> Result<PathBuf> {
     Err(PodboxError::GuestBinaryNotFound.into())
 }
 
-fn checksum(content: &str) -> String {
+/// SHA-256 hex digest of a string, used for lock-file invalidation.
+pub fn checksum(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     hex::encode(hasher.finalize())
