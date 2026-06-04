@@ -14,7 +14,7 @@ fn generate_prebuilt(config: &Config) -> String {
     lines.push(format!("FROM {}", config.image.base));
     lines.push(String::new());
 
-    lines.extend(generate_package_install_lines(config));
+    lines.extend(generate_package_install_lines(config, true));
     lines.extend(generate_package_remove_lines(config));
     lines.extend(generate_run_command_lines(config));
 
@@ -34,7 +34,7 @@ fn generate_custom(config: &Config) -> String {
     lines.push(format!("FROM {}", config.image.base));
     lines.push(String::new());
 
-    lines.extend(generate_package_install_lines(config));
+    lines.extend(generate_package_install_lines(config, false));
     lines.extend(generate_package_remove_lines(config));
     lines.extend(generate_run_command_lines(config));
 
@@ -53,30 +53,32 @@ fn generate_custom(config: &Config) -> String {
     lines.join("\n")
 }
 
-fn generate_package_install_lines(config: &Config) -> Vec<String> {
+fn generate_package_install_lines(config: &Config, prebuilt: bool) -> Vec<String> {
     let mut lines = Vec::new();
     let manager = config.image.packages.manager.as_str();
 
     let mut packages = config.image.packages.install.clone();
-    if !packages.contains(&"sudo".into()) {
+    if !prebuilt && !packages.contains(&"sudo".into()) {
         packages.push("sudo".into());
     }
 
     let pkgs = packages.join(" ");
-    let cmd = match manager {
-        "apt" | "apt-get" => format!(
-            "apt-get update && apt-get install -y {} && rm -rf /var/lib/apt/lists/*",
-            pkgs
-        ),
-        "apk" => format!("apk add --no-cache {}", pkgs),
-        "pacman" => format!(
-            "pacman -Syu --noconfirm {} && pacman -Scc --noconfirm",
-            pkgs
-        ),
-        _ => format!("dnf install -y {} && dnf clean all", pkgs),
-    };
-    lines.push(format!("RUN {}", cmd));
-    lines.push(String::new());
+    if !pkgs.is_empty() {
+        let cmd = match manager {
+            "apt" | "apt-get" => format!(
+                "apt-get update && apt-get install -y {} && rm -rf /var/lib/apt/lists/*",
+                pkgs
+            ),
+            "apk" => format!("apk add --no-cache {}", pkgs),
+            "pacman" => format!(
+                "pacman -Syu --noconfirm {} && pacman -Scc --noconfirm",
+                pkgs
+            ),
+            _ => format!("dnf install -y {} && dnf clean all", pkgs),
+        };
+        lines.push(format!("RUN {}", cmd));
+        lines.push(String::new());
+    }
 
     lines
 }

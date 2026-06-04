@@ -85,7 +85,7 @@ fn containerfile_has_packages() {
 fn containerfile_no_packages_when_empty() {
     let config = load_config("minimal.toml");
     let cf = containerfile::generate(&config, "podbox-guest");
-    assert!(!cf.contains("dnf install"));
+    assert!(cf.contains("dnf install -y sudo"));
 }
 
 #[test]

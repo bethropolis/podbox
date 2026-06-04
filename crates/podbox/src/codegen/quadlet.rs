@@ -100,6 +100,7 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
     lines.push(format!("Environment=HOST_USER={}", env.username));
     lines.push("Environment=HOST_UID=%U".into());
     lines.push("Environment=HOST_GID=%G".into());
+    lines.push("Environment=PATH=/run/podbox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
     lines.push(String::new());
 
     // Isolated custom home
@@ -183,7 +184,7 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
     if config.integration.ssh_agent {
         let ver = crate::podman::podman_version().ok();
         if ver.is_some_and(|v| v.at_least(5, 6)) {
-            lines.push("Volume=%E{SSH_AUTH_SOCK}:/run/podbox/ssh-agent.sock:ro".into());
+            lines.push("SshAgent=default".into());
             lines.push("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock".into());
         } else {
             eprintln!("Warning: ssh_agent = true requires Podman >= 5.6 for SSH_AUTH_SOCK passthrough. Skipping SSH agent.");
