@@ -2,12 +2,20 @@ use std::io::Write;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::time::Duration;
 
 use crate::config::IntegrationConfig;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
 
 /// Max number of concurrent host threads handling guest connections.
 const MAX_CONCURRENT: usize = 4;
+
+/// How often the host sends a keepalive `Ping` to a connected guest.
+///
+/// The guest's read-loop currently has a 5-minute idle timeout, so a
+/// 60s ping interval stays well under that and prevents silent
+/// integration failures for long-lived containers.
+const PING_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Run the host socket server for a container.
 ///
@@ -72,7 +80,31 @@ fn listen_fd() -> Option<RawFd> {
 }
 
 fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> anyhow::Result<()> {
-    while let Some(msg_bytes) = read_frame(stream)? {
+    // Bound reads so we can periodically ping the guest and prevent
+    // its 5-minute idle timeout from killing the daemon.
+    stream.set_read_timeout(Some(PING_INTERVAL))?;
+    let mut last_ping = std::time::Instant::now();
+
+    loop {
+        let msg_bytes = match read_frame(stream) {
+            Ok(Some(b)) => b,
+            Ok(None) => return Ok(()),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                if last_ping.elapsed() >= PING_INTERVAL {
+                    if write_frame(stream, &HostMessage::Ping).is_err() {
+                        return Ok(());
+                    }
+                    last_ping = std::time::Instant::now();
+                }
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        last_ping = std::time::Instant::now();
         let msg: GuestMessage = serde_json::from_slice(&msg_bytes)?;
 
         match msg {
@@ -231,7 +263,6 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
             }
         }
     }
-    Ok(())
 }
 
 fn validate_uri(uri: &str) -> Option<String> {
