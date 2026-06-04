@@ -11,11 +11,17 @@ Running `podbox doctor` first is recommended — it checks the most common issue
 ### Container won't start
 
 ```bash
-systemctl --user status <name>.service   # check the unit status
-podbox logs                              # check container output
+podman ps -a --filter name=<name>      # check container state
+podbox logs                             # check container output
+podbox start                            # start via podman directly
 ```
 
-If the unit failed immediately after `podbox enable`, the Quadlet file may be malformed. Run `podbox enable --dry-run` to inspect the generated files without writing them.
+If the container fails immediately after `podbox enable`, the Quadlet file may be malformed. Run `podbox enable --dry-run` to inspect the generated files without writing them.
+
+For systemd-level diagnostics (if Quadlet was installed):
+```bash
+systemctl --user status <name>.service
+```
 
 ---
 
@@ -46,12 +52,11 @@ podbox stop && podbox start
 The `podbox-guest` daemon connects to the host socket on container startup. If it can't connect, interceptors are silently skipped.
 
 ```bash
-systemctl --user status <name>.socket           # check the socket unit
 podbox exec -- ps aux | grep podbox-guest       # check daemon running
 podbox exec -- echo $PATH                       # check /run/podbox/bin
 ```
 
-If the socket unit is inactive, run `podbox enable` and `podbox start` again. If the daemon is running but `PATH` is wrong, the `/etc/environment.d/podbox.conf` file may not have been written — check with `podbox exec -- cat /etc/environment.d/podbox.conf`.
+If the daemon is running but `PATH` is wrong, the `/etc/environment.d/podbox.conf` file may not have been written — check with `podbox exec -- cat /etc/environment.d/podbox.conf`.
 
 ---
 
@@ -68,7 +73,7 @@ If files appear owned by `nobody` inside the container, the mount was created be
 SSH agent forwarding requires Podman >= 5.6 and `ssh_agent = true` in `[integration]`. Verify both:
 
 ```bash
-podman --version                         # must be >= 5.6
+podbox doctor                             # checks Podman version
 grep ssh_agent ~/.config/podbox/<name>.toml
 ```
 
@@ -84,6 +89,8 @@ Run `podbox build --rebuild` to force a full rebuild from scratch, bypassing the
 rm -rf ~/.local/share/podbox/<name>/     # clear build context
 podbox build --rebuild
 ```
+
+For non-prebuilt containers, the Containerfile is auto-generated from your TOML config. If packages or run commands changed after first build, `podbox build` picks them up automatically — no manual Containerfile editing needed.
 
 ---
 

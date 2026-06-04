@@ -29,6 +29,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
   - Configuration: config.md
   - Architecture: architecture.md
   - Desktop Integration: export.md

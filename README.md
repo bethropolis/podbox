@@ -23,11 +23,13 @@
 # Install via pre-built binary
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 
-podbox create fedora    # pulls, builds, enables, starts
+podbox create fedora    # pulls, enables, starts
 podbox shell            # you're in
 ```
 
 Also available from source: `git clone https://github.com/bethropolis/podbox && cd podbox && scripts/install.sh`.
+
+See the [Getting Started Guide](docs/getting-started.md) for both prebuilt and custom build workflows.
 
 ## Why podbox?
 
@@ -110,10 +112,25 @@ talk = ["org.freedesktop.Notifications"]
 
 ## Usage
 
-**First container:**
+**Prebuilt (quick):**
 ```bash
 podbox create cachy                 # Arch-based, gaming-ready
 podbox create fedora --name dev     # Fedora, custom name
+```
+
+**Custom build (from a base image):**
+```bash
+podbox init fedora:44 --name myenv  # scaffold a non-prebuilt config
+podbox create myenv                 # build, enable, start
+```
+
+**Interactive wizard (both paths):**
+```bash
+podbox init -i                      # pick "Custom" or a profile
+```
+
+**Or pull any OCI image directly:**
+```bash
 podbox create ghcr.io/user/img      # any OCI image
 ```
 
@@ -168,7 +185,9 @@ For detailed guides on specific issues (container won't start, D-Bus proxy, Wayl
 | Command | Description |
 |---------|-------------|
 | `podbox create <profile\|image>` | Init → build → enable → start in one command |
-| `podbox init <profile>` | Scaffold a config file from a built-in profile |
+| `podbox init [image]` | Scaffold a config file (base image or default) |
+| `podbox init -i` | Interactive wizard (custom or profile) |
+| `podbox init --profile <name>` | Scaffold from a prebuilt profile |
 | `podbox list` | List podbox-managed containers |
 | `podbox build [--rebuild]` | Build or rebuild the container image |
 | `podbox enable` | Install Quadlet systemd files |
@@ -201,6 +220,7 @@ All commands support `--dry-run` to preview without executing.
 
 | Doc | Description |
 |-----|-------------|
+| [Getting Started Guide](docs/getting-started.md) | Prebuilt and custom workflows |
 | [Configuration Reference](docs/config.md) | All TOML keys, defaults, examples |
 | [Architecture Overview](docs/architecture.md) | How podbox works end-to-end |
 | [Desktop Integration](docs/export.md) | Exporting apps and binaries |
