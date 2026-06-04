@@ -225,6 +225,7 @@ All commands support `--dry-run` to preview without executing.
 |-----|-------------|
 | [Getting Started Guide](docs/getting-started.md) | Prebuilt and custom workflows |
 | [Configuration Reference](docs/config.md) | All TOML keys, defaults, examples |
+| [Baked-in Base Packages](docs/baked-in-packages.md) | Auto-installed packages, locale, timezone, sudo |
 | [Architecture Overview](docs/architecture.md) | How podbox works end-to-end |
 | [Desktop Integration](docs/export.md) | Exporting apps and binaries |
 | [Container Integration](docs/guest.md) | Guest daemon and interceptors |

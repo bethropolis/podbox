@@ -106,9 +106,9 @@ Controls which host resources are shared with the container.
 | `notify` | bool | `false` | Desktop notification forwarding |
 | `xdg_open` | bool | `false` | URI opening via host (`xdg-open`) |
 | `clipboard` | bool | `false` | Clipboard sharing |
-| `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` (read-only). Only top-level dirs to keep `.local`/`.config` writable |
-| `sync_icons` | bool | `false` | Bind-mount `~/.icons` (read-only) |
-| `sync_themes` | bool | `false` | Bind-mount `~/.themes` (read-only). Only top-level dirs to keep `.local`/`.config` writable |
+| `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
+| `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
+| `sync_themes` | bool | `false` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `host_exec` | bool | `false` | Allow container to execute arbitrary commands on the host (via `host-exec` interceptor) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 

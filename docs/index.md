@@ -6,6 +6,7 @@
 |-----|---------------|
 | [Quick Start](../README.md) | Install, create a container, essential workflows |
 | [Configuration Reference](config.md) | All TOML keys, defaults, and examples |
+| [Baked-in Base Packages](baked-in-packages.md) | Auto-installed packages, locale, timezone, sudo |
 | [Desktop Integration](export.md) | Exporting container apps and binaries to the host |
 | [Container Integration](guest.md) | How the guest daemon bridges notifications, URI opening, clipboard |
 | [D-Bus Proxy](dbus-proxy.md) | Filtered D-Bus access via xdg-dbus-proxy |
