@@ -6,23 +6,21 @@ use anyhow::Result;
 
 use crate::error::PodboxError;
 
+/// Standard XDG application directories searched inside the container,
+/// in priority order.  Many apps install to `~/.local/share/applications/`
+/// (per-user), `/usr/local/share/applications/`, or `/opt/<app>/share/applications/`.
+const DESKTOP_SEARCH_PATHS: &[&str] = &[
+    "/usr/share/applications",
+    "/usr/local/share/applications",
+    "/usr/share/applications/kde",
+    "/usr/share/applications/gnome",
+    "/opt",
+];
+
 /// Export an application as a .desktop file on the host.
 pub fn export_app(container_name: &str, app: &str) -> Result<()> {
-    // 1. Get .desktop file from container
-    let container_path = format!("/usr/share/applications/{}.desktop", app);
-    let args: Vec<OsString> = vec![
-        "exec".into(),
-        container_name.into(),
-        "cat".into(),
-        container_path.into(),
-    ];
-    let output = crate::process::run_piped("podman", &args)?;
-    if !output.status.success() {
-        return Err(
-            PodboxError::ExportFailed(format!("app {} not found in container", app)).into(),
-        );
-    }
-    let desktop_content = String::from_utf8_lossy(&output.stdout);
+    // 1. Locate .desktop file in container, searching XDG directories.
+    let (container_path, desktop_content) = find_desktop_file(container_name, app)?;
 
     // 2. Rewrite Name= and Exec= lines
     let rewritten = rewrite_desktop_file(&desktop_content, container_name, app);
@@ -56,8 +54,102 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
         eprintln!("Warning: update-desktop-database failed: {}", e);
     }
 
-    println!("Exported app '{}'.desktop -> {}", app, host_path.display());
+    println!(
+        "Exported app '{}'.desktop (from {}) -> {}",
+        app,
+        container_path,
+        host_path.display()
+    );
     Ok(())
+}
+
+/// Find a `.desktop` file in the container by searching XDG dirs,
+/// falling back to user-installed locations.
+fn find_desktop_file(
+    container_name: &str,
+    app: &str,
+) -> Result<(String, String)> {
+    let filename = format!("{}.desktop", app);
+
+    // First: search well-known system locations.
+    for dir in DESKTOP_SEARCH_PATHS {
+        if *dir == "/opt" {
+            // /opt is a prefix — search one level deep for share/applications.
+            continue;
+        }
+        let candidate = format!("{}/{}", dir, filename);
+        if let Some(content) = try_cat(container_name, &candidate)? {
+            return Ok((candidate, content));
+        }
+    }
+
+    // Second: per-user installs.
+    let user_dirs = ["/root/.local/share/applications", "/home"];
+    for dir in user_dirs {
+        if let Some(content) = try_cat(container_name, &format!("{}/{}", dir, filename))? {
+            return Ok((format!("{}/{}", dir, filename), content));
+        }
+    }
+
+    // Third: /opt — search for any /opt/*/share/applications/<app>.desktop.
+    if let Some((path, content)) = find_desktop_in_opt(container_name, app)? {
+        return Ok((path, content));
+    }
+
+    Err(PodboxError::ExportFailed(format!(
+        "app {} not found in container (searched: {})",
+        app,
+        DESKTOP_SEARCH_PATHS.join(", ")
+    ))
+    .into())
+}
+
+/// `podman exec <container> cat <path>` — returns `Some(content)` if the
+/// file exists, `None` if `cat` reports missing, error on other failures.
+fn try_cat(container_name: &str, path: &str) -> Result<Option<String>> {
+    let args: Vec<OsString> = vec![
+        "exec".into(),
+        container_name.into(),
+        "cat".into(),
+        path.into(),
+    ];
+    let output = crate::process::run_piped("podman", &args)?;
+    if output.status.success() {
+        Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Search /opt/*/share/applications/ for a matching .desktop file.
+fn find_desktop_in_opt(container_name: &str, app: &str) -> Result<Option<(String, String)>> {
+    let args: Vec<OsString> = vec![
+        "exec".into(),
+        container_name.into(),
+        "sh".into(),
+        "-c".into(),
+        format!(
+            "for d in /opt/*/share/applications; do \
+               [ -f \"$d/{app}.desktop\" ] && echo \"$d/{app}.desktop\"; \
+             done"
+        )
+        .into(),
+    ];
+    let output = crate::process::run_piped("podman", &args)?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(content) = try_cat(container_name, line)? {
+            return Ok(Some((line.to_string(), content)));
+        }
+    }
+    Ok(None)
 }
 
 /// Export a binary shim to ~/.local/bin.
