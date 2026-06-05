@@ -1,5 +1,4 @@
 use std::ffi::OsString;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -14,6 +13,8 @@ use podbox::error::PodboxError;
 use podbox::podman::{query_state, ContainerState};
 use podbox::socket_host;
 use podbox::xdg::ResolvedXdgDirs;
+
+mod commands;
 
 pub const VERSION: &str = env!("PODBOX_VERSION");
 
@@ -191,60 +192,23 @@ fn run() -> Result<()> {
 
     match &cli.command {
         Command::Build { name: _, rebuild } => {
-            podbox::build::run(&config, &env, &xdg, cli.dry_run, *rebuild)?;
-            if !cli.dry_run && config.lifecycle.quadlet {
-                println!("\nRun `podbox enable` to install Quadlet files.");
-            }
+            commands::lifecycle::run_build(&config, &env, &xdg, cli.dry_run, *rebuild)?;
         }
 
         Command::Enable => {
-            podbox::quadlet_install::install(&config, &env, &xdg, cli.dry_run)?;
-            if !cli.dry_run {
-                println!(
-                    "\nRun `podbox shell` to start and enter the container.",
-                );
-            }
+            commands::lifecycle::run_enable(&config, &env, &xdg, cli.dry_run)?;
         }
 
         Command::Disable => {
-            podbox::quadlet_install::uninstall(&name)?;
+            commands::lifecycle::run_disable(&name)?;
         }
 
         Command::Start => {
-            if cli.dry_run {
-                println!("podman start {}", name);
-                return Ok(());
-            }
-
-            // Auto-heal: build image if missing
-            let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
-            if !podbox::podman::image_exists(&local_tag).unwrap_or(false) {
-                println!("Image not found, building first...");
-                podbox::build::run(&config, &env, &xdg, false, false)?;
-            }
-
-            // Auto-heal: install Quadlet files if missing
-            let qdir = dirs::config_dir()
-                .unwrap_or_else(|| podbox::config::expand_tilde("~/.config"))
-                .join("containers/systemd");
-            let container_file = qdir.join(format!("{}.container", name));
-            if !container_file.exists() {
-                println!("Quadlet files not found, installing...");
-                podbox::quadlet_install::install(&config, &env, &xdg, false)?;
-            }
-
-            println!("Starting container...");
-            ensure_running(&name, false)?;
-            println!("Container '{}' is running!", name);
+            commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run)?;
         }
 
         Command::Stop => {
-            if cli.dry_run {
-                println!("podman stop {}", name);
-                return Ok(());
-            }
-            let args = podbox::process::args(&["stop", &name]);
-            podbox::process::spawn_interactive("podman", &args)?;
+            commands::lifecycle::run_stop(&name, cli.dry_run)?;
         }
 
         Command::Shell | Command::Enter { .. } => {
@@ -269,7 +233,7 @@ fn run() -> Result<()> {
                 println!("podman {}", args_to_string(&exec_args));
                 return Ok(());
             }
-            ensure_running(&name, cli.dry_run)?;
+            commands::ensure_running(&name, cli.dry_run)?;
             let exec_args = podbox::process::args(&[
                 "exec",
                 tty_flag,
@@ -304,7 +268,7 @@ fn run() -> Result<()> {
                 println!("podman {}", args_to_string(&exec_args));
                 return Ok(());
             }
-            ensure_running(&name, cli.dry_run)?;
+            commands::ensure_running(&name, cli.dry_run)?;
             let mut exec_args: Vec<OsString> = podbox::process::args(&[
                 "exec",
                 tty_flag,
@@ -335,7 +299,7 @@ fn run() -> Result<()> {
                 println!("podman {}", args_to_string(&exec_args));
                 return Ok(());
             }
-            ensure_running(&name, cli.dry_run)?;
+            commands::ensure_running(&name, cli.dry_run)?;
             let mut exec_args: Vec<OsString> = podbox::process::args(&[
                 "exec",
                 "-d",
@@ -394,60 +358,7 @@ fn run() -> Result<()> {
         },
 
         Command::Remove { all, force } => {
-            if cli.dry_run {
-                println!("podman stop {}", name);
-                println!("podman rm {}", name);
-                if *all {
-                    let home = &config.container.home;
-                    println!("rm -rf {}", home.display());
-                }
-                return Ok(());
-            }
-
-            if !force {
-                print!("Remove container '{}'? [y/N] ", name);
-                std::io::stdout().flush()?;
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                if !input.trim().eq_ignore_ascii_case("y") {
-                    println!("Cancelled.");
-                    return Ok(());
-                }
-            }
-
-            // Stop first, then remove
-            let stop_args = podbox::process::args(&["stop", &name]);
-            let _ = podbox::process::run_piped("podman", &stop_args);
-
-            let rm_args = podbox::process::args(&["rm", &name]);
-            let output = podbox::process::run_piped("podman", &rm_args)?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(podbox::error::PodboxError::ContainerRemoveFailed(
-                    name.clone(),
-                    stderr.to_string(),
-                )
-                .into());
-            }
-            println!("Container '{}' removed.", name);
-
-            if *all {
-                let home = &config.container.home;
-                if home.exists() {
-                    if !force {
-                        print!("Remove home directory '{}'? [y/N] ", home.display());
-                        std::io::stdout().flush()?;
-                        let mut input = String::new();
-                        std::io::stdin().read_line(&mut input)?;
-                        if !input.trim().eq_ignore_ascii_case("y") {
-                            println!("Home directory kept.");
-                            return Ok(());
-                        }
-                    }
-                    std::fs::remove_dir_all(home)?;
-                    println!("Home directory '{}' removed.", home.display());
-                }
-            }
+            commands::lifecycle::run_remove(&config, &name, cli.dry_run, *all, *force)?;
         }
 
         Command::Serve { name: serve_name } => {
@@ -544,33 +455,6 @@ fn run() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
-    match query_state(name)? {
-        ContainerState::Running => Ok(()),
-        ContainerState::Stopped | ContainerState::Missing => {
-            if dry_run {
-                println!("podman start {}", name);
-                return Ok(());
-            }
-            if which::which("systemctl").is_ok() {
-                let args = podbox::process::args(&["--user", "start", &name]);
-                podbox::process::spawn_interactive("systemctl", &args)?;
-            } else {
-                let args = podbox::process::args(&["start", &name]);
-                podbox::process::spawn_interactive("podman", &args)?;
-            }
-            match query_state(name)? {
-                ContainerState::Running => Ok(()),
-                state => Err(anyhow::anyhow!(
-                    "Failed to start container '{}' (state: {:?})",
-                    name,
-                    state
-                )),
-            }
-        }
-    }
 }
 
 fn args_to_string(args: &[OsString]) -> String {
