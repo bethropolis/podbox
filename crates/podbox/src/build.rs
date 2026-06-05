@@ -72,7 +72,7 @@ pub fn run(
     dry_run: bool,
     rebuild: bool,
 ) -> Result<()> {
-    if config.image.prebuilt {
+    if config.image.source().is_prebuilt() {
         run_prebuilt(config, dry_run, rebuild)
     } else {
         run_build(config, env, xdg, dry_run, rebuild)

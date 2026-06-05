@@ -776,7 +776,6 @@ fn run_init(
 
     let mut cfg = Config::embedded();
     cfg.image.base = base.to_string();
-    cfg.image.prebuilt = false;
     cfg.image.name = container_name.clone();
     cfg.container.name = container_name.clone();
     cfg.container.home = dirs::home_dir()
@@ -997,9 +996,6 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
         let shell_info = podbox::init_wizard::detect_host_shell();
         let mut cfg = Config::embedded();
         cfg.image.base = image.to_string();
-        // User-pulled images are custom (non-prebuilt) — podbox build adds the
-        // guest binary and runs any configured packages/commands via Containerfile.
-        cfg.image.prebuilt = false;
         cfg.image.name = container_name.clone();
         cfg.container.name = container_name.clone();
         cfg.container.home = dirs::home_dir()

@@ -40,7 +40,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     let host_service_content = quadlet::generate_host_service(name);
     let dbus_proxy_content = quadlet::generate_dbus_proxy_service(name, config);
 
-    let build_content = if !config.image.prebuilt {
+    let build_content = if !config.image.source().is_prebuilt() {
         Some(quadlet::generate_build(config, &containerfile_path))
     } else {
         None

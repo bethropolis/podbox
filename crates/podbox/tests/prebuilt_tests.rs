@@ -119,7 +119,7 @@ fn label_apply_defaults_schema_mismatch_returns_early() {
         std::collections::HashMap::from([("podbox.protocol_version".to_string(), "2".to_string())]);
     // No podbox.schema label -> apply_defaults returns early
     labels::apply_defaults(&mut config, &labels);
-    assert!(config.image.prebuilt);
+    assert!(config.image.source().is_prebuilt());
 }
 
 // ---- Quadlet prebuilt Image ref ----
@@ -248,7 +248,7 @@ fn profile_cachy_parses() {
     let profile = podbox::profiles::find("cachy").expect("cachy profile exists");
     let cfg = Config::parse(&profile.toml).unwrap();
     assert_eq!(cfg.image.base, "cachy-latest");
-    assert!(cfg.image.prebuilt);
+    assert!(cfg.image.source().is_prebuilt());
     assert_eq!(cfg.container.shell, "/usr/bin/fish");
 }
 
@@ -257,7 +257,7 @@ fn profile_fedora_parses() {
     let profile = podbox::profiles::find("fedora").expect("fedora profile exists");
     let cfg = Config::parse(&profile.toml).unwrap();
     assert_eq!(cfg.image.base, "fedora-latest");
-    assert!(cfg.image.prebuilt);
+    assert!(cfg.image.source().is_prebuilt());
 }
 
 #[test]

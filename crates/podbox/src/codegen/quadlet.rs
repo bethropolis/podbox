@@ -78,7 +78,7 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
 
     // [Container]
     lines.push("[Container]".into());
-    if config.image.prebuilt {
+    if config.image.source().is_prebuilt() {
         let ref_str = crate::config::resolve_image_ref_full(config);
         lines.push(format!("Image={}", ref_str));
         lines.push(format!("Retry={}", config.image.pull_retry));

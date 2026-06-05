@@ -122,7 +122,6 @@ pub fn run_wizard(
         }
         ProfileChoice::Custom => {
             let mut cfg = Config::embedded();
-            cfg.image.prebuilt = false;
 
             let base: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
                 .with_prompt("Base image")

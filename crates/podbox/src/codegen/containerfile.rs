@@ -4,7 +4,7 @@ use crate::config::Config;
 pub const VERSION: &str = env!("PODBOX_VERSION");
 
 pub fn generate(config: &Config, _guest_binary_name: &str) -> String {
-    if config.image.prebuilt {
+    if config.image.source().is_prebuilt() {
         return generate_prebuilt(config);
     }
     generate_custom(config)
