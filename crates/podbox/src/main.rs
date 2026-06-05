@@ -243,61 +243,61 @@ fn run() -> Result<()> {
                 println!("podman stop {}", name);
                 return Ok(());
             }
-            let args: Vec<OsString> = vec!["stop".into(), name.clone().into()];
+            let args = podbox::process::args(&["stop", &name]);
             podbox::process::spawn_interactive("podman", &args)?;
         }
 
         Command::Shell | Command::Enter { .. } => {
             let env = podbox::env::resolve()?;
             let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
-                OsString::from("-it")
+                "-it"
             } else {
-                OsString::from("-i")
+                "-i"
             };
-            let home_in_container: OsString = format!("/home/{}", env.username).into();
+            let home_in_container = format!("/home/{}", env.username);
             if cli.dry_run {
-                let exec_args: Vec<OsString> = vec![
-                    "exec".into(),
+                let exec_args = podbox::process::args(&[
+                    "exec",
                     tty_flag,
-                    "-u".into(),
-                    env.username.clone().into(),
-                    "--workdir".into(),
-                    home_in_container.clone(),
-                    name.clone().into(),
-                    config.container.shell.clone().into(),
-                ];
+                    "-u",
+                    &env.username,
+                    "--workdir",
+                    &home_in_container,
+                    &name,
+                    &config.container.shell,
+                ]);
                 println!("podman {}", args_to_string(&exec_args));
                 return Ok(());
             }
             ensure_running(&name, cli.dry_run)?;
-            let exec_args: Vec<OsString> = vec![
-                "exec".into(),
+            let exec_args = podbox::process::args(&[
+                "exec",
                 tty_flag,
-                "-u".into(),
-                env.username.clone().into(),
-                "--workdir".into(),
-                home_in_container.clone(),
-                name.clone().into(),
-                config.container.shell.clone().into(),
-            ];
+                "-u",
+                &env.username,
+                "--workdir",
+                &home_in_container,
+                &name,
+                &config.container.shell,
+            ]);
             let err = podbox::process::exec_replace("podman", &exec_args);
             return Err(err);
         }
 
         Command::Exec { args: cmd_args } => {
             let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
-                OsString::from("-it")
+                "-it"
             } else {
-                OsString::from("-i")
+                "-i"
             };
             if cli.dry_run {
-                let mut exec_args: Vec<OsString> = vec![
-                    "exec".into(),
-                    tty_flag.clone(),
-                    "-u".into(),
-                    env.username.clone().into(),
-                    name.clone().into(),
-                ];
+                let mut exec_args: Vec<OsString> = podbox::process::args(&[
+                    "exec",
+                    tty_flag,
+                    "-u",
+                    &env.username,
+                    &name,
+                ]);
                 for a in cmd_args {
                     exec_args.push(a.into());
                 }
@@ -305,13 +305,13 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             ensure_running(&name, cli.dry_run)?;
-            let mut exec_args: Vec<OsString> = vec![
-                "exec".into(),
-                tty_flag.clone(),
-                "-u".into(),
-                env.username.clone().into(),
-                name.clone().into(),
-            ];
+            let mut exec_args: Vec<OsString> = podbox::process::args(&[
+                "exec",
+                tty_flag,
+                "-u",
+                &env.username,
+                &name,
+            ]);
             for a in cmd_args {
                 exec_args.push(a.into());
             }
@@ -321,14 +321,14 @@ fn run() -> Result<()> {
 
         Command::Run { app, app_args } => {
             if cli.dry_run {
-                let mut exec_args: Vec<OsString> = vec![
-                    "exec".into(),
-                    "-d".into(),
-                    "-u".into(),
-                    env.username.clone().into(),
-                    name.clone().into(),
-                    app.clone().into(),
-                ];
+                let mut exec_args: Vec<OsString> = podbox::process::args(&[
+                    "exec",
+                    "-d",
+                    "-u",
+                    &env.username,
+                    &name,
+                    &app,
+                ]);
                 for a in app_args {
                     exec_args.push(a.into());
                 }
@@ -336,14 +336,14 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             ensure_running(&name, cli.dry_run)?;
-            let mut exec_args: Vec<OsString> = vec![
-                "exec".into(),
-                "-d".into(),
-                "-u".into(),
-                env.username.clone().into(),
-                name.clone().into(),
-                app.clone().into(),
-            ];
+            let mut exec_args: Vec<OsString> = podbox::process::args(&[
+                "exec",
+                "-d",
+                "-u",
+                &env.username,
+                &name,
+                &app,
+            ]);
             for a in app_args {
                 exec_args.push(a.into());
             }
@@ -416,10 +416,10 @@ fn run() -> Result<()> {
             }
 
             // Stop first, then remove
-            let stop_args: Vec<OsString> = vec!["stop".into(), name.clone().into()];
+            let stop_args = podbox::process::args(&["stop", &name]);
             let _ = podbox::process::run_piped("podman", &stop_args);
 
-            let rm_args: Vec<OsString> = vec!["rm".into(), name.clone().into()];
+            let rm_args = podbox::process::args(&["rm", &name]);
             let output = podbox::process::run_piped("podman", &rm_args)?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -555,11 +555,10 @@ fn ensure_running(name: &str, dry_run: bool) -> Result<()> {
                 return Ok(());
             }
             if which::which("systemctl").is_ok() {
-                let args: Vec<OsString> =
-                    vec!["--user".into(), "start".into(), name.into()];
+                let args = podbox::process::args(&["--user", "start", &name]);
                 podbox::process::spawn_interactive("systemctl", &args)?;
             } else {
-                let args: Vec<OsString> = vec!["start".into(), name.into()];
+                let args = podbox::process::args(&["start", &name]);
                 podbox::process::spawn_interactive("podman", &args)?;
             }
             match query_state(name)? {
@@ -898,11 +897,10 @@ fn finish_create(
         if which::which("systemctl").is_ok() {
             // Quadlet hasn't created the container yet — use systemctl to
             // trigger Quadlet's create-and-start pipeline.
-            let args: Vec<OsString> =
-                vec!["--user".into(), "start".into(), container_name.into()];
+            let args = podbox::process::args(&["--user", "start", container_name]);
             podbox::process::spawn_interactive("systemctl", &args)?;
         } else {
-            let args: Vec<OsString> = vec!["start".into(), container_name.into()];
+            let args = podbox::process::args(&["start", container_name]);
             podbox::process::spawn_interactive("podman", &args)?;
         }
         println!("Container '{}' is running!", container_name);
