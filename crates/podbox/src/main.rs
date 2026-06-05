@@ -662,6 +662,25 @@ fn translate_path(
     Ok(())
 }
 
+/// Read a profile: if `profile` looks like a path (contains `/` or `\`),
+/// read it from disk; otherwise look up a built-in profile by name.
+fn read_profile_content(profile: &str) -> Result<String> {
+    if profile.contains('/') || profile.contains('\\') {
+        std::fs::read_to_string(Path::new(profile))
+            .with_context(|| format!("failed to read profile '{}'", profile))
+    } else {
+        let found = podbox::profiles::find(profile).ok_or_else(|| {
+            let names = podbox::profiles::list_names();
+            anyhow::anyhow!(
+                "Unknown profile '{}'. Available profiles: {}",
+                profile,
+                names.join(", ")
+            )
+        })?;
+        Ok(found.toml)
+    }
+}
+
 fn run_init(
     dry_run: bool,
     image: Option<&str>,
@@ -709,21 +728,7 @@ fn run_init(
 
     // --profile mode: load a named profile (prebuilt)
     if let Some(p) = profile {
-        let profile_content = if p.contains('/') || p.contains('\\') {
-            let path = Path::new(p);
-            std::fs::read_to_string(path)
-                .with_context(|| format!("failed to read profile '{}'", path.display()))?
-        } else {
-            let found = podbox::profiles::find(p).ok_or_else(|| {
-                let names = podbox::profiles::list_names();
-                anyhow::anyhow!(
-                    "Unknown profile '{}'. Available profiles: {}",
-                    p,
-                    names.join(", ")
-                )
-            })?;
-            found.toml
-        };
+        let profile_content = read_profile_content(p)?;
         let mut cfg = Config::parse(&profile_content)?;
         podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
         let toml_str = toml::to_string_pretty(&cfg)?;
@@ -913,22 +918,7 @@ fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool) ->
     let is_profile = !image.contains('/') && !image.contains('\\');
 
     if is_profile && podbox::profiles::find(image).is_some() {
-        // Treat as profile — run init pipeline
-        let profile_content = if image.contains('/') || image.contains('\\') {
-            let path = Path::new(image);
-            std::fs::read_to_string(path)
-                .with_context(|| format!("failed to read profile '{}'", path.display()))?
-        } else {
-            let found = podbox::profiles::find(image).ok_or_else(|| {
-                let names = podbox::profiles::list_names();
-                anyhow::anyhow!(
-                    "Unknown profile '{}'. Available profiles: {}",
-                    image,
-                    names.join(", ")
-                )
-            })?;
-            found.toml
-        };
+        let profile_content = read_profile_content(image)?;
 
         let shell_info = podbox::init_wizard::detect_host_shell();
         if !shell_info.detected {
