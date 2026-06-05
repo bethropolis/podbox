@@ -8,6 +8,14 @@ use crate::config::IntegrationConfig;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
 
 /// Max number of concurrent host threads handling guest connections.
+///
+/// 4 is a deliberate, conservative cap: each thread runs the full
+/// read/respond loop for a single client, and the only expensive
+/// thing it does is spawn a process for `host-exec` or block on
+/// `notify-rust`'s action signal.  In practice, a single container
+/// only ever has the daemon and 0-2 ephemeral interceptors
+/// (notify-send, host-exec, xdg-open, clipboard) — 4 is plenty of
+/// headroom for a busy desktop session.
 const MAX_CONCURRENT: usize = 4;
 
 /// How often the host sends a keepalive `Ping` to a connected guest.
@@ -38,18 +46,21 @@ pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()>
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
-                let cfg = config.clone();
+                // Drain finished handles every iteration, not just when
+                // we hit the cap.  This prevents the accept loop from
+                // stalling on a slow/blocked client whose thread is
+                // still alive but no longer productive.
+                handles.retain_mut(|h| !h.is_finished());
+
                 if handles.len() >= MAX_CONCURRENT {
-                    let mut active_handles = Vec::new();
-                    for h in std::mem::take(&mut handles) {
-                        if h.is_finished() {
-                            let _ = h.join();
-                        } else {
-                            active_handles.push(h);
-                        }
-                    }
-                    handles = active_handles;
+                    eprintln!(
+                        "podbox: dropping connection: {} concurrent clients already in flight",
+                        handles.len()
+                    );
+                    continue;
                 }
+
+                let cfg = config.clone();
                 let handle = std::thread::spawn(move || {
                     if let Err(e) = handle_connection(&mut stream, &cfg) {
                         eprintln!("Error handling guest connection: {}", e);
