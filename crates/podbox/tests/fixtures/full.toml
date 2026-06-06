@@ -22,13 +22,16 @@ EDITOR = "nvim"
 TERM   = "xterm-256color"
 
 [integration]
-wayland   = true
-audio     = true
-gpu       = false
-dbus      = true
-notify    = true
-xdg_open  = true
-clipboard = true
+wayland     = true
+audio       = true
+gpu         = false
+dbus        = true
+notify      = true
+xdg_open    = true
+clipboard   = true
+sync_fonts  = false
+sync_icons  = false
+sync_themes = false
 
 [integration.xdg_dirs]
 documents = true

@@ -212,8 +212,8 @@ fn run() -> Result<()> {
             commands::runtime::run_status(&name, cli.dry_run)?;
         }
 
-        Command::Logs { name: _, follow, tail } => {
-            commands::runtime::run_logs(&name, *follow, *tail, cli.dry_run)?;
+        Command::Logs { name: _, follow, tail, since } => {
+            commands::runtime::run_logs(&name, *follow, *tail, since.clone(), cli.dry_run)?;
         }
 
         Command::Diff { apply } => {

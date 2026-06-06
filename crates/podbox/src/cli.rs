@@ -95,9 +95,12 @@ pub enum Command {
         /// Follow log output.
         #[arg(short, long)]
         follow: bool,
-        /// Number of lines to show from the end.
+        /// Number of lines to show from the end (default: 50).
         #[arg(short, long)]
         tail: Option<u32>,
+        /// Show logs since this duration (e.g. "5m", "1h", "2024-01-01").
+        #[arg(long)]
+        since: Option<String>,
     },
 
     /// Export a .desktop app or binary shim to the host.

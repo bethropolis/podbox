@@ -102,6 +102,13 @@ pub fn run_run(
     podbox::process::spawn_interactive("podman", &exec_args).map(|_| ())
 }
 
+fn quadlet_installed(name: &str) -> bool {
+    let qdir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
+        .join("containers/systemd");
+    qdir.join(format!("{}.container", name)).exists()
+}
+
 /// Print the container's running state.
 pub fn run_status(name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
@@ -109,31 +116,76 @@ pub fn run_status(name: &str, dry_run: bool) -> Result<()> {
         return Ok(());
     }
     let state = query_state(name)?;
-    let state_str = match state {
-        ContainerState::Running => "running",
-        ContainerState::Stopped => "stopped",
-        ContainerState::Missing => "missing",
-    };
-    println!("{} [{}]", name, state_str);
+    match state {
+        ContainerState::Running => println!("{} [running]", name),
+        ContainerState::Stopped => println!("{} [stopped]", name),
+        ContainerState::Missing => {
+            if quadlet_installed(name) {
+                println!("{} [not built]", name);
+            } else {
+                println!("{} [not installed]", name);
+            }
+        }
+    }
     Ok(())
 }
 
-/// Tail or dump container logs.
-pub fn run_logs(name: &str, follow: bool, tail: Option<u32>, dry_run: bool) -> Result<()> {
-    let mut args: Vec<OsString> = vec!["logs".into()];
-    if follow {
-        args.push("-f".into());
+/// Check whether a container is managed by systemd (Quadlet).
+fn is_systemd_managed(name: &str) -> bool {
+    if which::which("systemctl").is_err() {
+        return false;
     }
-    if let Some(t) = tail {
+    std::process::Command::new("systemctl")
+        .args(["--user", "--quiet", "is-enabled", &format!("{}.service", name)])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Show container logs, routing through journalctl for systemd-managed
+/// containers and falling back to `podman logs` for standalone ones.
+pub fn run_logs(name: &str, follow: bool, tail: Option<u32>, since: Option<String>, dry_run: bool) -> Result<()> {
+    let lines = tail.unwrap_or(50);
+
+    if is_systemd_managed(name) {
+        let mut args: Vec<OsString> = vec![
+            "--user".into(),
+            "-u".into(),
+            format!("{}.service", name).into(),
+        ];
+        if follow {
+            args.push("-f".into());
+        }
+        args.push("-n".into());
+        args.push(lines.to_string().into());
+        if let Some(s) = &since {
+            args.push("--since".into());
+            args.push(s.into());
+        }
+        if dry_run {
+            println!("journalctl {}", args_to_string(&args));
+            return Ok(());
+        }
+        println!("Showing logs for: {}.service", name);
+        podbox::process::spawn_interactive("journalctl", &args).map(|_| ())
+    } else {
+        let mut args: Vec<OsString> = vec!["logs".into()];
+        if follow {
+            args.push("-f".into());
+        }
         args.push("--tail".into());
-        args.push(t.to_string().into());
+        args.push(lines.to_string().into());
+        if let Some(s) = &since {
+            args.push("--since".into());
+            args.push(s.into());
+        }
+        args.push(name.into());
+        if dry_run {
+            println!("podman {}", args_to_string(&args));
+            return Ok(());
+        }
+        podbox::process::spawn_interactive("podman", &args).map(|_| ())
     }
-    args.push(name.into());
-    if dry_run {
-        println!("podman {}", args_to_string(&args));
-        return Ok(());
-    }
-    podbox::process::spawn_interactive("podman", &args).map(|_| ())
 }
 
 /// Run diagnostics on the container and host environment.

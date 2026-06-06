@@ -38,19 +38,18 @@ pub struct ImageConfig {
     pub base: String,
     pub name: String,
     /// When set, treat the image as prebuilt — pull this exact reference
-    /// instead of building from `base`.  `packages`, `run`, and other
-    /// build-time fields are ignored for prebuilt images.
+    /// instead of building from `base`.
     #[serde(rename = "image", default)]
     pub image_ref: Option<String>,
     /// Number of times to retry pulling the image on failure.
-    #[serde(default = "default_pull_retry")]
+    #[serde(default = "default_pull_retry", skip_serializing_if = "is_default_pull_retry")]
     pub pull_retry: u32,
     /// Delay between pull retries (Podman duration, e.g. "5s", "2m").
-    #[serde(default = "default_pull_retry_delay")]
+    #[serde(default = "default_pull_retry_delay", skip_serializing_if = "is_default_pull_delay")]
     pub pull_retry_delay: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_packages")]
     pub packages: PackageConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_run")]
     pub run: RunConfig,
 }
 
@@ -80,11 +79,11 @@ fn default_pull_retry_delay() -> String {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PackageConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_vec")]
     pub install: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_vec")]
     pub remove: Vec<String>,
-    #[serde(default = "default_package_manager")]
+    #[serde(default = "default_package_manager", skip_serializing_if = "is_default_pkg_mgr")]
     pub manager: String,
 }
 
@@ -104,7 +103,7 @@ fn default_package_manager() -> String {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct RunConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_vec")]
     pub commands: Vec<String>,
 }
 
@@ -117,23 +116,23 @@ pub struct ContainerConfig {
     pub name: String,
     #[serde(deserialize_with = "deserialize_home")]
     pub home: PathBuf,
-    #[serde(default = "default_shell")]
+    #[serde(default = "default_shell", skip_serializing_if = "is_default_shell")]
     pub shell: String,
     /// Optional memory limit (e.g. "2g", "512m").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_none")]
     pub memory: Option<String>,
     /// Optional systemd ExecReload command.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_none")]
     pub reload_cmd: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_mounts")]
     pub mounts: MountConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_hashmap")]
     pub env: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct MountConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_vec")]
     pub extra: Vec<String>,
 }
 
@@ -231,34 +230,34 @@ impl Serialize for GpuMode {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct IntegrationConfig {
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub wayland: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub audio: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_gpu")]
     pub gpu: GpuMode,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub dbus: bool,
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub notify: bool,
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub xdg_open: bool,
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub clipboard: bool,
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub host_exec: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub ssh_agent: bool,
     /// Bind-mount host font directory (`~/.fonts`) as read-only.
     /// Only top-level directories are mounted to keep `.local` and `.config` writable.
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub sync_fonts: bool,
     /// Bind-mount host icon directory (`~/.icons`) as read-only.
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub sync_icons: bool,
     /// Bind-mount host theme directory (`~/.themes`) as read-only.
     /// Only top-level directories are mounted to keep `.local` and `.config` writable.
-    #[serde(default)]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub sync_themes: bool,
     #[serde(default)]
     pub xdg_dirs: XdgDirConfig,
@@ -408,13 +407,13 @@ pub struct Config {
     pub container: ContainerConfig,
     #[serde(default)]
     pub integration: IntegrationConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_lifecycle")]
     pub lifecycle: LifecycleConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_systemd")]
     pub systemd: SystemdConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_dbus")]
     pub dbus: DbusConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_security")]
     pub security: SecurityConfig,
 }
 
@@ -464,6 +463,42 @@ home = "~/containers/podbox"
 
 fn default_true() -> bool {
     true
+}
+
+fn is_true(v: &bool) -> bool { *v }
+fn is_false(v: &bool) -> bool { !*v }
+fn is_empty_vec(v: &[String]) -> bool { v.is_empty() }
+fn is_empty_hashmap(v: &HashMap<String, String>) -> bool { v.is_empty() }
+fn is_default_mounts(v: &MountConfig) -> bool { v.extra.is_empty() }
+fn is_default_gpu(v: &GpuMode) -> bool { *v == GpuMode::Auto }
+fn is_none<T>(v: &Option<T>) -> bool { v.is_none() }
+fn is_default_shell(v: &str) -> bool { v == "fish" }
+fn is_default_pkg_mgr(v: &str) -> bool { v == "dnf" }
+fn is_default_pull_retry(v: &u32) -> bool { *v == 3 }
+fn is_default_pull_delay(v: &str) -> bool { v == "5s" }
+
+fn is_default_packages(v: &PackageConfig) -> bool {
+    v.install.is_empty() && v.remove.is_empty() && v.manager == "dnf"
+}
+
+fn is_default_run(v: &RunConfig) -> bool {
+    v.commands.is_empty()
+}
+
+fn is_default_lifecycle(v: &LifecycleConfig) -> bool {
+    !v.quadlet && !v.autostart && v.on_stop == OnStop::Keep && !v.auto_update
+}
+
+fn is_default_systemd(v: &SystemdConfig) -> bool {
+    v.requires.is_empty() && v.after.is_empty()
+}
+
+fn is_default_dbus(v: &DbusConfig) -> bool {
+    v.talk.is_empty() && v.own.is_empty()
+}
+
+fn is_default_security(v: &SecurityConfig) -> bool {
+    v.apparmor.is_none()
 }
 
 /// Expand a leading `~` in a path to the user's home directory.
