@@ -46,12 +46,7 @@ pub fn run_shell_enter(config: &Config, name: &str, dry_run: bool) -> Result<()>
 }
 
 /// Execute an arbitrary command inside the container.
-pub fn run_exec(
-    env: &HostEnv,
-    name: &str,
-    cmd_args: &[String],
-    dry_run: bool,
-) -> Result<()> {
+pub fn run_exec(env: &HostEnv, name: &str, cmd_args: &[String], dry_run: bool) -> Result<()> {
     let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
         "-it"
     } else {
@@ -136,7 +131,12 @@ fn is_systemd_managed(name: &str) -> bool {
         return false;
     }
     std::process::Command::new("systemctl")
-        .args(["--user", "--quiet", "is-enabled", &format!("{}.service", name)])
+        .args([
+            "--user",
+            "--quiet",
+            "is-enabled",
+            &format!("{}.service", name),
+        ])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -144,7 +144,13 @@ fn is_systemd_managed(name: &str) -> bool {
 
 /// Show container logs, routing through journalctl for systemd-managed
 /// containers and falling back to `podman logs` for standalone ones.
-pub fn run_logs(name: &str, follow: bool, tail: Option<u32>, since: Option<String>, dry_run: bool) -> Result<()> {
+pub fn run_logs(
+    name: &str,
+    follow: bool,
+    tail: Option<u32>,
+    since: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
     let lines = tail.unwrap_or(50);
 
     if is_systemd_managed(name) {
@@ -360,9 +366,9 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
 }
 
 fn fix_wayland_socket_ownership(socket: &Path) -> Result<()> {
-    let runtime_dir = socket.parent().ok_or_else(|| {
-        anyhow::anyhow!("Cannot determine runtime directory from socket path")
-    })?;
+    let runtime_dir = socket
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine runtime directory from socket path"))?;
 
     let output = std::process::Command::new("podman")
         .args(["unshare", "chown", "0:0"])

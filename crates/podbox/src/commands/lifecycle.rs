@@ -151,7 +151,9 @@ pub fn run_remove(
     let output = podbox::process::run_piped("podman", &rm_args)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(PodboxError::ContainerRemoveFailed(name.to_string(), stderr.to_string()).into());
+        return Err(
+            PodboxError::ContainerRemoveFailed(name.to_string(), stderr.to_string()).into(),
+        );
     }
     println!("Container '{}' removed.", name);
 

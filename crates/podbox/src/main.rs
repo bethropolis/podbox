@@ -142,12 +142,13 @@ fn run() -> Result<()> {
                 .iter()
                 .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
                 .collect();
-            let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                .with_prompt("Multiple containers found")
-                .items(&items)
-                .default(0)
-                .interact()
-                .map_err(|e| anyhow::anyhow!("selection failed: {}", e))?;
+            let selection =
+                dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Multiple containers found")
+                    .items(&items)
+                    .default(0)
+                    .interact()
+                    .map_err(|e| anyhow::anyhow!("selection failed: {}", e))?;
             Config::load(&config_list[selection])?
         } else if config_list.len() == 1 {
             Config::load(&config_list[0])?
@@ -176,7 +177,11 @@ fn run() -> Result<()> {
     let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
 
     match &cli.command {
-        Command::Build { name: _, rebuild, no_diff } => {
+        Command::Build {
+            name: _,
+            rebuild,
+            no_diff,
+        } => {
             commands::lifecycle::run_build(&config, &env, &xdg, cli.dry_run, *rebuild, *no_diff)?;
         }
 
@@ -212,7 +217,12 @@ fn run() -> Result<()> {
             commands::runtime::run_status(&name, cli.dry_run)?;
         }
 
-        Command::Logs { name: _, follow, tail, since } => {
+        Command::Logs {
+            name: _,
+            follow,
+            tail,
+            since,
+        } => {
             commands::runtime::run_logs(&name, *follow, *tail, since.clone(), cli.dry_run)?;
         }
 
@@ -224,7 +234,11 @@ fn run() -> Result<()> {
             commands::config::run_export(&name, export_cmd)?;
         }
 
-        Command::Remove { name: _, all, force } => {
+        Command::Remove {
+            name: _,
+            all,
+            force,
+        } => {
             commands::lifecycle::run_remove(&config, &name, cli.dry_run, *all, *force)?;
         }
 

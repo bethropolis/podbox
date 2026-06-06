@@ -21,8 +21,7 @@ pub fn run_find_definition() -> Result<()> {
 pub fn run_completions(shell: clap_complete::shells::Shell) -> Result<()> {
     let mut cmd = <Cli as clap::CommandFactory>::command();
     let name = cmd.get_name().to_string();
-    let shell_generator: clap_complete::shells::Shell = shell.into();
-    generate(shell_generator, &mut cmd, name, &mut std::io::stdout());
+    generate(shell, &mut cmd, name, &mut std::io::stdout());
     Ok(())
 }
 
@@ -84,16 +83,12 @@ pub fn run_export(name: &str, export_cmd: &ExportCommand) -> Result<()> {
 }
 
 /// Run the host-side socket server for a container.
-pub fn run_serve(
-    cli_config_path: Option<&PathBuf>,
-    serve_name: &str,
-    dry_run: bool,
-) -> Result<()> {
+pub fn run_serve(cli_config_path: Option<&PathBuf>, serve_name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
         println!("podbox serve {}", serve_name);
         return Ok(());
     }
-    let serve_config = if let Some(ref path) = cli_config_path {
+    let serve_config = if let Some(path) = cli_config_path {
         Config::load(path)?
     } else {
         let config_dir = config::config_dir();
@@ -270,7 +265,7 @@ fn derive_container_name(image: &str, custom_name: Option<&str>) -> String {
         return name.to_string();
     }
     let image_part = image.split_once(':').map(|(n, _)| n).unwrap_or(image);
-    let short = image_part.split('/').last().unwrap_or(image_part);
+    let short = image_part.split('/').next_back().unwrap_or(image_part);
     let tag = image.split_once(':').map(|(_, t)| t).unwrap_or("latest");
     if tag == "latest" || tag.is_empty() {
         short.to_string()
@@ -386,7 +381,10 @@ pub fn run_init(
         let toml = toml::to_string_pretty(&result.config)?;
         std::fs::write(&config_path, &toml)?;
         println!("Created: {}", config_path.display());
-        println!("Run `podbox start -C {}` to build, enable, and start.", result.name);
+        println!(
+            "Run `podbox start -C {}` to build, enable, and start.",
+            result.name
+        );
         return Ok(());
     }
 
@@ -499,11 +497,7 @@ pub fn run_use(name: Option<String>, clear: bool, dry_run: bool) -> Result<()> {
         Some(n) => {
             let config_path = config::config_dir().join(format!("{}.toml", n));
             if !config_path.exists() {
-                anyhow::bail!(
-                    "Config '{}' not found at {}",
-                    n,
-                    config_path.display()
-                );
+                anyhow::bail!("Config '{}' not found at {}", n, config_path.display());
             }
             if dry_run {
                 println!("Would set active context to '{}'.", n);
@@ -579,7 +573,10 @@ pub fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool
         anyhow::bail!(
             "Config '{}' already exists at {}.\n\
              Use `podbox build -C {}` to build, or `podbox start -C {}` to start.",
-            stem, existing.display(), stem, stem
+            stem,
+            existing.display(),
+            stem,
+            stem
         );
     }
 

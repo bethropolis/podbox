@@ -89,7 +89,10 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
         lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
     } else {
         // Packages to install (or custom build) — use the local overlay image.
-        lines.push(format!("Image=localhost/podbox-{}:latest", config.image.name));
+        lines.push(format!(
+            "Image=localhost/podbox-{}:latest",
+            config.image.name
+        ));
     }
     lines.push(format!("ContainerName={}", name));
     lines.push("UserNS=keep-id".into());

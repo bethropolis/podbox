@@ -65,10 +65,7 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
 
 /// Find a `.desktop` file in the container by searching XDG dirs,
 /// falling back to user-installed locations.
-fn find_desktop_file(
-    container_name: &str,
-    app: &str,
-) -> Result<(String, String)> {
+fn find_desktop_file(container_name: &str, app: &str) -> Result<(String, String)> {
     let filename = format!("{}.desktop", app);
 
     // First: search well-known system locations.

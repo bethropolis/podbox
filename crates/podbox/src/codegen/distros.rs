@@ -1,5 +1,3 @@
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DistroFamily {
     DebianLike,
@@ -165,7 +163,7 @@ impl DistroFamily {
     }
 
     fn shell_packages(&self, shell_path: &str) -> Vec<String> {
-        let shell_name = shell_path.split('/').last().unwrap_or("");
+        let shell_name = shell_path.split('/').next_back().unwrap_or("");
         let mut pkgs = Vec::new();
 
         match shell_name {
@@ -186,15 +184,13 @@ impl DistroFamily {
             "fish" => {
                 pkgs.push("fish".into());
             }
-            "sh" | "dash" => {
-                match self {
-                    Self::DebianLike => pkgs.push("dash".into()),
-                    Self::FedoraLike => pkgs.push("dash".into()),
-                    Self::ArchLike => pkgs.push("dash".into()),
-                    Self::AlpineLike => pkgs.push("dash".into()),
-                    Self::Unknown => pkgs.push("dash".into()),
-                }
-            }
+            "sh" | "dash" => match self {
+                Self::DebianLike => pkgs.push("dash".into()),
+                Self::FedoraLike => pkgs.push("dash".into()),
+                Self::ArchLike => pkgs.push("dash".into()),
+                Self::AlpineLike => pkgs.push("dash".into()),
+                Self::Unknown => pkgs.push("dash".into()),
+            },
             _ => {}
         }
 
@@ -218,7 +214,11 @@ impl DistroFamily {
                 format!("dnf remove -y {} && {}", pkgs, Self::clean_cmd(self))
             }
             Self::ArchLike => {
-                format!("pacman -Rns --noconfirm {} && {}", pkgs, Self::clean_cmd(self))
+                format!(
+                    "pacman -Rns --noconfirm {} && {}",
+                    pkgs,
+                    Self::clean_cmd(self)
+                )
             }
             Self::AlpineLike => {
                 format!("apk del {} && {}", pkgs, Self::clean_cmd(self))
@@ -258,13 +258,34 @@ mod tests {
 
     #[test]
     fn test_distro_from_base_image() {
-        assert_eq!(DistroFamily::from_base_image("debian:12"), DistroFamily::DebianLike);
-        assert_eq!(DistroFamily::from_base_image("ubuntu:24.04"), DistroFamily::DebianLike);
-        assert_eq!(DistroFamily::from_base_image("fedora:41"), DistroFamily::FedoraLike);
-        assert_eq!(DistroFamily::from_base_image("cachy-latest"), DistroFamily::FedoraLike);
-        assert_eq!(DistroFamily::from_base_image("archlinux:latest"), DistroFamily::ArchLike);
-        assert_eq!(DistroFamily::from_base_image("alpine:3.20"), DistroFamily::AlpineLike);
-        assert_eq!(DistroFamily::from_base_image("unknown:latest"), DistroFamily::Unknown);
+        assert_eq!(
+            DistroFamily::from_base_image("debian:12"),
+            DistroFamily::DebianLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("ubuntu:24.04"),
+            DistroFamily::DebianLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("fedora:41"),
+            DistroFamily::FedoraLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("cachy-latest"),
+            DistroFamily::FedoraLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("archlinux:latest"),
+            DistroFamily::ArchLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("alpine:3.20"),
+            DistroFamily::AlpineLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("unknown:latest"),
+            DistroFamily::Unknown
+        );
     }
 
     #[test]
@@ -301,9 +322,15 @@ mod tests {
 
     #[test]
     fn test_install_cmd() {
-        assert_eq!(DistroFamily::DebianLike.install_cmd(), "apt-get update && apt-get install -y --no-install-recommends");
+        assert_eq!(
+            DistroFamily::DebianLike.install_cmd(),
+            "apt-get update && apt-get install -y --no-install-recommends"
+        );
         assert_eq!(DistroFamily::FedoraLike.install_cmd(), "dnf install -y");
-        assert_eq!(DistroFamily::ArchLike.install_cmd(), "pacman -Syu --noconfirm");
+        assert_eq!(
+            DistroFamily::ArchLike.install_cmd(),
+            "pacman -Syu --noconfirm"
+        );
         assert_eq!(DistroFamily::AlpineLike.install_cmd(), "apk add --no-cache");
     }
 }

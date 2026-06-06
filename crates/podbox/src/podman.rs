@@ -40,9 +40,7 @@ pub fn podman_version() -> anyhow::Result<&'static PodmanVersion> {
             .ok()
             .filter(|o| o.status.success());
         let version_str = match structured {
-            Some(ref output) => {
-                String::from_utf8_lossy(&output.stdout).trim().to_string()
-            }
+            Some(ref output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
             None => {
                 // Fallback: parse `podman --version` (e.g. "podman version 5.3.0")
                 let output = Command::new("podman").args(["--version"]).output()?;

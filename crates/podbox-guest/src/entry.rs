@@ -144,7 +144,12 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     // remove it so we can create ours with the correct UID.
     if let Some(existing) = passwd()
         .lines()
-        .find(|l| l.split(':').nth(2).map(|u| u == &uid.to_string()).unwrap_or(false))
+        .find(|l| {
+            l.split(':')
+                .nth(2)
+                .map(|u| u == uid.to_string())
+                .unwrap_or(false)
+        })
         .and_then(|l| l.split(':').next())
     {
         if existing != user {
@@ -223,12 +228,14 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .status();
 
     // 3. Supplementary groups — try common group names portably
-    let supp_groups = [
-        "wheel", "sudo", "video", "audio", "render",
-    ];
+    let supp_groups = ["wheel", "sudo", "video", "audio", "render"];
     let existing_groups: Vec<&str> = supp_groups
         .iter()
-        .filter(|g| group_file().lines().any(|l| l.starts_with(&format!("{}:", g))))
+        .filter(|g| {
+            group_file()
+                .lines()
+                .any(|l| l.starts_with(&format!("{}:", g)))
+        })
         .copied()
         .collect();
     if !existing_groups.is_empty() {

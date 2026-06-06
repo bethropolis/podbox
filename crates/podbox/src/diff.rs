@@ -93,12 +93,7 @@ fn query_packages(name: &str, username: &str, manager: &str) -> Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "podman exec {} {} failed: {}",
-            name,
-            cmd,
-            stderr.trim()
-        );
+        anyhow::bail!("podman exec {} {} failed: {}", name, cmd, stderr.trim());
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -132,10 +127,7 @@ fn normalize_package_name(line: &str, manager: &str) -> Option<String> {
                 }
             }
             let first = line.split_whitespace().next()?;
-            let name = first
-                .rsplit_once('-')
-                .map(|(n, _)| n)
-                .unwrap_or(first);
+            let name = first.rsplit_once('-').map(|(n, _)| n).unwrap_or(first);
             Some(name.to_string())
         }
         // dpkg-query -W / rpm -qa / pacman -Qqn all give plain names
@@ -165,10 +157,7 @@ fn compute_unexpected(
         "apk" => DistroFamily::AlpineLike,
         _ => DistroFamily::FedoraLike,
     };
-    let base_set: BTreeSet<String> = distro
-        .base_packages(None)
-        .into_iter()
-        .collect();
+    let base_set: BTreeSet<String> = distro.base_packages(None).into_iter().collect();
 
     container_set
         .difference(config_set)

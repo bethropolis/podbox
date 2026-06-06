@@ -1,4 +1,4 @@
-use crate::codegen::distros::{DistroFamily, detect_host_locale, detect_host_shell};
+use crate::codegen::distros::{detect_host_locale, detect_host_shell, DistroFamily};
 use crate::config::Config;
 
 pub const VERSION: &str = env!("PODBOX_VERSION");
@@ -111,7 +111,12 @@ impl ContainerfileBuilder {
 
         if !self.packages.is_empty() {
             let pkgs = self.packages.join(" ");
-            let cmd = format!("{} {} && {}", distro.install_cmd(), pkgs, distro.clean_cmd());
+            let cmd = format!(
+                "{} {} && {}",
+                distro.install_cmd(),
+                pkgs,
+                distro.clean_cmd()
+            );
             lines.push(format!("RUN {}", cmd));
             lines.push(String::new());
         }
@@ -167,8 +172,11 @@ mod tests {
 
     #[test]
     fn test_builder_debian() {
-        let builder = ContainerfileBuilder::new("debian:12", "test")
-            .add_base_packages(DistroFamily::DebianLike, Some("/usr/bin/fish"), Some("en_US.UTF-8"));
+        let builder = ContainerfileBuilder::new("debian:12", "test").add_base_packages(
+            DistroFamily::DebianLike,
+            Some("/usr/bin/fish"),
+            Some("en_US.UTF-8"),
+        );
         let cf = builder.build();
         assert!(cf.contains("apt-get update"));
         assert!(cf.contains("sudo"));
@@ -180,8 +188,11 @@ mod tests {
 
     #[test]
     fn test_builder_fedora() {
-        let builder = ContainerfileBuilder::new("fedora:41", "test")
-            .add_base_packages(DistroFamily::FedoraLike, Some("/usr/bin/zsh"), None);
+        let builder = ContainerfileBuilder::new("fedora:41", "test").add_base_packages(
+            DistroFamily::FedoraLike,
+            Some("/usr/bin/zsh"),
+            None,
+        );
         let cf = builder.build();
         assert!(cf.contains("dnf install -y"));
         assert!(cf.contains("sudo"));
@@ -191,8 +202,11 @@ mod tests {
 
     #[test]
     fn test_builder_arch() {
-        let builder = ContainerfileBuilder::new("archlinux:latest", "test")
-            .add_base_packages(DistroFamily::ArchLike, Some("/bin/bash"), None);
+        let builder = ContainerfileBuilder::new("archlinux:latest", "test").add_base_packages(
+            DistroFamily::ArchLike,
+            Some("/bin/bash"),
+            None,
+        );
         let cf = builder.build();
         assert!(cf.contains("pacman -Syu --noconfirm"));
         assert!(cf.contains("bash"));
@@ -202,8 +216,11 @@ mod tests {
 
     #[test]
     fn test_builder_alpine() {
-        let builder = ContainerfileBuilder::new("alpine:3.20", "test")
-            .add_base_packages(DistroFamily::AlpineLike, None, None);
+        let builder = ContainerfileBuilder::new("alpine:3.20", "test").add_base_packages(
+            DistroFamily::AlpineLike,
+            None,
+            None,
+        );
         let cf = builder.build();
         assert!(cf.contains("apk add --no-cache"));
         assert!(cf.contains("sudo"));

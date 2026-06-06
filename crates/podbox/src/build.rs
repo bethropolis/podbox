@@ -100,8 +100,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
 
     if !rebuild {
         if let Some(lock) = crate::lock::read(&lock_path)? {
-            if lock.config_checksum == config_checksum && crate::podman::image_exists(&local_tag)?
-            {
+            if lock.config_checksum == config_checksum && crate::podman::image_exists(&local_tag)? {
                 println!(
                     "Prebuilt image already present as {}. Skipping pull.",
                     local_tag
@@ -115,7 +114,10 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
     if dry_run {
         println!("Would pull: {}", image_ref);
         if has_packages {
-            println!("Would install packages on top: {}", config.image.packages.install.join(", "));
+            println!(
+                "Would install packages on top: {}",
+                config.image.packages.install.join(", ")
+            );
         }
         println!("Would tag as: {}", local_tag);
         println!("Would write lock file at: {}", lock_path.display());
@@ -134,8 +136,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
                 eprintln!(
                     "Warning: image guest version (v{}) differs from host (v{}). \
                      Protocol compatibility will be validated at runtime.",
-                    guest_clean,
-                    host_clean
+                    guest_clean, host_clean
                 );
             }
         }
@@ -162,10 +163,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
             format!("RUN {} {} && {}", install_cmd, packages, clean_cmd)
         };
 
-        let containerfile = format!(
-            "FROM {}\n{}\n",
-            image_ref, run_line
-        );
+        let containerfile = format!("FROM {}\n{}\n", image_ref, run_line);
 
         std::fs::create_dir_all(&context_dir)
             .with_context(|| format!("failed to create context dir '{}'", context_dir.display()))?;

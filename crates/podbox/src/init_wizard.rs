@@ -116,33 +116,37 @@ pub fn run_wizard(
 ) -> anyhow::Result<WizardResult> {
     let (mut config, default_name) = match prompt_profile(profiles) {
         ProfileChoice::Named(profile) => {
-            let cfg: Config = toml::from_str(&profile.toml)
-                .map_err(|e| anyhow::anyhow!("failed to parse profile '{}': {}", profile.name, e))?;
+            let cfg: Config = toml::from_str(&profile.toml).map_err(|e| {
+                anyhow::anyhow!("failed to parse profile '{}': {}", profile.name, e)
+            })?;
             (cfg, profile.name.clone())
         }
         ProfileChoice::Custom => {
             let mut cfg = Config::embedded();
 
-            let base: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                .with_prompt("Base image")
-                .default("fedora:44".to_string())
-                .interact_text()?;
+            let base: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Base image")
+                    .default("fedora:44".to_string())
+                    .interact_text()?;
             cfg.image.base = base;
 
-            let packages: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                .with_prompt("Packages to install (space-separated)")
-                .default("fish fastfetch btop".to_string())
-                .interact_text()?;
+            let packages: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Packages to install (space-separated)")
+                    .default("fish fastfetch btop".to_string())
+                    .interact_text()?;
             cfg.image.packages.install = packages
                 .split_whitespace()
                 .map(|s| s.to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
 
-            let run_cmds: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                .with_prompt("Extra RUN commands (one per line, \\n separated)")
-                .default("".to_string())
-                .interact_text()?;
+            let run_cmds: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Extra RUN commands (one per line, \\n separated)")
+                    .default("".to_string())
+                    .interact_text()?;
             cfg.image.run.commands = run_cmds
                 .split("\\n")
                 .map(|s| s.trim().to_string())
@@ -207,11 +211,12 @@ enum ProfileChoice<'a> {
 
 fn prompt_profile(profiles: &[profiles::Profile]) -> ProfileChoice<'_> {
     let items: Vec<String> = {
-        let mut v = vec!["Custom (from scratch)  —  Build a container from a base distro image".into()];
+        let mut v =
+            vec!["Custom (from scratch)  —  Build a container from a base distro image".into()];
         for p in profiles {
             v.push(format!("{}  —  {}", p.label, p.description));
         }
-        
+
         v
     };
     let selection = dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())

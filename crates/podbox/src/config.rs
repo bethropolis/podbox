@@ -42,10 +42,16 @@ pub struct ImageConfig {
     #[serde(rename = "image", default)]
     pub image_ref: Option<String>,
     /// Number of times to retry pulling the image on failure.
-    #[serde(default = "default_pull_retry", skip_serializing_if = "is_default_pull_retry")]
+    #[serde(
+        default = "default_pull_retry",
+        skip_serializing_if = "is_default_pull_retry"
+    )]
     pub pull_retry: u32,
     /// Delay between pull retries (Podman duration, e.g. "5s", "2m").
-    #[serde(default = "default_pull_retry_delay", skip_serializing_if = "is_default_pull_delay")]
+    #[serde(
+        default = "default_pull_retry_delay",
+        skip_serializing_if = "is_default_pull_delay"
+    )]
     pub pull_retry_delay: String,
     #[serde(default, skip_serializing_if = "is_default_packages")]
     pub packages: PackageConfig,
@@ -75,15 +81,16 @@ fn default_pull_retry_delay() -> String {
     "5s".into()
 }
 
-
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PackageConfig {
     #[serde(default, skip_serializing_if = "is_empty_vec")]
     pub install: Vec<String>,
     #[serde(default, skip_serializing_if = "is_empty_vec")]
     pub remove: Vec<String>,
-    #[serde(default = "default_package_manager", skip_serializing_if = "is_default_pkg_mgr")]
+    #[serde(
+        default = "default_package_manager",
+        skip_serializing_if = "is_default_pkg_mgr"
+    )]
     pub manager: String,
 }
 
@@ -465,17 +472,39 @@ fn default_true() -> bool {
     true
 }
 
-fn is_true(v: &bool) -> bool { *v }
-fn is_false(v: &bool) -> bool { !*v }
-fn is_empty_vec(v: &[String]) -> bool { v.is_empty() }
-fn is_empty_hashmap(v: &HashMap<String, String>) -> bool { v.is_empty() }
-fn is_default_mounts(v: &MountConfig) -> bool { v.extra.is_empty() }
-fn is_default_gpu(v: &GpuMode) -> bool { *v == GpuMode::Auto }
-fn is_none<T>(v: &Option<T>) -> bool { v.is_none() }
-fn is_default_shell(v: &str) -> bool { v == "fish" }
-fn is_default_pkg_mgr(v: &str) -> bool { v == "dnf" }
-fn is_default_pull_retry(v: &u32) -> bool { *v == 3 }
-fn is_default_pull_delay(v: &str) -> bool { v == "5s" }
+fn is_true(v: &bool) -> bool {
+    *v
+}
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+fn is_empty_vec(v: &[String]) -> bool {
+    v.is_empty()
+}
+fn is_empty_hashmap(v: &HashMap<String, String>) -> bool {
+    v.is_empty()
+}
+fn is_default_mounts(v: &MountConfig) -> bool {
+    v.extra.is_empty()
+}
+fn is_default_gpu(v: &GpuMode) -> bool {
+    *v == GpuMode::Auto
+}
+fn is_none<T>(v: &Option<T>) -> bool {
+    v.is_none()
+}
+fn is_default_shell(v: &str) -> bool {
+    v == "fish"
+}
+fn is_default_pkg_mgr(v: &str) -> bool {
+    v == "dnf"
+}
+fn is_default_pull_retry(v: &u32) -> bool {
+    *v == 3
+}
+fn is_default_pull_delay(v: &str) -> bool {
+    v == "5s"
+}
 
 fn is_default_packages(v: &PackageConfig) -> bool {
     v.install.is_empty() && v.remove.is_empty() && v.manager == "dnf"
