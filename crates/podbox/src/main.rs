@@ -193,7 +193,7 @@ fn run() -> Result<()> {
         }
 
         Command::Stop { name: _ } => {
-            commands::lifecycle::run_stop(&name, cli.dry_run)?;
+            commands::lifecycle::run_stop(&config, &name, cli.dry_run)?;
         }
 
         Command::Shell { name: _ } | Command::Enter { name: _ } => {

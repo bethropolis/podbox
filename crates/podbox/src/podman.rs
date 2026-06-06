@@ -109,11 +109,30 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
                 .output()
             {
                 let state = String::from_utf8_lossy(&sys.stdout).trim().to_string();
-                return match state.as_str() {
-                    "active" => Ok(ContainerState::Running),
-                    "inactive" | "failed" => Ok(ContainerState::Stopped),
-                    _ => Ok(ContainerState::Missing),
+                match state.as_str() {
+                    "active" => return Ok(ContainerState::Running),
+                    "inactive" | "failed" => return Ok(ContainerState::Stopped),
+                    _ => {
+                        // "unknown" — unit not loaded.  Check whether quadlet
+                        // files exist; if so the container was built but is
+                        // stopped (OnStop=remove may have removed the podman
+                        // object while leaving the quadlet infrastructure).
+                        let qdir = dirs::config_dir()
+                            .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
+                            .join("containers/systemd");
+                        if qdir.join(format!("{}.container", name)).exists() {
+                            return Ok(ContainerState::Stopped);
+                        }
+                        return Ok(ContainerState::Missing);
+                    }
                 };
+            }
+            // systemctl not available — check quadlet files as last resort
+            let qdir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
+                .join("containers/systemd");
+            if qdir.join(format!("{}.container", name)).exists() {
+                return Ok(ContainerState::Stopped);
             }
             return Ok(ContainerState::Missing);
         }

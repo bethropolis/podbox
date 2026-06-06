@@ -94,13 +94,26 @@ pub fn run_start(
 }
 
 /// Stop the container.
-pub fn run_stop(name: &str, dry_run: bool) -> Result<()> {
+///
+/// Uses `systemctl --user stop` when quadlet is enabled so that systemd
+/// tracks the service state transition (preventing a stale "unknown" in
+/// subsequent `systemctl is-active` checks).
+pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
-        println!("podman stop {}", name);
+        if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
+            println!("systemctl --user stop {}", name);
+        } else {
+            println!("podman stop {}", name);
+        }
         return Ok(());
     }
-    let args = podbox::process::args(&["stop", name]);
-    podbox::process::spawn_interactive("podman", &args).map(|_| ())
+    if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
+        let args = podbox::process::args(&["--user", "stop", name]);
+        podbox::process::spawn_interactive("systemctl", &args).map(|_| ())
+    } else {
+        let args = podbox::process::args(&["stop", name]);
+        podbox::process::spawn_interactive("podman", &args).map(|_| ())
+    }
 }
 
 /// Remove a container and optionally its home directory.
