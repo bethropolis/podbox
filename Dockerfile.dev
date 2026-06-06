@@ -1,0 +1,24 @@
+ARG BASE_IMAGE=docker.io/cachyos/cachyos:latest
+FROM ${BASE_IMAGE}
+
+ARG TARGETPLATFORM
+
+COPY $TARGETPLATFORM/podbox-guest /usr/local/bin/podbox-guest
+
+RUN pacman -Syu --noconfirm \
+    fish \
+    git \
+    base-devel \
+    neovim \
+    ripgrep \
+    fd \
+    zoxide \
+    curl \
+    && curl -fsSL https://mise.jdx.dev/install.sh \
+    | MISE_INSTALL_PATH=/usr/local/bin/mise sh \
+    && pacman -Scc --noconfirm
+
+RUN chmod +x /usr/local/bin/podbox-guest
+
+ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
+CMD ["/usr/bin/fish"]

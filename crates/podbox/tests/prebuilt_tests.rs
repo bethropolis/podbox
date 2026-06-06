@@ -266,6 +266,15 @@ fn profile_gaming_parses() {
 }
 
 #[test]
+fn profile_dev_parses() {
+    let profile = podbox::profiles::find("dev").expect("dev profile exists");
+    let cfg = Config::parse(&profile.toml).unwrap();
+    assert_eq!(cfg.image.base, "dev-latest");
+    assert!(cfg.integration.wayland);
+    assert_eq!(cfg.integration.gpu, podbox::config::GpuMode::Enabled);
+}
+
+#[test]
 fn profile_unknown_returns_none() {
     assert!(podbox::profiles::find("nonexistent").is_none());
 }
@@ -276,4 +285,5 @@ fn profile_list_contains_all() {
     assert!(names.iter().any(|n| n == "cachy"));
     assert!(names.iter().any(|n| n == "fedora"));
     assert!(names.iter().any(|n| n == "gaming"));
+    assert!(names.iter().any(|n| n == "dev"));
 }

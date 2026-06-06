@@ -1,0 +1,35 @@
+[image]
+name = "dev"
+base = "dev-latest"
+image = "ghcr.io/bethropolis/podbox:dev-latest"
+
+[image.packages]
+manager = "pacman"
+install = ["fastfetch", "btop", "fish"]
+
+[container]
+name = "dev"
+home = "~/containers/dev"
+shell = "/usr/bin/fish"
+
+[integration]
+wayland = true
+audio = true
+gpu = true
+sync_themes = true
+sync_icons = true
+sync_fonts = true
+
+[integration.xdg_dirs]
+documents = true
+downloads = true
+pictures = true
+music = true
+videos = true
+desktop = true
+projects = true
+
+[lifecycle]
+quadlet = true
+autostart = true
+auto_update = true

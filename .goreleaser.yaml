@@ -95,6 +95,33 @@ dockers_v2:
       podbox.shell: "/usr/bin/fish"
       podbox.default_shell: "/usr/bin/fish"
 
+  - id: dev
+    ids:
+      - podbox-guest
+    images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/podbox"
+    tags:
+      - "dev-{{ .Tag }}"
+      - "dev-latest"
+    dockerfile: Dockerfile.dev
+    platforms:
+      - linux/amd64
+    build_args:
+      BASE_IMAGE: docker.io/cachyos/cachyos:latest
+    labels:
+      org.opencontainers.image.source: "{{ .Env.GITHUB_SERVER_URL }}/{{ .Env.GITHUB_REPOSITORY }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Tag }}"
+      podbox.guest_version: "{{ .Tag }}"
+      podbox.protocol_version: "1"
+      podbox.integration.wayland: "true"
+      podbox.integration.audio: "true"
+      podbox.integration.gpu: "true"
+      podbox.integration.dbus: "true"
+      podbox.shell: "/usr/bin/fish"
+      podbox.default_shell: "/usr/bin/fish"
+
 aurs:
   - name: podbox-bin
     ids:
