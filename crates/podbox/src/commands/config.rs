@@ -378,6 +378,7 @@ pub fn run_init(
             return Ok(());
         }
         std::fs::create_dir_all(&config_dir)?;
+        result.config.validate()?;
         let toml = toml::to_string_pretty(&result.config)?;
         std::fs::write(&config_path, &toml)?;
         println!("Created: {}", config_path.display());
@@ -449,6 +450,7 @@ pub fn run_init(
     cfg.image.packages.manager = detect_package_manager(base).to_string();
 
     podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+    cfg.validate()?;
     let toml_str = toml::to_string_pretty(&cfg)?;
     let config_dir = config::config_dir();
     let config_path = config_dir.join(format!("{}.toml", container_name));
@@ -611,6 +613,7 @@ pub fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool
             .join(&container_name);
         cfg.image.packages.manager = detect_package_manager(image).to_string();
         podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+        cfg.validate()?;
 
         let config_dir = config::config_dir();
         let config_path = config_dir.join(format!("{}.toml", container_name));

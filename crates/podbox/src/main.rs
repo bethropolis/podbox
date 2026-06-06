@@ -22,7 +22,8 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Enter { name }
         | Command::Status { name }
         | Command::Remove { name, .. }
-        | Command::Logs { name, .. } => name.clone(),
+        | Command::Logs { name, .. }
+        | Command::Update { name, .. } => name.clone(),
         _ => None,
     }
 }
@@ -205,8 +206,8 @@ fn run() -> Result<()> {
             commands::runtime::run_shell_enter(&config, &name, cli.dry_run)?;
         }
 
-        Command::Exec { args: cmd_args } => {
-            commands::runtime::run_exec(&env, &name, cmd_args, cli.dry_run)?;
+        Command::Exec { args: cmd_args, root } => {
+            commands::runtime::run_exec(&env, &name, cmd_args, cli.dry_run, *root)?;
         }
 
         Command::Run { app, app_args } => {
@@ -244,6 +245,10 @@ fn run() -> Result<()> {
 
         Command::Serve { name: serve_name } => {
             commands::config::run_serve(cli.config.as_ref(), serve_name, cli.dry_run)?;
+        }
+
+        Command::Update { no_restart, .. } => {
+            commands::lifecycle::run_update(&config, &env, &xdg, &name, cli.dry_run, *no_restart)?;
         }
 
         Command::Pull { image } => {

@@ -53,4 +53,7 @@ pub enum PodboxError {
 
     #[error("protocol version mismatch: host speaks v{expected}, guest speaks v{got}")]
     ProtocolMismatch { expected: u32, got: u32 },
+
+    #[error("config validation failed:\n{0}")]
+    ConfigValidationFailed(String),
 }

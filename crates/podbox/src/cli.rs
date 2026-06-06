@@ -68,6 +68,9 @@ pub enum Command {
 
     /// Execute a command interactively in the container.
     Exec {
+        /// Run as root inside the container (omit -u flag).
+        #[arg(long)]
+        root: bool,
         /// Command and arguments to execute.
         #[arg(required = true, trailing_var_arg = true)]
         args: Vec<String>,
@@ -162,6 +165,15 @@ pub enum Command {
         /// Use a named profile (cachy, fedora, gaming) as template.
         #[arg(long)]
         profile: Option<String>,
+    },
+
+    /// Pull the latest image and restart the container.
+    Update {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+        /// Skip restart after update.
+        #[arg(long)]
+        no_restart: bool,
     },
 
     /// Pull a prebuilt image without building.

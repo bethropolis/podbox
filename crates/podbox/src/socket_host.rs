@@ -145,7 +145,7 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                         "notify" => config.notify,
                         "xdg_open" => config.xdg_open,
                         "clipboard" => config.clipboard,
-                        "host_exec" => config.host_exec,
+                        "host_exec" => config.host_exec.enabled,
                         _ => false,
                     };
                     if enabled {
@@ -229,12 +229,53 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                 write_frame(stream, &response)?;
             }
             GuestMessage::HostExec { cmd, args } => {
-                if !config.host_exec {
-                    write_frame(stream, &HostMessage::Shutdown)?;
+                if !config.host_exec.enabled {
+                    write_frame(
+                        stream,
+                        &HostMessage::HostExecStderr {
+                            data: "host-exec is disabled".into(),
+                        },
+                    )?;
+                    write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
                     return Ok(());
                 }
 
-                match std::process::Command::new(&cmd)
+                let resolved = match config.host_exec.resolve(&cmd) {
+                    Some(p) => p,
+                    None => {
+                        let allowed = config
+                            .host_exec
+                            .allowlist
+                            .as_ref()
+                            .map(|m| m.keys().cloned().collect::<Vec<_>>().join(", "))
+                            .unwrap_or_default();
+                        write_frame(
+                            stream,
+                            &HostMessage::HostExecStderr {
+                                data: format!(
+                                    "Permission denied: '{}' is not in the host-exec allowlist\nAllowed commands: {}",
+                                    cmd,
+                                    allowed
+                                ),
+                            },
+                        )?;
+                        write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+                        return Ok(());
+                    }
+                };
+
+                if let Err(msg) = validate_host_exec_args(&args) {
+                    write_frame(
+                        stream,
+                        &HostMessage::HostExecStderr {
+                            data: format!("Security violation: {}", msg),
+                        },
+                    )?;
+                    write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+                    return Ok(());
+                }
+
+                match std::process::Command::new(resolved)
                     .args(&args)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -274,6 +315,42 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
             }
         }
     }
+}
+
+/// Validate arguments for host-exec, rejecting shell metacharacters and
+/// dangerous flag patterns that could alter the behaviour of a whitelisted
+/// binary (e.g. `git --exec-path=…`).
+fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
+    for arg in args {
+        // Shell metacharacters (defence in depth – Command::new avoids a shell,
+        // but a whitelisted binary might interpret them unsafely).
+        if arg.contains(';')
+            || arg.contains('|')
+            || arg.contains('&')
+            || arg.contains('$')
+            || arg.contains('`')
+            || arg.contains('\n')
+            || arg.contains('\r')
+        {
+            return Err(format!("argument {:?} contains shell metacharacters", arg));
+        }
+        // Dangerous flag prefixes that can subvert a whitelisted binary.
+        let lower = arg.to_lowercase();
+        if lower.starts_with("--exec-path")
+            || lower.starts_with("--config")
+            || lower.starts_with("--plugin")
+            || lower.starts_with("--load")
+            || lower.starts_with("--module")
+            || lower.starts_with("--remote=")
+            || lower == "-o"
+        {
+            return Err(format!(
+                "argument {:?} uses a restricted flag pattern",
+                arg
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Validate a URI from inside the container, returning a safe-to-open

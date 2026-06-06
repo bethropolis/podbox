@@ -110,7 +110,7 @@ Controls which host resources are shared with the container.
 | `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
 | `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
 | `sync_themes` | bool | `false` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
-| `host_exec` | bool | `false` | Allow container to execute arbitrary commands on the host (via `host-exec` interceptor) |
+| `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
 ### `GpuMode` values
@@ -121,6 +121,22 @@ Controls which host resources are shared with the container.
 | `true` | Enable `/dev/dri` (Intel/AMD) |
 | `false` | Disable all GPU passthrough |
 | `"nvidia"` | Enable `/dev/dri` + NVIDIA device nodes |
+
+### `[integration.host_exec]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Allow container to execute commands on the host |
+| `allowlist` | table | (none) | Alias → absolute-path map for allowed commands. When set, only those commands may be run (resolved via the mapped host path, ignoring the guest's `$PATH`). When absent, any command is allowed (legacy mode). |
+
+**Example — restrict to `git` and `systemctl`:**
+```toml
+[integration.host_exec]
+enabled = true
+allowlist = { git = "/usr/bin/git", systemctl = "/usr/bin/systemctl" }
+```
+
+**Security note:** Even with an allowlist, argument injection can subvert a binary (e.g. `git --exec-path=…`). The host automatically rejects arguments containing shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``) or dangerous flag patterns (`--exec-path`, `--config`, `-o`, etc.).
 
 ### `[integration.xdg_dirs]`
 
@@ -150,11 +166,14 @@ dbus       = true
 notify     = true
 xdg_open   = true
 clipboard  = true
-host_exec  = true
 ssh_agent  = true
 sync_fonts = true
 sync_icons = true
 sync_themes = true
+
+[integration.host_exec]
+enabled = true
+allowlist = { git = "/usr/bin/git" }
 
 [integration.xdg_dirs]
 documents = true

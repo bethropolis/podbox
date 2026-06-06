@@ -116,6 +116,50 @@ pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     }
 }
 
+/// Update a container: pull latest image, rebuild, and restart.
+pub fn run_update(
+    config: &Config,
+    env: &HostEnv,
+    xdg: &ResolvedXdgDirs,
+    name: &str,
+    dry_run: bool,
+    no_restart: bool,
+) -> Result<()> {
+    if dry_run {
+        println!("podbox update: pull/rebuild and restart {}", name);
+        println!("  build::run(config, env, xdg, dry_run: true, rebuild: true)");
+        if !no_restart {
+            if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
+                println!("  systemctl --user restart {}", name);
+            } else {
+                println!("  podman restart {}", name);
+            }
+        }
+        return Ok(());
+    }
+
+    println!("Updating '{}'...", name);
+
+    podbox::build::run(config, env, xdg, false, true)?;
+
+    if no_restart {
+        println!("Image updated. Restart skipped (--no-restart).");
+        return Ok(());
+    }
+
+    println!("Restarting container...");
+    if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
+        let args = podbox::process::args(&["--user", "restart", name]);
+        podbox::process::spawn_interactive("systemctl", &args)?;
+    } else {
+        let args = podbox::process::args(&["restart", name]);
+        podbox::process::spawn_interactive("podman", &args)?;
+    }
+
+    println!("Update complete.");
+    Ok(())
+}
+
 /// Remove a container and optionally its home directory.
 pub fn run_remove(
     config: &Config,

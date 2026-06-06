@@ -46,15 +46,19 @@ pub fn run_shell_enter(config: &Config, name: &str, dry_run: bool) -> Result<()>
 }
 
 /// Execute an arbitrary command inside the container.
-pub fn run_exec(env: &HostEnv, name: &str, cmd_args: &[String], dry_run: bool) -> Result<()> {
+pub fn run_exec(env: &HostEnv, name: &str, cmd_args: &[String], dry_run: bool, root: bool) -> Result<()> {
     let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
         "-it"
     } else {
         "-i"
     };
+    let base_args: &[&str] = if root {
+        &["exec", tty_flag, name]
+    } else {
+        &["exec", tty_flag, "-u", &env.username, name]
+    };
     if dry_run {
-        let mut exec_args: Vec<OsString> =
-            podbox::process::args(&["exec", tty_flag, "-u", &env.username, name]);
+        let mut exec_args: Vec<OsString> = podbox::process::args(base_args);
         for a in cmd_args {
             exec_args.push(a.into());
         }
@@ -62,8 +66,7 @@ pub fn run_exec(env: &HostEnv, name: &str, cmd_args: &[String], dry_run: bool) -
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run)?;
-    let mut exec_args: Vec<OsString> =
-        podbox::process::args(&["exec", tty_flag, "-u", &env.username, name]);
+    let mut exec_args: Vec<OsString> = podbox::process::args(base_args);
     for a in cmd_args {
         exec_args.push(a.into());
     }
