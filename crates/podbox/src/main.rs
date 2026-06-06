@@ -47,7 +47,7 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
             PodboxError::BuildFailed(_) | PodboxError::PodmanInspectFailed { .. } => {
                 ExitCode::from(4)
             }
-            PodboxError::GuestBinaryNotFound | PodboxError::PodmanNotFound => ExitCode::from(5),
+            PodboxError::PodmanNotFound => ExitCode::from(5),
             PodboxError::PullFailed(..) | PodboxError::TagFailed(..) => ExitCode::from(6),
             _ => ExitCode::FAILURE,
         }

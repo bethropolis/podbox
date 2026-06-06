@@ -15,6 +15,7 @@ pub mod diff;
 pub mod env;
 pub mod error;
 pub mod export;
+pub mod guest;
 pub mod init_wizard;
 pub mod labels;
 pub mod lock;

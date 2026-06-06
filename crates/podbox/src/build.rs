@@ -12,44 +12,6 @@ use crate::env::HostEnv;
 use crate::error::PodboxError;
 use crate::xdg::ResolvedXdgDirs;
 
-/// Locate the podbox-guest binary.
-fn find_guest_binary() -> Result<PathBuf> {
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(dir) = current_exe.parent() {
-            let candidate = dir.join("podbox-guest");
-            if candidate.exists() {
-                return Ok(candidate);
-            }
-            // Compat: old name
-            let old = dir.join("podmgr-guest");
-            if old.exists() {
-                return Ok(old);
-            }
-        }
-    }
-    if let Ok(path) = which::which("podbox-guest") {
-        return Ok(path);
-    }
-    // Compat: old binary name
-    if let Ok(path) = which::which("podmgr-guest") {
-        return Ok(path);
-    }
-    if let Ok(path) = std::env::var("PODBOX_GUEST_BIN") {
-        let p = PathBuf::from(path);
-        if p.exists() {
-            return Ok(p);
-        }
-    }
-    // Compat: old env var
-    if let Ok(path) = std::env::var("PODMGR_GUEST_BIN") {
-        let p = PathBuf::from(path);
-        if p.exists() {
-            return Ok(p);
-        }
-    }
-    Err(PodboxError::GuestBinaryNotFound.into())
-}
-
 /// SHA-256 hex digest of a string, used for lock-file invalidation.
 pub fn checksum(content: &str) -> String {
     let mut hasher = Sha256::new();
@@ -246,7 +208,7 @@ fn run_build(
     let containerfile_path = context_dir.join("Containerfile");
     let lock_path = context_dir.join(".podbox.lock");
 
-    let guest_bin = find_guest_binary()?;
+    let guest_bin = crate::guest::PODBOX_GUEST_BINARY;
 
     let definition_toml = toml::to_string(config)
         .with_context(|| "failed to serialize definition config".to_string())?;
@@ -269,8 +231,8 @@ fn run_build(
         println!("=== Containerfile ===");
         println!("{}", containerfile);
         println!();
-        println!("=== Files to copy ===");
-        println!("{} -> podbox-guest", guest_bin.display());
+        println!("=== Embedded podbox-guest ===");
+        println!("{} bytes (embedded in podbox binary)", guest_bin.len());
         println!(
             "podman build -t localhost/podbox-{}:latest {}",
             config.image.name,
@@ -281,7 +243,6 @@ fn run_build(
 
     std::fs::create_dir_all(&context_dir)
         .map_err(|e| PodboxError::HomeCreateFailed(context_dir.clone(), e))?;
-    // Best-effort permission tightening: ignore failure (e.g. on FAT mounts).
     let _ = std::fs::set_permissions(&context_dir, std::fs::Permissions::from_mode(0o700));
 
     std::fs::write(&containerfile_path, containerfile).with_context(|| {
@@ -292,8 +253,8 @@ fn run_build(
     })?;
 
     let guest_dest = context_dir.join("podbox-guest");
-    std::fs::copy(&guest_bin, &guest_dest)
-        .with_context(|| format!("failed to copy guest binary to '{}'", guest_dest.display()))?;
+    std::fs::write(&guest_dest, guest_bin)
+        .with_context(|| format!("failed to write guest binary to '{}'", guest_dest.display()))?;
 
     std::fs::create_dir_all(&config.container.home).with_context(|| {
         format!(

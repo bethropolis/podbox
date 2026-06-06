@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Result;
 
@@ -289,30 +289,16 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
     }
 
     checks += 1;
-    let guest_paths = [
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("podbox-guest"))),
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("podmgr-guest"))),
-        which::which("podbox-guest").ok(),
-        which::which("podmgr-guest").ok(),
-        std::env::var("PODBOX_GUEST_BIN").map(PathBuf::from).ok(),
-        std::env::var("PODMGR_GUEST_BIN").map(PathBuf::from).ok(),
-    ];
-    let found = guest_paths
-        .iter()
-        .any(|p| p.as_ref().map(|p| p.exists()).unwrap_or(false));
-    if found {
-        println!("[PASS] podbox-guest binary found");
+    let has_embedded = !podbox::guest::PODBOX_GUEST_BINARY.is_empty();
+    if has_embedded {
+        println!(
+            "[PASS] podbox-guest binary embedded ({} bytes)",
+            podbox::guest::PODBOX_GUEST_BINARY.len()
+        );
         passes += 1;
     } else {
-        println!("[FAIL] podbox-guest binary not found");
-        println!("       Prebuilt images bundle it: podbox pull <name>");
-        println!(
-            "       Build: cargo build -p podbox-guest --release --target x86_64-unknown-linux-musl"
-        );
+        println!("[FAIL] podbox-guest binary embedded, but is empty");
+        println!("       Rebuild podbox: cargo build --release -p podbox");
         failures += 1;
     }
 

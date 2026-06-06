@@ -156,51 +156,34 @@ fi
 build_binaries() {
   if [ -n "${PODBOX_SKIP_BUILD:-}" ]; then
     info "Skipping build ${DIM}(PODBOX_SKIP_BUILD is set)${RST}"
-    GUEST_SRC="${GUEST_SRC:-$PWD/target/x86_64-unknown-linux-musl/release/podbox-guest}"
     return
   fi
 
-  step "Building binaries"
+  step "Building podbox"
 
   printf "     ${GRAY}cargo build --release -p podbox${RST}\n"
   if cargo build --release -p podbox 2>&1 | \
       grep -E "^(error|warning\[)" | \
       while IFS= read -r line; do detail "$line"; done; [ "${PIPESTATUS[0]}" -eq 0 ]; then
-    ok "podbox"
+    ok "podbox ${DIM}(podbox-guest embedded)${RST}"
   else
     cargo build --release -p podbox || die "podbox build failed"
-    ok "podbox"
-  fi
-
-  printf "     ${GRAY}cargo build --release --target x86_64-unknown-linux-musl -p podbox-guest${RST}\n"
-  if cargo build --release --target x86_64-unknown-linux-musl -p podbox-guest 2>/dev/null; then
-    GUEST_SRC="$PWD/target/x86_64-unknown-linux-musl/release/podbox-guest"
-    ok "podbox-guest  ${DIM}(musl / static)${RST}"
-  else
-    warn "musl target unavailable — falling back to default target"
-    cargo build --release -p podbox-guest || die "podbox-guest build failed"
-    GUEST_SRC="$PWD/target/release/podbox-guest"
-    ok "podbox-guest  ${DIM}(dynamic, host target)${RST}"
+    ok "podbox ${DIM}(podbox-guest embedded)${RST}"
   fi
 }
 
 # ── Install binaries ──────────────────────────────────────
 install_binaries() {
-  step "Installing binaries"
+  step "Installing binary"
 
   asroot mkdir -p "$BIN_DIR"
 
   local podbox_src="${PODBOX_BIN:-$PWD/target/release/podbox}"
-  local guest_src="${PODBOX_GUEST_BIN:-${GUEST_SRC:-$PWD/target/x86_64-unknown-linux-musl/release/podbox-guest}}"
 
   [ -f "$podbox_src" ]  || die "Binary not found: $podbox_src  (hint: set PODBOX_BIN)"
-  [ -f "$guest_src"  ]  || die "Binary not found: $guest_src  (hint: set PODBOX_GUEST_BIN)"
 
   asroot install -m 755 "$podbox_src" "$BIN_DIR/podbox"
-  ok "podbox        ${DIM}→ $BIN_DIR/podbox${RST}"
-
-  asroot install -m 755 "$guest_src" "$BIN_DIR/podbox-guest"
-  ok "podbox-guest  ${DIM}→ $BIN_DIR/podbox-guest${RST}"
+  ok "podbox  ${DIM}→ $BIN_DIR/podbox (podbox-guest embedded)${RST}"
 }
 
 # ── Completions ───────────────────────────────────────────

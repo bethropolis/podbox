@@ -160,7 +160,7 @@ confirm() {
 remove_binaries() {
   step "Removing binaries"
   local removed=false
-  for bin in podbox podbox-guest; do
+  for bin in podbox; do
     if [ -f "$BIN_DIR/$bin" ]; then
       asroot rm -f "$BIN_DIR/$bin"
       ok "$bin  ${DIM}← $BIN_DIR/$bin${RST}"

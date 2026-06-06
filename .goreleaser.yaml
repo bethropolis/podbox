@@ -34,12 +34,6 @@ archives:
     name_template: "podbox-{{ .Tag }}-linux-x86_64"
     formats: ["tar.gz"]
     wrap_in_directory: false
-  - id: podbox-guest
-    ids:
-      - podbox-guest
-    name_template: "podbox-guest-{{ .Tag }}-linux-x86_64-musl"
-    formats: ["tar.gz"]
-    wrap_in_directory: false
 checksum:
   name_template: "checksums.txt"
 
@@ -102,7 +96,6 @@ aurs:
   - name: podbox-bin
     ids:
       - podbox
-      - podbox-guest
     homepage: "https://github.com/bethropolis/podbox"
     description: "Podman-native container environment manager"
     maintainers:
@@ -121,7 +114,6 @@ aurs:
       - podbox
     package: |-
       install -Dm755 "./podbox" "${pkgdir}/usr/bin/podbox"
-      install -Dm755 "./podbox-guest" "${pkgdir}/usr/bin/podbox-guest"
       install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/podbox-bin/LICENSE"
 
 homebrew_casks:

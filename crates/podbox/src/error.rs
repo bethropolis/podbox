@@ -18,9 +18,6 @@ pub enum PodboxError {
     #[error("podman not found in PATH")]
     PodmanNotFound,
 
-    #[error("podbox-guest binary not found -- use prebuilt images (podbox pull) or build manually: cargo build -p podbox-guest --release --target x86_64-unknown-linux-musl")]
-    GuestBinaryNotFound,
-
     #[error("home directory '{0}' could not be created: {1}")]
     HomeCreateFailed(PathBuf, io::Error),
 

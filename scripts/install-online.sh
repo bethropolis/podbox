@@ -40,12 +40,11 @@ cd "$TMP"
 BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 
 curl -sSfLO "${BASE_URL}/podbox-${TAG}-${OS}-${ARCH}.tar.gz"
-curl -sSfLO "${BASE_URL}/podbox-guest-${TAG}-${OS}-${ARCH}-musl.tar.gz"
 curl -sSfLO "${BASE_URL}/checksums.txt"
 
 # verify checksums
 if [ -n "$SHASUM" ]; then
-    grep -E "(podbox-${TAG}-${OS}-${ARCH}|podbox-guest-${TAG}-${OS}-${ARCH}-musl)" checksums.txt \
+    grep -E "(podbox-${TAG}-${OS}-${ARCH})" checksums.txt \
         | sha256sum -c - 2>/dev/null || {
             echo "Checksum verification failed. Aborting."
             exit 1
@@ -56,10 +55,9 @@ fi
 # install
 mkdir -p "$BINDIR"
 tar -xzf "podbox-${TAG}-${OS}-${ARCH}.tar.gz" -C "$BINDIR"
-tar -xzf "podbox-guest-${TAG}-${OS}-${ARCH}-musl.tar.gz" -C "$BINDIR"
-chmod +x "$BINDIR/podbox" "$BINDIR/podbox-guest"
+chmod +x "$BINDIR/podbox"
 
-echo "Installed podbox ${TAG} to ${BINDIR}"
+echo "Installed podbox ${TAG} to ${BINDIR}  (podbox-guest embedded)"
 
 # shell completions
 if command -v "$BINDIR/podbox" >/dev/null 2>&1; then
