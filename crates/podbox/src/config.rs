@@ -273,14 +273,14 @@ impl Default for IntegrationConfig {
             audio: true,
             gpu: GpuMode::Auto,
             dbus: true,
-            notify: false,
-            xdg_open: false,
-            clipboard: false,
-            host_exec: false,
+            notify: true,
+            xdg_open: true,
+            clipboard: true,
+            host_exec: true,
             ssh_agent: false,
-            sync_fonts: false,
-            sync_icons: false,
-            sync_themes: false,
+            sync_fonts: true,
+            sync_icons: true,
+            sync_themes: true,
             xdg_dirs: XdgDirConfig::default(),
             export: ExportConfig::default(),
         }
@@ -602,10 +602,10 @@ home = "~/containers/myenv"
         assert!(cfg.integration.wayland);
         assert!(cfg.integration.audio);
         assert!(cfg.integration.dbus);
-        assert!(!cfg.integration.notify);
-        assert!(!cfg.integration.xdg_open);
-        assert!(!cfg.integration.clipboard);
-        assert!(!cfg.integration.host_exec);
+        assert!(cfg.integration.notify);
+        assert!(cfg.integration.xdg_open);
+        assert!(cfg.integration.clipboard);
+        assert!(cfg.integration.host_exec);
         assert!(!cfg.integration.ssh_agent);
     }
 

@@ -316,6 +316,7 @@ fn prompt_integration_extras() -> (bool, bool, bool, bool) {
         dialoguer::MultiSelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
             .with_prompt("Integration extras (space to toggle, enter to confirm)")
             .items(&items)
+            .defaults(&[true, true, true, false])
             .interact()
             .expect("failed to get integration selection");
     (
