@@ -51,7 +51,6 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     platforms:
       - linux/amd64
-      - linux/arm64
     build_args:
       BASE_IMAGE: docker.io/cachyos/cachyos:latest
     labels:
