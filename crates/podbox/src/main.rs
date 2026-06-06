@@ -11,6 +11,22 @@ mod commands;
 
 pub const VERSION: &str = env!("PODBOX_VERSION");
 
+fn extract_positional_name(cmd: &Command) -> Option<String> {
+    match cmd {
+        Command::Build { name, .. }
+        | Command::Enable { name }
+        | Command::Disable { name }
+        | Command::Start { name }
+        | Command::Stop { name }
+        | Command::Shell { name }
+        | Command::Enter { name }
+        | Command::Status { name }
+        | Command::Remove { name, .. }
+        | Command::Logs { name, .. } => name.clone(),
+        _ => None,
+    }
+}
+
 fn main() -> ExitCode {
     let result = run();
     if let Err(e) = result {
@@ -79,15 +95,19 @@ fn run() -> Result<()> {
             return commands::config::run_list();
         }
 
+        Command::Use { name, clear } => {
+            return commands::config::run_use(name.clone(), *clear, cli.dry_run);
+        }
+
         _ => {}
     }
 
-    // Resolve container name from Enter or Build commands if provided
-    let enter_name = match &cli.command {
-        Command::Enter { name } => Some(name.clone()),
-        Command::Build { name, .. } => name.clone(),
-        _ => None,
-    };
+    // Resolution chain: positional -> -C -> PODBOX_CONTAINER env -> .active
+    let cmd_name = extract_positional_name(&cli.command);
+    let target_name = cmd_name
+        .or_else(|| cli.container.clone())
+        .or_else(|| std::env::var("PODBOX_CONTAINER").ok())
+        .or_else(config::read_active_context);
 
     // Load config for all other commands
     let mut config = if let Some(ref path) = cli.config {
@@ -105,7 +125,7 @@ fn run() -> Result<()> {
             }
             Err(e) => return Err(e),
         }
-    } else if let Some(ref container_name) = enter_name.or_else(|| cli.container.clone()) {
+    } else if let Some(ref container_name) = target_name {
         let config_dir = config::config_dir();
         let config_path = config_dir.join(format!("{}.toml", container_name));
         Config::load(&config_path).map_err(|e| {
@@ -129,6 +149,8 @@ fn run() -> Result<()> {
                 .interact()
                 .map_err(|e| anyhow::anyhow!("selection failed: {}", e))?;
             Config::load(&config_list[selection])?
+        } else if config_list.len() == 1 {
+            Config::load(&config_list[0])?
         } else {
             match config::find_definition() {
                 Some(path) => Config::load(&path)?,
@@ -158,23 +180,23 @@ fn run() -> Result<()> {
             commands::lifecycle::run_build(&config, &env, &xdg, cli.dry_run, *rebuild, *no_diff)?;
         }
 
-        Command::Enable => {
+        Command::Enable { name: _ } => {
             commands::lifecycle::run_enable(&config, &env, &xdg, cli.dry_run)?;
         }
 
-        Command::Disable => {
+        Command::Disable { name: _ } => {
             commands::lifecycle::run_disable(&name)?;
         }
 
-        Command::Start => {
+        Command::Start { name: _ } => {
             commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run)?;
         }
 
-        Command::Stop => {
+        Command::Stop { name: _ } => {
             commands::lifecycle::run_stop(&name, cli.dry_run)?;
         }
 
-        Command::Shell | Command::Enter { .. } => {
+        Command::Shell { name: _ } | Command::Enter { name: _ } => {
             commands::runtime::run_shell_enter(&config, &name, cli.dry_run)?;
         }
 
@@ -186,11 +208,11 @@ fn run() -> Result<()> {
             commands::runtime::run_run(&env, &name, app, app_args, cli.dry_run)?;
         }
 
-        Command::Status => {
+        Command::Status { name: _ } => {
             commands::runtime::run_status(&name, cli.dry_run)?;
         }
 
-        Command::Logs { follow, tail } => {
+        Command::Logs { name: _, follow, tail } => {
             commands::runtime::run_logs(&name, *follow, *tail, cli.dry_run)?;
         }
 
@@ -202,7 +224,7 @@ fn run() -> Result<()> {
             commands::config::run_export(&name, export_cmd)?;
         }
 
-        Command::Remove { all, force } => {
+        Command::Remove { name: _, all, force } => {
             commands::lifecycle::run_remove(&config, &name, cli.dry_run, *all, *force)?;
         }
 
@@ -230,7 +252,8 @@ fn run() -> Result<()> {
         | Command::Completions { .. }
         | Command::Init { .. }
         | Command::Create { .. }
-        | Command::List => unreachable!(),
+        | Command::List
+        | Command::Use { .. } => unreachable!(),
     }
 
     Ok(())

@@ -91,6 +91,10 @@ pub fn image_labels(tag: &str) -> anyhow::Result<std::collections::HashMap<Strin
 }
 
 /// Query the state of a container.
+///
+/// Checks `podman inspect` first.  If the container is unknown to podman,
+/// falls back to `systemctl --user is-active` (quadlet-managed containers)
+/// and returns `Stopped` when the unit exists but is inactive.
 pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
     let output = Command::new("podman")
         .args(["inspect", "--format", "{{.State.Status}}", name])
@@ -99,6 +103,18 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("no such container") || stderr.contains("no such object") {
+            // Fallback: check systemd for Quadlet-managed containers
+            if let Ok(sys) = Command::new("systemctl")
+                .args(["--user", "is-active", &format!("{}.service", name)])
+                .output()
+            {
+                let state = String::from_utf8_lossy(&sys.stdout).trim().to_string();
+                return match state.as_str() {
+                    "active" => Ok(ContainerState::Running),
+                    "inactive" | "failed" => Ok(ContainerState::Stopped),
+                    _ => Ok(ContainerState::Missing),
+                };
+            }
             return Ok(ContainerState::Missing);
         }
         return Err(PodboxError::PodmanInspectFailed {

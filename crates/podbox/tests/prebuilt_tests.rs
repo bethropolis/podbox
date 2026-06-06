@@ -196,7 +196,7 @@ fn quadlet_custom_uses_build_ref() {
         projects: None,
     };
     let q = quadlet::generate_container(&cfg, &env, &xdg);
-    assert!(q.contains("Image=myenv.build"));
+    assert!(q.contains("Image=localhost/podbox-myenv:latest"));
     assert!(!q.contains("Image=ghcr.io"));
 }
 

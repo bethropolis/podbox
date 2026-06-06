@@ -37,19 +37,34 @@ pub enum Command {
     },
 
     /// Install Quadlet systemd files and enable the container.
-    Enable,
+    Enable {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
 
     /// Disable and remove Quadlet systemd files.
-    Disable,
+    Disable {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
 
     /// Start the container.
-    Start,
+    Start {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
 
     /// Stop the container.
-    Stop,
+    Stop {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
 
     /// Open an interactive shell in the container.
-    Shell,
+    Shell {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
 
     /// Execute a command interactively in the container.
     Exec {
@@ -68,10 +83,15 @@ pub enum Command {
     },
 
     /// Show container status.
-    Status,
+    Status {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
 
     /// Show container logs.
     Logs {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
         /// Follow log output.
         #[arg(short, long)]
         follow: bool,
@@ -88,6 +108,8 @@ pub enum Command {
 
     /// Remove the container.
     Remove {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
         /// Also remove the home directory.
         #[arg(long)]
         all: bool,
@@ -104,8 +126,8 @@ pub enum Command {
 
     /// Enter a container by name (shortcut for --container <name> shell).
     Enter {
-        /// Container name to enter.
-        name: String,
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
     },
 
     /// Create and start a container from a profile or image in one step.
@@ -163,6 +185,15 @@ pub enum Command {
         /// Update the config TOML's install list to match the container.
         #[arg(long)]
         apply: bool,
+    },
+
+    /// Set or show active context.
+    Use {
+        /// Container name to set as active (omit to show current context).
+        name: Option<String>,
+        /// Clear the active context.
+        #[arg(long)]
+        clear: bool,
     },
 
     /// Find the definition file that would be used.
