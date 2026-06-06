@@ -16,7 +16,7 @@ podbox logs                             # check container output
 podbox start                            # start via podman directly
 ```
 
-If the container fails immediately after `podbox enable`, the Quadlet file may be malformed. Run `podbox enable --dry-run` to inspect the generated files without writing them.
+If the container fails immediately after `podbox enable`, the Quadlet file may be malformed. Run `podbox enable --dry-run` to inspect the generated files without writing them. Re-running `podbox enable` is safe — it uses `--replace` to overwrite existing Quadlet files idempotently.
 
 For systemd-level diagnostics (if Quadlet was installed):
 ```bash
@@ -37,11 +37,11 @@ which xdg-dbus-proxy   # should return a path
 
 ### GUI apps don't appear / Wayland socket errors
 
-Verify `$WAYLAND_DISPLAY` is set on the host before starting the container. The socket is resolved at `podbox enable` time — if it changed after a reboot, re-run `podbox enable` to regenerate the Quadlet with the correct socket path.
+Verify `$WAYLAND_DISPLAY` is set on the host before starting the container. The socket is resolved at `podbox enable` time — if it changed after a reboot, re-run `podbox enable` (safe to re-run, uses `--replace`) to regenerate the Quadlet with the correct socket path.
 
 ```bash
 echo $WAYLAND_DISPLAY                    # should be wayland-0 or similar
-podbox disable && podbox enable          # regenerate Quadlets
+podbox enable                            # regenerate Quadlets (idempotent)
 podbox stop && podbox start
 ```
 
@@ -97,3 +97,17 @@ For non-prebuilt containers, the Containerfile is auto-generated from your TOML 
 ### Container starts but `podbox shell` hangs
 
 The shell binary specified in `container.shell` may not be installed in the image. Check your `image.packages.install` list includes the shell package, then run `podbox build --rebuild`.
+
+---
+
+### Commands target the wrong container
+
+podbox resolves the target container in this order: positional `[NAME]` → `-C` flag → `PODBOX_CONTAINER` env → active context (`~/.config/podbox/.active`) → interactive picker → single config → embedded default.
+
+```bash
+podbox use                  # show current active context
+podbox use <name>           # set it
+podbox use --clear          # clear it (fall back to auto-detection)
+```
+
+If a bare `podbox status` shows the wrong container, check your active context with `podbox use` and reset it if needed.

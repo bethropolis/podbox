@@ -54,7 +54,7 @@ Podbox targets Podman 5.5+ with feature gating at 5.6:
 | Feature | Podman 5.5.x | Podman ≥ 5.6 |
 |---------|-------------|--------------|
 | `ssh_agent` | Warns and skips | `Volume=%E{SSH_AUTH_SOCK}` + `Environment=` |
-| Quadlet install | Manual file copy + `systemctl daemon-reload` | `podman quadlet install` |
+| Quadlet install | `podman quadlet install` (uses `--replace` for idempotent re-runs) | `podman quadlet install` |
 | Quadlet uninstall | Manual file remove + `systemctl daemon-reload` | `podman quadlet rm` |
 | Container list | `podman ps --filter label=podbox.*` | `podman quadlet list` |
 

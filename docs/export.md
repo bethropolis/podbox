@@ -43,8 +43,10 @@ bins = ["rg", "gcc"]
     ```
     becomes:
     ```
-    Exec=podbox --container myenv exec -- gedit %F
+    Exec=podbox --container "myenv" exec -- gedit %F
     ```
+
+    The `--container` flag pins the target container. If you set an active context with `podbox use myenv`, you can also run `podbox exec -- gedit %F` directly.
 
     All other keys (`Name=`, `Icon=`, `MimeType=`, etc.) are preserved unchanged.
 
@@ -88,8 +90,10 @@ A script is written to `~/.local/bin/<name>`:
 
 ```sh
 #!/bin/sh
-exec podbox --container "<name>" exec -- "<bin>" "$@"
+exec podbox --container "<name>" run "<bin>" "$@"
 ```
+
+The `--container` flag ensures the shim always targets the right container regardless of the active context. For day-to-day use, `podbox use <name>` then `podbox exec -- <bin>` avoids the `--container` flag.
 
 The shim is executable (`chmod 755`). If `~/.local/bin` is on the user's `PATH` — which most distributions add by default — the binary appears as if installed locally.
 

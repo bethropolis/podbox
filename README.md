@@ -67,48 +67,7 @@ A single TOML definition is your single source of truth. `podbox build` processe
 ---
 ## Configuration
 
-Config files are loaded from `~/.config/podbox/<name>.toml`, a local `./.podbox.toml`, or built-in profiles. See [the config reference](docs/config.md) for all keys.
-
-```toml
-# ~/.config/podbox/cachy.toml
-[image]
-base = "ghcr.io/cachyos/cachyos-rootfs:latest"
-name = "myenv"
-
-[image.packages]
-install = ["firefox", "pipewire-alsa", "mesa-dri-drivers"]
-
-[container]
-name = "myenv"
-home = "~/containers/myenv"
-shell = "bash"
-
-[container.mounts]
-extra = ["~/Projects:/home/user/Projects:z"]
-
-[integration]
-wayland    = true
-audio      = true
-gpu        = "auto"
-dbus       = true
-notify     = true
-xdg_open   = true
-clipboard  = true
-host_exec  = true
-ssh_agent  = true
-sync_fonts = true
-
-[integration.xdg_dirs]
-documents = true
-downloads = true
-
-[integration.export]
-apps = ["firefox"]
-bins = ["rg"]
-
-[dbus]
-talk = ["org.freedesktop.Notifications"]
-```
+Config files are loaded from `~/.config/podbox/<name>.toml`, `./.podbox.toml`, your active context (`podbox use <name>`), or built-in profiles. See [the config reference](docs/config.md) for all keys.
 
 ## Usage
 
@@ -133,6 +92,15 @@ podbox create ghcr.io/user/img --name myenv
 **Interactive wizard (both paths):**
 ```bash
 podbox init -i                      # pick "Custom" or a profile
+```
+
+**Active context — set once, then bare commands work:**
+
+```bash
+podbox use myenv                    # "Active context set to 'myenv'"
+podbox status                       # targets myenv
+podbox logs                         # targets myenv
+podbox exec -- htop                 # runs inside myenv
 ```
 
 **Run things:**
@@ -183,6 +151,8 @@ For detailed guides on specific issues (container won't start, D-Bus proxy, Wayl
 
 ## Command Reference
 
+Most commands accept an optional `[<name>]` — defaults to active context, then `-C`, then `PODBOX_CONTAINER`, then interactive picker.
+
 | Command | Description |
 |---------|-------------|
 | `podbox create <profile\|image>` | Init → build → enable → start in one command |
@@ -201,11 +171,15 @@ For detailed guides on specific issues (container won't start, D-Bus proxy, Wayl
 | `podbox exec -- <cmd>` | Execute a command interactively |
 | `podbox run <app>` | Run a GUI app detached |
 | `podbox status` | Show container state |
-| `podbox logs [-f]` | Show container logs |
+| `podbox logs` | Show container logs |
+| `podbox diff` | Compare installed packages against config |
+| `podbox pull <name>` | Pull a prebuilt image without building |
 | `podbox doctor [--fix]` | Run diagnostic checks, optionally auto-fix |
-| `podbox export app <name>` | Export .desktop file to host launcher |
+| `podbox use [<name>] [--clear]` | Manage active context |
+| `podbox find-definition [<name>]` | Print path to the matching config TOML |
+| `podbox export app <name>` | Export `.desktop` file to host launcher |
 | `podbox export bin <name>` | Export bin shim to `~/.local/bin` |
-| `podbox export clean` | Remove all exported shims and .desktop files |
+| `podbox export clean` | Remove all exported shims and `.desktop` files |
 | `podbox remove [--all]` | Remove the container (and home volume with `--all`) |
 | `podbox translate-path --to-container <path>` | Translate host path to container path |
 | `podbox translate-path --to-host <path>` | Translate container path to host path |

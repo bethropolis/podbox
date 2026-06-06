@@ -117,11 +117,9 @@ gpu = "auto"
 documents = true
 downloads = true
 projects = true
-
-[lifecycle]
-quadlet = true
-autostart = false
 ```
+
+Empty or default sections (`[lifecycle]`, `[dbus]`, `[container.env]`, etc.) are omitted automatically — the generated TOML stays concise (~25 lines).
 
 ### Container naming
 
@@ -148,12 +146,32 @@ This avoids name conflicts when creating containers from different tags of the s
 
 ## Daily Usage
 
+Use `podbox use` to set an active context — then all commands target that container without needing `-C` or a name:
+
+```bash
+# Set active context
+podbox use myenv
+
+# All commands now target myenv by default
+podbox status           # "myenv [running]"
+podbox logs             # shows journalctl output
+podbox exec -- htop     # runs inside myenv
+podbox stop
+podbox start
+
+# Other containers still work via explicit name
+podbox status fedora
+podbox enter fedora
+```
+
+Alternatively, pass the name directly on each command:
+
 ```bash
 # Open a shell
 podbox enter myenv
 
 # Run a command
-podbox exec -- htop
+podbox exec myenv -- htop
 
 # Launch a GUI app
 podbox run firefox
@@ -165,14 +183,14 @@ podbox export app firefox
 podbox export bin rg
 
 # Check container status
-podbox status
+podbox status myenv
 
 # View logs
-podbox logs -f
+podbox logs myenv -f
 
 # Stop and start
-podbox stop
-podbox start
+podbox stop myenv
+podbox start myenv
 ```
 
 ---
@@ -187,13 +205,21 @@ podbox start
 | `podbox init --profile <name>` | Scaffold from a prebuilt profile |
 | `podbox create <name>` | Init → build → enable → start in one step |
 | `podbox create <image> --name <n>` | Pull + create config + enable + start |
-| `podbox build` | Build the container image |
-| `podbox enable` | Install Quadlet systemd files |
-| `podbox start / stop` | Start / stop the container |
-| `podbox enter <name>` | Enter a running container (auto-starts) |
-| `podbox shell` | Open interactive shell (auto-detect) |
-| `podbox exec -- <cmd>` | Run a command |
+| `podbox build [<name>]` | Build the container image |
+| `podbox enable [<name>]` | Install Quadlet systemd files |
+| `podbox disable [<name>]` | Remove Quadlet files |
+| `podbox start [<name>]` | Start the container |
+| `podbox stop [<name>]` | Stop the container |
+| `podbox enter [<name>]` | Enter a running container (auto-starts) |
+| `podbox shell [<name>]` | Open interactive shell (auto-detect) |
+| `podbox exec [<name>] -- <cmd>` | Run a command |
 | `podbox run <app>` | Launch a GUI app |
+| `podbox status [<name>]` | Show container state |
+| `podbox logs [<name>] [-f] [--since <time>]` | Show container logs |
+| `podbox diff [<name>]` | Compare installed packages against config |
+| `podbox pull <name>` | Pull a prebuilt image without building |
+| `podbox use [<name>] [--clear]` | Manage active context |
+| `podbox find-definition [<name>]` | Print path to the matching config TOML |
 | `podbox export app / bin` | Export to host |
 | `podbox doctor` | Diagnose common issues |
 

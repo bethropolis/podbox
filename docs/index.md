@@ -31,12 +31,16 @@
 ## Quick Reference
 
 ```bash
-podbox create <profile>        # create + build + enable + start
-podbox enter <name>            # open a shell
-podbox run <app>               # run a GUI app
-podbox doctor --fix            # fix common issues
-podbox export app <name>       # add to host launcher
-podbox remove --all            # full cleanup
+podbox use <name>                # set active context
+podbox create <profile>          # create + build + enable + start
+podbox enter <name>              # open a shell
+podbox exec -- <cmd>             # run a command
+podbox run <app>                 # run a GUI app
+podbox doctor --fix              # fix common issues
+podbox export app <name>         # add to host launcher
+podbox diff                      # check installed packages vs config
+podbox remove --all              # full cleanup
 ```
 
+Most commands accept an optional `<name>` — defaults to the active context.
 See the [README](../README.md) for the full command reference.

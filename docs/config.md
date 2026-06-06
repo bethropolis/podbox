@@ -7,8 +7,9 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 `podbox` searches for a definition file in this order:
 
 1. `./.podbox.toml` (project-local)
-2. `~/.config/podbox/*.toml` (first file, sorted by name)
-3. Embedded default (`fedora:44`, name `podbox`)
+2. Active context from `~/.config/podbox/.active` (set via `podbox use <name>`)
+3. `~/.config/podbox/*.toml` (first file, sorted by name)
+4. Embedded default (`fedora:44`, name `podbox`)
 
 ---
 
@@ -237,65 +238,29 @@ See [dbus-proxy.md](dbus-proxy.md) for details.
 
 ## Full Example
 
+A typical config is ~25 lines. Empty/default sections are omitted automatically.
+
 ```toml
 [image]
-base = "fedora:41"
+base = "fedora:44"
 name = "myenv"
 
 [image.packages]
 install = ["git", "gcc", "ripgrep"]
-remove = []
-
-[image.run]
-commands = ["dnf clean all"]
 
 [container]
 name = "myenv"
 home = "~/containers/myenv"
 shell = "bash"
-memory = "4G"
-reload_cmd = "systemctl reload my-app"
-
-[container.security]
-apparmor = "unconfined"
-
-[container.mounts]
-extra = ["~/Work:/home/user/Work:z"]
-
-[container.env]
-EDITOR = "nvim"
-TERM   = "xterm-256color"
 
 [integration]
-wayland    = true
-audio      = true
-gpu        = "auto"
-dbus       = true
-notify     = true
-xdg_open   = true
-clipboard  = true
-host_exec  = true
-ssh_agent  = true
+wayland = true
+audio = true
+gpu = "auto"
 
 [integration.xdg_dirs]
 documents = true
 downloads = true
-projects = true
-
-[integration.export]
-apps = ["gedit", "nautilus"]
-bins = ["rg", "gcc"]
-
-[lifecycle]
-quadlet     = true
-autostart   = true
-on_stop     = "keep"
-auto_update = true
-
-[systemd]
-requires = ["postgres.service"]
-after    = ["network-online.target"]
-
-[dbus]
-talk = ["org.freedesktop.Notifications"]
 ```
+
+For a reference of every supported key, see the tables above.
