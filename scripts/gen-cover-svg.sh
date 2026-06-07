@@ -4,7 +4,10 @@ set -euo pipefail
 # podbox cover SVG generator (Unicode-Safe Vector Compiler)
 # Reads raw ASCII art from standard input, outputs a perfectly centered, high-fidelity cover.
 
-python3 - << 'EOF'
+# Capture piped stdin so the heredoc doesn't eat it
+INPUT=$(cat)
+
+python3 - "$INPUT" << 'EOF'
 import sys
 
 # Grid cell configuration for the wordmark
@@ -13,8 +16,8 @@ CH = 8.0         # Character cell height (pixels)
 PAD_X = 80.0     # Horizontal margin
 PAD_Y = 184.0    # Vertical start (centers the wordmark vertically in the 600px canvas)
 
-# Read raw ASCII art from standard input
-lines = [line.rstrip('\r\n') for line in sys.stdin]
+# Read raw ASCII art from command-line argument (piped in by bash)
+lines = sys.argv[1].split('\n') if len(sys.argv) > 1 and sys.argv[1] else []
 
 W = 1200
 H = 600

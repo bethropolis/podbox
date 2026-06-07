@@ -37,6 +37,111 @@
 
   <!-- 1. The Vector-parsed Wordmark -->
   <g>
+    <rect x="224.0" y="184.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="260.0" y="184.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="218.0" y="192.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="230.0" y="192.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="254.0" y="192.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="266.0" y="192.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="86.0" y="200.0" width="48.0" height="8.0" fill="url(#g)" />
+    <rect x="152.0" y="200.0" width="36.0" height="8.0" fill="url(#g)" />
+    <rect x="206.0" y="200.0" width="42.0" height="8.0" fill="url(#g)" />
+    <rect x="260.0" y="200.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="266.0" y="200.0" width="42.0" height="8.0" fill="url(#g)" />
+    <rect x="326.0" y="200.0" width="36.0" height="8.0" fill="url(#g)" />
+    <rect x="374.0" y="200.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="410.0" y="200.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="80.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="92.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="110.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="122.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="146.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="164.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="176.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="200.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="218.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="230.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="260.0" y="208.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="266.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="284.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="296.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="320.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="338.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="350.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="368.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="380.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="404.0" y="208.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="416.0" y="208.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="86.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="92.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="116.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="122.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="140.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="146.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="170.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="176.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="194.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="200.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="224.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="230.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="260.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="266.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="290.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="296.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="314.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="320.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="344.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="350.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="374.0" y="216.0" width="18.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="392.0" y="216.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="422.0" y="216.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="86.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="92.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="116.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="122.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="140.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="146.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="170.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="176.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="194.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="200.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="224.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="230.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="260.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="266.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="290.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="296.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="314.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="320.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="344.0" y="224.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="350.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="380.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="398.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="416.0" y="224.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="86.0" y="232.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="92.0" y="232.0" width="42.0" height="8.0" fill="url(#g)" />
+    <rect x="140.0" y="232.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="152.0" y="232.0" width="36.0" height="8.0" fill="url(#g)" />
+    <rect x="194.0" y="232.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="206.0" y="232.0" width="48.0" height="8.0" fill="url(#g)" />
+    <rect x="260.0" y="232.0" width="48.0" height="8.0" fill="url(#g)" />
+    <rect x="314.0" y="232.0" width="12.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="326.0" y="232.0" width="36.0" height="8.0" fill="url(#g)" />
+    <rect x="374.0" y="232.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="410.0" y="232.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="86.0" y="240.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="92.0" y="240.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="110.0" y="240.0" width="18.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="146.0" y="240.0" width="36.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="200.0" y="240.0" width="48.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="254.0" y="240.0" width="48.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="320.0" y="240.0" width="36.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="368.0" y="240.0" width="30.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="404.0" y="240.0" width="30.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="86.0" y="248.0" width="6.0" height="8.0" fill="url(#g)" opacity="0.25" />
+    <rect x="92.0" y="248.0" width="18.0" height="8.0" fill="url(#g)" />
+    <rect x="86.0" y="256.0" width="30.0" height="8.0" fill="url(#g)" />
+    <rect x="80.0" y="264.0" width="30.0" height="8.0" fill="url(#g)" opacity="0.25" />
   </g>
 
   <!-- 2. Tagline (system-sans, italicized, balanced spacing) -->
