@@ -3,6 +3,21 @@ set -euo pipefail
 
 # podbox logo SVG generator (Vector-Shape Optimized)
 # Reads raw ASCII art from stdin, outputs a font-independent, high-fidelity vector SVG.
+#
+# Usage:
+#   1. Install figlet + a font inside a running container:
+#        podbox -C <name> exec --root pacman -S figlet       # Arch/Cachy
+#        podbox -C <name> exec --root apt-get install figlet  # Debian/Ubuntu
+#
+#   2. Download the "DOS Rebel" figlet font into the container:
+#        podbox -C <name> exec --root curl -sLo /usr/share/figlet/rebel.flf \
+#          "https://raw.githubusercontent.com/xero/figlet-fonts/main/DOS%20Rebel.flf"
+#
+#   3. Generate the ASCII art and pipe it into this script:
+#        podbox -C <name> exec figlet -f rebel "podbox" 2>/dev/null \
+#          | bash scripts/gen-logo-svg.sh > docs/assets/podbox-logo.svg
+#
+#   4. The SVG is written to stdout — redirect as needed.
 
 CW=8         # Grid Cell Width (pixels)
 CH=10.5      # Grid Cell Height (pixels)
