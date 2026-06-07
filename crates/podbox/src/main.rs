@@ -16,7 +16,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         Command::Build { name, .. }
         | Command::Enable { name }
         | Command::Disable { name }
-        | Command::Start { name }
+        | Command::Start { name, .. }
         | Command::Stop { name }
         | Command::Shell { name }
         | Command::Enter { name }
@@ -194,8 +194,8 @@ fn run() -> Result<()> {
             commands::lifecycle::run_disable(&name)?;
         }
 
-        Command::Start { name: _ } => {
-            commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run)?;
+        Command::Start { name: _, timeout } => {
+            commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run, *timeout)?;
         }
 
         Command::Stop { name: _ } => {

@@ -66,6 +66,7 @@ pub fn run_start(
     xdg: &ResolvedXdgDirs,
     name: &str,
     dry_run: bool,
+    timeout_secs: u64,
 ) -> Result<()> {
     if dry_run {
         println!("podman start {}", name);
@@ -88,7 +89,7 @@ pub fn run_start(
     }
 
     println!("Starting container...");
-    crate::commands::ensure_running(name, false)?;
+    crate::commands::ensure_running(name, false, timeout_secs)?;
     println!("Container '{}' is running!", name);
     Ok(())
 }

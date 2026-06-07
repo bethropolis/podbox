@@ -30,7 +30,7 @@ pub fn run_shell_enter(config: &Config, name: &str, dry_run: bool) -> Result<()>
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run)?;
+    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     let exec_args = podbox::process::args(&[
         "exec",
         tty_flag,
@@ -65,7 +65,7 @@ pub fn run_exec(env: &HostEnv, name: &str, cmd_args: &[String], dry_run: bool, r
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run)?;
+    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     let mut exec_args: Vec<OsString> = podbox::process::args(base_args);
     for a in cmd_args {
         exec_args.push(a.into());
@@ -91,7 +91,7 @@ pub fn run_run(
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run)?;
+    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     let mut exec_args: Vec<OsString> =
         podbox::process::args(&["exec", "-d", "-u", &env.username, name, app]);
     for a in app_args {

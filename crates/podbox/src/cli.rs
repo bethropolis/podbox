@@ -52,6 +52,9 @@ pub enum Command {
     Start {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Maximum seconds to wait for the container to become ready.
+        #[arg(long, default_value = "30")]
+        timeout: u64,
     },
 
     /// Stop the container.
