@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# podbox logo SVG generator
-# Reads raw ASCII art from stdin, outputs SVG with connected block chars.
+# podbox logo SVG generator (Vector-Shape Optimized)
+# Reads raw ASCII art from stdin, outputs a font-independent, high-fidelity vector SVG.
 
-FONT_SIZE=14
-LINE_H=10.5
-CH_W=8
-PAD_X=24
+CW=8         # Grid Cell Width (pixels)
+CH=10.5      # Grid Cell Height (pixels)
+PAD_X=24     # Horizontal padding (pixels)
+PAD_Y=18     # Vertical padding (pixels)
 
 readarray -t LINES
 
@@ -16,20 +16,18 @@ for line in "${LINES[@]}"; do
     (( ${#line} > MAX_LEN )) && MAX_LEN=${#line}
 done
 
-for i in "${!LINES[@]}"; do
-    while (( ${#LINES[i]} < MAX_LEN )); do
-        LINES[i]+=' '
-    done
-done
+# Calculate absolute dimension bounds
+W=$(python3 -c "import math; print(math.ceil($PAD_X * 2 + $MAX_LEN * $CW))")
+H=$(python3 -c "import math; print(math.ceil($PAD_Y * 2 + ${#LINES[@]} * $CH))")
 
-W=$(( MAX_LEN * CH_W + PAD_X * 2 ))
-LAST_Y=$(python3 -c "import math; y = $PAD_X + (${#LINES[@]} - 1) * $LINE_H; print(math.ceil(y))")
-H=$(python3 -c "import math; h = $LAST_Y + $FONT_SIZE; print(math.ceil(h))")
+# Define absolute linear gradient bounds matching printable content
+X1_GRAD=$PAD_X
+X2_GRAD=$(( W - PAD_X ))
 
 cat <<EOF
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="auto">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="userSpaceOnUse">
+    <linearGradient id="g" x1="${X1_GRAD}" y1="0" x2="${X2_GRAD}" y2="0" gradientUnits="userSpaceOnUse">
       <stop offset="0%"   stop-color="#3b82f6"/>
       <stop offset="18%"  stop-color="#6366f1"/>
       <stop offset="36%"  stop-color="#8b5cf6"/>
@@ -38,23 +36,52 @@ cat <<EOF
       <stop offset="100%" stop-color="#ec4899"/>
     </linearGradient>
   </defs>
-  <style>
-    text {
-      font-family: "Courier New", "Liberation Mono", "Noto Mono", monospace;
-      font-size: ${FONT_SIZE}px;
-      font-weight: bold;
-      fill: url(#g);
-      letter-spacing: -0.75px;
-      text-rendering: geometricPrecision;
-    }
-  </style>
 EOF
 
-for i in "${!LINES[@]}"; do
-    Y=$(python3 -c "print(round($PAD_X + $i * $LINE_H, 1))")
-    escaped="${LINES[i]//&/&amp;}"
-    escaped="${escaped//</&lt;}"
-    printf '  <text x="%d" y="%s" xml:space="preserve">%s</text>\n' "$PAD_X" "$Y" "$escaped"
+for row in "${!LINES[@]}"; do
+    line="${LINES[row]}"
+    len=${#line}
+    
+    current_char=""
+    start_col=0
+    run_length=0
+    
+    # Calculate row top position
+    Y=$(python3 -c "print(round($PAD_Y + $row * $CH, 2))")
+    
+    for (( col=0; col<=len; col++ )); do
+        if (( col < len )); then
+            char="${line:col:1}"
+        else
+            char=""
+        fi
+        
+        if [[ "$char" != "$current_char" ]]; then
+            if [[ -n "$current_char" && "$current_char" != " " ]]; then
+                X=$(python3 -c "print(round($PAD_X + $start_col * $CW, 2))")
+                WIDTH=$(python3 -c "print(round($run_length * $CW, 2))")
+                
+                # Map standard ASCII block characters to correct shade opacities
+                opacity=""
+                if [[ "$current_char" == "▒" ]]; then
+                    opacity=' opacity="0.45"'
+                elif [[ "$current_char" == "░" ]]; then
+                    opacity=' opacity="0.25"'
+                elif [[ "$current_char" == "▓" ]]; then
+                    opacity=' opacity="0.75"'
+                fi
+                
+                printf '  <rect x="%s" y="%s" width="%s" height="%s" fill="url(#g)"%s />\n' \
+                    "$X" "$Y" "$WIDTH" "$CH" "$opacity"
+            fi
+            
+            current_char="$char"
+            start_col=$col
+            run_length=1
+        else
+            (( run_length++ ))
+        fi
+    done
 done
 
 echo '</svg>'
