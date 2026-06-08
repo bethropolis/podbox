@@ -103,7 +103,7 @@ dockers_v2:
     tags:
       - "dev-{{ .Tag }}"
       - "dev-latest"
-    dockerfile: Dockerfile.dev
+    dockerfile: images/dev/Containerfile
     platforms:
       - linux/amd64
     build_args:

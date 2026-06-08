@@ -3,6 +3,8 @@ FROM ${BASE_IMAGE}
 
 ARG TARGETPLATFORM
 
+ENV PODBOX_CONTAINER=1
+
 COPY $TARGETPLATFORM/podbox-guest /usr/local/bin/podbox-guest
 
 RUN pacman -Syu --noconfirm \
@@ -13,10 +15,8 @@ RUN pacman -Syu --noconfirm \
     ripgrep \
     fd \
     zoxide \
-    curl \
-    && curl -fsSL https://mise.jdx.dev/install.sh \
-    | MISE_INSTALL_PATH=/usr/local/bin/mise sh \
-    && pacman -Scc --noconfirm
+    mise \
+ && pacman -Scc --noconfirm
 
 RUN chmod +x /usr/local/bin/podbox-guest
 
