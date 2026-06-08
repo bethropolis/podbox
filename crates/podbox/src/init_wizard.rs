@@ -160,11 +160,6 @@ pub fn run_wizard(
 
     config.integration.xdg_dirs = prompt_xdg_dirs();
 
-    let apps = prompt_export_apps();
-    config.integration.export.apps = apps;
-    let bins = prompt_export_bins();
-    config.integration.export.bins = bins;
-
     // ── Phase 4: Lifecycle ──
     println!("\n── Lifecycle ──\n");
     let (quadlet, autostart) = prompt_lifecycle();
@@ -293,14 +288,6 @@ fn prompt_customize_profile(mut cfg: Config) -> anyhow::Result<Config> {
         .map(|s| s.to_string())
         .filter(|s| !s.is_empty())
         .collect();
-
-    if let Some(mem) = prompt_memory() {
-        cfg.container.memory = Some(mem);
-    }
-
-    let mounts = prompt_extra_mounts();
-    cfg.container.mounts.extra = mounts;
-
     Ok(cfg)
 }
 
@@ -500,32 +487,6 @@ fn prompt_xdg_dirs() -> XdgDirConfig {
         desktop: selections.contains(&5),
         projects: selections.contains(&6),
     }
-}
-
-fn prompt_export_apps() -> Vec<String> {
-    let input: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt("App desktop entries to export (comma-separated) — leave empty for none")
-        .default("".to_string())
-        .interact_text()
-        .expect("failed to get export apps input");
-    input
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
-
-fn prompt_export_bins() -> Vec<String> {
-    let input: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt("Binaries to export as shims (comma-separated) — leave empty for none")
-        .default("".to_string())
-        .interact_text()
-        .expect("failed to get export bins input");
-    input
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
 }
 
 // ── Phase 4 helpers ──
