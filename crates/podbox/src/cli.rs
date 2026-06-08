@@ -165,7 +165,7 @@ pub enum Command {
         /// Run an interactive wizard to build the config.
         #[arg(long, short = 'i', conflicts_with = "profile")]
         interactive: bool,
-        /// Use a named profile (cachy, fedora, gaming) as template.
+        /// Use a named profile (cachy, fedora, dev) as template.
         #[arg(long)]
         profile: Option<String>,
     },
