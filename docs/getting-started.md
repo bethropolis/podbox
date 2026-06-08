@@ -207,7 +207,9 @@ podbox start myenv
 | `podbox create <image> --name <n>` | Pull + create config + enable + start |
 | `podbox build [<name>]` | Build the container image |
 | `podbox enable [<name>]` | Install Quadlet systemd files |
-| `podbox disable [<name>]` | Remove Quadlet files |
+| `podbox disable [<name>] [--force]` | Remove Quadlet files (`--force` bypasses config loading) |
+| `podbox remove [<name>] [--all] [--force]` | Remove container (add `--all` for home dir too) |
+| `podbox remove --stale [--force]` | Clean up orphaned/failed containers |
 | `podbox start [<name>]` | Start the container |
 | `podbox stop [<name>]` | Stop the container |
 | `podbox enter [<name>]` | Enter a running container (auto-starts) |

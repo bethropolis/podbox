@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 
 use podbox::cli::{Cli, Command};
@@ -25,7 +25,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
     match cmd {
         Command::Build { name, .. }
         | Command::Enable { name }
-        | Command::Disable { name }
+        | Command::Disable { name, .. }
         | Command::Start { name, .. }
         | Command::Stop { name }
         | Command::Shell { name }
@@ -126,6 +126,16 @@ fn run() -> Result<()> {
         return commands::config::run_find_definition(lookup.as_deref());
     }
 
+    if let Command::Disable { force: true, .. } = &cli.command {
+        let n = target_name.clone()
+            .context("--force requires a container name (positional, -C, PODBOX_CONTAINER env, or active context)")?;
+        return commands::lifecycle::run_disable(&n);
+    }
+
+    if let Command::Remove { stale: true, force, .. } = &cli.command {
+        return commands::lifecycle::run_remove_stale(cli.dry_run, *force);
+    }
+
     // Load config for all other commands
     let mut config = if let Some(ref path) = cli.config {
         match Config::load(path) {
@@ -208,7 +218,7 @@ fn run() -> Result<()> {
             commands::lifecycle::run_enable(&config, &env, &xdg, cli.dry_run)?;
         }
 
-        Command::Disable { name: _ } => {
+        Command::Disable { name: _, .. } => {
             commands::lifecycle::run_disable(&name)?;
         }
 
@@ -260,6 +270,7 @@ fn run() -> Result<()> {
             name: _,
             all,
             force,
+            ..
         } => {
             commands::lifecycle::run_remove(&config, &name, cli.dry_run, *all, *force)?;
         }

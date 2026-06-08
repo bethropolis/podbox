@@ -222,3 +222,133 @@ pub fn run_remove(
 
     Ok(())
 }
+
+/// Scan for stale/orphaned containers that should be cleaned up.
+///
+/// A container is considered stale if:
+/// - Its Quadlet `.container` file exists but there's no matching config TOML
+/// - The podman container is `Missing` (removed manually but Quadlet remains)
+/// - The systemd unit is in `failed` state
+fn find_stale_containers() -> Vec<String> {
+    let qdir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
+        .join("containers/systemd");
+    let config_dir = podbox::config::config_dir();
+
+    let mut stale = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&qdir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "container").unwrap_or(false) {
+                let name = path
+                    .file_stem()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                let config_path = config_dir.join(format!("{}.toml", name));
+
+                if !config_path.exists() {
+                    stale.push(name);
+                    continue;
+                }
+
+                if let Ok(state) = podbox::podman::query_state(&name) {
+                    match state {
+                        podbox::podman::ContainerState::Missing => stale.push(name),
+                        podbox::podman::ContainerState::Stopped => {
+                            if let Ok(output) = std::process::Command::new("systemctl")
+                                .args([
+                                    "--user",
+                                    "is-failed",
+                                    &format!("{}.service", name),
+                                ])
+                                .output()
+                            {
+                                if String::from_utf8_lossy(&output.stdout).trim() == "failed" {
+                                    stale.push(name);
+                                }
+                            }
+                        }
+                        podbox::podman::ContainerState::Running => {}
+                    }
+                }
+            }
+        }
+    }
+
+    stale
+}
+
+/// Remove all stale containers interactively.
+///
+/// When `--force` is set, skip the confirmation prompt.
+pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
+    let stale = find_stale_containers();
+    if stale.is_empty() {
+        println!("No stale containers found.");
+        return Ok(());
+    }
+
+    println!("Stale containers found:");
+    for name in &stale {
+        let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
+        let reason = if !config_path.exists() {
+            "orphaned Quadlet (no config)"
+        } else {
+            "container not running or failed"
+        };
+        println!("  {}  ({})", name, reason);
+    }
+
+    if !force {
+        print!("Remove these? [y/N] ");
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+
+    for name in &stale {
+        if dry_run {
+            println!("Would remove: {}", name);
+            continue;
+        }
+
+        if let Err(e) = podbox::quadlet_install::uninstall(name) {
+            eprintln!("Warning: failed to uninstall '{}': {}", name, e);
+        }
+
+        let _ = podbox::process::run_piped(
+            "podman",
+            &podbox::process::args(&["rm", "-f", name]),
+        );
+
+        if which::which("systemctl").is_ok() {
+            let unit_names = [
+                format!("{}.service", name),
+                format!("{}.socket", name),
+                format!("{}-host.service", name),
+                format!("{}-proxy.service", name),
+            ];
+            for unit in &unit_names {
+                let _ = podbox::process::run_piped(
+                    "systemctl",
+                    &podbox::process::args(&["--user", "reset-failed", unit]),
+                );
+            }
+        }
+
+        let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
+        if config_path.exists() {
+            std::fs::remove_file(&config_path)?;
+        }
+
+        println!("✓ {} removed", name);
+    }
+
+    Ok(())
+}

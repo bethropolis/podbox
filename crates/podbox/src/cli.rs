@@ -46,6 +46,9 @@ pub enum Command {
     Disable {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Skip config loading and remove Quadlet files by name only.
+        #[arg(long)]
+        force: bool,
     },
 
     /// Start the container.
@@ -125,6 +128,9 @@ pub enum Command {
         /// Skip confirmation prompt.
         #[arg(long)]
         force: bool,
+        /// Remove stale/orphaned containers (no valid config, not running).
+        #[arg(long)]
+        stale: bool,
     },
 
     /// Run the host socket server (socket-activated by systemd).
