@@ -111,12 +111,12 @@ impl ContainerfileBuilder {
 
         if !self.packages.is_empty() {
             let pkgs = self.packages.join(" ");
-            let cmd = format!(
-                "{} {} && {}",
-                distro.install_cmd(),
-                pkgs,
-                distro.clean_cmd()
-            );
+            let clean = distro.clean_cmd();
+            let cmd = if clean.is_empty() {
+                format!("{} {}", distro.install_cmd(), pkgs)
+            } else {
+                format!("{} {} && {}", distro.install_cmd(), pkgs, clean)
+            };
             lines.push(format!("RUN {}", cmd));
             lines.push(String::new());
         }

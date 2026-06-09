@@ -650,6 +650,7 @@ pub fn run_create(dry_run: bool, image: &str, name: Option<&str>, no_start: bool
             .join("containers")
             .join(&container_name);
         cfg.image.packages.manager = detect_package_manager(image).to_string();
+        cfg.container.shell.clear();
         podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
         cfg.validate()?;
 
