@@ -141,6 +141,12 @@ podbox inspect myenv --quadlet      # only generated systemd units
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 ```
 
+**AUR (Arch Linux):**
+
+```bash
+paru -S podbox-bin
+```
+
 **Local source build:**
 
 ```bash
