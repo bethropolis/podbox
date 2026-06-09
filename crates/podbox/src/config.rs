@@ -529,7 +529,7 @@ impl Default for SecurityConfig {
             apparmor: None,
             seccomp: None,
             security_label_disable: true,
-            no_new_privileges: true,
+            no_new_privileges: false,
         }
     }
 }
@@ -788,7 +788,7 @@ fn is_default_security(v: &SecurityConfig) -> bool {
     v.apparmor.is_none()
         && v.seccomp.is_none()
         && v.security_label_disable
-        && v.no_new_privileges
+        && !v.no_new_privileges
 }
 
 /// Expand a leading `~` in a path to the user's home directory.

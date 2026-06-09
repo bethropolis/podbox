@@ -118,6 +118,21 @@ podbox export app firefox           # "Firefox (cachy)" in your launcher
 podbox export bin rg                # ripgrep available in any terminal
 ```
 
+**Manage state:**
+
+```bash
+podbox snapshot myenv               # commit container state as OCI image
+podbox restore myenv <tag>          # roll back to a previous snapshot
+podbox clone work dev               # copy config for a variant
+```
+
+**Inspect:**
+
+```bash
+podbox inspect myenv                # resolved config, generated Quadlet, env
+podbox inspect myenv --quadlet      # only generated systemd units
+```
+
 ## Install
 
 **Online (pre-built binary):**

@@ -72,12 +72,6 @@ commands = ["dnf clean all"]
 |-----|------|---------|-------------|
 | `*` | string | — | Arbitrary environment variables passed to the container |
 
-### `[container.security]`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `apparmor` | string | — | AppArmor profile name. Passed as `AppArmorProfile=` in Quadlet (`"unconfined"` to disable) |
-
 ```toml
 [container]
 name = "myenv"
@@ -90,6 +84,24 @@ extra = ["~/Projects:/home/user/Projects:z"]
 [container.env]
 EDITOR = "nvim"
 TERM = "xterm-256color"
+```
+
+---
+
+## `[security]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `apparmor` | string | — | AppArmor profile name. Passed as `AppArmor=` in Quadlet (`"unconfined"` to disable) |
+| `seccomp` | string | — | Seccomp profile path, `"default"`, or `"unconfined"`. Passed as `SeccompProfile=` |
+| `security_label_disable` | bool | `true` | Disable SELinux process labeling. Emits `SecurityLabelDisable=true` when set |
+| `no_new_privileges` | bool | `false` | Allow privilege escalation (`sudo`, `su`, AUR helpers). Set `true` to block with `NoNewPrivileges` |
+
+```toml
+[security]
+apparmor = "unconfined"
+seccomp = "default"
+no_new_privileges = false
 ```
 
 ---
@@ -112,6 +124,7 @@ Controls which host resources are shared with the container.
 | `sync_themes` | bool | `false` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
+| `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
 
 ### `GpuMode` values
 
@@ -229,11 +242,18 @@ D-Bus access control via `xdg-dbus-proxy`. Requires `integration.dbus = true`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `preset` | string | `""` | Named preset to expand into talk rules. Supported: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. When set, auto-fills `talk` with the preset's service names |
 | `talk` | string[] | `[]` | D-Bus services the container can call (two-way) |
 | `own` | string[] | `[]` | D-Bus services the container can register on the host bus |
 
 ```toml
 [dbus]
+preset = "gnome"
+```
+
+```toml
+[dbus]
+preset = "portal"
 talk = [
     "org.freedesktop.Notifications",
     "org.mpris.MediaPlayer2.*",
