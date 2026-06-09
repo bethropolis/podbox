@@ -147,11 +147,10 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
             containerfile_path.clone().into(),
             context_dir.clone().into(),
         ];
-        let output = crate::process::run_piped("podman", &args)
+        let status = crate::process::spawn_interactive("podman", &args)
             .with_context(|| format!("failed to build prebuilt overlay for '{}'", image_ref))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(PodboxError::BuildFailed(stderr.to_string()).into());
+        if !status.success() {
+            return Err(PodboxError::BuildFailed("overlay build failed".into()).into());
         }
         println!("Image {} ready with packages installed.", local_tag);
     } else {
@@ -272,11 +271,10 @@ fn run_build(
     ];
 
     println!("Building image {}...", tag);
-    let output = crate::process::run_piped("podman", &args)
+    let status = crate::process::spawn_interactive("podman", &args)
         .with_context(|| format!("failed to execute podman build for image '{}'", tag))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(PodboxError::BuildFailed(stderr.to_string()).into());
+    if !status.success() {
+        return Err(PodboxError::BuildFailed("build failed".into()).into());
     }
     println!("Image {} built successfully.", tag);
 

@@ -298,6 +298,38 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
     }
 
     checks += 1;
+    match std::fs::read_to_string("/etc/subuid") {
+        Ok(content) => {
+            let username = &env.username;
+            if content.lines().any(|l| l.starts_with(username)) {
+                println!("[PASS] user '{}' has sub-UID allocations in /etc/subuid", username);
+                passes += 1;
+            } else {
+                println!("[FAIL] user '{}' missing from /etc/subuid. Rootless Podman may fail.", username);
+                println!("       Fix: sudo usermod --add-subuids 100000-165535 {}", username);
+                failures += 1;
+            }
+        }
+        Err(_) => println!("[WARN] could not read /etc/subuid — check manually if rootless builds fail"),
+    }
+
+    checks += 1;
+    match std::fs::read_to_string("/etc/subgid") {
+        Ok(content) => {
+            let username = &env.username;
+            if content.lines().any(|l| l.starts_with(username)) {
+                println!("[PASS] user '{}' has sub-GID allocations in /etc/subgid", username);
+                passes += 1;
+            } else {
+                println!("[FAIL] user '{}' missing from /etc/subgid. Rootless Podman may fail.", username);
+                println!("       Fix: sudo usermod --add-subgids 100000-165535 {}", username);
+                failures += 1;
+            }
+        }
+        Err(_) => println!("[WARN] could not read /etc/subgid — check manually if rootless builds fail"),
+    }
+
+    checks += 1;
     let has_embedded = !podbox::guest::PODBOX_GUEST_BINARY.is_empty();
     if has_embedded {
         println!(

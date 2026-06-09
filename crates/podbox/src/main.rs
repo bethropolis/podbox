@@ -75,6 +75,14 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // Exit early if podman is not installed — clean error instead of a cryptic
+    // spawn failure deep in the stack.
+    if !matches!(&cli.command, Command::Completions { .. }) {
+        if which::which("podman").is_err() {
+            return Err(PodboxError::PodmanNotFound.into());
+        }
+    }
+
     match &cli.command {
         Command::Completions { shell } => {
             return commands::config::run_completions((*shell).into());
@@ -173,6 +181,27 @@ fn run() -> Result<()> {
         })?
     } else {
         let config_list = config::list_configs();
+
+        // No configs at all — welcome the user and offer the wizard
+        if config_list.is_empty() && config::find_definition().is_none()
+            && nix::unistd::isatty(0).unwrap_or(false)
+        {
+            eprintln!("Welcome to podbox! It looks like you don't have any containers set up yet.");
+            let launch = dialoguer::Confirm::with_theme(
+                &dialoguer::theme::ColorfulTheme::default(),
+            )
+            .with_prompt("Would you like to run the interactive setup wizard?")
+            .default(true)
+            .interact()
+            .unwrap_or(false);
+            if launch {
+                commands::config::run_init(
+                    cli.dry_run, None, None, true, None,
+                )?;
+                return Ok(());
+            }
+        }
+
         if config_list.len() > 1 && nix::unistd::isatty(0).unwrap_or(false) {
             let items: Vec<String> = config_list
                 .iter()
@@ -192,8 +221,10 @@ fn run() -> Result<()> {
             match config::find_definition() {
                 Some(path) => Config::load(&path)?,
                 None => {
-                    eprintln!("No definition file found, using embedded default. Create .podbox.toml to customize.");
-                    Config::embedded()
+                    anyhow::bail!(
+                        "No container configs found. Create one with `podbox init --interactive` \
+                         or specify a config with `--config <PATH>` / `-C <NAME>`."
+                    );
                 }
             }
         }
