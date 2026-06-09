@@ -429,7 +429,7 @@ pub struct SystemdConfig {
 /// runs `xdg-dbus-proxy` to filter which D-Bus services the container
 /// can talk to or own.  Otherwise (or when empty) the container gets
 /// unfiltered access to the host session bus via `Volume=%t/bus:%t/bus`.
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct DbusConfig {
     /// Named preset to expand into talk rules.
     /// Supported: "none", "flatpak", "gnome", "kde", "portal".
@@ -442,16 +442,6 @@ pub struct DbusConfig {
     /// D-Bus services the container is allowed to register on the host bus.
     #[serde(default)]
     pub own: Vec<String>,
-}
-
-impl Default for DbusConfig {
-    fn default() -> Self {
-        DbusConfig {
-            preset: String::new(),
-            talk: Vec::new(),
-            own: Vec::new(),
-        }
-    }
 }
 
 impl DbusConfig {

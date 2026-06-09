@@ -77,10 +77,10 @@ fn run() -> Result<()> {
 
     // Exit early if podman is not installed — clean error instead of a cryptic
     // spawn failure deep in the stack.
-    if !matches!(&cli.command, Command::Completions { .. }) {
-        if which::which("podman").is_err() {
-            return Err(PodboxError::PodmanNotFound.into());
-        }
+    if !matches!(&cli.command, Command::Completions { .. })
+        && which::which("podman").is_err()
+    {
+        return Err(PodboxError::PodmanNotFound.into());
     }
 
     match &cli.command {

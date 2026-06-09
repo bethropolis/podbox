@@ -17,7 +17,7 @@ fn snapshots_dir() -> PathBuf {
 }
 
 /// Snapshot the current container state as a tagged image.
-pub fn run_snapshot(config: &Config, name: &str, tag: Option<&str>) -> Result<()> {
+pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<()> {
     let tag: String = match tag {
         Some(t) => t.to_string(),
         None => std::time::SystemTime::now()
@@ -89,7 +89,7 @@ fn days_to_date(days: i64) -> (i64, u32, u32) {
 }
 
 /// Restore a container from a snapshot image.
-pub fn run_restore(config: &Config, name: &str, tag: &str) -> Result<()> {
+pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
     let snapshot_img = snapshot_tag(tag, name);
     let latest_img = format!("localhost/podbox-{}:latest", name);
 

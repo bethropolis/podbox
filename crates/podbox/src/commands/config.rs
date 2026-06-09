@@ -773,7 +773,7 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
 /// Inspect container config, Quadlet, or computed env.
 pub fn run_inspect(
     config: &Config,
-    name: &str,
+    _name: &str,
     env: &HostEnv,
     xdg: &ResolvedXdgDirs,
     show_config: bool,
