@@ -237,7 +237,7 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                         },
                     )?;
                     write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-                    return Ok(());
+                    continue;
                 }
 
                 let resolved = match config.host_exec.resolve(&cmd) {
@@ -260,7 +260,7 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                             },
                         )?;
                         write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-                        return Ok(());
+                        continue;
                     }
                 };
 
@@ -272,7 +272,7 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                         },
                     )?;
                     write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-                    return Ok(());
+                    continue;
                 }
 
                 match std::process::Command::new(resolved)
@@ -337,8 +337,23 @@ fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
         {
             return Err(format!("argument {:?} contains shell metacharacters", arg));
         }
+        // Redirection operators — a whitelisted binary might write files
+        // when given `<` / `>` / `>>` arguments.
+        if arg.contains('<') || arg.contains('>') {
+            return Err(format!("argument {:?} contains redirection operators", arg));
+        }
+        // Shell glob / brace expansion wildcards.
+        if arg.contains('*') || arg.contains('?') || arg.contains('[') || arg.contains(']')
+            || arg.contains('{') || arg.contains('}')
+        {
+            return Err(format!("argument {:?} contains glob or brace characters", arg));
+        }
+        // Subshell / escape characters.
+        if arg.contains('(') || arg.contains(')') || arg.contains('\\') {
+            return Err(format!("argument {:?} contains subshell or escape characters", arg));
+        }
         // Dangerous flag prefixes that can subvert a whitelisted binary.
-        let lower = arg.to_lowercase();
+        let lower = arg.to_ascii_lowercase();
         if lower.starts_with("--exec-path")
             || lower.starts_with("--config")
             || lower.starts_with("--plugin")

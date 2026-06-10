@@ -1105,6 +1105,7 @@ dependencies = [
  "sha2",
  "thiserror 1.0.69",
  "toml",
+ "toml_edit 0.22.27",
  "url",
  "which",
 ]

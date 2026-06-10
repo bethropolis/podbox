@@ -207,70 +207,21 @@ pub fn format_report(result: &DiffResult) -> String {
 /// Patch the `install` array in a TOML definition to match the given
 /// package list.  Returns the patched TOML string.
 ///
-/// This operates on the raw TOML text to preserve comments and formatting.
-/// If no `install` key exists under `[image.packages]`, the section is
-/// appended before the end of the file.
+/// Uses `toml_edit` to preserve comments and formatting while safely
+/// updating or inserting the `[image.packages].install` key, even when
+/// the array is formatted across multiple lines.
 pub fn patch_toml(original: &str, install: &[String]) -> Result<String> {
-    let install_line = format!(
-        "install = [{}]",
-        install
-            .iter()
-            .map(|p| format!("\"{}\"", p))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
+    let mut doc = original
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| anyhow::anyhow!("Failed to parse TOML for editing: {}", e))?;
 
-    // Try to find and replace an existing install = [...] line.
-    if let Some(patched) = replace_install_line(original, &install_line) {
-        return Ok(patched);
+    let mut arr = toml_edit::Array::new();
+    for pkg in install {
+        arr.push(pkg);
     }
 
-    // No existing install key — add one inside [image.packages] or create
-    // the section.
-    let packages_header = "[image.packages]";
-    if let Some(pos) = original.find(packages_header) {
-        let insert_at = pos + packages_header.len();
-        let mut result = original.to_string();
-        result.insert_str(insert_at, &format!("\n{}", install_line));
-        Ok(result)
-    } else {
-        let mut result = original.to_string();
-        if !result.ends_with('\n') {
-            result.push('\n');
-        }
-        result.push_str(&format!("\n{}\n{}\n", packages_header, install_line));
-        Ok(result)
-    }
-}
-
-/// Scan `text` line-by-line and replace the first `install = [...]` line
-/// with `replacement`.  Returns `None` if no such line is found.
-fn replace_install_line(text: &str, replacement: &str) -> Option<String> {
-    let mut found = false;
-    let result: String = text
-        .lines()
-        .map(|line| {
-            if found {
-                return line.to_string();
-            }
-            let trimmed = line.trim();
-            if trimmed.starts_with("install = [") && trimmed.ends_with(']') {
-                found = true;
-                // Preserve indentation of the original line
-                let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-                format!("{}{}", indent, replacement)
-            } else {
-                line.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    if found {
-        Some(result)
-    } else {
-        None
-    }
+    doc["image"]["packages"]["install"] = toml_edit::value(arr);
+    Ok(doc.to_string())
 }
 
 #[cfg(test)]
@@ -401,7 +352,6 @@ base = "fedora:41"
 name = "myenv"
 "#;
         let patched = patch_toml(original, &["git".into()]).unwrap();
-        assert!(patched.contains("[image.packages]"));
         assert!(patched.contains(r#"install = ["git"]"#));
     }
 

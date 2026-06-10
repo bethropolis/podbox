@@ -22,7 +22,7 @@ pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
             }
         }
     }
-    Err(GuestError::SocketError(std::io::Error::new(
+    Err(GuestError::Io(std::io::Error::new(
         std::io::ErrorKind::NotConnected,
         "failed to connect to host socket after 3 attempts",
     )))

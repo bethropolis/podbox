@@ -874,7 +874,7 @@ home = "~/containers/testenv"
 
     #[test]
     fn tty_guard_logic_is_correct() {
-        assert!(true); // is_tty() is tested in codegen::distros
+        // is_tty() is tested in codegen::distros — placeholder kept for symmetry
     }
 
     #[test]

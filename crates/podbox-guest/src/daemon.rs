@@ -47,10 +47,10 @@ pub fn run() -> Result<(), GuestError> {
     // 5. Install interceptor symlinks for accepted capabilities
     install_interceptors(&accepted_set, &bin_dir)?;
 
-    // 5. Write PATH injection
+    // 6. Write PATH injection
     write_path_injection(&bin_dir)?;
 
-    // 6. Enter event loop (listen for host messages)
+    // 7. Enter event loop (listen for host messages)
     event_loop(&mut host_stream)?;
 
     Ok(())
@@ -73,7 +73,7 @@ fn install_interceptors(
     for (cap, name) in symlinks {
         if accepted.contains(cap) {
             let link = bin_dir.join(name);
-            let _ = std::fs::remove_file(&link);
+            let _ = std::fs::remove_file(&link); // ok if missing — symlink may be new
             std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
         }
     }
@@ -112,7 +112,7 @@ fn check_version_drift(
             actions: vec![],
             app_name: "podbox".to_string(),
         };
-        let _ = crate::socket::connect_and_send_oneshot(&msg);
+        let _ = crate::socket::connect_and_send_oneshot(&msg); // fire-and-forget notification
     } else {
         eprintln!("podbox-guest: image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`.");
     }
@@ -131,7 +131,7 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
     if fish_dir.is_dir() || std::fs::create_dir_all(&fish_dir).is_ok() {
         let fish_path = fish_dir.join("podbox.fish");
         let fish_content = format!("fish_add_path -m {}\n", bin_dir.to_string_lossy());
-        let _ = std::fs::write(fish_path, fish_content);
+        let _ = std::fs::write(fish_path, fish_content); // best-effort; fish may not be installed
     }
 
     Ok(())
@@ -177,7 +177,7 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
                 }
             }
             Err(nix::errno::Errno::EINTR) => continue,
-            Err(e) => return Err(GuestError::IO(e.into())),
+            Err(e) => return Err(GuestError::Io(e.into())),
         }
     }
 }

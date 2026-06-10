@@ -28,6 +28,7 @@ dialoguer      = { version = "0.11", features = ["fuzzy-select"] }
 sha2           = "0.10"
 hex            = "0.4"
 url            = "2.5"
+toml_edit      = "0.22"
 podbox-protocol = { path = "../podbox-protocol" }
 
 [dev-dependencies]

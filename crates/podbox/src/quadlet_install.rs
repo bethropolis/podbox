@@ -9,7 +9,7 @@ use crate::podman::{podman_version, PodmanVersion};
 use crate::xdg::ResolvedXdgDirs;
 
 /// Directory for user Quadlet source files.
-fn quadlet_dir() -> PathBuf {
+pub fn quadlet_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| config::expand_tilde("~/.config"))
         .join("containers/systemd")
@@ -28,7 +28,7 @@ fn daemon_reload() {
     }
     let _ = crate::process::run_piped(
         "systemctl",
-        &vec!["--user".into(), "daemon-reload".into()],
+        &["--user".into(), "daemon-reload".into()],
     );
 }
 
@@ -38,7 +38,7 @@ fn reset_failed(name: &str) {
     }
     let _ = crate::process::run_piped(
         "systemctl",
-        &vec![
+        &[
             "--user".into(),
             "reset-failed".into(),
             format!("{}.service", name).into(),
@@ -69,7 +69,7 @@ fn enable_now_socket(name: &str) {
     }
     let _ = crate::process::run_piped(
         "systemctl",
-        &vec![
+        &[
             "--user".into(),
             "enable".into(),
             "--now".into(),

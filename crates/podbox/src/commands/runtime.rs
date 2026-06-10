@@ -108,9 +108,7 @@ pub fn run_run(
 }
 
 fn quadlet_installed(name: &str) -> bool {
-    let qdir = dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
-        .join("containers/systemd");
+    let qdir = podbox::quadlet_install::quadlet_dir();
     qdir.join(format!("{}.container", name)).exists()
 }
 

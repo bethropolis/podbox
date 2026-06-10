@@ -83,9 +83,9 @@ fn default_pull_retry_delay() -> String {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PackageConfig {
-    #[serde(default, skip_serializing_if = "is_empty_vec")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub install: Vec<String>,
-    #[serde(default, skip_serializing_if = "is_empty_vec")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remove: Vec<String>,
     #[serde(
         default = "default_package_manager",
@@ -110,7 +110,7 @@ fn default_package_manager() -> String {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct RunConfig {
-    #[serde(default, skip_serializing_if = "is_empty_vec")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<String>,
 }
 
@@ -126,10 +126,10 @@ pub struct ContainerConfig {
     #[serde(default = "default_shell", skip_serializing_if = "is_default_shell")]
     pub shell: String,
     /// Optional memory limit (e.g. "2g", "512m").
-    #[serde(default, skip_serializing_if = "is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory: Option<String>,
     /// Optional systemd ExecReload command.
-    #[serde(default, skip_serializing_if = "is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload_cmd: Option<String>,
     #[serde(default, skip_serializing_if = "is_default_mounts")]
     pub mounts: MountConfig,
@@ -139,7 +139,7 @@ pub struct ContainerConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct MountConfig {
-    #[serde(default, skip_serializing_if = "is_empty_vec")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra: Vec<String>,
 }
 
@@ -477,15 +477,7 @@ fn dbus_preset_talk(preset: &str) -> &[&str] {
             "org.freedesktop.portal.*",
         ],
         "kde" => &["org.kde.*", "org.freedesktop.portal.*"],
-        "portal" => &[
-            "org.freedesktop.portal.*",
-            "org.freedesktop.portal.FileChooser",
-            "org.freedesktop.portal.Notification",
-            "org.freedesktop.portal.OpenURI",
-            "org.freedesktop.portal.Screenshot",
-            "org.freedesktop.portal.RemoteDesktop",
-            "org.freedesktop.portal.ScreenCast",
-        ],
+        "portal" => &["org.freedesktop.portal.*"],
         _ => &[],
     }
 }
@@ -723,9 +715,6 @@ fn is_true(v: &bool) -> bool {
 fn is_false(v: &bool) -> bool {
     !*v
 }
-fn is_empty_vec(v: &[String]) -> bool {
-    v.is_empty()
-}
 fn is_empty_hashmap(v: &HashMap<String, String>) -> bool {
     v.is_empty()
 }
@@ -734,9 +723,6 @@ fn is_default_mounts(v: &MountConfig) -> bool {
 }
 fn is_default_gpu(v: &GpuMode) -> bool {
     *v == GpuMode::Auto
-}
-fn is_none<T>(v: &Option<T>) -> bool {
-    v.is_none()
 }
 fn is_default_shell(v: &str) -> bool {
     v == "fish"
