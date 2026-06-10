@@ -1,13 +1,51 @@
 use std::collections::HashSet;
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
 use crate::error::GuestError;
-use crate::protocol::HostMessage;
+use crate::protocol::{write_frame, GuestMessage, HostMessage};
 use crate::socket;
+
+/// Open a pidfd for a given PID (Linux 5.3+).
+fn open_pidfd(pid: i32) -> std::io::Result<OwnedFd> {
+    let ret = unsafe { nix::libc::syscall(nix::libc::SYS_pidfd_open, pid, 0) };
+    if ret < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(unsafe { OwnedFd::from_raw_fd(ret as i32) })
+    }
+}
+
+struct TrackedProcess {
+    _pid: i32,
+    fd: OwnedFd,
+}
+
+/// Scan /proc for user processes (anything not named podbox-guest/podmgr-guest).
+fn scan_user_processes() -> Vec<i32> {
+    let mut pids = Vec::new();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return pids;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.chars().all(|c| c.is_ascii_digit()) {
+            if let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) {
+                let comm_trimmed = comm.trim();
+                if comm_trimmed != "podbox-guest" && comm_trimmed != "podmgr-guest" {
+                    if let Ok(pid) = name_str.parse::<i32>() {
+                        pids.push(pid);
+                    }
+                }
+            }
+        }
+    }
+    pids
+}
 
 pub fn run() -> Result<(), GuestError> {
     let host_socket_path = socket::host_socket_path()?;
@@ -127,46 +165,108 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
 }
 
 fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
-    loop {
-        let mut fds = [PollFd::new(
-            host_stream.as_fd(),
-            PollFlags::POLLIN,
-        )];
+    let mut tracked: Vec<TrackedProcess> = Vec::new();
 
-        match poll(&mut fds, PollTimeout::from(None::<u16>)) {
-            Ok(_) => {
-                let revents = fds[0].revents().unwrap_or(PollFlags::empty());
-                if revents.contains(PollFlags::POLLHUP) || revents.contains(PollFlags::POLLERR) {
-                    eprintln!("podbox-guest: host socket hung up.");
+    loop {
+        // Scope the poll set so borrows on host_stream/tracked are released
+        // before we mutably access them below.
+        let host_revents: PollFlags;
+        let pid_revents: Vec<PollFlags>;
+
+        {
+            let mut fds: Vec<PollFd> = Vec::with_capacity(1 + tracked.len());
+            fds.push(PollFd::new(host_stream.as_fd(), PollFlags::POLLIN));
+            for proc in &tracked {
+                fds.push(PollFd::new(proc.fd.as_fd(), PollFlags::POLLIN));
+            }
+
+            match poll(&mut fds, PollTimeout::from(None::<u16>)) {
+                Ok(_nfds) => {
+                    host_revents = fds[0].revents().unwrap_or(PollFlags::empty());
+                    pid_revents = fds[1..]
+                        .iter()
+                        .map(|f| f.revents().unwrap_or(PollFlags::empty()))
+                        .collect();
+                }
+                Err(nix::errno::Errno::EINTR) => continue,
+                Err(e) => return Err(GuestError::Io(e.into())),
+            }
+        } // fds dropped — borrows of host_stream and tracked are released
+
+        // ── Host socket events ──
+        if host_revents.contains(PollFlags::POLLHUP)
+            || host_revents.contains(PollFlags::POLLERR)
+        {
+            eprintln!("podbox-guest: host socket hung up.");
+            return Ok(());
+        }
+
+        if host_revents.contains(PollFlags::POLLIN) {
+            match socket::read_host_message(host_stream) {
+                Ok(Some(HostMessage::Shutdown)) => {
+                    eprintln!("podbox-guest: received shutdown, exiting.");
                     return Ok(());
                 }
-                if revents.contains(PollFlags::POLLIN) {
-                    match socket::read_host_message(host_stream) {
-                        Ok(Some(HostMessage::Shutdown)) => {
-                            eprintln!("podbox-guest: received shutdown, exiting.");
-                            return Ok(());
-                        }
-                        Ok(Some(HostMessage::Ping)) => {}
-                        Ok(Some(HostMessage::HelloAck { .. })) => {}
-                        Ok(Some(HostMessage::ClipboardData { .. })) => {}
-                        Ok(Some(HostMessage::HostExecStdout { .. })) => {}
-                        Ok(Some(HostMessage::HostExecStderr { .. })) => {}
-                        Ok(Some(HostMessage::HostExecDone { .. })) => {}
-                        Ok(Some(HostMessage::NotifyActionResult { .. })) => {}
-                        Ok(None) => {
-                            eprintln!("podbox-guest: host disconnected.");
-                            return Ok(());
-                        }
-                        Err(e) => {
-                            if !e.to_string().contains("WouldBlock") {
-                                return Err(e);
+                Ok(Some(HostMessage::Ping)) => {}
+                Ok(Some(HostMessage::HelloAck { .. })) => {}
+                Ok(Some(HostMessage::ClipboardData { .. })) => {}
+                Ok(Some(HostMessage::HostExecStdout { .. })) => {}
+                Ok(Some(HostMessage::HostExecStderr { .. })) => {}
+                Ok(Some(HostMessage::HostExecDone { .. })) => {}
+                Ok(Some(HostMessage::NotifyActionResult { .. })) => {}
+                Ok(Some(HostMessage::CheckIdle)) => {
+                    let active = scan_user_processes();
+                    if active.is_empty() {
+                        let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
+                    } else {
+                        tracked.clear();
+                        for pid in active {
+                            if let Ok(fd) = open_pidfd(pid) {
+                                tracked.push(TrackedProcess { _pid: pid, fd });
                             }
                         }
+                        let _ = write_frame(host_stream, &GuestMessage::Busy);
+                    }
+                }
+                Ok(None) => {
+                    eprintln!("podbox-guest: host disconnected.");
+                    return Ok(());
+                }
+                Err(e) => {
+                    if !e.to_string().contains("WouldBlock") {
+                        return Err(e);
                     }
                 }
             }
-            Err(nix::errno::Errno::EINTR) => continue,
-            Err(e) => return Err(GuestError::Io(e.into())),
+        }
+
+        // ── pidfd events (tracked process exits) ──
+        let mut exited: Vec<usize> = Vec::new();
+        for (i, rev) in pid_revents.iter().enumerate() {
+            if rev.contains(PollFlags::POLLIN)
+                || rev.contains(PollFlags::POLLHUP)
+                || rev.contains(PollFlags::POLLERR)
+            {
+                exited.push(i);
+            }
+        }
+
+        for &i in exited.iter().rev() {
+            tracked.remove(i);
+        }
+
+        if !exited.is_empty() && tracked.is_empty() {
+            let active = scan_user_processes();
+            if active.is_empty() {
+                let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
+            } else {
+                tracked.clear();
+                for pid in active {
+                    if let Ok(fd) = open_pidfd(pid) {
+                        tracked.push(TrackedProcess { _pid: pid, fd });
+                    }
+                }
+            }
         }
     }
 }

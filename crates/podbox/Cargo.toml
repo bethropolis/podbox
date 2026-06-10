@@ -23,7 +23,7 @@ dirs           = "5.0"
 which          = "6.0"
 indexmap       = "2.0"
 notify-rust    = "4.0"
-nix            = { workspace = true }
+nix            = { workspace = true, features = ["socket", "uio"] }
 dialoguer      = { version = "0.11", features = ["fuzzy-select"] }
 sha2           = "0.10"
 hex            = "0.4"

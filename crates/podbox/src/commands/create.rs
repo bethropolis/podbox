@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 
 use podbox::codegen::distros;
 use podbox::config::{self, Config};
+use podbox::editor;
 use podbox::error::PodboxError;
 
 /// Build image, install Quadlet, and start the container.
@@ -245,6 +246,7 @@ pub fn run_create(
     name: Option<&str>,
     packages: Option<&str>,
     no_start: bool,
+    edit: bool,
 ) -> Result<()> {
     let is_profile = !image.contains('/') && !image.contains('\\');
 
@@ -286,6 +288,11 @@ pub fn run_create(
                 std::fs::write(&config_path, &config_toml)?;
                 println!("Created config: {}", config_path.display());
             }
+        }
+
+        if edit && !dry_run {
+            let ed = editor::resolve()?;
+            editor::open(&ed, &config_path)?;
         }
 
         return finish_create(&cfg, &container_name, dry_run, no_start);
@@ -369,6 +376,11 @@ pub fn run_create(
             let toml_str = toml::to_string_pretty(&cfg)?;
             std::fs::write(&config_path, &toml_str)?;
             println!("Created config: {}", config_path.display());
+        }
+
+        if edit && !dry_run {
+            let ed = editor::resolve()?;
+            editor::open(&ed, &config_path)?;
         }
 
         println!("Image '{}' pulled and configured.", image);

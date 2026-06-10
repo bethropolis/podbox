@@ -24,6 +24,6 @@ pub fn run_serve(cli_config_path: Option<&PathBuf>, serve_name: &str, dry_run: b
     let socket_path = PathBuf::from(&xdg_runtime)
         .join("podbox")
         .join(format!("{}.sock", serve_name));
-    podbox::socket_host::run(&socket_path, &serve_config.integration)?;
+    podbox::socket_host::run(&socket_path, &serve_config.integration, serve_name)?;
     Ok(())
 }

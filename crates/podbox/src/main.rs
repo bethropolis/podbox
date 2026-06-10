@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
@@ -5,6 +6,7 @@ use clap::Parser;
 
 use podbox::cli::{Cli, Command};
 use podbox::config::{self, Config};
+use podbox::editor;
 use podbox::error::PodboxError;
 
 mod commands;
@@ -26,7 +28,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Disable { name, .. }
         | Command::Start { name, .. }
         | Command::Stop { name }
-        | Command::Shell { name }
+        | Command::Shell { name, edit: _ }
         | Command::Enter { name }
         | Command::Status { name }
         | Command::Remove { name, .. }
@@ -36,7 +38,8 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Snapshot { name, .. }
         | Command::Restore { name, .. }
         | Command::Inspect { name, .. }
-        | Command::FindDefinition { name } => name.clone(),
+        | Command::FindDefinition { name }
+        | Command::Edit { name, .. } => name.clone(),
         _ => None,
     }
 }
@@ -104,6 +107,7 @@ fn run() -> Result<()> {
             name,
             packages,
             no_start,
+            edit,
         } => {
             return commands::create::run_create(
                 cli.dry_run,
@@ -111,6 +115,7 @@ fn run() -> Result<()> {
                 name.as_deref(),
                 packages.as_deref(),
                 *no_start,
+                *edit,
             );
         }
 
@@ -128,6 +133,15 @@ fn run() -> Result<()> {
 
         Command::Use { name, clear } => {
             return commands::context::run_use(name.clone(), *clear, cli.dry_run);
+        }
+
+        Command::Edit { name, rebuild } => {
+            let container_name = name
+                .clone()
+                .or_else(|| cli.container.clone())
+                .or_else(|| std::env::var("PODBOX_CONTAINER").ok())
+                .or_else(config::read_active_context);
+            return run_edit(cli.dry_run, container_name.as_deref(), *rebuild);
         }
 
         _ => {}
@@ -169,7 +183,13 @@ fn run() -> Result<()> {
             name: _,
             rebuild,
             no_diff,
+            edit,
         } => {
+            if *edit {
+                let config_path = resolve_config_path(cli.container.as_deref())?;
+                let ed = editor::resolve()?;
+                editor::open(&ed, &config_path)?;
+            }
             commands::lifecycle::run_build(&config, &env, &xdg, cli.dry_run, *rebuild, *no_diff)?;
         }
 
@@ -181,7 +201,12 @@ fn run() -> Result<()> {
             commands::lifecycle::run_disable(&name)?;
         }
 
-        Command::Start { name: _, timeout } => {
+        Command::Start { name: _, timeout, edit } => {
+            if *edit {
+                let config_path = resolve_config_path(cli.container.as_deref())?;
+                let ed = editor::resolve()?;
+                editor::open(&ed, &config_path)?;
+            }
             commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run, *timeout)?;
         }
 
@@ -189,7 +214,16 @@ fn run() -> Result<()> {
             commands::lifecycle::run_stop(&config, &name, cli.dry_run)?;
         }
 
-        Command::Shell { name: _ } | Command::Enter { name: _ } => {
+        Command::Shell { name: _, edit } => {
+            if *edit {
+                let config_path = resolve_config_path(cli.container.as_deref())?;
+                let ed = editor::resolve()?;
+                editor::open(&ed, &config_path)?;
+            }
+            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run)?;
+        }
+
+        Command::Enter { name: _ } => {
             commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run)?;
         }
 
@@ -289,7 +323,8 @@ fn run() -> Result<()> {
         | Command::Create { .. }
         | Command::Clone { .. }
         | Command::List
-        | Command::Use { .. } => unreachable!(),
+        | Command::Use { .. }
+        | Command::Edit { .. } => unreachable!(),
     }
 
     Ok(())
@@ -382,4 +417,110 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
     }
 
     Ok((config, name))
+}
+
+/// Resolve the config file path for the given container name (or auto-detect).
+fn resolve_config_path(container: Option<&str>) -> Result<PathBuf> {
+    if let Some(name) = container {
+        let path = config::config_dir().join(format!("{}.toml", name));
+        if !path.exists() {
+            anyhow::bail!(
+                "no config found for container '{}' at '{}'",
+                name,
+                path.display()
+            );
+        }
+        return Ok(path);
+    }
+
+    let configs = config::list_configs();
+    match configs.len() {
+        0 => {
+            let local = config::find_definition();
+            match local {
+                Some(p) => Ok(p),
+                None => anyhow::bail!(
+                    "no config found. Run `podbox init` to create one."
+                ),
+            }
+        }
+        1 => Ok(configs.into_iter().next().unwrap()),
+        _ => {
+            if podbox::codegen::distros::is_tty() {
+                let items: Vec<String> = configs
+                    .iter()
+                    .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .collect();
+                let idx = dialoguer::Select::with_theme(
+                    &dialoguer::theme::ColorfulTheme::default(),
+                )
+                .with_prompt("Select container")
+                .items(&items)
+                .default(0)
+                .interact()?;
+                Ok(configs[idx].clone())
+            } else {
+                anyhow::bail!(
+                    "multiple configs found — specify one with --container <name>"
+                )
+            }
+        }
+    }
+}
+
+/// Hash the `[image]` section of a config file — used to detect changes.
+fn hash_image_section(path: &std::path::Path) -> Result<String> {
+    let raw = std::fs::read_to_string(path)?;
+    let table: toml::Value = raw.parse()?;
+    let image_str = table
+        .get("image")
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+    use sha2::{Digest, Sha256};
+    Ok(hex::encode(Sha256::digest(image_str.as_bytes())))
+}
+
+/// Open the config in the user's editor, detect [image] changes, and offer to rebuild.
+fn run_edit(dry_run: bool, container: Option<&str>, rebuild_after: bool) -> Result<()> {
+    let config_path = resolve_config_path(container)?;
+
+    if dry_run {
+        println!("Would open: {}", config_path.display());
+        return Ok(());
+    }
+
+    let pre_hash = hash_image_section(&config_path)?;
+
+    let ed = editor::resolve()?;
+    editor::open(&ed, &config_path)?;
+
+    let post_hash = hash_image_section(&config_path)?;
+    let image_changed = pre_hash != post_hash;
+
+    if image_changed {
+        println!("Image config changed.");
+        if rebuild_after {
+            let config = Config::load(&config_path)?;
+            let env = podbox::env::resolve()?;
+            let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
+            commands::lifecycle::run_build(&config, &env, &xdg, false, false, false)?;
+        } else if podbox::codegen::distros::is_tty() {
+            let yes = dialoguer::Confirm::with_theme(
+                &dialoguer::theme::ColorfulTheme::default(),
+            )
+            .with_prompt("Rebuild now?")
+            .default(true)
+            .interact()?;
+            if yes {
+                let config = Config::load(&config_path)?;
+                let env = podbox::env::resolve()?;
+                let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
+                commands::lifecycle::run_build(&config, &env, &xdg, false, false, false)?;
+            }
+        } else {
+            eprintln!("Run `podbox build` to apply changes.");
+        }
+    }
+
+    Ok(())
 }

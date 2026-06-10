@@ -1,4 +1,6 @@
 use std::ffi::OsString;
+use std::os::fd::AsRawFd;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 
 use anyhow::Result;
@@ -7,6 +9,27 @@ use podbox::codegen::distros;
 use podbox::config::Config;
 use podbox::env::HostEnv;
 use podbox::podman::{query_state, ContainerState};
+use podbox::protocol::{write_frame, GuestMessage};
+
+/// Try to register a terminal session with the host's socket_host.
+///
+/// Opens a pidfd for the current process, connects to the host socket,
+/// sends `RegisterSession` with the pidfd via `SCM_RIGHTS`, then closes
+/// the connection.  Silently skips on old kernels or when `serve` is
+/// not running.
+fn register_session(name: &str, xdg_runtime_dir: &Path) {
+    let pidfd = match podbox::process::open_pidfd(std::process::id() as i32) {
+        Ok(fd) => fd,
+        _ => return,
+    };
+    let socket_path = xdg_runtime_dir.join("podbox").join(format!("{}.sock", name));
+    let mut stream = match UnixStream::connect(&socket_path) {
+        Ok(s) => s,
+        _ => return,
+    };
+    let _ = write_frame(&mut stream, &GuestMessage::RegisterSession);
+    let _ = podbox::process::send_fd(&stream, pidfd.as_raw_fd());
+}
 
 /// Enter a shell inside the container.
 pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool) -> Result<()> {
@@ -41,6 +64,7 @@ pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool
         name,
         &config.container.shell,
     ]);
+    register_session(name, &env.xdg_runtime_dir);
     let err = podbox::process::exec_replace("podman", &exec_args);
     Err(err)
 }
@@ -76,6 +100,7 @@ pub fn run_exec(
     for a in cmd_args {
         exec_args.push(a.into());
     }
+    register_session(name, &env.xdg_runtime_dir);
     let err = podbox::process::exec_replace("podman", &exec_args);
     Err(err)
 }

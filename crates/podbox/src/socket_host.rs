@@ -1,36 +1,39 @@
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::fd::RawFd;
+use std::os::unix::io::FromRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::config::IntegrationConfig;
+use crate::process;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
 
 mod handlers;
 
 /// Max number of concurrent host threads handling guest connections.
-///
-/// 4 is a deliberate, conservative cap: each thread runs the full
-/// read/respond loop for a single client, and the only expensive
-/// thing it does is spawn a process for `host-exec` or block on
-/// `notify-rust`'s action signal.  In practice, a single container
-/// only ever has the daemon and 0-2 ephemeral interceptors
-/// (notify-send, host-exec, xdg-open, clipboard) — 4 is plenty of
-/// headroom for a busy desktop session.
 const MAX_CONCURRENT: usize = 4;
 
 /// How often the host sends a keepalive `Ping` to a connected guest.
-///
-/// The guest's read-loop currently has a 5-minute idle timeout, so a
-/// 60s ping interval stays well under that and prevents silent
-/// integration failures for long-lived containers.
 const PING_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Shared mutable state between all connections and PID monitor threads.
+struct SharedState {
+    /// The first (and only) guest-daemon stream — used to send CheckIdle.
+    daemon_stream: Mutex<Option<UnixStream>>,
+    /// Number of active terminal sessions tracked via pidfd.
+    session_count: AtomicU32,
+    /// Container name, for `systemctl stop` on idle timeout.
+    container_name: String,
+}
+
 /// Run the host socket server for a container.
-///
-/// Uses systemd socket activation when `LISTEN_FDS` is set (FD 3).
-/// Falls back to creating the socket at `socket_path` directly.
-pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()> {
+pub fn run(
+    socket_path: &Path,
+    config: &IntegrationConfig,
+    container_name: &str,
+) -> anyhow::Result<()> {
     let path = socket_path.to_path_buf();
     let config = config.clone();
 
@@ -42,15 +45,17 @@ pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()>
         }
     };
 
+    let state = Arc::new(SharedState {
+        daemon_stream: Mutex::new(None),
+        session_count: AtomicU32::new(0),
+        container_name: container_name.to_string(),
+    });
+
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
-                // Drain finished handles every iteration, not just when
-                // we hit the cap.  This prevents the accept loop from
-                // stalling on a slow/blocked client whose thread is
-                // still alive but no longer productive.
                 handles.retain_mut(|h| !h.is_finished());
 
                 if handles.len() >= MAX_CONCURRENT {
@@ -62,9 +67,10 @@ pub fn run(socket_path: &Path, config: &IntegrationConfig) -> anyhow::Result<()>
                 }
 
                 let cfg = config.clone();
+                let state = Arc::clone(&state);
                 let handle = std::thread::spawn(move || {
-                    if let Err(e) = handle_connection(&mut stream, &cfg) {
-                        eprintln!("Error handling guest connection: {}", e);
+                    if let Err(e) = handle_connection(&mut stream, &cfg, &state) {
+                        eprintln!("Error handling connection: {}", e);
                     }
                 });
                 handles.push(handle);
@@ -91,9 +97,11 @@ fn listen_fd() -> Option<RawFd> {
     Some(3)
 }
 
-fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> anyhow::Result<()> {
-    // Bound reads so we can periodically ping the guest and prevent
-    // its 5-minute idle timeout from killing the daemon.
+fn handle_connection(
+    stream: &mut UnixStream,
+    config: &IntegrationConfig,
+    state: &Arc<SharedState>,
+) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(PING_INTERVAL))?;
     let mut last_ping = std::time::Instant::now();
 
@@ -125,7 +133,42 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
                 guest_version,
                 container,
                 capabilities,
-            } => handlers::handle_hello(stream, config, protocol_version, guest_version, container, capabilities)?,
+            } => {
+                // Store the daemon stream so we can send CheckIdle later
+                if let Ok(clone) = stream.try_clone() {
+                    *state.daemon_stream.lock().unwrap() = Some(clone);
+                }
+                handlers::handle_hello(
+                    stream,
+                    config,
+                    protocol_version,
+                    guest_version,
+                    container,
+                    capabilities,
+                )?;
+            }
+            GuestMessage::RegisterSession => {
+                // Receive the pidfd via SCM_RIGHTS
+                let fd = match process::recv_fd(stream) {
+                    Ok(Some(fd)) => fd,
+                    Ok(None) => return Ok(()),
+                    Err(_) => return Ok(()),
+                };
+                state.session_count.fetch_add(1, Ordering::SeqCst);
+                let s = Arc::clone(state);
+                std::thread::spawn(move || monitor_pidfd(fd, s));
+                // Return immediately — the CLI closes the connection after
+                // sending RegisterSession + pidfd.
+                return Ok(());
+            }
+            GuestMessage::Busy => {}
+            GuestMessage::IdleTimeout => {
+                let name = &state.container_name;
+                eprintln!("podbox: container '{}' idle — stopping", name);
+                let _ = std::process::Command::new("systemctl")
+                    .args(["--user", "stop", &format!("{}.service", name)])
+                    .status();
+            }
             GuestMessage::Notify {
                 summary,
                 body,
@@ -136,7 +179,43 @@ fn handle_connection(stream: &mut UnixStream, config: &IntegrationConfig) -> any
             GuestMessage::XdgOpen { uri } => handlers::handle_xdg_open(uri)?,
             GuestMessage::ClipboardSet { text } => handlers::handle_clipboard_set(text)?,
             GuestMessage::ClipboardGet => handlers::handle_clipboard_get(stream)?,
-            GuestMessage::HostExec { cmd, args } => handlers::handle_host_exec(stream, config, cmd, args)?,
+            GuestMessage::HostExec { cmd, args } => {
+                handlers::handle_host_exec(stream, config, cmd, args)?
+            }
+        }
+    }
+}
+
+/// Block until `fd` (a pidfd) becomes readable, then decrement the session
+/// counter.  If the count reaches zero, send `CheckIdle` to the guest daemon.
+fn monitor_pidfd(raw_fd: RawFd, state: Arc<SharedState>) {
+    let mut pfd = nix::libc::pollfd {
+        fd: raw_fd,
+        events: nix::libc::POLLIN,
+        revents: 0,
+    };
+
+    loop {
+        let ret = unsafe { nix::libc::poll(&mut pfd, 1, -1) };
+        if ret < 0 {
+            let errno = unsafe { *nix::libc::__errno_location() };
+            if errno == nix::libc::EINTR {
+                continue;
+            }
+            break;
+        }
+        if pfd.revents & (nix::libc::POLLIN | nix::libc::POLLHUP | nix::libc::POLLERR) != 0 {
+            break;
+        }
+    }
+
+    unsafe { nix::libc::close(raw_fd) };
+
+    let prev = state.session_count.fetch_sub(1, Ordering::SeqCst);
+    if prev == 1 {
+        let mut daemon = state.daemon_stream.lock().unwrap();
+        if let Some(ref mut daemon) = *daemon {
+            let _ = write_frame(daemon, &HostMessage::CheckIdle);
         }
     }
 }
@@ -239,7 +318,10 @@ mod tests {
         assert!(validate_host_exec_args(&["python".into(), "--load=malicious".into()]).is_err());
         assert!(validate_host_exec_args(&["python".into(), "--module=malicious".into()]).is_err());
         assert!(validate_host_exec_args(&["git".into(), "--remote=evil".into()]).is_err());
-        assert!(validate_host_exec_args(&["ssh".into(), "-o".into(), "StrictHostKeyChecking=no".into()]).is_err());
+        assert!(validate_host_exec_args(
+            &["ssh".into(), "-o".into(), "StrictHostKeyChecking=no".into()]
+        )
+        .is_err());
     }
 
     #[test]
@@ -251,20 +333,30 @@ mod tests {
     #[test]
     fn does_not_restrict_safe_flags() {
         assert!(validate_host_exec_args(&["git".into(), "--exec".into()]).is_ok());
-        assert!(validate_host_exec_args(&["git".into(), "--exec-path-is-ok".into()]).is_err(), "--exec-path prefix still blocked");
+        assert!(
+            validate_host_exec_args(&["git".into(), "--exec-path-is-ok".into()]).is_err(),
+            "--exec-path prefix still blocked"
+        );
         assert!(validate_host_exec_args(&["ls".into(), "--color=auto".into()]).is_ok());
         assert!(validate_host_exec_args(&["cargo".into(), "--offline".into()]).is_ok());
     }
 
     #[test]
     fn rejects_empty_args_gracefully() {
-        assert!(validate_host_exec_args(&[String::new()]).is_ok(), "empty string is not a metachar");
+        assert!(
+            validate_host_exec_args(&[String::new()]).is_ok(),
+            "empty string is not a metachar"
+        );
     }
 
     #[test]
     fn ascii_lowercase_only() {
-        // Unicode characters should NOT be lowercased (to_ascii_lowercase is a no-op for non-ASCII)
-        assert!(validate_host_exec_args(&["git".into(), "--EXEC-PATH=".into()]).is_err());
-        assert!(validate_host_exec_args(&["git".into(), "--İ".into()]).is_ok(), "Turkish İ is non-ASCII");
+        assert!(
+            validate_host_exec_args(&["git".into(), "--EXEC-PATH=".into()]).is_err()
+        );
+        assert!(
+            validate_host_exec_args(&["git".into(), "--\u{0130}".into()]).is_ok(),
+            "Turkish \u{0130} is non-ASCII"
+        );
     }
 }

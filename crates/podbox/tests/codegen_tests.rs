@@ -395,7 +395,7 @@ fn quadlet_systemd_dependencies_absent_by_default() {
 fn quadlet_visual_themes_present() {
     with_sandbox_home(|home| {
         std::fs::create_dir_all(home.join(".local/share/themes")).unwrap();
-        let _ = std::fs::create_dir_all(home.join(".themes")).unwrap();
+        std::fs::create_dir_all(home.join(".themes")).unwrap();
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_themes = true;
@@ -407,7 +407,7 @@ fn quadlet_visual_themes_present() {
 #[test]
 fn quadlet_visual_icons_present() {
     with_sandbox_home(|home| {
-        let _ = std::fs::create_dir_all(home.join(".icons")).unwrap();
+        std::fs::create_dir_all(home.join(".icons")).unwrap();
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_icons = true;
@@ -419,8 +419,8 @@ fn quadlet_visual_icons_present() {
 #[test]
 fn quadlet_visual_fonts_present() {
     with_sandbox_home(|home| {
-        let _ = std::fs::create_dir_all(home.join(".fonts")).unwrap();
-        let _ = std::fs::create_dir_all(home.join(".config/fontconfig")).unwrap();
+        std::fs::create_dir_all(home.join(".fonts")).unwrap();
+        std::fs::create_dir_all(home.join(".config/fontconfig")).unwrap();
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_fonts = true;
@@ -553,7 +553,7 @@ fn quadlet_timezone_mounts_absent_when_unavailable() {
 fn quadlet_modern_theme_path_present() {
     with_sandbox_home(|home| {
         std::fs::create_dir_all(home.join(".local/share/themes")).unwrap();
-        let _ = std::fs::create_dir_all(home.join(".themes")).unwrap();
+        std::fs::create_dir_all(home.join(".themes")).unwrap();
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_themes = true;
@@ -568,7 +568,7 @@ fn quadlet_modern_theme_path_present() {
 #[test]
 fn quadlet_modern_icon_path_present() {
     with_sandbox_home(|home| {
-        let _ = std::fs::create_dir_all(home.join(".icons")).unwrap();
+        std::fs::create_dir_all(home.join(".icons")).unwrap();
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_icons = true;
@@ -583,8 +583,8 @@ fn quadlet_modern_icon_path_present() {
 #[test]
 fn quadlet_modern_font_path_present() {
     with_sandbox_home(|home| {
-        let _ = std::fs::create_dir_all(home.join(".fonts")).unwrap();
-        let _ = std::fs::create_dir_all(home.join(".config/fontconfig")).unwrap();
+        std::fs::create_dir_all(home.join(".fonts")).unwrap();
+        std::fs::create_dir_all(home.join(".config/fontconfig")).unwrap();
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_fonts = true;

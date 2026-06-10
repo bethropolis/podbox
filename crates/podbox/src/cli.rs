@@ -34,6 +34,9 @@ pub enum Command {
         /// Skip post-build drift check.
         #[arg(long)]
         no_diff: bool,
+        /// Open config in editor before building.
+        #[arg(long)]
+        edit: bool,
     },
 
     /// Install Quadlet systemd files and enable the container.
@@ -58,6 +61,9 @@ pub enum Command {
         /// Maximum seconds to wait for the container to become ready.
         #[arg(long, default_value = "30")]
         timeout: u64,
+        /// Open config in editor before starting.
+        #[arg(long)]
+        edit: bool,
     },
 
     /// Stop the container.
@@ -70,6 +76,9 @@ pub enum Command {
     Shell {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Open config in editor before entering shell.
+        #[arg(long)]
+        edit: bool,
     },
 
     /// Execute a command interactively in the container.
@@ -173,6 +182,18 @@ pub enum Command {
         /// Skip starting the container after setup.
         #[arg(long)]
         no_start: bool,
+        /// Open config in editor before creating.
+        #[arg(long)]
+        edit: bool,
+    },
+
+    /// Open the container config in your preferred editor.
+    Edit {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+        /// After saving, rebuild the image if image config changed.
+        #[arg(long)]
+        rebuild: bool,
     },
 
     /// List all managed containers.

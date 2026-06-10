@@ -48,6 +48,13 @@ pub enum GuestMessage {
         cmd: String,
         args: Vec<String>,
     },
+    /// Sent by the host CLI to register a new terminal session.
+    /// The pidfd follows via SCM_RIGHTS on the same connection.
+    RegisterSession,
+    /// Sent by the guest daemon when user processes are still running.
+    Busy,
+    /// Sent by the guest daemon when no user processes remain.
+    IdleTimeout,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -82,6 +89,9 @@ pub enum HostMessage {
     },
     Ping,
     Shutdown,
+    /// Sent by the host when all CLI sessions have ended; guest responds
+    /// with `IdleTimeout` or `Busy` after scanning `/proc`.
+    CheckIdle,
 }
 
 /// Write a length-prefixed JSON frame.
