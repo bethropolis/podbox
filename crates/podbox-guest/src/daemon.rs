@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::os::fd::{AsRawFd, BorrowedFd};
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
@@ -140,7 +140,7 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
 fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
     loop {
         let mut fds = [PollFd::new(
-            unsafe { BorrowedFd::borrow_raw(host_stream.as_raw_fd()) },
+            host_stream.as_fd(),
             PollFlags::POLLIN,
         )];
 

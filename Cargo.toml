@@ -1,5 +1,5 @@
 [workspace]
-members  = ["crates/podbox", "crates/podbox-guest"]
+members  = ["crates/podbox", "crates/podbox-guest", "crates/podbox-protocol"]
 resolver = "2"
 
 [workspace.package]

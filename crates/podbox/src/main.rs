@@ -9,8 +9,6 @@ use podbox::error::PodboxError;
 
 mod commands;
 
-pub const VERSION: &str = env!("PODBOX_VERSION");
-
 /// Commands that need image label defaults applied to the config.
 /// These generate Quadlet files or build the image — the rest can skip
 /// the ~100ms `podman inspect` fork.
@@ -161,92 +159,7 @@ fn run() -> Result<()> {
         return commands::lifecycle::run_remove_stale(cli.dry_run, *force);
     }
 
-    // Load config for all other commands
-    let mut config = if let Some(ref path) = cli.config {
-        match Config::load(path) {
-            Ok(cfg) => cfg,
-            Err(e)
-                if e.downcast_ref::<PodboxError>()
-                    .is_some_and(|pe| matches!(pe, PodboxError::DefinitionNotFound(_))) =>
-            {
-                eprintln!(
-                    "Warning: config file not found at '{}', using embedded default.",
-                    path.display()
-                );
-                Config::embedded()
-            }
-            Err(e) => return Err(e),
-        }
-    } else if let Some(ref container_name) = target_name {
-        let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{}.toml", container_name));
-        Config::load(&config_path).map_err(|e| {
-            anyhow::anyhow!(
-                "{}\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
-                e,
-                config_dir.display()
-            )
-        })?
-    } else {
-        let config_list = config::list_configs();
-
-        // No configs at all — welcome the user and offer the wizard
-        if config_list.is_empty()
-            && config::find_definition().is_none()
-            && nix::unistd::isatty(0).unwrap_or(false)
-        {
-            eprintln!("Welcome to podbox! It looks like you don't have any containers set up yet.");
-            let launch =
-                dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                    .with_prompt("Would you like to run the interactive setup wizard?")
-                    .default(true)
-                    .interact()
-                    .unwrap_or(false);
-            if launch {
-                commands::config::run_init(cli.dry_run, None, None, true, None)?;
-                return Ok(());
-            }
-        }
-
-        if config_list.len() > 1 && nix::unistd::isatty(0).unwrap_or(false) {
-            let items: Vec<String> = config_list
-                .iter()
-                .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                .collect();
-            let selection =
-                dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                    .with_prompt("Multiple containers found")
-                    .items(&items)
-                    .default(0)
-                    .interact()
-                    .map_err(|e| anyhow::anyhow!("selection failed: {}", e))?;
-            Config::load(&config_list[selection])?
-        } else if config_list.len() == 1 {
-            Config::load(&config_list[0])?
-        } else {
-            match config::find_definition() {
-                Some(path) => Config::load(&path)?,
-                None => {
-                    anyhow::bail!(
-                        "No container configs found. Create one with `podbox init --interactive` \
-                         or specify a config with `--config <PATH>` / `-C <NAME>`."
-                    );
-                }
-            }
-        }
-    };
-
-    let name = config.container.name.clone();
-
-    // Apply image label defaults — only for commands that generate config from labels
-    if needs_image_labels(&cli.command) {
-        let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
-        if let Ok(true) = podbox::podman::image_exists(&local_tag) {
-            if let Ok(labels) = podbox::labels::fetch(&local_tag) {
-                podbox::labels::apply_defaults(&mut config, &labels);
-            }
-        }
-    }
+    let (config, name) = resolve_config(&cli, target_name)?;
 
     let env = podbox::env::resolve()?;
     let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
@@ -380,4 +293,93 @@ fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, String)> {
+    let mut config = if let Some(ref path) = cli.config {
+        match Config::load(path) {
+            Ok(cfg) => cfg,
+            Err(e)
+                if e.downcast_ref::<PodboxError>()
+                    .is_some_and(|pe| matches!(pe, PodboxError::DefinitionNotFound(_))) =>
+            {
+                eprintln!(
+                    "Warning: config file not found at '{}', using embedded default.",
+                    path.display()
+                );
+                Config::embedded()
+            }
+            Err(e) => return Err(e),
+        }
+    } else if let Some(ref container_name) = target_name {
+        let config_dir = config::config_dir();
+        let config_path = config_dir.join(format!("{}.toml", container_name));
+        Config::load(&config_path).map_err(|e| {
+            anyhow::anyhow!(
+                "{}\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
+                e,
+                config_dir.display()
+            )
+        })?
+    } else {
+        let config_list = config::list_configs();
+
+        // No configs at all — welcome the user and offer the wizard
+        if config_list.is_empty()
+            && config::find_definition().is_none()
+            && podbox::codegen::distros::is_tty()
+        {
+            eprintln!("Welcome to podbox! It looks like you don't have any containers set up yet.");
+            let launch =
+                dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Would you like to run the interactive setup wizard?")
+                    .default(true)
+                    .interact()
+                    .unwrap_or(false);
+            if launch {
+                commands::config::run_init(cli.dry_run, None, None, true, None)?;
+                return Ok((Config::embedded(), String::new()));
+            }
+        }
+
+        if config_list.len() > 1 && podbox::codegen::distros::is_tty() {
+            let items: Vec<String> = config_list
+                .iter()
+                .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+                .collect();
+            let selection =
+                dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Multiple containers found")
+                    .items(&items)
+                    .default(0)
+                    .interact()
+                    .map_err(|e| anyhow::anyhow!("selection failed: {}", e))?;
+            Config::load(&config_list[selection])?
+        } else if config_list.len() == 1 {
+            Config::load(&config_list[0])?
+        } else {
+            match config::find_definition() {
+                Some(path) => Config::load(&path)?,
+                None => {
+                    anyhow::bail!(
+                        "No container configs found. Create one with `podbox init --interactive` \
+                         or specify a config with `--config <PATH>` / `-C <NAME>`."
+                    );
+                }
+            }
+        }
+    };
+
+    let name = config.container.name.clone();
+
+    if needs_image_labels(&cli.command) {
+        let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
+        if let Ok(true) = podbox::podman::image_exists(&local_tag) {
+            if let Ok(labels) = podbox::labels::fetch(&local_tag) {
+                podbox::labels::apply_defaults(&mut config, &labels);
+            }
+        }
+    }
+
+    Ok((config, name))
 }

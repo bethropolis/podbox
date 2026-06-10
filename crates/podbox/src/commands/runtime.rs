@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use podbox::codegen::distros;
 use podbox::config::Config;
 use podbox::env::HostEnv;
 use podbox::podman::{query_state, ContainerState};
@@ -10,7 +11,7 @@ use podbox::podman::{query_state, ContainerState};
 /// Enter a shell inside the container.
 pub fn run_shell_enter(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     let env = podbox::env::resolve()?;
-    let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
+    let tty_flag = if distros::is_tty() {
         "-it"
     } else {
         "-i"
@@ -53,7 +54,7 @@ pub fn run_exec(
     dry_run: bool,
     root: bool,
 ) -> Result<()> {
-    let tty_flag = if nix::unistd::isatty(0).unwrap_or(false) {
+    let tty_flag = if distros::is_tty() {
         "-it"
     } else {
         "-i"

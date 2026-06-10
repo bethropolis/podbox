@@ -364,20 +364,19 @@ fn validate_uri(uri: &str) -> Option<String> {
         return None;
     }
 
-    // Extract scheme: prefer the explicit "://" form; fall back to the
-    // first colon (covers `mailto:user@host`); otherwise treat as a bare
-    // domain and let the caller wrap it.
-    let scheme = s
-        .split_once("://")
-        .map(|(scheme, _)| scheme)
-        .or_else(|| s.split_once(':').map(|(scheme, _)| scheme));
-
-    match scheme {
-        Some("http") | Some("https") | Some("mailto") => Some(s.to_string()),
-        // Unknown scheme with alphabetic prefix (e.g. "javascript:", "file:") — refuse.
-        Some(scheme) if scheme.chars().all(|c| c.is_alphabetic()) => None,
-        // No real scheme — treat as a bare domain.
-        _ => Some(format!("https://{}", s)),
+    match url::Url::parse(s) {
+        Ok(parsed) => {
+            let scheme = parsed.scheme();
+            if scheme == "http" || scheme == "https" || scheme == "mailto" {
+                Some(s.to_string())
+            } else {
+                None
+            }
+        }
+        Err(url::ParseError::RelativeUrlWithoutBase) => {
+            Some(format!("https://{}", s))
+        }
+        _ => None,
     }
 }
 

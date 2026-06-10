@@ -1,8 +1,6 @@
 use crate::codegen::distros::{detect_host_locale, detect_host_shell, DistroFamily};
 use crate::config::Config;
 
-pub const VERSION: &str = env!("PODBOX_VERSION");
-
 pub fn generate(config: &Config, _guest_binary_name: &str) -> String {
     if config.image.source().is_prebuilt() {
         return generate_prebuilt(config);
@@ -143,7 +141,7 @@ impl ContainerfileBuilder {
                     ));
                     lines.push(String::new());
                 }
-                DistroFamily::FedoraLike => {
+                DistroFamily::FedoraLike | DistroFamily::SuseLike => {
                     // glibc-all-langpacks includes pre-generated locales, no localedef needed
                 }
                 DistroFamily::AlpineLike | DistroFamily::Unknown => {}
@@ -161,7 +159,7 @@ impl ContainerfileBuilder {
         }
 
         lines.push(format!("ENV PODBOX_CONTAINER={}", self.container_name));
-        lines.push(format!("ENV PODBOX_HOST_VERSION={}", VERSION));
+        lines.push(format!("ENV PODBOX_HOST_VERSION={}", crate::VERSION));
         lines.push(String::new());
 
         lines.push("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]".into());

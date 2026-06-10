@@ -1,0 +1,11 @@
+[package]
+name    = "podbox-protocol"
+version.workspace = true
+edition = "2021"
+
+[lib]
+name = "podbox_protocol"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }

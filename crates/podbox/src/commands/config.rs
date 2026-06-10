@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use clap_complete::generate;
 
 use podbox::cli::{Cli, ExportCommand};
+use podbox::codegen::distros;
 use podbox::codegen::quadlet;
 use podbox::config::{self, Config};
 use podbox::env::HostEnv;
@@ -313,20 +314,7 @@ fn derive_container_name(image: &str, custom_name: Option<&str>) -> String {
 }
 
 fn detect_package_manager(image: &str) -> &'static str {
-    let lower = image.to_lowercase();
-    if lower.contains("ubuntu") || lower.contains("debian") {
-        "apt"
-    } else if lower.contains("fedora") || lower.contains("centos") || lower.contains("rhel") {
-        "dnf"
-    } else if lower.contains("arch") || lower.contains("cachy") || lower.contains("manjaro") {
-        "pacman"
-    } else if lower.contains("alpine") {
-        "apk"
-    } else if lower.contains("opensuse") {
-        "zypper"
-    } else {
-        "apt"
-    }
+    distros::detect_package_manager(image)
 }
 
 /// Build image, install Quadlet, and start the container.
@@ -396,7 +384,7 @@ pub fn run_init(
     }
 
     if interactive {
-        if !nix::unistd::isatty(0).unwrap_or(false) {
+        if !distros::is_tty() {
             anyhow::bail!("--interactive requires a TTY (stdin is not a terminal)");
         }
         let profiles = podbox::profiles::all();

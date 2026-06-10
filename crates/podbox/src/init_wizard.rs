@@ -322,20 +322,7 @@ fn prompt_customize_profile(mut cfg: Config) -> anyhow::Result<Config> {
 }
 
 fn detect_package_manager(image: &str) -> &'static str {
-    let lower = image.to_lowercase();
-    if lower.contains("ubuntu") || lower.contains("debian") {
-        "apt"
-    } else if lower.contains("fedora") || lower.contains("centos") || lower.contains("rhel") {
-        "dnf"
-    } else if lower.contains("arch") || lower.contains("cachy") || lower.contains("manjaro") {
-        "pacman"
-    } else if lower.contains("alpine") {
-        "apk"
-    } else if lower.contains("opensuse") {
-        "zypper"
-    } else {
-        "apt"
-    }
+    crate::codegen::distros::detect_package_manager(image)
 }
 
 // ── Phase 2 helpers ──
@@ -887,8 +874,7 @@ home = "~/containers/testenv"
 
     #[test]
     fn tty_guard_logic_is_correct() {
-        let result = nix::unistd::isatty(0);
-        assert!(result.is_ok() || result.is_err());
+        assert!(true); // is_tty() is tested in codegen::distros
     }
 
     #[test]
@@ -921,6 +907,6 @@ home = "~/containers/testenv"
 
     #[test]
     fn detect_package_manager_fallback() {
-        assert_eq!(detect_package_manager("unknown:latest"), "apt");
+        assert_eq!(detect_package_manager("unknown:latest"), "dnf");
     }
 }

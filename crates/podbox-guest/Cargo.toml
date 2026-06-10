@@ -17,3 +17,4 @@ serde_json = { workspace = true }
 anyhow     = { workspace = true }
 nix        = { workspace = true }
 thiserror  = { workspace = true }
+podbox-protocol = { path = "../podbox-protocol" }

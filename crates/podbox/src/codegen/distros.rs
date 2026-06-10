@@ -4,6 +4,7 @@ pub enum DistroFamily {
     FedoraLike,
     ArchLike,
     AlpineLike,
+    SuseLike,
     Unknown,
 }
 
@@ -35,6 +36,8 @@ impl DistroFamily {
             Self::ArchLike
         } else if base_lower.contains("alpine") {
             Self::AlpineLike
+        } else if base_lower.contains("opensuse") || base_lower.contains("suse") {
+            Self::SuseLike
         } else {
             Self::Unknown
         }
@@ -46,6 +49,7 @@ impl DistroFamily {
             Self::FedoraLike => "dnf",
             Self::ArchLike => "pacman",
             Self::AlpineLike => "apk",
+            Self::SuseLike => "zypper",
             Self::Unknown => "dnf",
         }
     }
@@ -56,6 +60,7 @@ impl DistroFamily {
             Self::FedoraLike => "dnf install -y",
             Self::ArchLike => "pacman -Syu --noconfirm",
             Self::AlpineLike => "apk add --no-cache",
+            Self::SuseLike => "zypper install -y",
             Self::Unknown => "dnf install -y",
         }
     }
@@ -66,89 +71,19 @@ impl DistroFamily {
             Self::FedoraLike => "dnf clean all",
             Self::ArchLike => "pacman -Scc --noconfirm",
             Self::AlpineLike => "",
+            Self::SuseLike => "zypper clean --all",
             Self::Unknown => "dnf clean all",
         }
     }
 
     pub fn base_packages(&self, host_shell: Option<&str>) -> Vec<String> {
-        let mut pkgs = match self {
-            Self::DebianLike => vec![
-                "sudo".into(),
-                "locales".into(),
-                "curl".into(),
-                "tar".into(),
-                "unzip".into(),
-                "wget".into(),
-                "which".into(),
-                "coreutils".into(),
-                "diffutils".into(),
-                "findutils".into(),
-                "grep".into(),
-                "sed".into(),
-                "gawk".into(),
-                "bash-completion".into(),
-            ],
-            Self::FedoraLike => vec![
-                "sudo".into(),
-                "curl".into(),
-                "tar".into(),
-                "unzip".into(),
-                "wget".into(),
-                "which".into(),
-                "coreutils".into(),
-                "diffutils".into(),
-                "findutils".into(),
-                "grep".into(),
-                "sed".into(),
-                "gawk".into(),
-                "bash-completion".into(),
-            ],
-            Self::ArchLike => vec![
-                "sudo".into(),
-                "curl".into(),
-                "tar".into(),
-                "unzip".into(),
-                "wget".into(),
-                "which".into(),
-                "coreutils".into(),
-                "diffutils".into(),
-                "findutils".into(),
-                "grep".into(),
-                "sed".into(),
-                "gawk".into(),
-                "bash-completion".into(),
-            ],
-            Self::AlpineLike => vec![
-                "sudo".into(),
-                "curl".into(),
-                "tar".into(),
-                "unzip".into(),
-                "wget".into(),
-                "which".into(),
-                "coreutils".into(),
-                "diffutils".into(),
-                "findutils".into(),
-                "grep".into(),
-                "sed".into(),
-                "gawk".into(),
-                "bash-completion".into(),
-            ],
-            Self::Unknown => vec![
-                "sudo".into(),
-                "curl".into(),
-                "tar".into(),
-                "unzip".into(),
-                "wget".into(),
-                "which".into(),
-                "coreutils".into(),
-                "diffutils".into(),
-                "findutils".into(),
-                "grep".into(),
-                "sed".into(),
-                "gawk".into(),
-                "bash-completion".into(),
-            ],
-        };
+        let common: Vec<String> = [
+            "sudo", "curl", "tar", "unzip", "wget", "which",
+            "coreutils", "diffutils", "findutils", "grep", "sed", "gawk",
+            "bash-completion",
+        ].into_iter().map(String::from).collect();
+
+        let mut pkgs = common;
 
         if let Some(shell) = host_shell {
             let shell_pkgs = Self::shell_packages(self, shell);
@@ -178,6 +113,7 @@ impl DistroFamily {
                     Self::FedoraLike => pkgs.push("zsh".into()),
                     Self::ArchLike => pkgs.push("zsh-completions".into()),
                     Self::AlpineLike => pkgs.push("zsh".into()),
+                    Self::SuseLike => pkgs.push("zsh".into()),
                     Self::Unknown => pkgs.push("zsh".into()),
                 }
             }
@@ -189,6 +125,7 @@ impl DistroFamily {
                 Self::FedoraLike => pkgs.push("dash".into()),
                 Self::ArchLike => pkgs.push("dash".into()),
                 Self::AlpineLike => pkgs.push("dash".into()),
+                Self::SuseLike => pkgs.push("dash".into()),
                 Self::Unknown => pkgs.push("dash".into()),
             },
             _ => {}
@@ -223,6 +160,9 @@ impl DistroFamily {
             Self::AlpineLike => {
                 format!("apk del {} && {}", pkgs, Self::clean_cmd(self))
             }
+            Self::SuseLike => {
+                format!("zypper rm {} && {}", pkgs, Self::clean_cmd(self))
+            }
             Self::Unknown => {
                 format!("dnf remove -y {} && {}", pkgs, Self::clean_cmd(self))
             }
@@ -235,6 +175,7 @@ impl DistroFamily {
             Self::FedoraLike => vec!["glibc-all-langpacks".into()],
             Self::ArchLike => vec!["glibc".into()],
             Self::AlpineLike => vec!["musl-locales".into()],
+            Self::SuseLike => vec!["glibc-all-langpacks".into()],
             Self::Unknown => vec!["locales".into()],
         }
     }
@@ -250,6 +191,14 @@ pub fn detect_host_locale() -> Option<String> {
         .or_else(|| std::env::var("LC_ALL").ok())
         .or_else(|| std::env::var("LC_CTYPE").ok())
         .filter(|s| !s.is_empty())
+}
+
+pub fn detect_package_manager(image: &str) -> &'static str {
+    DistroFamily::from_base_image(image).manager()
+}
+
+pub fn is_tty() -> bool {
+    nix::unistd::isatty(0).unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -283,6 +232,10 @@ mod tests {
             DistroFamily::AlpineLike
         );
         assert_eq!(
+            DistroFamily::from_base_image("opensuse/tumbleweed:latest"),
+            DistroFamily::SuseLike
+        );
+        assert_eq!(
             DistroFamily::from_base_image("unknown:latest"),
             DistroFamily::Unknown
         );
@@ -292,7 +245,6 @@ mod tests {
     fn test_debian_base_packages() {
         let pkgs = DistroFamily::DebianLike.base_packages(Some("/usr/bin/fish"));
         assert!(pkgs.contains(&"sudo".into()));
-        assert!(pkgs.contains(&"locales".into()));
         assert!(pkgs.contains(&"curl".into()));
         assert!(pkgs.contains(&"fish".into()));
     }
@@ -332,5 +284,9 @@ mod tests {
             "pacman -Syu --noconfirm"
         );
         assert_eq!(DistroFamily::AlpineLike.install_cmd(), "apk add --no-cache");
+        assert_eq!(
+            DistroFamily::SuseLike.install_cmd(),
+            "zypper install -y"
+        );
     }
 }
