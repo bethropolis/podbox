@@ -1,4 +1,4 @@
-use crate::config::{Config, GpuMode, ImageSource, OnStop, XdgDirConfig};
+use crate::config::{Config, GpuMode, ImageSource, OnStop, XdgDirConfig, XdgDirValue};
 use crate::profiles;
 
 /// Information about the host shell, resolved at startup.
@@ -505,13 +505,13 @@ fn prompt_xdg_dirs() -> XdgDirConfig {
             .interact()
             .expect("failed to get XDG directory selection");
     XdgDirConfig {
-        documents: selections.contains(&0),
-        downloads: selections.contains(&1),
-        pictures: selections.contains(&2),
-        music: selections.contains(&3),
-        videos: selections.contains(&4),
-        desktop: selections.contains(&5),
-        projects: selections.contains(&6),
+        documents: XdgDirValue::Simple(selections.contains(&0)),
+        downloads: XdgDirValue::Simple(selections.contains(&1)),
+        pictures: XdgDirValue::Simple(selections.contains(&2)),
+        music: XdgDirValue::Simple(selections.contains(&3)),
+        videos: XdgDirValue::Simple(selections.contains(&4)),
+        desktop: XdgDirValue::Simple(selections.contains(&5)),
+        projects: XdgDirValue::Simple(selections.contains(&6)),
     }
 }
 
@@ -616,13 +616,13 @@ fn print_summary(config: &Config, name: &str) {
         GpuMode::Nvidia => "nvidia",
     };
     let xdg_count = [
-        config.integration.xdg_dirs.documents,
-        config.integration.xdg_dirs.downloads,
-        config.integration.xdg_dirs.pictures,
-        config.integration.xdg_dirs.music,
-        config.integration.xdg_dirs.videos,
-        config.integration.xdg_dirs.desktop,
-        config.integration.xdg_dirs.projects,
+        config.integration.xdg_dirs.documents.is_enabled(),
+        config.integration.xdg_dirs.downloads.is_enabled(),
+        config.integration.xdg_dirs.pictures.is_enabled(),
+        config.integration.xdg_dirs.music.is_enabled(),
+        config.integration.xdg_dirs.videos.is_enabled(),
+        config.integration.xdg_dirs.desktop.is_enabled(),
+        config.integration.xdg_dirs.projects.is_enabled(),
     ]
     .iter()
     .filter(|&&b| b)

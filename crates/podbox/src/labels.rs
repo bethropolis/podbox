@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::{Config, GpuMode};
+use crate::config::{Config, GpuMode, XdgDirValue};
 
 /// Raw OCI labels read from `podman inspect`.
 pub type LabelMap = HashMap<String, String>;
@@ -101,43 +101,43 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
         &mut int.sync_themes,
     );
 
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.documents",
         "podmgr.xdg_dirs.documents",
         &mut int.xdg_dirs.documents,
     );
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.downloads",
         "podmgr.xdg_dirs.downloads",
         &mut int.xdg_dirs.downloads,
     );
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.pictures",
         "podmgr.xdg_dirs.pictures",
         &mut int.xdg_dirs.pictures,
     );
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.music",
         "podmgr.xdg_dirs.music",
         &mut int.xdg_dirs.music,
     );
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.videos",
         "podmgr.xdg_dirs.videos",
         &mut int.xdg_dirs.videos,
     );
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.desktop",
         "podmgr.xdg_dirs.desktop",
         &mut int.xdg_dirs.desktop,
     );
-    apply_bool_compat(
+    apply_xdg_compat(
         labels,
         "podbox.xdg_dirs.projects",
         "podmgr.xdg_dirs.projects",
@@ -186,5 +186,18 @@ fn apply_bool_compat(labels: &LabelMap, new_key: &str, old_key: &str, field: &mu
         apply_bool(labels, new_key, field);
     } else {
         apply_bool(labels, old_key, field);
+    }
+}
+
+fn apply_xdg_compat(labels: &LabelMap, new_key: &str, old_key: &str, field: &mut XdgDirValue) {
+    let key = if labels.contains_key(new_key) {
+        new_key
+    } else {
+        old_key
+    };
+    if let Some(v) = labels.get(key) {
+        if v == "true" {
+            *field = XdgDirValue::Simple(true);
+        }
     }
 }

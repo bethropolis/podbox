@@ -458,13 +458,14 @@ WantedBy={name}.socket
 fn emit_xdg_dir(
     lines: &mut Vec<String>,
     dir_name: &str,
-    host_path: &Option<std::path::PathBuf>,
+    xdg_dir: &Option<crate::xdg::ResolvedXdgDir>,
     container_home: &str,
 ) {
-    if let Some(ref path) = host_path {
+    if let Some(ref resolved) = xdg_dir {
+        let mode = if resolved.read_write { "z" } else { "ro,z" };
         lines.push(format!(
-            "Volume={}:{container_home}/{dir_name}:z",
-            path.display()
+            "Volume={}:{container_home}/{dir_name}:{mode}",
+            resolved.path.display()
         ));
     }
 }

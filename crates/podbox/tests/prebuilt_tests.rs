@@ -95,7 +95,7 @@ fn label_apply_defaults_prebuilt() {
     ]);
     labels::apply_defaults(&mut config, &labels);
     assert_eq!(config.integration.gpu, podbox::config::GpuMode::Enabled);
-    assert!(config.integration.xdg_dirs.documents);
+    assert!(config.integration.xdg_dirs.documents.is_enabled());
 }
 
 #[test]
@@ -166,6 +166,7 @@ fn quadlet_prebuilt_uses_registry_image() {
 fn quadlet_custom_uses_build_ref() {
     use podbox::codegen::quadlet;
     use podbox::env::HostEnv;
+    use podbox::xdg::ResolvedXdgDir;
     use podbox::xdg::ResolvedXdgDirs;
     let cfg = load_config("full.toml");
     let env = HostEnv {
@@ -191,8 +192,8 @@ fn quadlet_custom_uses_build_ref() {
         gpg_home: None,
     };
     let xdg = ResolvedXdgDirs {
-        documents: Some(PathBuf::from("/home/user/Documents")),
-        downloads: Some(PathBuf::from("/home/user/Downloads")),
+        documents: Some(ResolvedXdgDir { path: PathBuf::from("/home/user/Documents"), read_write: false }),
+        downloads: Some(ResolvedXdgDir { path: PathBuf::from("/home/user/Downloads"), read_write: false }),
         pictures: None,
         music: None,
         videos: None,

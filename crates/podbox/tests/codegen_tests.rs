@@ -4,6 +4,7 @@ use podbox::codegen::containerfile;
 use podbox::codegen::quadlet;
 use podbox::config::{Config, GpuMode};
 use podbox::env::HostEnv;
+use podbox::xdg::ResolvedXdgDir;
 use podbox::xdg::ResolvedXdgDirs;
 
 fn load_config(name: &str) -> Config {
@@ -41,8 +42,8 @@ fn default_env() -> HostEnv {
 
 fn default_xdg() -> ResolvedXdgDirs {
     ResolvedXdgDirs {
-        documents: Some(PathBuf::from("/home/user/Documents")),
-        downloads: Some(PathBuf::from("/home/user/Downloads")),
+        documents: Some(ResolvedXdgDir { path: PathBuf::from("/home/user/Documents"), read_write: false }),
+        downloads: Some(ResolvedXdgDir { path: PathBuf::from("/home/user/Downloads"), read_write: false }),
         pictures: None,
         music: None,
         videos: None,
@@ -158,18 +159,17 @@ fn quadlet_audio_volumes_present() {
 fn quadlet_dbus_present() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    // No rules means unfiltered %t/bus
-    assert!(q.contains("Volume=%t/bus:%t/bus"));
-    assert!(q.contains("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus"));
-    assert!(!q.contains("Volume=%t/podbox/myenv-dbus.sock:/run/podbox/dbus.sock:ro"));
+    // Default dbus = true with no rules → portal preset → proxied socket
+    assert!(q.contains("Volume=%t/podbox/myenv-dbus.sock:/run/podbox/dbus.sock:ro"));
+    assert!(q.contains("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podbox/dbus.sock"));
 }
 
 #[test]
 fn quadlet_xdg_dir_present_when_enabled() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("Volume=/home/user/Documents:/home/%u/Documents:z"));
-    assert!(q.contains("Volume=/home/user/Downloads:/home/%u/Downloads:z"));
+    assert!(q.contains("Volume=/home/user/Documents:/home/%u/Documents:ro,z"));
+    assert!(q.contains("Volume=/home/user/Downloads:/home/%u/Downloads:ro,z"));
     assert!(q.contains("Environment=HOME=/home/%u"));
     assert!(q.contains("Environment=HOST_USER=testuser"));
     assert!(q.contains("Environment=HOST_UID=%U"));
@@ -362,9 +362,10 @@ fn quadlet_systemd_dependencies_absent_by_default() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     let requires_lines: Vec<&str> = q.lines().filter(|l| l.starts_with("Requires=")).collect();
-    // Socket Requires should be present, proxy service absent
-    assert_eq!(requires_lines.len(), 1);
+    // Socket + D-Bus proxy service (portal preset)
+    assert_eq!(requires_lines.len(), 2);
     assert!(requires_lines.iter().any(|l| l.ends_with(".socket")));
+    assert!(requires_lines.iter().any(|l| l.ends_with("-proxy.service")));
 }
 
 #[test]

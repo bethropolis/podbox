@@ -66,13 +66,13 @@ fn xdg_dirs_default_all_false() {
     let content = std::fs::read_to_string(path).unwrap();
     let cfg = Config::parse(&content).unwrap();
 
-    assert!(!cfg.integration.xdg_dirs.documents);
-    assert!(!cfg.integration.xdg_dirs.downloads);
-    assert!(!cfg.integration.xdg_dirs.pictures);
-    assert!(!cfg.integration.xdg_dirs.music);
-    assert!(!cfg.integration.xdg_dirs.videos);
-    assert!(!cfg.integration.xdg_dirs.desktop);
-    assert!(!cfg.integration.xdg_dirs.projects);
+    assert!(!cfg.integration.xdg_dirs.documents.is_enabled());
+    assert!(!cfg.integration.xdg_dirs.downloads.is_enabled());
+    assert!(!cfg.integration.xdg_dirs.pictures.is_enabled());
+    assert!(!cfg.integration.xdg_dirs.music.is_enabled());
+    assert!(!cfg.integration.xdg_dirs.videos.is_enabled());
+    assert!(!cfg.integration.xdg_dirs.desktop.is_enabled());
+    assert!(!cfg.integration.xdg_dirs.projects.is_enabled());
 }
 
 #[test]

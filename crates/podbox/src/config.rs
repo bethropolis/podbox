@@ -338,22 +338,51 @@ impl Default for IntegrationConfig {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum XdgDirValue {
+    Simple(bool),
+    Detailed { enabled: bool, #[serde(default)] read_write: bool },
+}
+
+impl Default for XdgDirValue {
+    fn default() -> Self {
+        XdgDirValue::Simple(false)
+    }
+}
+
+impl XdgDirValue {
+    pub fn is_enabled(&self) -> bool {
+        match self {
+            XdgDirValue::Simple(b) => *b,
+            XdgDirValue::Detailed { enabled, .. } => *enabled,
+        }
+    }
+
+    pub fn is_read_write(&self) -> bool {
+        match self {
+            XdgDirValue::Simple(_) => false,
+            XdgDirValue::Detailed { read_write, .. } => *read_write,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct XdgDirConfig {
     #[serde(default)]
-    pub documents: bool,
+    pub documents: XdgDirValue,
     #[serde(default)]
-    pub downloads: bool,
+    pub downloads: XdgDirValue,
     #[serde(default)]
-    pub pictures: bool,
+    pub pictures: XdgDirValue,
     #[serde(default)]
-    pub music: bool,
+    pub music: XdgDirValue,
     #[serde(default)]
-    pub videos: bool,
+    pub videos: XdgDirValue,
     #[serde(default)]
-    pub desktop: bool,
+    pub desktop: XdgDirValue,
     #[serde(default)]
-    pub projects: bool,
+    pub projects: XdgDirValue,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -497,8 +526,9 @@ pub struct SecurityConfig {
     /// Disable SELinux process labeling for the container.
     #[serde(default, skip_serializing_if = "is_false")]
     pub security_label_disable: bool,
-    /// Disable the use of `--security-opt no-new-privileges`.
-    #[serde(default, skip_serializing_if = "is_false")]
+    /// Enable NoNewPrivileges (default true — secure).
+    /// Set to false to allow setuid/capability escalation.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub no_new_privileges: bool,
 }
 
@@ -508,7 +538,7 @@ impl Default for SecurityConfig {
             apparmor: None,
             seccomp: None,
             security_label_disable: true,
-            no_new_privileges: false,
+            no_new_privileges: true,
         }
     }
 }
@@ -542,8 +572,9 @@ impl Config {
 
     /// Parse a TOML definition from a string.
     pub fn parse(content: &str) -> Result<Config> {
-        let config: Config = toml::from_str(content)
+        let mut config: Config = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
+        config.apply_defaults();
         config.validate()?;
         Ok(config)
     }
@@ -561,6 +592,17 @@ impl Config {
     /// Return the built-in embedded default definition.
     pub fn embedded() -> Config {
         Self::parse(EMBEDDED_DEFAULT).expect("embedded default is valid TOML")
+    }
+
+    /// Apply security defaults for fields that weren't explicitly set.
+    fn apply_defaults(&mut self) {
+        if self.integration.dbus
+            && self.dbus.preset.is_empty()
+            && self.dbus.talk.is_empty()
+            && self.dbus.own.is_empty()
+        {
+            self.dbus.preset = "portal".into();
+        }
     }
 
     /// Validate config fields and return structured errors.
@@ -642,6 +684,19 @@ impl Config {
                         alias, path
                     ));
                 }
+            }
+        }
+
+        if self.integration.host_exec.enabled {
+            let has_allowlist = self.integration.host_exec.allowlist.as_ref()
+                .is_some_and(|m| !m.is_empty());
+            if !has_allowlist {
+                errors.push(
+                    "integration.host_exec: 'enabled' is true, but 'allowlist' is missing or empty. \
+                     For security, legacy open execution is blocked; you must explicitly define \
+                     allowed host commands."
+                        .into(),
+                );
             }
         }
 
@@ -758,7 +813,7 @@ fn is_default_dbus(v: &DbusConfig) -> bool {
 }
 
 fn is_default_security(v: &SecurityConfig) -> bool {
-    v.apparmor.is_none() && v.seccomp.is_none() && v.security_label_disable && !v.no_new_privileges
+    v.apparmor.is_none() && v.seccomp.is_none() && v.security_label_disable && v.no_new_privileges
 }
 
 /// Expand a leading `~` in a path to the user's home directory.
@@ -1000,12 +1055,12 @@ name = "myenv"
 home = "~/containers/myenv"
 "#;
         let cfg = Config::parse(toml).unwrap();
-        assert!(!cfg.integration.xdg_dirs.documents);
-        assert!(!cfg.integration.xdg_dirs.downloads);
-        assert!(!cfg.integration.xdg_dirs.pictures);
-        assert!(!cfg.integration.xdg_dirs.music);
-        assert!(!cfg.integration.xdg_dirs.videos);
-        assert!(!cfg.integration.xdg_dirs.desktop);
+        assert!(!cfg.integration.xdg_dirs.documents.is_enabled());
+        assert!(!cfg.integration.xdg_dirs.downloads.is_enabled());
+        assert!(!cfg.integration.xdg_dirs.pictures.is_enabled());
+        assert!(!cfg.integration.xdg_dirs.music.is_enabled());
+        assert!(!cfg.integration.xdg_dirs.videos.is_enabled());
+        assert!(!cfg.integration.xdg_dirs.desktop.is_enabled());
     }
 
     #[test]
@@ -1222,9 +1277,10 @@ base = "fedora:41"
     #[test]
     fn test_dbus_config_defaults_empty() {
         let cfg = Config::embedded();
-        assert!(cfg.dbus.talk.is_empty());
-        assert!(cfg.dbus.own.is_empty());
-        assert!(!cfg.use_dbus_proxy());
+        // apply_defaults sets preset = "portal" when dbus is enabled with no explicit rules
+        assert_eq!(cfg.dbus.preset, "portal");
+        assert_eq!(cfg.dbus.effective_talk(), vec!["org.freedesktop.portal.*"]);
+        assert!(cfg.use_dbus_proxy());
     }
 
     #[test]

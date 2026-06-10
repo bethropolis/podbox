@@ -230,7 +230,7 @@ pub fn run_translate_path(
             ("Projects", &xdg.projects),
         ]
         .into_iter()
-        .filter_map(|(name, opt)| opt.as_ref().map(|p| (name, p)))
+        .filter_map(|(name, opt)| opt.as_ref().map(|r| (name, &r.path)))
         .collect();
 
         for (dir_name, host_dir) in &host_to_container {
@@ -261,11 +261,11 @@ pub fn run_translate_path(
             ("Videos", &xdg.videos),
             ("Desktop", &xdg.desktop),
         ] {
-            if let Some(ref host_dir) = host_dir {
+            if let Some(ref resolved) = host_dir {
                 let container_prefix = format!("{}/{}/", home_in_container, dir_name);
                 if path_str.starts_with(&container_prefix) {
                     let relative = path_str.strip_prefix(&container_prefix).unwrap_or("");
-                    let host_path = host_dir.join(relative);
+                    let host_path = resolved.path.join(relative);
                     println!("{}", host_path.display());
                     return Ok(());
                 }
