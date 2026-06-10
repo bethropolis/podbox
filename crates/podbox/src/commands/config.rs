@@ -378,7 +378,7 @@ pub fn run_init(
     interactive: bool,
     profile: Option<&str>,
 ) -> Result<()> {
-    let shell_info = podbox::init_wizard::detect_host_shell();
+    let shell_info = podbox::wizard::detect_host_shell();
     if !shell_info.detected && !interactive {
         eprintln!("Note: $SHELL not set or unrecognized, defaulting to fish.");
     }
@@ -388,7 +388,7 @@ pub fn run_init(
             anyhow::bail!("--interactive requires a TTY (stdin is not a terminal)");
         }
         let profiles = podbox::profiles::all();
-        let result = podbox::init_wizard::run_wizard(&profiles, &shell_info)?;
+        let result = podbox::wizard::run_wizard(&profiles, &shell_info)?;
         if !result.confirmed {
             let toml = toml::to_string_pretty(&result.config)?;
             println!("{}", toml);
@@ -423,7 +423,7 @@ pub fn run_init(
     if let Some(p) = profile {
         let profile_content = read_profile_content(p)?;
         let mut cfg = Config::parse(&profile_content)?;
-        podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+        podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         let toml_str = toml::to_string_pretty(&cfg)?;
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
         let config_dir = config::config_dir();
@@ -482,7 +482,7 @@ pub fn run_init(
 
     // Clear default shell so apply_shell_defaults fills in the host shell
     cfg.container.shell.clear();
-    podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+    podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
     cfg.validate()?;
     let toml_str = toml::to_string_pretty(&cfg)?;
     let config_dir = config::config_dir();
@@ -562,13 +562,13 @@ pub fn run_create(
     if is_profile && podbox::profiles::find(image).is_some() {
         let profile_content = read_profile_content(image)?;
 
-        let shell_info = podbox::init_wizard::detect_host_shell();
+        let shell_info = podbox::wizard::detect_host_shell();
         if !shell_info.detected {
             eprintln!("Note: $SHELL not set or unrecognized, defaulting to fish.");
         }
 
         let mut cfg = Config::parse(&profile_content)?;
-        podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+        podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
             for pkg in pkgs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 if !cfg.image.packages.install.contains(&pkg.to_string()) {
@@ -648,7 +648,7 @@ pub fn run_create(
 
     if let Some(n) = name {
         let container_name = n.to_string();
-        let shell_info = podbox::init_wizard::detect_host_shell();
+        let shell_info = podbox::wizard::detect_host_shell();
         let mut cfg = Config::embedded();
         cfg.image.base = image.to_string();
         cfg.image.name = container_name.clone();
@@ -659,7 +659,7 @@ pub fn run_create(
             .join(&container_name);
         cfg.image.packages.manager = detect_package_manager(image).to_string();
         cfg.container.shell.clear();
-        podbox::init_wizard::apply_shell_defaults(&mut cfg, &shell_info);
+        podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
             for pkg in pkgs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 if !cfg.image.packages.install.contains(&pkg.to_string()) {
