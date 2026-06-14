@@ -221,6 +221,8 @@ pub struct LifecycleConfig {
     pub on_stop: OnStop,
     #[serde(default)]
     pub auto_update: bool,
+    #[serde(default = "crate::config::defaults::default_idle_timeout")]
+    pub idle_timeout: String,
 }
 
 impl Default for LifecycleConfig {
@@ -230,6 +232,7 @@ impl Default for LifecycleConfig {
             autostart: false,
             on_stop: OnStop::Keep,
             auto_update: false,
+            idle_timeout: crate::config::defaults::default_idle_timeout(),
         }
     }
 }

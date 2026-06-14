@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use podbox::config::Config;
 use podbox::env::HostEnv;
 use podbox::error::PodboxError;
+use podbox::systemd;
 use podbox::xdg::ResolvedXdgDirs;
 
 fn snapshot_tag(tag: &str, name: &str) -> String {
@@ -224,16 +225,15 @@ pub fn run_start(
 /// subsequent `systemctl is-active` checks).
 pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
-        if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
+        if config.lifecycle.quadlet && systemd::is_available() {
             println!("systemctl --user stop {}", name);
         } else {
             println!("podman stop {}", name);
         }
         return Ok(());
     }
-    if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
-        let args = podbox::process::args(&["--user", "stop", name]);
-        podbox::process::spawn_interactive("systemctl", &args).map(|_| ())
+    if config.lifecycle.quadlet && systemd::is_available() {
+        systemd::stop_unit(name)
     } else {
         let args = podbox::process::args(&["stop", name]);
         podbox::process::spawn_interactive("podman", &args).map(|_| ())
@@ -253,7 +253,7 @@ pub fn run_update(
         println!("podbox update: pull/rebuild and restart {}", name);
         println!("  build::run(config, env, xdg, dry_run: true, rebuild: true)");
         if !no_restart {
-            if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
+            if config.lifecycle.quadlet && systemd::is_available() {
                 println!("  systemctl --user restart {}", name);
             } else {
                 println!("  podman restart {}", name);
@@ -272,9 +272,8 @@ pub fn run_update(
     }
 
     println!("Restarting container...");
-    if config.lifecycle.quadlet && which::which("systemctl").is_ok() {
-        let args = podbox::process::args(&["--user", "restart", name]);
-        podbox::process::spawn_interactive("systemctl", &args)?;
+    if config.lifecycle.quadlet && systemd::is_available() {
+        systemd::restart_unit(name)?;
     } else {
         let args = podbox::process::args(&["restart", name]);
         podbox::process::spawn_interactive("podman", &args)?;
@@ -386,13 +385,8 @@ fn find_stale_containers() -> Vec<String> {
                     match state {
                         podbox::podman::ContainerState::Missing => stale.push(name),
                         podbox::podman::ContainerState::Stopped => {
-                            if let Ok(output) = std::process::Command::new("systemctl")
-                                .args(["--user", "is-failed", &format!("{}.service", name)])
-                                .output()
-                            {
-                                if String::from_utf8_lossy(&output.stdout).trim() == "failed" {
-                                    stale.push(name);
-                                }
+                            if systemd::is_unit_failed(&name) {
+                                stale.push(name);
                             }
                         }
                         podbox::podman::ContainerState::Running => {}
@@ -449,20 +443,7 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
 
         let _ = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]));
 
-        if which::which("systemctl").is_ok() {
-            let unit_names = [
-                format!("{}.service", name),
-                format!("{}.socket", name),
-                format!("{}-host.service", name),
-                format!("{}-proxy.service", name),
-            ];
-            for unit in &unit_names {
-                let _ = podbox::process::run_piped(
-                    "systemctl",
-                    &podbox::process::args(&["--user", "reset-failed", unit]),
-                );
-            }
-        }
+        let _ = systemd::reset_failed(name);
 
         let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
         if config_path.exists() {

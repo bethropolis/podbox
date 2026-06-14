@@ -19,6 +19,7 @@ fn hello_ack_serializes_with_type_tag() {
     let msg = HostMessage::HelloAck {
         accepted: vec!["notify".into()],
         rejected: vec![],
+        idle_timeout_secs: 0,
     };
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"type\":\"hello_ack\""));

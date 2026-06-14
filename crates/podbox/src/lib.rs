@@ -25,5 +25,6 @@ pub mod profiles;
 pub mod protocol;
 pub mod quadlet_install;
 pub mod socket_host;
+pub mod systemd;
 pub mod wizard;
 pub mod xdg;

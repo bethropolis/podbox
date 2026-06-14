@@ -84,6 +84,8 @@ fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
         lines.push(format!("Requires={}-proxy.service", name));
         lines.push(format!("After={}-proxy.service", name));
     }
+    lines.push("StartLimitBurst=5".into());
+    lines.push("StartLimitIntervalSec=30s".into());
     lines.push(String::new());
 }
 
@@ -397,13 +399,9 @@ fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) {
 fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
     if config.lifecycle.auto_update {
         if config.image.source().is_prebuilt() {
-            lines.push("Label=io.containers.autoupdate=registry".into());
+            lines.push("AutoUpdate=registry".into());
         } else {
-            eprintln!(
-                "Warning: auto_update is true for '{}' but the image is built \
-                 from source. Auto-update only works with prebuilt images.",
-                config.container.name
-            );
+            lines.push("AutoUpdate=local".into());
         }
         lines.push(String::new());
     }
@@ -423,8 +421,6 @@ fn emit_service_section(lines: &mut Vec<String>, config: &Config) {
     lines.push("[Service]".into());
     lines.push("Restart=on-failure".into());
     lines.push("RestartSec=2s".into());
-    lines.push("StartLimitBurst=5".into());
-    lines.push("StartLimitIntervalSec=30s".into());
     if config.lifecycle.on_stop == crate::config::OnStop::Remove {
         lines.push("AutoRemove=true".into());
     }

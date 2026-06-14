@@ -6,6 +6,7 @@ use crate::codegen::quadlet;
 use crate::config::{self, Config};
 use crate::env::HostEnv;
 use crate::podman::{podman_version, PodmanVersion};
+use crate::systemd;
 use crate::xdg::ResolvedXdgDirs;
 
 /// Directory for user Quadlet source files.
@@ -20,81 +21,6 @@ fn systemd_user_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| config::expand_tilde("~/.config"))
         .join("systemd/user")
-}
-
-fn daemon_reload() {
-    if which::which("systemctl").is_err() {
-        return;
-    }
-    let _ = crate::process::run_piped("systemctl", &["--user".into(), "daemon-reload".into()]);
-}
-
-fn reset_failed(name: &str) {
-    if which::which("systemctl").is_err() {
-        return;
-    }
-    let _ = crate::process::run_piped(
-        "systemctl",
-        &[
-            "--user".into(),
-            "reset-failed".into(),
-            format!("{}.service", name).into(),
-            format!("{}.socket", name).into(),
-            format!("{}-host.service", name).into(),
-            format!("{}-proxy.service", name).into(),
-        ],
-    );
-}
-
-fn stop_socket_and_host(name: &str) {
-    if which::which("systemctl").is_err() {
-        return;
-    }
-    let _ = crate::process::run_piped(
-        "systemctl",
-        &[
-            "--user".into(),
-            "stop".into(),
-            format!("{}.socket", name).into(),
-        ],
-    );
-    let _ = crate::process::run_piped(
-        "systemctl",
-        &[
-            "--user".into(),
-            "stop".into(),
-            format!("{}-host.service", name).into(),
-        ],
-    );
-}
-
-fn enable_now_socket(name: &str) {
-    if which::which("systemctl").is_err() {
-        return;
-    }
-    let _ = crate::process::run_piped(
-        "systemctl",
-        &[
-            "--user".into(),
-            "enable".into(),
-            "--now".into(),
-            format!("{}.socket", name).into(),
-        ],
-    );
-}
-
-fn start_host_service(name: &str) {
-    if which::which("systemctl").is_err() {
-        return;
-    }
-    let _ = crate::process::run_piped(
-        "systemctl",
-        &[
-            "--user".into(),
-            "start".into(),
-            format!("{}-host.service", name).into(),
-        ],
-    );
 }
 
 /// Write custom systemd units (socket, host-service, optional dbus-proxy) to sdir.
@@ -117,20 +43,33 @@ fn write_custom_units(
     Ok(())
 }
 
-fn enable_linger() -> Result<()> {
-    let whoami = std::env::var("USER").unwrap_or_default();
-    if whoami.is_empty() || which::which("loginctl").is_err() {
-        return Ok(());
+/// Validate that mount paths referenced in extra mounts exist on the host.
+fn preflight_check(config: &Config) {
+    let name = &config.container.name;
+
+    // Check home directory
+    if !config.container.home.exists() {
+        eprintln!(
+            "  Note: home directory '{}' will be created (does not exist yet).",
+            config.container.home.display()
+        );
     }
-    let args: Vec<std::ffi::OsString> = vec!["enable-linger".into(), whoami.into()];
-    let output = crate::process::run_piped("loginctl", &args)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("Warning: enable-linger failed: {}", stderr);
-    } else {
-        println!("Linger enabled for user.");
+
+    // Parse extra mounts and check host paths
+    for mount in &config.container.mounts.extra {
+        let host_path = match mount.split_once(':') {
+            Some((host, _)) => host,
+            None => mount,
+        };
+        let path = std::path::Path::new(host_path);
+        if !path.exists() {
+            eprintln!(
+                "Warning: mount path '{}' does not exist on the host (container '{}').",
+                path.display(),
+                name
+            );
+        }
     }
-    Ok(())
 }
 
 /// Install systemd service and socket files for a container.
@@ -179,6 +118,9 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         return Ok(());
     }
 
+    // Pre-flight validation
+    preflight_check(config);
+
     // Ensure home and runtime dirs exist
     std::fs::create_dir_all(&config.container.home).with_context(|| {
         format!(
@@ -219,11 +161,11 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         )?;
         println!("Systemd units installed to {}", sdir.display());
 
-        daemon_reload();
-        reset_failed(name);
-        stop_socket_and_host(name);
-        enable_now_socket(name);
-        start_host_service(name);
+        systemd::daemon_reload()?;
+        systemd::reset_failed(name)?;
+        systemd::stop_socket_and_host(name)?;
+        systemd::enable_now_socket(name)?;
+        systemd::start_host_service(name)?;
     } else {
         // 5.5 fallback: copy files manually
         std::fs::create_dir_all(&qdir)?;
@@ -243,11 +185,11 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         println!("Quadlet files installed to {}", qdir.display());
         println!("Systemd units installed to {}", sdir.display());
 
-        daemon_reload();
-        reset_failed(name);
-        stop_socket_and_host(name);
-        enable_now_socket(name);
-        start_host_service(name);
+        systemd::daemon_reload()?;
+        systemd::reset_failed(name)?;
+        systemd::stop_socket_and_host(name)?;
+        systemd::enable_now_socket(name)?;
+        systemd::start_host_service(name)?;
     }
 
     // Auto-export apps and bins
@@ -263,7 +205,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     }
 
     if config.lifecycle.autostart {
-        enable_linger()?;
+        systemd::enable_linger()?;
     }
 
     Ok(())
@@ -309,7 +251,7 @@ pub fn uninstall(name: &str) -> Result<()> {
         }
     }
 
-    daemon_reload();
+    systemd::daemon_reload()?;
     println!("Files for '{}' removed.", name);
 
     Ok(())

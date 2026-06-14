@@ -70,6 +70,8 @@ pub enum HostMessage {
     HelloAck {
         accepted: Vec<String>,
         rejected: Vec<String>,
+        #[serde(default)]
+        idle_timeout_secs: u64,
     },
     ClipboardData {
         text: String,

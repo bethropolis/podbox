@@ -383,28 +383,28 @@ fn quadlet_no_literal_percent_h() {
 }
 
 #[test]
-fn quadlet_auto_update_label_present_for_prebuilt() {
+fn quadlet_auto_update_present_for_prebuilt() {
     let config = load_config("prebuilt.toml");
     let mut config = config.clone();
     config.lifecycle.auto_update = true;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("Label=io.containers.autoupdate=registry"));
+    assert!(q.contains("AutoUpdate=registry"));
 }
 
 #[test]
-fn quadlet_auto_update_label_absent_for_build() {
+fn quadlet_auto_update_present_for_build() {
     let config = load_config("full.toml");
     let mut config = config.clone();
     config.lifecycle.auto_update = true;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(!q.contains("io.containers.autoupdate"));
+    assert!(q.contains("AutoUpdate=local"));
 }
 
 #[test]
-fn quadlet_auto_update_label_absent_when_disabled() {
+fn quadlet_auto_update_absent_when_disabled() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(!q.contains("io.containers.autoupdate"));
+    assert!(!q.contains("AutoUpdate"));
 }
 
 #[test]

@@ -137,6 +137,17 @@ impl Config {
             }
         }
 
+        let t = &self.lifecycle.idle_timeout;
+        if t != "off" {
+            let (digits, suffix) = parse_duration_suffix(t);
+            if digits.is_empty() || !matches!(suffix, Some('s' | 'm' | 'h')) {
+                errors.push(format!(
+                    "lifecycle.idle_timeout: '{}' is invalid (expected 'off', '30s', '5m', '1h')",
+                    t
+                ));
+            }
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -153,6 +164,30 @@ fn is_valid_name(s: &str) -> bool {
 
 fn is_absolute_path(s: &str) -> bool {
     s.starts_with('/')
+}
+
+/// Parse a duration string into (digit_part, suffix_char).
+fn parse_duration_suffix(s: &str) -> (String, Option<char>) {
+    let trimmed = s.trim();
+    let digits: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let suffix = trimmed.chars().nth(digits.len());
+    (digits, suffix)
+}
+
+/// Convert an idle_timeout config string to seconds.
+/// Returns 0 for "off".
+pub fn parse_idle_timeout_secs(s: &str) -> u64 {
+    if s == "off" {
+        return 0;
+    }
+    let (digits, suffix) = parse_duration_suffix(s);
+    let value: u64 = digits.parse().unwrap_or(0);
+    match suffix {
+        Some('s') => value,
+        Some('m') => value.saturating_mul(60),
+        Some('h') => value.saturating_mul(3600),
+        _ => 0,
+    }
 }
 
 fn is_valid_memory(s: &str) -> bool {

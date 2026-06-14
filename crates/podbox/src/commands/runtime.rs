@@ -153,19 +153,7 @@ pub fn run_status(name: &str, dry_run: bool) -> Result<()> {
 
 /// Check whether a container is managed by systemd (Quadlet).
 fn is_systemd_managed(name: &str) -> bool {
-    if which::which("systemctl").is_err() {
-        return false;
-    }
-    std::process::Command::new("systemctl")
-        .args([
-            "--user",
-            "--quiet",
-            "is-enabled",
-            &format!("{}.service", name),
-        ])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    podbox::systemd::is_unit_enabled(name)
 }
 
 /// Show container logs, routing through journalctl for systemd-managed

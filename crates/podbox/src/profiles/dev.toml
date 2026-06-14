@@ -41,4 +41,3 @@ preset = "gnome"
 [lifecycle]
 quadlet = true
 autostart = true
-auto_update = true

@@ -8,6 +8,7 @@ use crate::protocol::{write_frame, HostMessage};
 pub(super) fn handle_hello(
     stream: &mut UnixStream,
     config: &IntegrationConfig,
+    idle_timeout_secs: u64,
     protocol_version: u32,
     guest_version: String,
     container: String,
@@ -42,7 +43,11 @@ pub(super) fn handle_hello(
             rejected.push(cap);
         }
     }
-    let response = HostMessage::HelloAck { accepted, rejected };
+    let response = HostMessage::HelloAck {
+        accepted,
+        rejected,
+        idle_timeout_secs,
+    };
     write_frame(stream, &response)?;
     Ok(())
 }

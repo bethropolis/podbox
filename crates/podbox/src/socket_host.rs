@@ -6,9 +6,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::config::IntegrationConfig;
+use crate::config::Config;
+use crate::config::validation::parse_idle_timeout_secs;
 use crate::process;
 use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+use crate::systemd;
 
 mod handlers;
 
@@ -26,16 +28,19 @@ struct SharedState {
     session_count: AtomicU32,
     /// Container name, for `systemctl stop` on idle timeout.
     container_name: String,
+    /// Idle timeout in seconds (0 = disabled).
+    idle_timeout_secs: u64,
 }
 
 /// Run the host socket server for a container.
 pub fn run(
     socket_path: &Path,
-    config: &IntegrationConfig,
+    config: &Config,
     container_name: &str,
 ) -> anyhow::Result<()> {
-    let path = socket_path.to_path_buf();
     let config = config.clone();
+    let path = socket_path.to_path_buf();
+    let idle_timeout_secs = parse_idle_timeout_secs(&config.lifecycle.idle_timeout);
 
     let listener = match listen_fd() {
         Some(fd) => unsafe { UnixListener::from_raw_fd(fd) },
@@ -49,6 +54,7 @@ pub fn run(
         daemon_stream: Mutex::new(None),
         session_count: AtomicU32::new(0),
         container_name: container_name.to_string(),
+        idle_timeout_secs,
     });
 
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
@@ -99,7 +105,7 @@ fn listen_fd() -> Option<RawFd> {
 
 fn handle_connection(
     stream: &mut UnixStream,
-    config: &IntegrationConfig,
+    config: &Config,
     state: &Arc<SharedState>,
 ) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(PING_INTERVAL))?;
@@ -140,12 +146,22 @@ fn handle_connection(
                 }
                 handlers::handle_hello(
                     stream,
-                    config,
+                    &config.integration,
+                    state.idle_timeout_secs,
                     protocol_version,
                     guest_version,
                     container,
                     capabilities,
                 )?;
+
+                // Autostart check: if idle_timeout is enabled and no sessions
+                // are active yet, prompt the guest to check for idleness.
+                if state.idle_timeout_secs > 0 && state.session_count.load(Ordering::SeqCst) == 0 {
+                    let mut daemon = state.daemon_stream.lock().unwrap();
+                    if let Some(ref mut daemon) = *daemon {
+                        let _ = write_frame(daemon, &HostMessage::CheckIdle);
+                    }
+                }
             }
             GuestMessage::RegisterSession => {
                 // Receive the pidfd via SCM_RIGHTS
@@ -163,11 +179,11 @@ fn handle_connection(
             }
             GuestMessage::Busy => {}
             GuestMessage::IdleTimeout => {
-                let name = &state.container_name;
-                eprintln!("podbox: container '{}' idle — stopping", name);
-                let _ = std::process::Command::new("systemctl")
-                    .args(["--user", "stop", &format!("{}.service", name)])
-                    .status();
+                if state.idle_timeout_secs > 0 {
+                    let name = &state.container_name;
+                    eprintln!("podbox: container '{}' idle — stopping", name);
+                    let _ = systemd::stop_unit(name);
+                }
             }
             GuestMessage::Notify {
                 summary,
@@ -180,7 +196,7 @@ fn handle_connection(
             GuestMessage::ClipboardSet { text } => handlers::handle_clipboard_set(text)?,
             GuestMessage::ClipboardGet => handlers::handle_clipboard_get(stream)?,
             GuestMessage::HostExec { cmd, args } => {
-                handlers::handle_host_exec(stream, config, cmd, args)?
+                handlers::handle_host_exec(stream, &config.integration, cmd, args)?
             }
         }
     }

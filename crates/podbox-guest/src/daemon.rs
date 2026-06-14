@@ -9,6 +9,14 @@ use crate::error::GuestError;
 use crate::protocol::{write_frame, GuestMessage, HostMessage};
 use crate::socket;
 
+const EXCLUDED_COMMS: &[&str] = &[
+    "podbox-guest",
+    "podmgr-guest",
+    "podman-init",
+    "catatonit",
+    "tini",
+];
+
 /// Open a pidfd for a given PID (Linux 5.3+).
 fn open_pidfd(pid: i32) -> std::io::Result<OwnedFd> {
     let ret = unsafe { nix::libc::syscall(nix::libc::SYS_pidfd_open, pid, 0) };
@@ -24,7 +32,7 @@ struct TrackedProcess {
     fd: OwnedFd,
 }
 
-/// Scan /proc for user processes (anything not named podbox-guest/podmgr-guest).
+/// Scan /proc for user processes (anything not in EXCLUDED_COMMS).
 fn scan_user_processes() -> Vec<i32> {
     let mut pids = Vec::new();
     let Ok(entries) = std::fs::read_dir("/proc") else {
@@ -36,7 +44,7 @@ fn scan_user_processes() -> Vec<i32> {
         if name_str.chars().all(|c| c.is_ascii_digit()) {
             if let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) {
                 let comm_trimmed = comm.trim();
-                if comm_trimmed != "podbox-guest" && comm_trimmed != "podmgr-guest" {
+                if !EXCLUDED_COMMS.contains(&comm_trimmed) {
                     if let Ok(pid) = name_str.parse::<i32>() {
                         pids.push(pid);
                     }
@@ -45,6 +53,20 @@ fn scan_user_processes() -> Vec<i32> {
         }
     }
     pids
+}
+
+/// Open pidfds for a list of PIDs.
+fn track_processes(pids: &[i32]) -> Vec<TrackedProcess> {
+    pids.iter()
+        .filter_map(|&pid| open_pidfd(pid).ok().map(|fd| TrackedProcess { _pid: pid, fd }))
+        .collect()
+}
+
+/// Check whether any poll events indicate fd readiness.
+fn has_event(revents: PollFlags) -> bool {
+    revents.contains(PollFlags::POLLIN)
+        || revents.contains(PollFlags::POLLHUP)
+        || revents.contains(PollFlags::POLLERR)
 }
 
 pub fn run() -> Result<(), GuestError> {
@@ -64,7 +86,8 @@ pub fn run() -> Result<(), GuestError> {
         .iter()
         .map(|&s| s.to_string())
         .collect();
-    let accepted = socket::handshake(&mut host_stream, &container_name, &all_caps)?;
+    let (accepted, idle_timeout_secs) =
+        socket::handshake(&mut host_stream, &container_name, &all_caps)?;
     let accepted_set: HashSet<String> = accepted.iter().cloned().collect();
     eprintln!("podbox-guest: accepted capabilities: {:?}", accepted);
 
@@ -78,7 +101,7 @@ pub fn run() -> Result<(), GuestError> {
     write_path_injection(&bin_dir)?;
 
     // 7. Enter event loop (listen for host messages)
-    event_loop(&mut host_stream)?;
+    event_loop(&mut host_stream, idle_timeout_secs)?;
 
     Ok(())
 }
@@ -100,7 +123,7 @@ fn install_interceptors(
     for (cap, name) in symlinks {
         if accepted.contains(cap) {
             let link = bin_dir.join(name);
-            let _ = std::fs::remove_file(&link); // ok if missing — symlink may be new
+            let _ = std::fs::remove_file(&link);
             std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
         }
     }
@@ -139,37 +162,41 @@ fn check_version_drift(
             actions: vec![],
             app_name: "podbox".to_string(),
         };
-        let _ = crate::socket::connect_and_send_oneshot(&msg); // fire-and-forget notification
+        let _ = crate::socket::connect_and_send_oneshot(&msg);
     } else {
         eprintln!("podbox-guest: image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`.");
     }
 }
 
 fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
-    // POSIX shells (bash, zsh, sh)
     let conf_dir = std::path::PathBuf::from("/etc/profile.d");
     std::fs::create_dir_all(&conf_dir)?;
     let conf_path = conf_dir.join("podbox.sh");
     let content = format!("export PATH={}:$PATH\n", bin_dir.to_string_lossy());
     std::fs::write(conf_path, content)?;
 
-    // Fish shell
     let fish_dir = std::path::PathBuf::from("/etc/fish/conf.d");
     if fish_dir.is_dir() || std::fs::create_dir_all(&fish_dir).is_ok() {
         let fish_path = fish_dir.join("podbox.fish");
         let fish_content = format!("fish_add_path -m {}\n", bin_dir.to_string_lossy());
-        let _ = std::fs::write(fish_path, fish_content); // best-effort; fish may not be installed
+        let _ = std::fs::write(fish_path, fish_content);
     }
 
     Ok(())
 }
 
-fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
+/// Max poll interval in ms (PollTimeout caps at u16::MAX = 65535).
+const MAX_POLL_MS: i64 = 60_000;
+
+fn event_loop(
+    host_stream: &mut UnixStream,
+    idle_timeout_secs: u64,
+) -> Result<(), GuestError> {
+    let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)) as i64;
     let mut tracked: Vec<TrackedProcess> = Vec::new();
+    let mut remaining_ms = idle_limit_ms;
 
     loop {
-        // Scope the poll set so borrows on host_stream/tracked are released
-        // before we mutably access them below.
         let host_revents: PollFlags;
         let pid_revents: Vec<PollFlags>;
 
@@ -180,8 +207,31 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
                 fds.push(PollFd::new(proc.fd.as_fd(), PollFlags::POLLIN));
             }
 
-            match poll(&mut fds, PollTimeout::from(None::<u16>)) {
-                Ok(_nfds) => {
+            let timeout = if tracked.is_empty() && remaining_ms > 0 {
+                let poll_ms = remaining_ms.min(MAX_POLL_MS);
+                PollTimeout::from(Some(poll_ms as u16))
+            } else {
+                PollTimeout::from(None::<u16>)
+            };
+
+            match poll(&mut fds, timeout) {
+                Ok(0) => {
+                    if tracked.is_empty() && remaining_ms > 0 {
+                        remaining_ms -= MAX_POLL_MS;
+                        if remaining_ms <= 0 {
+                            let active = scan_user_processes();
+                            if active.is_empty() {
+                                let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
+                                return Ok(());
+                            }
+                            tracked = track_processes(&active);
+                            remaining_ms = idle_limit_ms;
+                        }
+                        continue;
+                    }
+                    continue;
+                }
+                Ok(_) => {
                     host_revents = fds[0].revents().unwrap_or(PollFlags::empty());
                     pid_revents = fds[1..]
                         .iter()
@@ -191,7 +241,7 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
                 Err(nix::errno::Errno::EINTR) => continue,
                 Err(e) => return Err(GuestError::Io(e.into())),
             }
-        } // fds dropped — borrows of host_stream and tracked are released
+        }
 
         // ── Host socket events ──
         if host_revents.contains(PollFlags::POLLHUP) || host_revents.contains(PollFlags::POLLERR) {
@@ -217,12 +267,8 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
                     if active.is_empty() {
                         let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
                     } else {
-                        tracked.clear();
-                        for pid in active {
-                            if let Ok(fd) = open_pidfd(pid) {
-                                tracked.push(TrackedProcess { _pid: pid, fd });
-                            }
-                        }
+                        tracked = track_processes(&active);
+                        remaining_ms = idle_limit_ms;
                         let _ = write_frame(host_stream, &GuestMessage::Busy);
                     }
                 }
@@ -241,10 +287,7 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
         // ── pidfd events (tracked process exits) ──
         let mut exited: Vec<usize> = Vec::new();
         for (i, rev) in pid_revents.iter().enumerate() {
-            if rev.contains(PollFlags::POLLIN)
-                || rev.contains(PollFlags::POLLHUP)
-                || rev.contains(PollFlags::POLLERR)
-            {
+            if has_event(*rev) {
                 exited.push(i);
             }
         }
@@ -255,16 +298,12 @@ fn event_loop(host_stream: &mut UnixStream) -> Result<(), GuestError> {
 
         if !exited.is_empty() && tracked.is_empty() {
             let active = scan_user_processes();
-            if active.is_empty() {
-                let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
-            } else {
-                tracked.clear();
-                for pid in active {
-                    if let Ok(fd) = open_pidfd(pid) {
-                        tracked.push(TrackedProcess { _pid: pid, fd });
-                    }
-                }
+            if !active.is_empty() {
+                tracked = track_processes(&active);
+                remaining_ms = idle_limit_ms;
             }
+            // No processes found: idle timer started naturally on next poll iteration
+            // (poll timeout when tracked.is_empty() && remaining_ms > 0).
         }
     }
 }

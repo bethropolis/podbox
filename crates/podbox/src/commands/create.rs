@@ -6,6 +6,7 @@ use podbox::codegen::distros;
 use podbox::config::{self, Config};
 use podbox::editor;
 use podbox::error::PodboxError;
+use podbox::systemd;
 
 /// Build image, install Quadlet, and start the container.
 fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bool) -> Result<()> {
@@ -41,9 +42,8 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
         println!("podman start {}", container_name);
     } else {
         println!("Starting container...");
-        if which::which("systemctl").is_ok() {
-            let args = podbox::process::args(&["--user", "start", container_name]);
-            podbox::process::spawn_interactive("systemctl", &args)?;
+        if systemd::is_available() {
+            systemd::start_unit(container_name)?;
         } else {
             let args = podbox::process::args(&["start", container_name]);
             podbox::process::spawn_interactive("podman", &args)?;
