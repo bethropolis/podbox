@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use podbox::config::Config;
 use podbox::env::HostEnv;
@@ -338,7 +338,17 @@ pub fn run_remove(
                     return Ok(());
                 }
             }
-            std::fs::remove_dir_all(home)?;
+            let status = std::process::Command::new("podman")
+                .args(["unshare", "rm", "-rf"])
+                .arg(home)
+                .status()
+                .context("failed to run podman unshare")?;
+            if !status.success() {
+                anyhow::bail!(
+                    "Failed to delete home directory '{}' via podman unshare (sub-UID files need rootless namespace)",
+                    home.display()
+                );
+            }
             println!("Home directory '{}' removed.", home.display());
         }
     }

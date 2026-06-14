@@ -239,34 +239,46 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .copied()
         .collect();
     if !existing_groups.is_empty() {
-        let group_content = std::fs::read_to_string("/etc/group").unwrap_or_default();
-        let mut modified = false;
-        let patched: String = group_content
-            .lines()
-            .map(|line| {
-                let parts: Vec<&str> = line.splitn(4, ':').collect();
-                if parts.len() == 4 && existing_groups.contains(&parts[0]) {
-                    let members = parts[3];
-                    if members.split(',').any(|m| m == user) {
-                        return line.to_string();
-                    }
-                    modified = true;
-                    if members.is_empty() {
-                        format!("{}:{}:{}:{}", parts[0], parts[1], parts[2], user)
+        // Prefer usermod for transactional updates that keep /etc/gshadow in sync
+        let mut usermod_ok = false;
+        let groups_arg = existing_groups.join(",");
+        if let Ok(status) = std::process::Command::new("usermod")
+            .args(["-aG", &groups_arg, user])
+            .status()
+        {
+            usermod_ok = status.success();
+        }
+        // Fall back to manual /etc/group patching only if usermod is unavailable or failed
+        if !usermod_ok {
+            let group_content = std::fs::read_to_string("/etc/group").unwrap_or_default();
+            let mut modified = false;
+            let patched: String = group_content
+                .lines()
+                .map(|line| {
+                    let parts: Vec<&str> = line.splitn(4, ':').collect();
+                    if parts.len() == 4 && existing_groups.contains(&parts[0]) {
+                        let members = parts[3];
+                        if members.split(',').any(|m| m == user) {
+                            return line.to_string();
+                        }
+                        modified = true;
+                        if members.is_empty() {
+                            format!("{}:{}:{}:{}", parts[0], parts[1], parts[2], user)
+                        } else {
+                            format!(
+                                "{}:{}:{}:{},{}",
+                                parts[0], parts[1], parts[2], members, user
+                            )
+                        }
                     } else {
-                        format!(
-                            "{}:{}:{}:{},{}",
-                            parts[0], parts[1], parts[2], members, user
-                        )
+                        line.to_string()
                     }
-                } else {
-                    line.to_string()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        if modified {
-            let _ = std::fs::write("/etc/group", patched + "\n");
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            if modified {
+                let _ = std::fs::write("/etc/group", patched + "\n");
+            }
         }
     }
 

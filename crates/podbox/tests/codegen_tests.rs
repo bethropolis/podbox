@@ -136,10 +136,33 @@ fn containerfile_has_custom_run_steps() {
 // ---- Quadlet .container tests ----
 
 #[test]
-fn quadlet_container_has_userns_keep_id() {
+fn quadlet_container_has_userns_custom() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("UserNS=nomap"));
+}
+
+#[test]
+fn quadlet_container_userns_defaults_to_keep_id() {
+    let config = load_config("minimal.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("UserNS=keep-id"));
+}
+
+#[test]
+fn quadlet_container_has_read_only_rootfs() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("ReadOnly=true"));
+}
+
+#[test]
+fn quadlet_container_has_cpu_quota() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("CpuQuota="));
+    // full.toml has cpus = "4.0" → 400000
+    assert!(q.contains("CpuQuota=400000"));
 }
 
 #[test]
@@ -154,6 +177,15 @@ fn quadlet_container_has_init() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("PodmanArgs=--init"));
+}
+
+#[test]
+fn quadlet_container_has_network_host() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Network=host"));
+    // host mode should not emit PublishPort
+    assert!(!q.contains("PublishPort"));
 }
 
 #[test]

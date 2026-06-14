@@ -14,6 +14,7 @@ pub mod lifecycle;
 pub mod pull;
 pub mod runtime;
 pub mod serve;
+pub mod stats;
 pub mod translate;
 
 pub const DEFAULT_START_TIMEOUT_SECS: u64 = 30;

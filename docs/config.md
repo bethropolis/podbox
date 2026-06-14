@@ -58,6 +58,7 @@ commands = ["dnf clean all"]
 | `home` | string | *required* | Host path for isolated home (`~` expands) |
 | `shell` | string | `"bash"` | Default login shell inside the container |
 | `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
+| `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Converted to `CpuQuota=` in Quadlet |
 | `reload_cmd` | string | — | Command run on config reload. Passed as `ReloadCmd=` in Quadlet |
 
 ### `[container.mounts]`
@@ -95,13 +96,31 @@ TERM = "xterm-256color"
 | `apparmor` | string | — | AppArmor profile name. Passed as `AppArmor=` in Quadlet (`"unconfined"` to disable) |
 | `seccomp` | string | — | Seccomp profile path, `"default"`, or `"unconfined"`. Passed as `SeccompProfile=` |
 | `security_label_disable` | bool | `true` | Disable SELinux process labeling. Emits `SecurityLabelDisable=true` when set |
-| `no_new_privileges` | bool | `false` | Allow privilege escalation (`sudo`, `su`, AUR helpers). Set `true` to block with `NoNewPrivileges` |
+| `no_new_privileges` | bool | `true` | Block privilege escalation (`sudo`, `su`, AUR helpers). Set `false` to allow with `NoNewPrivileges=false` |
+| `read_only_rootfs` | bool | `false` | Make root filesystem read-only. Emits `ReadOnly=true` in Quadlet |
+| `userns` | string | — | User namespace mode override. Defaults to `"keep-id"`. Supported: `"keep-id"`, `"nomap"`, `"private"` |
 
 ```toml
 [security]
 apparmor = "unconfined"
 seccomp = "default"
-no_new_privileges = false
+read_only_rootfs = true
+userns = "nomap"
+```
+
+---
+
+## `[network]`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mode` | string | `"host"` | Network mode. Supported: `"host"`, `"bridge"`, `"none"`, `"pasta"`, `"slirp4netns"`, `"private"`. Passed as `Network=` in Quadlet |
+| `ports` | string[] | `[]` | Port mappings (`"hostPort:containerPort"`). Emitted as `PublishPort=` in Quadlet (ignored in `host` mode) |
+
+```toml
+[network]
+mode = "pasta"
+ports = ["8080:80", "443:443"]
 ```
 
 ---
@@ -291,6 +310,15 @@ install = ["git", "gcc", "ripgrep"]
 name = "myenv"
 home = "~/containers/myenv"
 shell = "bash"
+memory = "4G"
+cpus = "2.0"
+
+[security]
+read_only_rootfs = true
+
+[network]
+mode = "bridge"
+ports = ["8080:80"]
 
 [integration]
 wayland = true

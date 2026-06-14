@@ -51,6 +51,14 @@ impl Config {
                 ));
             }
         }
+        if let Some(ref cpus) = self.container.cpus {
+            if cpus.parse::<f64>().is_err() || cpus.parse::<f64>().unwrap_or(0.0) <= 0.0 {
+                errors.push(format!(
+                    "container.cpus: '{}' is not a valid CPU count (e.g. '2.0', '0.5')",
+                    cpus
+                ));
+            }
+        }
         for (i, mount) in self.container.mounts.extra.iter().enumerate() {
             if !mount.contains(':') {
                 errors.push(format!(
@@ -67,6 +75,36 @@ impl Config {
                 errors.push(format!(
                     "container.env: value for {:?} contains newline",
                     key
+                ));
+            }
+        }
+
+        if let Some(ref userns) = self.security.userns {
+            let valid_userns = ["keep-id", "nomap", "private"];
+            if !valid_userns.contains(&userns.as_str()) {
+                errors.push(format!(
+                    "security.userns: '{}' is invalid (expected one of: {})",
+                    userns,
+                    valid_userns.join(", ")
+                ));
+            }
+        }
+
+        // Network validation
+        let valid_modes = ["host", "bridge", "none", "pasta", "slirp4netns", "private"];
+        if !valid_modes.contains(&self.network.mode.as_str()) {
+            errors.push(format!(
+                "network.mode: '{}' is invalid (expected one of: {})",
+                self.network.mode,
+                valid_modes.join(", ")
+            ));
+        }
+
+        for (i, port) in self.network.ports.iter().enumerate() {
+            if !port.contains(':') {
+                errors.push(format!(
+                    "network.ports[{}]: '{}' is invalid (expected 'hostPort:containerPort' or 'ip:hostPort:containerPort')",
+                    i, port
                 ));
             }
         }
@@ -122,15 +160,9 @@ fn is_valid_memory(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    let digits: String = s
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
+    let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
     let suffix: String = s.chars().skip(digits.len()).collect();
-    if digits.is_empty() || digits == "." {
-        return false;
-    }
-    if digits.starts_with('.') || (digits.chars().filter(|&c| c == '.').count() > 1) {
+    if digits.is_empty() {
         return false;
     }
     suffix.is_empty()

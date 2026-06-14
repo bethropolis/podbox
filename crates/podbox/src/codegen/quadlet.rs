@@ -57,6 +57,7 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
 
     emit_unit(&mut lines, config, name);
     emit_container_image(&mut lines, config, name, home_in_container, env);
+    emit_network(&mut lines, config);
     emit_volumes(&mut lines, config, xdg, env, name, home_in_container);
     emit_env(&mut lines, config, name, env);
     emit_gpu(&mut lines, config, env);
@@ -109,7 +110,11 @@ fn emit_container_image(
         ));
     }
     lines.push(format!("ContainerName={}", name));
-    lines.push("UserNS=keep-id".into());
+    if let Some(ref mode) = config.security.userns {
+        lines.push(format!("UserNS={}", mode));
+    } else {
+        lines.push("UserNS=keep-id".into());
+    }
     lines.push("User=root".into());
     if config.security.security_label_disable {
         lines.push("SecurityLabelDisable=true".into());
@@ -123,6 +128,15 @@ fn emit_container_image(
     if let Some(ref mem) = config.container.memory {
         lines.push(format!("Memory={}", mem));
     }
+    if let Some(ref cpus) = config.container.cpus {
+        if let Ok(v) = cpus.parse::<f64>() {
+            let quota = (v * 100_000.0) as u64;
+            lines.push(format!("CpuQuota={}", quota));
+        }
+    }
+    if config.security.read_only_rootfs {
+        lines.push("ReadOnly=true".into());
+    }
     if let Some(ref profile) = config.security.apparmor {
         lines.push(format!("AppArmor={}", profile));
     }
@@ -131,6 +145,16 @@ fn emit_container_image(
     lines.push("Environment=HOST_UID=%U".into());
     lines.push("Environment=HOST_GID=%G".into());
     lines.push("Environment=PATH=/run/podbox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
+    lines.push(String::new());
+}
+
+fn emit_network(lines: &mut Vec<String>, config: &Config) {
+    lines.push(format!("Network={}", config.network.mode));
+    if config.network.mode != "host" {
+        for port in &config.network.ports {
+            lines.push(format!("PublishPort={}", port));
+        }
+    }
     lines.push(String::new());
 }
 

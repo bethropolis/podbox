@@ -4,10 +4,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::config::defaults::{
-    default_package_manager, default_pull_retry, default_pull_retry_delay, default_shell,
-    default_true, is_default_gpu, is_default_host_exec, is_default_mounts, is_default_packages,
-    is_default_pkg_mgr, is_default_pull_retry, is_default_pull_retry_delay, is_default_run,
-    is_default_shell, is_empty_hashmap, is_false, is_true,
+    default_network_mode, default_package_manager, default_pull_retry, default_pull_retry_delay,
+    default_shell, default_true, is_default_gpu, is_default_host_exec, is_default_mounts,
+    is_default_packages, is_default_pkg_mgr, is_default_pull_retry, is_default_pull_retry_delay,
+    is_default_run, is_default_shell, is_empty_hashmap, is_false, is_true,
 };
 use crate::config::enums::{GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 use crate::config::expand_tilde;
@@ -85,6 +85,8 @@ pub struct ContainerConfig {
     pub shell: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload_cmd: Option<String>,
     #[serde(default, skip_serializing_if = "is_default_mounts")]
@@ -287,15 +289,36 @@ pub fn dbus_preset_talk(preset: &str) -> &[&str] {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct NetworkConfig {
+    #[serde(default = "default_network_mode")]
+    pub mode: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<String>,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_network_mode(),
+            ports: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SecurityConfig {
     #[serde(default)]
     pub apparmor: Option<String>,
     #[serde(default)]
     pub seccomp: Option<String>,
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub security_label_disable: bool,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub no_new_privileges: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub read_only_rootfs: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub userns: Option<String>,
 }
 
 impl Default for SecurityConfig {
@@ -305,6 +328,8 @@ impl Default for SecurityConfig {
             seccomp: None,
             security_label_disable: true,
             no_new_privileges: true,
+            read_only_rootfs: false,
+            userns: None,
         }
     }
 }

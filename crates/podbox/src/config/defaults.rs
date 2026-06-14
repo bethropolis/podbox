@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::config::enums::{GpuMode, OnStop, PackageManager};
 use crate::config::types::{
-    HostExecConfig, LifecycleConfig, PackageConfig, RunConfig, SecurityConfig, SystemdConfig,
+    HostExecConfig, LifecycleConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
+    SystemdConfig,
 };
 
 pub const EMBEDDED_DEFAULT: &str = r#"
@@ -96,5 +97,18 @@ pub fn is_default_dbus(v: &super::types::DbusConfig) -> bool {
 }
 
 pub fn is_default_security(v: &SecurityConfig) -> bool {
-    v.apparmor.is_none() && v.seccomp.is_none() && v.security_label_disable && v.no_new_privileges
+    v.apparmor.is_none()
+        && v.seccomp.is_none()
+        && v.security_label_disable
+        && v.no_new_privileges
+        && !v.read_only_rootfs
+        && v.userns.is_none()
+}
+
+pub fn default_network_mode() -> String {
+    "host".into()
+}
+
+pub fn is_default_network(v: &NetworkConfig) -> bool {
+    v.mode == "host" && v.ports.is_empty()
 }

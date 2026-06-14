@@ -22,27 +22,29 @@ pub fn host_socket_path() -> Result<PathBuf, GuestError> {
         .join(format!("{}.sock", cn)))
 }
 
-/// Connect to the host socket with retries using sleep-based backoff.
+/// Connect to the host socket with retries using exponential backoff.
 pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
-    for attempt in 1..=3 {
+    let mut delay = std::time::Duration::from_millis(100);
+    for attempt in 1..=4 {
         match UnixStream::connect(socket_path) {
             Ok(stream) => return Ok(stream),
             Err(e) => {
                 eprintln!(
-                    "Socket connect attempt {}/3 failed: {} ({})",
+                    "Socket connect attempt {}/4 failed: {} ({})",
                     attempt,
                     socket_path.display(),
                     e
                 );
-                if attempt < 3 {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                if attempt < 4 {
+                    std::thread::sleep(delay);
+                    delay *= 3;
                 }
             }
         }
     }
     Err(GuestError::Io(std::io::Error::new(
         std::io::ErrorKind::NotConnected,
-        "failed to connect to host socket after 3 attempts",
+        "failed to connect to host socket after 4 attempts",
     )))
 }
 

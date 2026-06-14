@@ -36,6 +36,7 @@ podbox create <profile>          # create + build + enable + start
 podbox enter <name>              # open a shell
 podbox exec -- <cmd>             # run a command
 podbox run <app>                 # run a GUI app
+podbox stats                     # show resource usage
 podbox doctor --fix              # fix common issues
 podbox export app <name>         # add to host launcher
 podbox diff                      # check installed packages vs config

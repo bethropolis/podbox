@@ -17,8 +17,8 @@ pub use fs::{
 };
 pub use types::{
     ContainerConfig, DbusConfig, ExportConfig, HostExecConfig, ImageConfig, IntegrationConfig,
-    LifecycleConfig, MountConfig, PackageConfig, RunConfig, SecurityConfig, SystemdConfig,
-    XdgDirConfig,
+    LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
+    SystemdConfig, XdgDirConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -31,6 +31,8 @@ pub struct Config {
     pub lifecycle: LifecycleConfig,
     #[serde(default)]
     pub systemd: SystemdConfig,
+    #[serde(default)]
+    pub network: NetworkConfig,
     #[serde(default)]
     pub dbus: DbusConfig,
     #[serde(default)]
@@ -319,6 +321,193 @@ base = "fedora:41"
         let toml = r#"
 [image]
 base = "fedora:41"
+"#;
+        assert!(Config::parse(toml).is_err());
+    }
+
+    #[test]
+    fn test_network_defaults_to_host() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.network.mode, "host");
+        assert!(cfg.network.ports.is_empty());
+    }
+
+    #[test]
+    fn test_network_parses_mode_and_ports() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[network]
+mode = "pasta"
+ports = ["8080:80", "443:443"]
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.network.mode, "pasta");
+        assert_eq!(cfg.network.ports, vec!["8080:80", "443:443"]);
+    }
+
+    #[test]
+    fn test_network_invalid_mode_rejected() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[network]
+mode = "macvlan"
+"#;
+        assert!(Config::parse(toml).is_err());
+    }
+
+    #[test]
+    fn test_network_port_missing_separator_rejected() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[network]
+mode = "bridge"
+ports = ["8080"]
+"#;
+        assert!(Config::parse(toml).is_err());
+    }
+
+    #[test]
+    fn test_memory_decimal_rejected() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+memory = "1.5g"
+"#;
+        let cfg = Config::parse(toml);
+        assert!(cfg.is_err(), "decimal memory should be rejected: {:?}", cfg);
+    }
+
+    #[test]
+    fn test_memory_integer_accepted() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+memory = "2g"
+"#;
+        assert!(Config::parse(toml).is_ok());
+    }
+
+    #[test]
+    fn test_cpus_parses_valid() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+cpus = "2.0"
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.container.cpus.as_deref(), Some("2.0"));
+    }
+
+    #[test]
+    fn test_cpus_rejects_non_positive() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+cpus = "0"
+"#;
+        assert!(Config::parse(toml).is_err());
+    }
+
+    #[test]
+    fn test_cpus_defaults_to_none() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert!(cfg.container.cpus.is_none());
+    }
+
+    #[test]
+    fn test_security_read_only_rootfs_defaults_false() {
+        let cfg = Config::embedded();
+        assert!(!cfg.security.read_only_rootfs);
+    }
+
+    #[test]
+    fn test_security_userns_defaults_none() {
+        let cfg = Config::embedded();
+        assert!(cfg.security.userns.is_none());
+    }
+
+    #[test]
+    fn test_security_userns_valid_modes() {
+        for mode in &["keep-id", "nomap", "private"] {
+            let toml = format!(
+                r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[security]
+userns = "{}"
+"#,
+                mode
+            );
+            assert!(
+                Config::parse(&toml).is_ok(),
+                "userns mode '{}' should be valid",
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn test_security_userns_invalid_mode_rejected() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[security]
+userns = "invalid"
 "#;
         assert!(Config::parse(toml).is_err());
     }

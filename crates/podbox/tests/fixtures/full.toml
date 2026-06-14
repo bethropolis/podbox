@@ -13,6 +13,7 @@ commands = ["dnf clean all"]
 name  = "myenv"
 home  = "~/containers/myenv"
 shell = "fish"
+cpus  = "4.0"
 
 [container.mounts]
 extra = ["~/Work:/home/user/Work:z"]
@@ -44,6 +45,13 @@ desktop   = false
 [integration.export]
 apps = ["gedit", "nautilus"]
 bins = ["rg", "gcc"]
+
+[network]
+mode  = "host"
+
+[security]
+read_only_rootfs = true
+userns = "nomap"
 
 [lifecycle]
 quadlet     = true

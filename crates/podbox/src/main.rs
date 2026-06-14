@@ -246,6 +246,10 @@ fn run() -> Result<()> {
             commands::runtime::run_status(&name, cli.dry_run)?;
         }
 
+        Command::Stats { no_stream, .. } => {
+            commands::stats::run_stats(&name, *no_stream)?;
+        }
+
         Command::Logs {
             name: _,
             follow,

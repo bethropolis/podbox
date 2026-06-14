@@ -127,6 +127,15 @@ pub enum Command {
         export_cmd: ExportCommand,
     },
 
+    /// Show resource usage for the container (wraps podman stats).
+    Stats {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+        /// Only show one snapshot, don't stream.
+        #[arg(long)]
+        no_stream: bool,
+    },
+
     /// Remove the container.
     Remove {
         /// Container name (overrides auto-detection / active context).
