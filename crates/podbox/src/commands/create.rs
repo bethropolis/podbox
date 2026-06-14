@@ -335,10 +335,10 @@ pub fn run_create(
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .map_err(|_| PodboxError::PullFailed(image.into()))?;
+        .map_err(|_| PodboxError::PullFailed { image: image.into() })?;
 
     if !status.success() {
-        return Err(PodboxError::PullFailed(image.into()).into());
+        return Err(PodboxError::PullFailed { image: image.into() }.into());
     }
 
     if let Some(n) = name {

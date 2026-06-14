@@ -93,11 +93,13 @@ fn find_desktop_file(container_name: &str, app: &str) -> Result<(String, String)
         return Ok((path, content));
     }
 
-    Err(PodboxError::ExportFailed(format!(
-        "app {} not found in container (searched: {})",
-        app,
-        DESKTOP_SEARCH_PATHS.join(", ")
-    ))
+    Err(PodboxError::ExportFailed {
+        details: format!(
+            "app {} not found in container (searched: {})",
+            app,
+            DESKTOP_SEARCH_PATHS.join(", ")
+        ),
+    }
     .into())
 }
 

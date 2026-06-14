@@ -29,43 +29,97 @@ pub fn run_completions(shell: clap_complete::shells::Shell) -> Result<()> {
     Ok(())
 }
 
-/// List containers (Quadlet or plain podman).
+/// List all podbox-managed containers with status, autostart, and active context.
 pub fn run_list() -> Result<()> {
-    let ver = podbox::podman::podman_version().ok();
-    if ver.is_some_and(|v| v.at_least(5, 6)) {
-        let status = std::process::Command::new("podman")
-            .args([
-                "quadlet",
-                "list",
-                "--format",
-                "table {{.Name}}\t{{.Path}}\t{{.Status}}\t{{.UnitName}}",
-            ])
-            .stdin(std::process::Stdio::inherit())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-            .map_err(|_| podbox::error::PodboxError::PodmanNotFound)?;
-        if !status.success() {
-            std::process::exit(status.code().unwrap_or(1));
+    let configs = config::list_configs();
+    let active_ctx = config::read_active_context();
+    let use_color = podbox::codegen::distros::is_tty();
+
+    if configs.is_empty() {
+        println!("No containers found. Create your first container with `podbox init -i`.");
+        return Ok(());
+    }
+
+    println!(
+        "{:<20} {:<24} {:<10} {}",
+        color_if("CONTAINER", use_color, "\x1b[1m", "\x1b[0m"),
+        color_if("STATUS", use_color, "\x1b[1m", "\x1b[0m"),
+        color_if("AUTOSTART", use_color, "\x1b[1m", "\x1b[0m"),
+        color_if("ACTIVE CONTEXT", use_color, "\x1b[1m", "\x1b[0m"),
+    );
+    println!("{}", "─".repeat(75));
+
+    for config_path in configs {
+        let name = config_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let status = format_status(&name, use_color);
+        let autostart = format_autostart(&config_path, use_color);
+        let active = format_active(&name, &active_ctx, use_color);
+
+        println!("{:<20} {:<24} {:<10} {}", name, status, autostart, active);
+    }
+
+    Ok(())
+}
+
+/// Format the container status with optional ANSI color.
+fn format_status(name: &str, color: bool) -> String {
+    let (dot, label) = match podbox::podman::query_state(name) {
+        Ok(podbox::podman::ContainerState::Running) => {
+            if color { ("\x1b[32m●\x1b[0m", "running") } else { ("●", "running") }
+        }
+        Ok(podbox::podman::ContainerState::Stopped) => {
+            if podbox::systemd::is_unit_failed(name) {
+                if color { ("\x1b[31m⚠\x1b[0m", "failed") } else { ("⚠", "failed") }
+            } else {
+                if color { ("\x1b[90m○\x1b[0m", "stopped") } else { ("○", "stopped") }
+            }
+        }
+        Ok(podbox::podman::ContainerState::Missing) => {
+            if color { ("\x1b[33m○\x1b[0m", "unbuilt") } else { ("○", "unbuilt") }
+        }
+        Err(_) => {
+            if color { ("\x1b[31m?\x1b[0m", "unknown") } else { ("?", "unknown") }
+        }
+    };
+    format!("{} {}", dot, label)
+}
+
+/// Format the autostart column, reading from the TOML config.
+fn format_autostart(config_path: &std::path::Path, color: bool) -> String {
+    let autostart = match config::Config::load(config_path) {
+        Ok(cfg) => cfg.lifecycle.autostart,
+        Err(_) => return color_if("err", color, "\x1b[31m", "\x1b[0m"),
+    };
+    if autostart {
+        color_if("yes", color, "\x1b[32m", "\x1b[0m")
+    } else {
+        "no".to_string()
+    }
+}
+
+/// Format the active-context marker.
+fn format_active(name: &str, active_ctx: &Option<String>, color: bool) -> String {
+    if active_ctx.as_deref() == Some(name) {
+        if color {
+            "\x1b[33m★ active\x1b[0m".to_string()
+        } else {
+            "active".to_string()
         }
     } else {
-        let status = std::process::Command::new("podman")
-            .args([
-                "ps",
-                "-a",
-                "--filter",
-                "label=podbox.protocol_version",
-                "--format",
-                "table {{.Names}}\t{{.Image}}\t{{.Status}}",
-            ])
-            .stdin(std::process::Stdio::inherit())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-            .map_err(|_| podbox::error::PodboxError::PodmanNotFound)?;
-        if !status.success() {
-            std::process::exit(status.code().unwrap_or(1));
-        }
+        String::new()
     }
-    Ok(())
+}
+
+/// Wrap text in ANSI color/reset if color is enabled.
+fn color_if(text: &str, color: bool, ansi_on: &str, ansi_off: &str) -> String {
+    if color {
+        format!("{}{}{}", ansi_on, text, ansi_off)
+    } else {
+        text.to_string()
+    }
 }

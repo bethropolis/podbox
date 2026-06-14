@@ -80,7 +80,9 @@ pub fn reset_failed(name: &str) -> Result<()> {
     ];
     for unit in &unit_names {
         let mut cmd = Command::new("systemctl");
-        cmd.args(["--user", "reset-failed", unit]);
+        cmd.args(["--user", "reset-failed", unit])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
         let _ = cmd.status();
     }
     Ok(())

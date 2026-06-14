@@ -18,12 +18,18 @@ fn with_sandbox_home(f: impl FnOnce(&std::path::Path)) {
     let _guard = HOME_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let old_home = std::env::var_os("HOME");
-    std::env::set_var("HOME", tmp.path());
+    // SAFETY: Single-threaded test helper with HOME_LOCK mutex.
+    unsafe {
+        std::env::set_var("HOME", tmp.path());
+    }
     f(tmp.path());
-    if let Some(h) = old_home {
-        std::env::set_var("HOME", h);
-    } else {
-        std::env::remove_var("HOME");
+    // SAFETY: Still single-threaded under HOME_LOCK.
+    unsafe {
+        if let Some(h) = old_home {
+            std::env::set_var("HOME", h);
+        } else {
+            std::env::remove_var("HOME");
+        }
     }
     // _guard dropped → HOME_LOCK released.
     // TempDir is dropped here — cleaned up automatically.

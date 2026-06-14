@@ -18,11 +18,17 @@ const EXCLUDED_COMMS: &[&str] = &[
 ];
 
 /// Open a pidfd for a given PID (Linux 5.3+).
+///
+/// # Safety
+///
+/// The caller must ensure `pid` refers to a valid process. The kernel
+/// validates the PID and returns either a valid fd or -errno.
 fn open_pidfd(pid: i32) -> std::io::Result<OwnedFd> {
     let ret = unsafe { nix::libc::syscall(nix::libc::SYS_pidfd_open, pid, 0) };
     if ret < 0 {
         Err(std::io::Error::last_os_error())
     } else {
+        // SAFETY: ret is a non-negative fd returned by the kernel.
         Ok(unsafe { OwnedFd::from_raw_fd(ret as i32) })
     }
 }

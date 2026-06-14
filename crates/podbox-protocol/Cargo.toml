@@ -1,7 +1,9 @@
 [package]
-name    = "podbox-protocol"
+name = "podbox-protocol"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "podbox_protocol"
@@ -9,3 +11,6 @@ name = "podbox_protocol"
 [dependencies]
 serde      = { workspace = true }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

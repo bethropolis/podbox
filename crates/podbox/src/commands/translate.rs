@@ -71,7 +71,7 @@ pub fn run_translate_path(
             ("Videos", &xdg.videos),
             ("Desktop", &xdg.desktop),
         ] {
-            if let Some(ref resolved) = host_dir {
+            if let Some(resolved) = host_dir {
                 let container_prefix = format!("{}/{}/", home_in_container, dir_name);
                 if path_str.starts_with(&container_prefix) {
                     let relative = path_str.strip_prefix(&container_prefix).unwrap_or("");

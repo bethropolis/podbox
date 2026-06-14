@@ -6,7 +6,7 @@ use podbox::error::PodboxError;
 /// Pull a container image and tag it for podbox use.
 pub fn run_pull(config: &Config, image: &Option<String>, dry_run: bool) -> Result<()> {
     let image_ref = match image {
-        Some(ref img) => img.clone(),
+        Some(img) => img.clone(),
         None => match config.image.source() {
             ImageSource::Prebuilt { ref_str } => ref_str,
             ImageSource::Build { base } => base,
@@ -28,17 +28,17 @@ pub fn run_pull(config: &Config, image: &Option<String>, dry_run: bool) -> Resul
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .map_err(|_| PodboxError::PullFailed(image_ref.clone()))?;
+        .map_err(|_| PodboxError::PullFailed { image: image_ref.clone() })?;
     if !status.success() {
-        return Err(PodboxError::PullFailed(image_ref.clone()).into());
+        return Err(PodboxError::PullFailed { image: image_ref.clone() }.into());
     }
     println!("Tagging {} as {}...", image_ref, local_tag);
     let tag_status = std::process::Command::new("podman")
         .args(["tag", &image_ref, &local_tag])
         .status()
-        .map_err(|_| PodboxError::TagFailed(image_ref.clone()))?;
+        .map_err(|_| PodboxError::TagFailed { image: image_ref.clone() })?;
     if !tag_status.success() {
-        return Err(PodboxError::TagFailed(image_ref.clone()).into());
+        return Err(PodboxError::TagFailed { image: image_ref.clone() }.into());
     }
     let context_dir = podbox::build::build_context_dir(&config.image.name);
     std::fs::create_dir_all(&context_dir)?;

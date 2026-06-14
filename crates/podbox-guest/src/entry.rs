@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::os::fd::AsRawFd;
+use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -24,7 +24,7 @@ pub fn run(cmd: &[String]) -> ! {
         .and_then(|s| s.parse::<u32>().ok());
 
     // If running as root and host info is available, create the user and drop privileges.
-    let drop = if let (Some(ref user), Some(uid), Some(gid)) = (&host_user, host_uid, host_gid) {
+    let drop = if let (Some(user), Some(uid), Some(gid)) = (&host_user, host_uid, host_gid) {
         let is_root = nix::unistd::getuid().is_root();
         if is_root {
             setup_user(user, uid, gid);
@@ -46,9 +46,12 @@ pub fn run(cmd: &[String]) -> ! {
                 .open("/dev/null")
                 .unwrap_or_else(|_| std::process::exit(1));
 
-            let _ = nix::unistd::dup2(dev_null_r.as_raw_fd(), 0);
-            let _ = nix::unistd::dup2(dev_null_w.as_raw_fd(), 1);
-            let _ = nix::unistd::dup2(dev_null_w.as_raw_fd(), 2);
+            let mut stdin = unsafe { OwnedFd::from_raw_fd(0) };
+            let mut stdout = unsafe { OwnedFd::from_raw_fd(1) };
+            let mut stderr = unsafe { OwnedFd::from_raw_fd(2) };
+            let _ = nix::unistd::dup2(&dev_null_r, &mut stdin);
+            let _ = nix::unistd::dup2(&dev_null_w, &mut stdout);
+            let _ = nix::unistd::dup2(&dev_null_w, &mut stderr);
 
             let program = CString::new("/usr/local/bin/podbox-guest").unwrap();
             let arg = CString::new("--daemon").unwrap();
@@ -65,14 +68,17 @@ pub fn run(cmd: &[String]) -> ! {
         }
         Ok(ForkResult::Parent { .. }) => {
             if let Some((uid, gid, ref user)) = drop {
-                std::env::set_var("HOME", format!("/home/{}", user));
-                std::env::set_var("USER", user);
-                std::env::set_var("LOGNAME", user);
+                // SAFETY: Single-threaded child after fork(2) — no other threads exist.
+                unsafe {
+                    std::env::set_var("HOME", format!("/home/{}", user));
+                    std::env::set_var("USER", user);
+                    std::env::set_var("LOGNAME", user);
+                }
                 let _ = setgid(Gid::from_raw(gid));
                 let _ = setuid(Uid::from_raw(uid));
             }
 
-            let is_tty = nix::unistd::isatty(0).unwrap_or(false);
+            let is_tty = nix::unistd::isatty(std::io::stdin()).unwrap_or(false);
 
             if is_tty && !cmd.is_empty() {
                 // Interactive: exec the requested command

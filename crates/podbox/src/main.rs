@@ -57,7 +57,7 @@ fn main() -> ExitCode {
 fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
     if let Some(podbox_err) = err.downcast_ref::<PodboxError>() {
         match podbox_err {
-            PodboxError::DefinitionNotFound(_)
+            PodboxError::DefinitionNotFound { .. }
             | PodboxError::DefinitionReadFailed(_)
             | PodboxError::DefinitionParseFailed(_) => ExitCode::from(2),
             PodboxError::ContainerMissing(_) => ExitCode::from(3),
@@ -65,7 +65,7 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
                 ExitCode::from(4)
             }
             PodboxError::PodmanNotFound => ExitCode::from(5),
-            PodboxError::PullFailed(..) | PodboxError::TagFailed(..) => ExitCode::from(6),
+            PodboxError::PullFailed { .. } | PodboxError::TagFailed { .. } => ExitCode::from(6),
             _ => ExitCode::FAILURE,
         }
     } else {
@@ -296,9 +296,17 @@ fn run() -> Result<()> {
             name: _,
             all,
             force,
+            config: remove_config,
             ..
         } => {
-            commands::lifecycle::run_remove(&config, &name, cli.dry_run, *all, *force)?;
+            commands::lifecycle::run_remove(
+                &config,
+                &name,
+                cli.dry_run,
+                *all,
+                *force,
+                *remove_config,
+            )?;
         }
 
         Command::Serve { name: serve_name } => {
@@ -344,7 +352,7 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
             Ok(cfg) => cfg,
             Err(e)
                 if e.downcast_ref::<PodboxError>()
-                    .is_some_and(|pe| matches!(pe, PodboxError::DefinitionNotFound(_))) =>
+                    .is_some_and(|pe| matches!(pe, PodboxError::DefinitionNotFound { .. })) =>
             {
                 eprintln!(
                     "Warning: config file not found at '{}', using embedded default.",

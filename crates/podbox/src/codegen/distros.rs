@@ -211,7 +211,7 @@ pub fn detect_package_manager(image: &str) -> crate::config::PackageManager {
 }
 
 pub fn is_tty() -> bool {
-    nix::unistd::isatty(0).unwrap_or(false)
+    nix::unistd::isatty(std::io::stdin()).unwrap_or(false)
 }
 
 #[cfg(test)]

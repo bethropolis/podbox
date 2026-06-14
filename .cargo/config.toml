@@ -1,0 +1,14 @@
+[alias]
+c   = "clippy --workspace --all-targets --all-features -- -D warnings"
+t   = "nextest run --workspace"
+doc = "doc --workspace --no-deps --open"
+b   = "build --workspace"
+rr  = "run --release"
+
+[profile.dev]
+split-debuginfo = "unpacked"
+
+[profile.release]
+lto           = "thin"
+codegen-units = 1
+strip         = "symbols"

@@ -55,7 +55,7 @@ impl Config {
 
     pub fn load(path: &std::path::Path) -> Result<Config> {
         if !path.exists() {
-            return Err(PodboxError::DefinitionNotFound(path.to_path_buf()).into());
+            return Err(PodboxError::DefinitionNotFound { path: path.to_path_buf() }.into());
         }
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read definition file '{}'", path.display()))?;

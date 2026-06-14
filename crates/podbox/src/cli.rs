@@ -149,6 +149,9 @@ pub enum Command {
         /// Remove stale/orphaned containers (no valid config, not running).
         #[arg(long)]
         stale: bool,
+        /// Also delete the TOML definition file.
+        #[arg(long)]
+        config: bool,
     },
 
     /// Inspect container configuration, generated Quadlet, or computed environment.

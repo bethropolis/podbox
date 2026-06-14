@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 
 use podbox::config::Config;
 use podbox::env::HostEnv;
-use podbox::error::PodboxError;
 use podbox::systemd;
 use podbox::xdg::ResolvedXdgDirs;
 
@@ -290,10 +289,18 @@ pub fn run_remove(
     dry_run: bool,
     all: bool,
     force: bool,
+    remove_config: bool,
 ) -> Result<()> {
     if dry_run {
         println!("podman stop {}", name);
-        println!("podman rm {}", name);
+        println!("podman rm -f {}", name);
+        if config.lifecycle.quadlet {
+            println!("quadlet_install::uninstall({})", name);
+            println!("systemctl --user reset-failed {}.service", name);
+        }
+        if remove_config {
+            println!("rm {}.toml", podbox::config::config_dir().join(name).display());
+        }
         if all {
             println!("rm -rf {}", config.container.home.display());
         }
@@ -311,19 +318,29 @@ pub fn run_remove(
         }
     }
 
-    let stop_args = podbox::process::args(&["stop", name]);
-    let _ = podbox::process::run_piped("podman", &stop_args);
+    // 1. Stop and remove the podman container (best-effort)
+    let _ = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name]));
+    let _ = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]));
 
-    let rm_args = podbox::process::args(&["rm", name]);
-    let output = podbox::process::run_piped("podman", &rm_args)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(
-            PodboxError::ContainerRemoveFailed(name.to_string(), stderr.to_string()).into(),
-        );
+    // 2. Clean up Quadlet files and systemd units
+    if config.lifecycle.quadlet {
+        let _ = systemd::stop_unit(name);
+        let _ = podbox::quadlet_install::uninstall(name);
+        let _ = systemd::reset_failed(name);
     }
+
+    // 3. Optionally delete the TOML definition
+    if remove_config {
+        let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
+        if config_path.exists() {
+            std::fs::remove_file(&config_path)?;
+            println!("Config '{}' removed.", config_path.display());
+        }
+    }
+
     println!("Container '{}' removed.", name);
 
+    // 4. Optionally remove the home directory
     if all {
         let home = &config.container.home;
         if home.exists() {
@@ -355,12 +372,11 @@ pub fn run_remove(
     Ok(())
 }
 
-/// Scan for stale/orphaned containers that should be cleaned up.
+/// Find orphaned Quadlet files that have no matching TOML config.
 ///
-/// A container is considered stale if:
-/// - Its Quadlet `.container` file exists but there's no matching config TOML
-/// - The podman container is `Missing` (removed manually but Quadlet remains)
-/// - The systemd unit is in `failed` state
+/// A container is stale only when its `.container` Quadlet file exists on
+/// disk but the corresponding `~/.config/podbox/<name>.toml` has been
+/// deleted.  Stopped or failed containers with a config are never stale.
 fn find_stale_containers() -> Vec<String> {
     let qdir = dirs::config_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
@@ -375,22 +391,8 @@ fn find_stale_containers() -> Vec<String> {
             if path.extension().map(|e| e == "container").unwrap_or(false) {
                 let name = path.file_stem().unwrap().to_string_lossy().to_string();
                 let config_path = config_dir.join(format!("{}.toml", name));
-
                 if !config_path.exists() {
                     stale.push(name);
-                    continue;
-                }
-
-                if let Ok(state) = podbox::podman::query_state(&name) {
-                    match state {
-                        podbox::podman::ContainerState::Missing => stale.push(name),
-                        podbox::podman::ContainerState::Stopped => {
-                            if systemd::is_unit_failed(&name) {
-                                stale.push(name);
-                            }
-                        }
-                        podbox::podman::ContainerState::Running => {}
-                    }
                 }
             }
         }
@@ -399,9 +401,10 @@ fn find_stale_containers() -> Vec<String> {
     stale
 }
 
-/// Remove all stale containers interactively.
+/// Remove orphaned Quadlet files (those whose TOML config has been deleted).
 ///
-/// When `--force` is set, skip the confirmation prompt.
+/// Only containers with no matching TOML config are considered stale.
+/// Stopped or failed containers with an existing config are never touched.
 pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
     let stale = find_stale_containers();
     if stale.is_empty() {
@@ -409,15 +412,9 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("Stale containers found:");
+    println!("Orphaned Quadlet runtimes found:");
     for name in &stale {
-        let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
-        let reason = if !config_path.exists() {
-            "orphaned Quadlet (no config)"
-        } else {
-            "container not running or failed"
-        };
-        println!("  {}  ({})", name, reason);
+        println!("  {}  (no config TOML)", name);
     }
 
     if !force {
@@ -445,12 +442,7 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
 
         let _ = systemd::reset_failed(name);
 
-        let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
-        if config_path.exists() {
-            std::fs::remove_file(&config_path)?;
-        }
-
-        println!("✓ {} removed", name);
+        println!("✓ Stale runtime files for '{}' removed", name);
     }
 
     Ok(())

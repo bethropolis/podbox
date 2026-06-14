@@ -507,7 +507,7 @@ fn emit_xdg_dir(
     xdg_dir: &Option<crate::xdg::ResolvedXdgDir>,
     container_home: &str,
 ) {
-    if let Some(ref resolved) = xdg_dir {
+    if let Some(resolved) = xdg_dir {
         let mode = if resolved.read_write { "z" } else { "ro,z" };
         lines.push(format!(
             "Volume={}:{container_home}/{dir_name}:{mode}",

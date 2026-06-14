@@ -6,8 +6,8 @@ pub enum PodboxError {
     #[error("container '{0}' not found -- run `podbox build` and `podbox enable` first")]
     ContainerMissing(String),
 
-    #[error("definition file not found at {0}")]
-    DefinitionNotFound(PathBuf),
+    #[error("definition file not found at {path}")]
+    DefinitionNotFound { path: PathBuf },
 
     #[error("failed to read definition file: {0}")]
     DefinitionReadFailed(#[from] io::Error),
@@ -18,17 +18,8 @@ pub enum PodboxError {
     #[error("podman not found in PATH")]
     PodmanNotFound,
 
-    #[error("home directory '{0}' could not be created: {1}")]
-    HomeCreateFailed(PathBuf, io::Error),
-
-    #[error("container '{0}' remove failed: {1}")]
-    ContainerRemoveFailed(String, String),
-
-    #[error("wayland socket not found at {0}")]
-    WaylandSocketNotFound(PathBuf),
-
-    #[error("lock file error: {0}")]
-    LockFileError(String),
+    #[error("home directory '{path}' could not be created: {source}")]
+    HomeCreateFailed { path: PathBuf, source: io::Error },
 
     #[error("podman inspect failed for '{name}': {stderr}")]
     PodmanInspectFailed { name: String, stderr: String },
@@ -36,24 +27,21 @@ pub enum PodboxError {
     #[error("build failed: {0}")]
     BuildFailed(String),
 
-    #[error("quadlet install failed: {0}")]
-    QuadletInstallFailed(String),
-
-    #[error("export failed: {0}")]
-    ExportFailed(String),
+    #[error("export failed: {details}")]
+    ExportFailed { details: String },
 
     #[error("xdg-user-dir not found in PATH -- install xdg-user-dirs")]
     XdgUserDirNotFound,
 
-    #[error("failed to pull image '{0}'")]
-    PullFailed(String),
+    #[error("failed to pull image '{image}'")]
+    PullFailed { image: String },
 
-    #[error("failed to tag image as '{0}'")]
-    TagFailed(String),
+    #[error("failed to tag image as '{image}'")]
+    TagFailed { image: String },
 
     #[error("protocol version mismatch: host speaks v{expected}, guest speaks v{got}")]
     ProtocolMismatch { expected: u32, got: u32 },
 
-    #[error("config validation failed:\n{0}")]
-    ConfigValidationFailed(String),
+    #[error("config validation failed:\n{details}")]
+    ConfigValidationFailed { details: String },
 }

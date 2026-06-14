@@ -109,7 +109,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
         .args(["pull", &image_ref])
         .status()?;
     if !status.success() {
-        return Err(PodboxError::PullFailed(image_ref.clone()).into());
+        return Err(PodboxError::PullFailed { image: image_ref.clone() }.into());
     }
 
     if has_packages {
@@ -159,7 +159,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
             .args(["tag", &image_ref, &local_tag])
             .status()?;
         if !status.success() {
-            return Err(PodboxError::TagFailed(local_tag.clone()).into());
+            return Err(PodboxError::TagFailed { image: local_tag.clone() }.into());
         }
         println!("Image {} ready.", local_tag);
     }
@@ -241,7 +241,7 @@ fn run_build(
     }
 
     std::fs::create_dir_all(&context_dir)
-        .map_err(|e| PodboxError::HomeCreateFailed(context_dir.clone(), e))?;
+        .map_err(|e| PodboxError::HomeCreateFailed { path: context_dir.clone(), source: e })?;
     let _ = std::fs::set_permissions(&context_dir, std::fs::Permissions::from_mode(0o700));
 
     std::fs::write(&containerfile_path, containerfile).with_context(|| {

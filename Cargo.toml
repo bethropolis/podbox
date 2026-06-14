@@ -1,19 +1,54 @@
 [workspace]
 members  = ["crates/podbox", "crates/podbox-guest", "crates/podbox-protocol"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
-version = "0.4.6"
+edition      = "2024"
+version      = "0.4.6"
+license      = "MIT"
+rust-version = "1.90"
 
 [workspace.dependencies]
-serde      = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-anyhow     = "1.0"
-thiserror  = "1.0"
-nix        = { version = "0.29", features = ["process", "signal", "fs", "poll", "user"] }
+serde       = { version = "1.0", features = ["derive"] }
+serde_json  = "1.0"
+anyhow      = "1.0"
+thiserror   = "2.0"
+nix         = { version = "0.31.3", features = [
+    "process", "signal", "fs", "poll", "user", "socket", "uio",
+] }
+clap            = { version = "4.5", features = ["derive"] }
+clap_complete   = "4.5"
+toml            = "0.8"
+dirs            = "5.0"
+which           = "6.0"
+indexmap        = "2.14"
+notify-rust     = "4.0"
+dialoguer       = { version = "0.11", features = ["fuzzy-select"] }
+sha2            = "0.10"
+hex             = "0.4"
+url             = "2.5"
+toml_edit       = "0.22"
+podbox-protocol = { path = "crates/podbox-protocol" }
+
+# Testing
+assert_cmd = "2.0"
+insta      = { version = "1.48", features = ["json"] }
+predicates = "3.1"
+tempfile   = "3.27"
 
 [profile.release]
 opt-level = "z"
 strip     = true
 lto       = true
 panic     = "abort"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all      = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+must_use_candidate      = "allow"
