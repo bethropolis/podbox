@@ -245,6 +245,31 @@ pub struct SystemdConfig {
     pub after: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct WaylandConfig {
+    #[serde(default)]
+    pub blocked_interfaces: Vec<String>,
+}
+
+impl Default for WaylandConfig {
+    fn default() -> Self {
+        Self {
+            blocked_interfaces: vec![
+                "zwlr_screencopy_manager_v1".into(),
+                "ext_image_copy_capture_v1".into(),
+                "ext_foreign_toplevel_list_v1".into(),
+                "zwlr_virtual_pointer_manager_v1".into(),
+                "zwlr_virtual_pointer_unstable_v1".into(),
+                "zwp_virtual_keyboard_manager_v1".into(),
+                "zwp_input_method_v1".into(),
+                "zwp_input_method_v2".into(),
+                "ext_input_method_v1".into(),
+                "org_kde_kwin_fake_input".into(),
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct DbusConfig {
     #[serde(default)]

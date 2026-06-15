@@ -18,7 +18,7 @@ pub use fs::{
 pub use types::{
     ContainerConfig, DbusConfig, ExportConfig, HostExecConfig, ImageConfig, IntegrationConfig,
     LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
-    SystemdConfig, XdgDirConfig,
+    SystemdConfig, WaylandConfig, XdgDirConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -36,6 +36,8 @@ pub struct Config {
     #[serde(default)]
     pub dbus: DbusConfig,
     #[serde(default)]
+    pub wayland: WaylandConfig,
+    #[serde(default)]
     pub security: SecurityConfig,
 }
 
@@ -43,6 +45,10 @@ impl Config {
     pub fn use_dbus_proxy(&self) -> bool {
         self.integration.dbus
             && (!self.dbus.effective_talk().is_empty() || !self.dbus.own.is_empty())
+    }
+
+    pub fn use_wayland_proxy(&self) -> bool {
+        self.integration.wayland
     }
 
     pub fn parse(content: &str) -> Result<Config> {

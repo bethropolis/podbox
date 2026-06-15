@@ -119,7 +119,11 @@ pub fn stop_socket_and_host(name: &str) -> Result<()> {
     if !is_available() {
         return Ok(());
     }
-    for unit in [format!("{}.socket", name), format!("{}-host.service", name)] {
+    for unit in [
+        format!("{}-compositor.service", name),
+        format!("{}.socket", name),
+        format!("{}-host.service", name),
+    ] {
         let mut cmd = Command::new("systemctl");
         cmd.args(["--user", "stop", &unit]);
         let _ = cmd.status();

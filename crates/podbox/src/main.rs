@@ -78,7 +78,13 @@ fn run() -> Result<()> {
 
     // Exit early if podman is not installed — clean error instead of a cryptic
     // spawn failure deep in the stack.
-    if !matches!(&cli.command, Command::Completions { .. }) && which::which("podman").is_err() {
+    if !matches!(
+        &cli.command,
+        Command::Completions { .. }
+            | Command::Serve { .. }
+            | Command::Compositor { .. }
+    ) && which::which("podman").is_err()
+    {
         return Err(PodboxError::PodmanNotFound.into());
     }
 
@@ -311,6 +317,13 @@ fn run() -> Result<()> {
 
         Command::Serve { name: serve_name } => {
             commands::serve::run_serve(cli.config.as_ref(), serve_name, cli.dry_run)?;
+        }
+
+        Command::Compositor { name: comp_name } => {
+            let config_dir = podbox::config::config_dir();
+            let config_path = config_dir.join(format!("{}.toml", comp_name));
+            let config = podbox::config::Config::load(&config_path)?;
+            podbox::compositor::run_compositor(&config, comp_name)?;
         }
 
         Command::Update { no_restart, .. } => {

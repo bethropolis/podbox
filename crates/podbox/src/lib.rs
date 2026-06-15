@@ -10,6 +10,7 @@ pub const VERSION: &str = env!("PODBOX_VERSION");
 pub mod build;
 pub mod cli;
 pub mod codegen;
+pub mod compositor;
 pub mod config;
 pub mod diff;
 pub mod editor;

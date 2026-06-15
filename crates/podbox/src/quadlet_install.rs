@@ -23,13 +23,15 @@ fn systemd_user_dir() -> PathBuf {
         .join("systemd/user")
 }
 
-/// Write custom systemd units (socket, host-service, optional dbus-proxy) to sdir.
+/// Write custom systemd units (socket, host-service, optional dbus-proxy
+/// and compositor) to sdir.
 fn write_custom_units(
     name: &str,
     sdir: &std::path::Path,
     socket_content: &str,
     host_service_content: &str,
     dbus_proxy_content: Option<&str>,
+    compositor_service_content: Option<&str>,
 ) -> Result<()> {
     std::fs::create_dir_all(sdir)?;
     std::fs::write(sdir.join(format!("{}.socket", name)), socket_content)?;
@@ -39,6 +41,9 @@ fn write_custom_units(
     )?;
     if let Some(proxy) = dbus_proxy_content {
         std::fs::write(sdir.join(format!("{}-proxy.service", name)), proxy)?;
+    }
+    if let Some(comp) = compositor_service_content {
+        std::fs::write(sdir.join(format!("{}-compositor.service", name)), comp)?;
     }
     Ok(())
 }
@@ -89,6 +94,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     let container_content = quadlet::generate_container(config, env, xdg);
     let host_service_content = quadlet::generate_host_service(name);
     let dbus_proxy_content = quadlet::generate_dbus_proxy_service(name, config);
+    let compositor_service_content = quadlet::generate_compositor_service(name);
 
     let build_content = if !config.image.source().is_prebuilt() {
         Some(quadlet::generate_build(config, &containerfile_path))
@@ -114,6 +120,11 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             println!();
             println!("=== {}-proxy.service ===", name);
             println!("{}", proxy);
+        }
+        if let Some(ref comp) = compositor_service_content {
+            println!();
+            println!("=== {}-compositor.service ===", name);
+            println!("{}", comp);
         }
         return Ok(());
     }
@@ -158,6 +169,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             &socket_content,
             &host_service_content,
             dbus_proxy_content.as_deref(),
+            compositor_service_content.as_deref(),
         )?;
         println!("Systemd units installed to {}", sdir.display());
 
@@ -180,6 +192,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             &socket_content,
             &host_service_content,
             dbus_proxy_content.as_deref(),
+            compositor_service_content.as_deref(),
         )?;
 
         println!("Quadlet files installed to {}", qdir.display());
@@ -244,7 +257,7 @@ pub fn uninstall(name: &str) -> Result<()> {
     }
 
     // Remove custom systemd units
-    for unit in ["socket", "host.service", "proxy.service"] {
+    for unit in ["socket", "host.service", "proxy.service", "compositor.service"] {
         let path = sdir.join(format!("{}.{}", name, unit));
         if path.exists() {
             std::fs::remove_file(&path)?;

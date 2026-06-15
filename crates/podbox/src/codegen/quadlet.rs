@@ -84,6 +84,10 @@ fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
         lines.push(format!("Requires={}-proxy.service", name));
         lines.push(format!("After={}-proxy.service", name));
     }
+    if config.use_wayland_proxy() {
+        lines.push(format!("Requires={}-compositor.service", name));
+        lines.push(format!("After={}-compositor.service", name));
+    }
     lines.push("StartLimitBurst=5".into());
     lines.push("StartLimitIntervalSec=30s".into());
     lines.push(String::new());
@@ -251,7 +255,10 @@ fn emit_volumes(
             lines.push(format!("Environment=WAYLAND_DISPLAY={}", display));
             lines.push("Environment=XDG_RUNTIME_DIR=%t".into());
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
-            lines.push(format!("Volume=%t/{}:%t/{}", display, display));
+            lines.push(format!(
+                "Volume=%t/podbox/{}-wayland.sock:%t/{}:ro",
+                name, display
+            ));
             lines.push(String::new());
         }
     }
@@ -473,6 +480,32 @@ WantedBy={name}.service
 "#,
         name = name,
         exec_start = exec_start,
+    ))
+}
+
+/// Generate the companion Wayland firewall `.service` unit.
+pub fn generate_compositor_service(name: &str) -> Option<String> {
+    let podbox_bin = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "/usr/local/bin/podbox".into());
+
+    Some(format!(
+        r#"[Unit]
+Description=Wayland Firewall Proxy for podbox container {name}
+PartOf={name}.service
+
+[Service]
+Type=simple
+RuntimeDirectory=podbox
+ExecStart={podbox_bin} compositor {name}
+Restart=on-failure
+RestartSec=1s
+
+[Install]
+WantedBy={name}.service
+"#,
+        name = name,
+        podbox_bin = podbox_bin,
     ))
 }
 

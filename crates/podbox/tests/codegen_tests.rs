@@ -198,9 +198,11 @@ fn quadlet_container_has_network_host() {
 fn quadlet_wayland_volume_present_when_enabled() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("Volume=%t/wayland-0:%t/wayland-0"));
+    assert!(q.contains("Volume=%t/podbox/myenv-wayland.sock:%t/wayland-0:ro"));
     assert!(q.contains("Environment=WAYLAND_DISPLAY=wayland-0"));
     assert!(q.contains("Environment=MOZ_ENABLE_WAYLAND=1"));
+    assert!(q.contains("Requires=myenv-compositor.service"));
+    assert!(q.contains("After=myenv-compositor.service"));
 }
 
 #[test]
@@ -429,10 +431,11 @@ fn quadlet_systemd_dependencies_absent_by_default() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     let requires_lines: Vec<&str> = q.lines().filter(|l| l.starts_with("Requires=")).collect();
-    // Socket + D-Bus proxy service (portal preset)
-    assert_eq!(requires_lines.len(), 2);
+    // Socket + D-Bus proxy service (portal preset) + compositor service (wayland default)
+    assert_eq!(requires_lines.len(), 3);
     assert!(requires_lines.iter().any(|l| l.ends_with(".socket")));
     assert!(requires_lines.iter().any(|l| l.ends_with("-proxy.service")));
+    assert!(requires_lines.iter().any(|l| l.ends_with("-compositor.service")));
 }
 
 #[test]
@@ -748,6 +751,26 @@ fn snapshot_dbus_proxy_service() {
     let unit = quadlet::generate_dbus_proxy_service("myenv", &config)
         .expect("proxy service should be generated");
     insta::assert_snapshot!("dbus_proxy_service", unit);
+}
+
+#[test]
+fn compositor_service_structure() {
+    let unit = quadlet::generate_compositor_service("myenv")
+        .expect("compositor service should be generated");
+    assert!(unit.starts_with("[Unit]"));
+    assert!(unit.contains(
+        "Description=Wayland Firewall Proxy for podbox container myenv"
+    ));
+    assert!(unit.contains("PartOf=myenv.service"));
+    assert!(unit.contains("[Service]"));
+    assert!(unit.contains("Type=simple"));
+    assert!(unit.contains("ExecStart="));
+    assert!(unit.contains("compositor myenv"));
+    assert!(unit.contains("Restart=on-failure"));
+    assert!(unit.contains("RestartSec=1s"));
+    assert!(unit.contains("RuntimeDirectory=podbox"));
+    assert!(unit.contains("[Install]"));
+    assert!(unit.contains("WantedBy=myenv.service"));
 }
 
 #[test]

@@ -175,6 +175,12 @@ pub enum Command {
         name: String,
     },
 
+    /// Run the Wayland firewall proxy (systemd companion service).
+    Compositor {
+        /// Container name to proxy.
+        name: String,
+    },
+
     /// Enter a container by name (shortcut for --container <name> shell).
     Enter {
         /// Container name (overrides auto-detection / active context).
