@@ -249,3 +249,110 @@ fn forward_message(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_global(object_id: u32, name: u32, interface: &str, version: u32) -> Vec<u8> {
+        let raw = interface.as_bytes();
+        let str_len = raw.len().checked_add(1).unwrap();
+        let padded_len = str_len.next_multiple_of(4);
+        let msg_size = (8 + 4 + 4 + padded_len + 4) as u32;
+
+        let mut buf = Vec::with_capacity(msg_size as usize);
+        buf.extend_from_slice(&object_id.to_ne_bytes());
+        buf.extend_from_slice(&((msg_size << 16) | 0).to_ne_bytes());
+        buf.extend_from_slice(&name.to_ne_bytes());
+        buf.extend_from_slice(&(str_len as u32).to_ne_bytes());
+        buf.extend_from_slice(raw);
+        buf.push(0);
+        while buf.len() < (8 + 4 + 4 + padded_len) as usize {
+            buf.push(0);
+        }
+        buf.extend_from_slice(&version.to_ne_bytes());
+        buf
+    }
+
+    fn make_message(object_id: u32, size: u32, opcode: u16) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(size as usize);
+        buf.extend_from_slice(&object_id.to_ne_bytes());
+        buf.extend_from_slice(&((size << 16) | opcode as u32).to_ne_bytes());
+        while buf.len() < size as usize {
+            buf.push(0);
+        }
+        buf
+    }
+
+    fn blocked_state() -> Mutex<FirewallState> {
+        Mutex::new(FirewallState::new(vec![
+            "zwlr_screencopy_manager_v1".into(),
+            "ext_foreign_toplevel_list_v1".into(),
+        ]))
+    }
+
+    fn empty_state() -> Mutex<FirewallState> {
+        Mutex::new(FirewallState::new(vec![]))
+    }
+
+    #[test]
+    fn blocks_screencopy_interface() {
+        let data = make_global(2, 42, "zwlr_screencopy_manager_v1", 1);
+        assert!(is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn blocks_foreign_toplevel() {
+        let data = make_global(2, 43, "ext_foreign_toplevel_list_v1", 1);
+        assert!(is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn allows_safe_interface() {
+        let data = make_global(2, 44, "wl_compositor", 6);
+        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn allows_wl_shm() {
+        let data = make_global(2, 1, "wl_shm", 1);
+        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn blocks_nothing_when_empty_blocklist() {
+        let data = make_global(2, 42, "zwlr_screencopy_manager_v1", 1);
+        assert!(!is_blocked_global(&data, 0, &empty_state()));
+    }
+
+    #[test]
+    fn ignores_non_registry_opcode() {
+        let data = make_message(2, 16, 1);
+        assert!(!is_blocked_global(&data, 1, &blocked_state()));
+    }
+
+    #[test]
+    fn ignores_short_payload() {
+        let data = make_message(2, 12, 0);
+        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn ignores_empty_interface_string() {
+        let mut data = make_message(2, 16, 0);
+        data[12..16].copy_from_slice(&0u32.to_ne_bytes());
+        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn allows_partial_name_prefix_match() {
+        let data = make_global(2, 42, "zwlr_screencopy", 1);
+        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn allows_similar_but_not_blocked() {
+        let data = make_global(2, 99, "zwlr_layer_shell_v1", 1);
+        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+}
