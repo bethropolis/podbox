@@ -104,6 +104,9 @@ pub enum Command {
     Status {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Show container logs.
@@ -134,6 +137,9 @@ pub enum Command {
         /// Only show one snapshot, don't stream.
         #[arg(long)]
         no_stream: bool,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Remove the container.
@@ -215,7 +221,11 @@ pub enum Command {
     },
 
     /// List all managed containers.
-    List,
+    List {
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
 
     /// Clone an existing container config to a new name.
     Clone {
@@ -352,6 +362,12 @@ pub enum ExportCommand {
     },
     /// Remove all exports for the container.
     Clean,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OutputFormat {
+    Text,
+    Json,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

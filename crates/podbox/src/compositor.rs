@@ -5,6 +5,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use nix::sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags};
@@ -119,6 +120,11 @@ fn bridge_loop(
     done: &AtomicBool,
     is_client_to_host: bool,
 ) -> Result<()> {
+    // Set a read timeout so that recvmsg periodically unblocks and checks
+    // the `done` flag. Without this, a thread blocked on recvmsg would
+    // never notice the opposite direction has failed.
+    in_socket.set_read_timeout(Some(Duration::from_millis(100)))?;
+
     let mut read_buf = [0u8; 16384];
     let mut cmsg_buffer = vec![0u8; 4096];
     let mut bytes_cache = Vec::with_capacity(32768);
@@ -139,6 +145,12 @@ fn bridge_loop(
             ) {
                 Ok(m) => m,
                 Err(e) if e == nix::errno::Errno::EINTR => continue,
+                Err(e) if e == nix::errno::Errno::EAGAIN => {
+                    if done.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    continue;
+                }
                 Err(e) => return Err(e.into()),
             };
 

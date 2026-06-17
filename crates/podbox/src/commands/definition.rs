@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use podbox::cli::OutputFormat;
 use podbox::config;
 
 /// Print the path to the definition file.
@@ -30,10 +31,38 @@ pub fn run_completions(shell: clap_complete::shells::Shell) -> Result<()> {
 }
 
 /// List all podbox-managed containers with status, autostart, and active context.
-pub fn run_list() -> Result<()> {
+pub fn run_list(output: OutputFormat) -> Result<()> {
     let configs = config::list_configs();
     let active_ctx = config::read_active_context();
     let use_color = podbox::codegen::distros::is_tty();
+
+    if matches!(output, OutputFormat::Json) {
+        let entries: Vec<serde_json::Value> = configs
+            .iter()
+            .map(|cp| {
+                let name = cp.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                let state_label = match podbox::podman::query_state(&name) {
+                    Ok(podbox::podman::ContainerState::Running) => "running",
+                    Ok(podbox::podman::ContainerState::Stopped)
+                        if podbox::systemd::is_unit_failed(&name) => "failed",
+                    Ok(podbox::podman::ContainerState::Stopped) => "stopped",
+                    Ok(podbox::podman::ContainerState::Missing) => "unbuilt",
+                    Err(_) => "unknown",
+                };
+                let autostart = config::Config::load(cp)
+                    .map(|c| c.lifecycle.autostart)
+                    .unwrap_or(false);
+                serde_json::json!({
+                    "name": name,
+                    "status": state_label,
+                    "autostart": autostart,
+                    "active": active_ctx.as_deref() == Some(&name),
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({"containers": entries}))?);
+        return Ok(());
+    }
 
     if configs.is_empty() {
         println!("No containers found. Create your first container with `podbox init -i`.");

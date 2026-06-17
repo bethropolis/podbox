@@ -247,6 +247,8 @@ pub struct SystemdConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct WaylandConfig {
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub firewall: bool,
     #[serde(default)]
     pub blocked_interfaces: Vec<String>,
 }
@@ -254,6 +256,7 @@ pub struct WaylandConfig {
 impl Default for WaylandConfig {
     fn default() -> Self {
         Self {
+            firewall: true,
             blocked_interfaces: vec![
                 "zwlr_screencopy_manager_v1".into(),
                 "ext_image_copy_capture_v1".into(),

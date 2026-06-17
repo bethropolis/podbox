@@ -755,7 +755,8 @@ fn snapshot_dbus_proxy_service() {
 
 #[test]
 fn compositor_service_structure() {
-    let unit = quadlet::generate_compositor_service("myenv")
+    let config = load_config("full.toml");
+    let unit = quadlet::generate_compositor_service("myenv", &config)
         .expect("compositor service should be generated");
     assert!(unit.starts_with("[Unit]"));
     assert!(unit.contains(

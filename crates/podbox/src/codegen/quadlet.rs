@@ -255,10 +255,14 @@ fn emit_volumes(
             lines.push(format!("Environment=WAYLAND_DISPLAY={}", display));
             lines.push("Environment=XDG_RUNTIME_DIR=%t".into());
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
-            lines.push(format!(
-                "Volume=%t/podbox/{}-wayland.sock:%t/{}:ro",
-                name, display
-            ));
+            if config.wayland.firewall {
+                lines.push(format!(
+                    "Volume=%t/podbox/{}-wayland.sock:%t/{}:ro",
+                    name, display
+                ));
+            } else {
+                lines.push(format!("Volume=%t/{}:%t/{}:ro", display, display));
+            }
             lines.push(String::new());
         }
     }
@@ -484,7 +488,11 @@ WantedBy={name}.service
 }
 
 /// Generate the companion Wayland firewall `.service` unit.
-pub fn generate_compositor_service(name: &str) -> Option<String> {
+/// Returns `None` when the Wayland proxy is disabled in config.
+pub fn generate_compositor_service(name: &str, config: &Config) -> Option<String> {
+    if !config.use_wayland_proxy() {
+        return None;
+    }
     let podbox_bin = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "/usr/local/bin/podbox".into());

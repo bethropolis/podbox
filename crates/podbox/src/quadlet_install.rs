@@ -80,7 +80,7 @@ fn preflight_check(config: &Config) {
 /// Install systemd service and socket files for a container.
 pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: bool) -> Result<()> {
     let name = &config.container.name;
-    let ver = podman_version().unwrap_or(&PodmanVersion {
+    let ver = podman_version().unwrap_or(PodmanVersion {
         major: 5,
         minor: 5,
         patch: 0,
@@ -94,7 +94,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     let container_content = quadlet::generate_container(config, env, xdg);
     let host_service_content = quadlet::generate_host_service(name);
     let dbus_proxy_content = quadlet::generate_dbus_proxy_service(name, config);
-    let compositor_service_content = quadlet::generate_compositor_service(name);
+    let compositor_service_content = quadlet::generate_compositor_service(name, config);
 
     let build_content = if !config.image.source().is_prebuilt() {
         Some(quadlet::generate_build(config, &containerfile_path))
@@ -176,6 +176,9 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         systemd::daemon_reload()?;
         systemd::reset_failed(name)?;
         systemd::stop_socket_and_host(name)?;
+        if config.use_wayland_proxy() {
+            systemd::stop_compositor(name)?;
+        }
         systemd::enable_now_socket(name)?;
         systemd::start_host_service(name)?;
     } else {
@@ -201,6 +204,9 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         systemd::daemon_reload()?;
         systemd::reset_failed(name)?;
         systemd::stop_socket_and_host(name)?;
+        if config.use_wayland_proxy() {
+            systemd::stop_compositor(name)?;
+        }
         systemd::enable_now_socket(name)?;
         systemd::start_host_service(name)?;
     }
@@ -226,7 +232,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
 /// Remove Quadlet and systemd files for a container.
 pub fn uninstall(name: &str) -> Result<()> {
-    let ver = podman_version().unwrap_or(&PodmanVersion {
+    let ver = podman_version().unwrap_or(PodmanVersion {
         major: 5,
         minor: 5,
         patch: 0,

@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 use crate::error::PodboxError;
 
@@ -16,7 +16,7 @@ impl PodmanVersion {
     }
 }
 
-static PODMAN_VERSION: OnceLock<anyhow::Result<PodmanVersion>> = OnceLock::new(); // errors intentionally cached — podman availability doesn't change mid-process
+static PODMAN_VERSION: Mutex<Option<PodmanVersion>> = Mutex::new(None);
 
 fn parse_version_string(s: &str) -> PodmanVersion {
     let s = s.trim();
@@ -32,33 +32,38 @@ fn parse_version_string(s: &str) -> PodmanVersion {
     }
 }
 
-pub fn podman_version() -> anyhow::Result<&'static PodmanVersion> {
-    let res = PODMAN_VERSION.get_or_init(|| {
-        // Prefer structured output from `podman version -f` (more reliable
-        // across distro packaging, e.g. Debian epoch suffixes).
-        let structured = Command::new("podman")
-            .args(["version", "-f", "{{.Client.Version}}"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success());
-        let version_str = match structured {
-            Some(ref output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
-            None => {
-                // Fallback: parse `podman --version` (e.g. "podman version 5.3.0")
-                let output = Command::new("podman").args(["--version"]).output()?;
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.split_whitespace().last().unwrap_or("").to_string()
-            }
-        };
-        Ok(parse_version_string(&version_str))
-    });
-    res.as_ref().map_err(|e| anyhow::anyhow!("{}", e))
+pub fn podman_version() -> anyhow::Result<PodmanVersion> {
+    let mut cache = PODMAN_VERSION.lock().unwrap();
+    if let Some(ref ver) = *cache {
+        return Ok(ver.clone());
+    }
+
+    // Prefer structured output from `podman version -f` (more reliable
+    // across distro packaging, e.g. Debian epoch suffixes).
+    let structured = Command::new("podman")
+        .args(["version", "-f", "{{.Client.Version}}"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success());
+    let version_str = match structured {
+        Some(ref output) => String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        None => {
+            // Fallback: parse `podman --version` (e.g. "podman version 5.3.0")
+            let output = Command::new("podman").args(["--version"]).output()?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.split_whitespace().last().unwrap_or("").to_string()
+        }
+    };
+    let ver = parse_version_string(&version_str);
+    *cache = Some(ver.clone());
+    Ok(ver)
 }
 
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) fn set_test_version(ver: PodmanVersion) {
-    PODMAN_VERSION.set(Ok(ver)).ok();
+    let mut cache = PODMAN_VERSION.lock().unwrap();
+    *cache = Some(ver);
 }
 
 #[cfg(test)]

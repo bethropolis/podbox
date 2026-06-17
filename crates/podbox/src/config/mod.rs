@@ -48,7 +48,7 @@ impl Config {
     }
 
     pub fn use_wayland_proxy(&self) -> bool {
-        self.integration.wayland
+        self.integration.wayland && self.wayland.firewall
     }
 
     pub fn parse(content: &str) -> Result<Config> {

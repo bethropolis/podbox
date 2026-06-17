@@ -131,7 +131,23 @@ fn quadlet_installed(name: &str) -> bool {
 }
 
 /// Print the container's running state.
-pub fn run_status(name: &str, dry_run: bool) -> Result<()> {
+pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) -> Result<()> {
+    if matches!(output, podbox::cli::OutputFormat::Json) {
+        let state = query_state(name)?;
+        let status = match state {
+            ContainerState::Running => "running",
+            ContainerState::Stopped if podbox::systemd::is_unit_failed(name) => "failed",
+            ContainerState::Stopped => "stopped",
+            ContainerState::Missing if quadlet_installed(name) => "not built",
+            ContainerState::Missing => "not installed",
+        };
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "name": name,
+            "status": status,
+        }))?);
+        return Ok(());
+    }
+
     if dry_run {
         println!("podman inspect --format {{{{.State.Status}}}} {}", name);
         return Ok(());

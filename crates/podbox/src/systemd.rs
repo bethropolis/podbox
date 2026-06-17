@@ -120,7 +120,6 @@ pub fn stop_socket_and_host(name: &str) -> Result<()> {
         return Ok(());
     }
     for unit in [
-        format!("{}-compositor.service", name),
         format!("{}.socket", name),
         format!("{}-host.service", name),
     ] {
@@ -128,6 +127,17 @@ pub fn stop_socket_and_host(name: &str) -> Result<()> {
         cmd.args(["--user", "stop", &unit]);
         let _ = cmd.status();
     }
+    Ok(())
+}
+
+/// Stop the Wayland compositor proxy service if it exists.
+pub fn stop_compositor(name: &str) -> Result<()> {
+    if !is_available() {
+        return Ok(());
+    }
+    let mut cmd = Command::new("systemctl");
+    cmd.args(["--user", "stop", &format!("{}-compositor.service", name)]);
+    let _ = cmd.status();
     Ok(())
 }
 

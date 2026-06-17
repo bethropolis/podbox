@@ -30,7 +30,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Stop { name }
         | Command::Shell { name, edit: _ }
         | Command::Enter { name }
-        | Command::Status { name }
+        | Command::Status { name, .. }
         | Command::Remove { name, .. }
         | Command::Logs { name, .. }
         | Command::Update { name, .. }
@@ -125,8 +125,8 @@ fn run() -> Result<()> {
             );
         }
 
-        Command::List => {
-            return commands::definition::run_list();
+        Command::List { output } => {
+            return commands::definition::run_list(*output);
         }
 
         Command::Clone {
@@ -248,12 +248,16 @@ fn run() -> Result<()> {
             commands::runtime::run_run(&env, &name, app, app_args, cli.dry_run)?;
         }
 
-        Command::Status { name: _ } => {
-            commands::runtime::run_status(&name, cli.dry_run)?;
+        Command::Status { name: _, output } => {
+            commands::runtime::run_status(&name, cli.dry_run, *output)?;
         }
 
-        Command::Stats { no_stream, .. } => {
-            commands::stats::run_stats(&name, *no_stream)?;
+        Command::Stats {
+            no_stream,
+            output,
+            ..
+        } => {
+            commands::stats::run_stats(&name, *no_stream, *output)?;
         }
 
         Command::Logs {
@@ -351,7 +355,7 @@ fn run() -> Result<()> {
         | Command::Init { .. }
         | Command::Create { .. }
         | Command::Clone { .. }
-        | Command::List
+        | Command::List { .. }
         | Command::Use { .. }
         | Command::Edit { .. } => unreachable!(),
     }
