@@ -34,30 +34,33 @@ The container starts with `podbox-guest --entry [<command>...]`.
 
 1. **Create `/run/podbox/bin/`** — directory for interceptor symlinks
 2. **Check version drift** — compare `PODBOX_HOST_VERSION` env var against
-   `podbox-guest` version; warn on mismatch
+   `podbox-guest` version; warn on mismatch via notification or stderr
 3. **Connect to host socket** — `$XDG_RUNTIME_DIR/podbox/<container>.sock`
    with poll-based retry (3 attempts, 500ms interval, zero CPU)
 4. **Handshake** — sends capability list (`notify`, `xdg_open`, `clipboard`,
    `host_exec`) to host; host responds with accepted subset
 5. **Install interceptors** — creates symlinks in `/run/podbox/bin/` for
    each accepted capability
-6. **PATH injection** — writes `/etc/environment.d/podbox.conf` that
-   prepends `/run/podbox/bin` to `PATH`
+6. **PATH injection** — writes `/etc/profile.d/podbox.sh` and
+   `/etc/fish/conf.d/podbox.fish` that prepend `/run/podbox/bin` to `PATH`
 7. **Event loop** — polls the host socket for messages
 
 ### Event loop
 
-The event loop is `poll()`-based on a single file descriptor (the host
-socket connection). It uses a **5-minute idle timeout** — if no message
-arrives, the daemon exits gracefully.
+The event loop is `poll()`-based on the host socket connection and tracked
+user processes via pidfds (Linux 5.3+). It uses a configurable **idle
+timeout** (`lifecycle.idle_timeout`, default `"off"`) — if no user
+processes remain and the timeout expires, the daemon sends `IdleTimeout`
+and exits gracefully.
 
 | Event | Action |
 |-------|--------|
 | `Shutdown` message | Exit daemon |
 | `Ping` message | No-op (keepalive) |
+| `CheckIdle` message | Scan `/proc` for user processes; reply `Busy` or `IdleTimeout` |
 | `None` / EOF | Host disconnected; exit |
 | `POLLHUP` / `POLLERR` | Host socket hung up; exit |
-| Idle timeout (5 min) | No messages received; exit |
+| Idle timeout | No user processes found before timeout; send `IdleTimeout`, exit |
 | `EINTR` | Retry `poll()` |
 
 The daemon consumes **0% CPU** when idle — it is parked in the kernel by
@@ -100,14 +103,13 @@ dispatches to the appropriate interceptor module (`main.rs`).
 
 ### PATH injection
 
-`/etc/environment.d/podbox.conf` is written with:
+Two files are written to ensure interceptors are always found:
 
-```
-PATH=/run/podbox/bin:$PATH
-```
+- `/etc/profile.d/podbox.sh` for POSIX shells
+- `/etc/fish/conf.d/podbox.fish` for Fish shell
 
-This ensures the interceptor symlinks take precedence over system-installed
-binaries.
+Both prepend `/run/podbox/bin` to `PATH`. This ensures the interceptor
+symlinks take precedence over system-installed binaries.
 
 ### Interceptor types
 

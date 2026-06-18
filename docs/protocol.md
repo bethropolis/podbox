@@ -47,11 +47,14 @@ The host socket is created by systemd before the container starts and persists a
 {
   "type": "hello_ack",
   "accepted": ["notify", "xdg_open"],
-  "rejected": ["clipboard", "host_exec"]
+  "rejected": ["clipboard", "host_exec"],
+  "idle_timeout_secs": 0
 }
 ```
 
-The handshake establishes which capabilities the host allows. The guest daemon only installs interceptor symlinks for accepted capabilities.
+The handshake establishes which capabilities the host allows and conveys the
+configured idle timeout (`0` = disabled). The guest daemon only installs
+interceptor symlinks for accepted capabilities.
 
 ---
 
@@ -61,24 +64,28 @@ The handshake establishes which capabilities the host allows. The guest daemon o
 
 | Type | Fields |
 |------|--------|
-| `hello` | `version`, `container`, `capabilities` |
+| `hello` | `protocol_version`, `guest_version`, `container`, `capabilities` |
 | `notify` | `summary`, `body`, `urgency`, `actions` (optional), `app_name` (optional) |
-| `notify_action_result` | `key` |
 | `xdg_open` | `uri` |
 | `clipboard_set` | `text` |
 | `clipboard_get` | — |
-| `host_exec` | `command` |
-| `host_exec_stdout` | `data` |
-| `host_exec_stderr` | `data` |
-| `host_exec_done` | `exit_code` |
+| `host_exec` | `cmd`, `args` |
+| `register_session` | — (pidfd via `SCM_RIGHTS`) |
+| `busy` | — |
+| `idle_timeout` | — |
 
 ### Host → Guest
 
 | Type | Fields |
 |------|--------|
-| `hello_ack` | `accepted`, `rejected` |
+| `hello_ack` | `accepted`, `rejected`, `idle_timeout_secs` |
 | `clipboard_data` | `text` |
+| `host_exec_stdout` | `data` |
+| `host_exec_stderr` | `data` |
+| `host_exec_done` | `exit_code` |
+| `notify_action_result` | `notification_id`, `action_key` |
 | `ping` | — |
+| `check_idle` | — |
 | `shutdown` | — |
 
 ---
@@ -99,7 +106,7 @@ When present, `actions` is an array of objects with a `key` and `label`:
 }
 ```
 
-The guest sends `notify_action_result` with the user-selected `key` back to the host.
+The host sends `notify_action_result` with the `notification_id` and user-selected `action_key` back to the guest.
 
 !!! info ""
     The `actions` and `app_name` fields use `#[serde(default)]` for backward compatibility with older guest binaries that do not send them.

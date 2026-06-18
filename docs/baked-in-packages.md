@@ -7,7 +7,7 @@ description: How podbox auto-installs a curated set of base packages at image bu
 
 For **custom builds** (non-prebuilt), `podbox build` auto-injects a curated set of base packages into the generated Containerfile based on the detected base image's distro family. You don't need to remember them in your TOML — they just work.
 
-Prebuilt images (`image.prebuilt = true`) are not auto-injected — they're expected to ship complete. Override or extend the list under `[image.packages]`.
+Prebuilt images (when `image.image` is set in the config) are not auto-injected — they're expected to ship complete. Override or extend the list under `[image.packages]`.
 
 ## What gets installed
 

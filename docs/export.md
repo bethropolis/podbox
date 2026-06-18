@@ -101,10 +101,10 @@ The shim is executable (`chmod 755`). If `~/.local/bin` is on the user's `PATH` 
 
 ## Cleanup
 
-Remove exported files for a container by calling:
+Remove exported files for a container by running:
 
-```rust
-podbox::export::unexport_all(container_name)
+```bash
+podbox export clean
 ```
 
 This removes:

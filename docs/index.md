@@ -24,9 +24,8 @@
 
 | Doc | What it covers |
 |-----|---------------|
-| [Project Guide](../PROJECT_GUIDE.md) | Full module specs, testing strategy, debugging |
-| [Agent Instructions](../AGENT.md) | Rules and checklists for AI-assisted development |
 | [Roadmap](../ROADMAP.md) | Phase plans and scope |
+| [PLAN.md](../PLAN.md) | Implementation plans |
 
 ## Quick Reference
 

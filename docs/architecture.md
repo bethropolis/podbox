@@ -173,30 +173,80 @@ podbox/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs           # entry point, dispatch
+│   │       ├── lib.rs            # module declarations
 │   │       ├── cli.rs            # clap CLI definition
-│   │       ├── config.rs         # TOML parsing + validation
-│   │       ├── build.rs          # build orchestration
+│   │       ├── build.rs          # Containerfile generation + build orchestration
+│   │       ├── cli.rs            # clap CLI definition
+│   │       ├── compositor.rs     # Wayland firewall proxy
+│   │       ├── config/           # TOML parsing, types, validation, defaults
+│   │       │   ├── mod.rs
+│   │       │   ├── types.rs      # all config structs
+│   │       │   ├── enums.rs      # PackageManager, GpuMode, OnStop, XdgDirValue
+│   │       │   ├── fs.rs         # config discovery, active context
+│   │       │   ├── defaults.rs   # embedded default + helper functions
+│   │       │   └── validation.rs # config validation
 │   │       ├── codegen/          # pure string generators
-│   │       ├── export.rs         # .desktop + bin shim
-│   │       ├── quadlet_install.rs
-│   │       ├── socket_host.rs    # host-side socket handler
+│   │       │   ├── mod.rs
+│   │       │   ├── quadlet.rs    # .container, .build, .socket, .service gen
+│   │       │   ├── containerfile.rs# Containerfile generation
+│   │       │   └── distros.rs    # distro family detection, base packages
+│   │       ├── commands/         # command implementations
+│   │       │   ├── mod.rs
+│   │       │   ├── clone.rs
+│   │       │   ├── context.rs
+│   │       │   ├── create.rs
+│   │       │   ├── definition.rs
+│   │       │   ├── diff.rs
+│   │       │   ├── export.rs
+│   │       │   ├── inspect.rs
+│   │       │   ├── lifecycle.rs  # build, enable, disable, start, stop, remove
+│   │       │   ├── pull.rs
+│   │       │   ├── runtime.rs    # shell, enter, exec, run, status, logs
+│   │       │   ├── serve.rs
+│   │       │   ├── stats.rs
+│   │       │   └── translate.rs
+│   │       ├── diff.rs           # package drift detection
+│   │       ├── editor.rs         # editor resolution
+│   │       ├── env.rs            # host env resolution (GPU, audio, locale)
+│   │       ├── error.rs          # error types
+│   │       ├── export.rs         # .desktop + bin shim export
+│   │       ├── guest.rs          # guest binary installation
+│   │       ├── labels.rs         # image label defaults
+│   │       ├── lock.rs           # build lock file
 │   │       ├── podman.rs         # version detection + subcommand wrappers
 │   │       ├── process.rs        # exec_replace, run_piped, spawn
-│   │       ├── lock.rs           # build lock file
-│   │       ├── env.rs            # host env resolution
-│   │       ├── xdg.rs            # XDG dir resolution
-│   │       └── error.rs          # error types
+│   │       ├── profiles/         # built-in profile TOMLs
+│   │       │   ├── cachy.toml
+│   │       │   ├── dev.toml
+│   │       │   └── fedora.toml
+│   │       ├── protocol.rs       # host-side protocol handler
+│   │       ├── quadlet_install.rs# Quadlet file installation
+│   │       ├── socket_host/      # host-side socket handler
+│   │       │   ├── handlers.rs
+│   │       ├── systemd.rs        # systemctl wrappers
+│   │       ├── wizard/           # interactive setup wizard
+│   │       │   ├── mod.rs
+│   │       │   ├── prompts.rs
+│   │       │   ├── shell.rs
+│   │       │   └── summary.rs
+│   │       └── xdg.rs            # XDG dir resolution
 │   │
-│   └── podbox-guest/             # static musl sidecar
+│   ├── podbox-guest/             # static musl sidecar
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── main.rs           # argv[0] dispatch
+│   │       ├── lib.rs            # module declarations
+│   │       ├── entry.rs          # fork + exec
+│   │       ├── daemon.rs         # event loop (poll + pidfd)
+│   │       ├── socket.rs         # socket I/O
+│   │       ├── protocol.rs       # message types + framing (re-exports)
+│   │       ├── interceptors/     # notify, xdg_open, clipboard, host_exec
+│   │       └── error.rs
+│   │
+│   └── podbox-protocol/          # shared wire-format types
 │       ├── Cargo.toml
 │       └── src/
-│           ├── main.rs           # argv[0] dispatch
-│           ├── entry.rs          # fork + exec
-│           ├── daemon.rs         # event loop
-│           ├── socket.rs         # socket I/O
-│           ├── protocol.rs       # message types + framing
-│           ├── interceptors/     # notify, xdg_open, clipboard, host_exec
-│           └── error.rs
+│           └── lib.rs            # GuestMessage, HostMessage, read/write_frame
 │
 ├── tests/                        # integration + unit tests
 ├── scripts/                      # install / uninstall
@@ -207,13 +257,17 @@ podbox/
 
 - **Pure codegen:** All `codegen::*` functions are pure — data in, string out.
   No I/O, no env reads, no filesystem access.
-- **Boundary separation:** I/O lives only in `build.rs`, `quadlet_install.rs`,
-  `socket_host.rs`, `export.rs`.
+- **Boundary separation:** I/O lives only in `commands/`, `build.rs`,
+  `quadlet_install.rs`, `socket_host.rs`, `export.rs`.
 - **musl static:** `podbox-guest` must stay statically linkable. No tokio,
-  no openssl, no crate that links against glibc.
+  no openssl, no crate that links against glibc. Uses `poll()` + pidfds.
 - **exec_replace for TTY:** `podbox shell` and `podbox exec` use
   `CommandExt::exec()` to replace the process — never `spawn_interactive`.
   This preserves the TTY for readline, Ctrl+L, etc.
+- **pidfd-based process tracking:** The guest daemon uses `pidfd_open()` (Linux 5.3+)
+  and `poll()` to watch user process exits without busy-looping.
+- **Config as single source of truth:** Containerfile, Quadlet units, lock files,
+  and desktop entries all derive from one TOML definition.
 
 ## Exit Codes
 
@@ -224,4 +278,5 @@ podbox/
 | 2 | Configuration error |
 | 3 | Container missing |
 | 4 | Build or inspect failure |
-| 5 | Missing dependency |
+| 5 | Missing dependency (podman not found) |
+| 6 | Pull or tag failure |

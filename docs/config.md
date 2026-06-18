@@ -56,7 +56,7 @@ commands = ["dnf clean all"]
 |-----|------|---------|-------------|
 | `name` | string | *required* | Container name (used for systemd unit names, socket paths) |
 | `home` | string | *required* | Host path for isolated home (`~` expands) |
-| `shell` | string | `"bash"` | Default login shell inside the container |
+| `shell` | string | `"fish"` | Default login shell inside the container |
 | `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
 | `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Converted to `CpuQuota=` in Quadlet |
 | `reload_cmd` | string | — | Command run on config reload. Passed as `ReloadCmd=` in Quadlet |
@@ -135,15 +135,15 @@ Controls which host resources are shared with the container.
 | `audio` | bool | `true` | Share PipeWire/PulseAudio sockets |
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
 | `dbus` | bool | `true` | Enable D-Bus session bus access |
-| `notify` | bool | `false` | Desktop notification forwarding |
-| `xdg_open` | bool | `false` | URI opening via host (`xdg-open`) |
-| `clipboard` | bool | `false` | Clipboard sharing |
-| `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
-| `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
-| `sync_themes` | bool | `false` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
+| `notify` | bool | `true` | Desktop notification forwarding |
+| `xdg_open` | bool | `true` | URI opening via host (`xdg-open`) |
+| `clipboard` | bool | `true` | Clipboard sharing |
+| `sync_fonts` | bool | `true` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
+| `sync_icons` | bool | `true` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
+| `sync_themes` | bool | `true` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
+| `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
-| `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
 
 ### `GpuMode` values
 
@@ -227,13 +227,15 @@ bins = ["rg", "gcc"]
 | `autostart` | bool | `false` | Start container on user login (`WantedBy=default.target`) |
 | `on_stop` | string | `"keep"` | Container behavior on stop (`"keep"` or `"remove"`) |
 | `auto_update` | bool | `false` | Add `Label=io.containers.autoupdate=registry` for auto-updates |
+| `idle_timeout` | string | `"off"` | Idle timeout before guest daemon exits (`"off"`, `"30s"`, `"5m"`, `"1h") |
 
 ```toml
 [lifecycle]
-quadlet     = true
-autostart   = true
-on_stop     = "keep"
-auto_update = true
+quadlet      = true
+autostart    = true
+on_stop      = "keep"
+auto_update  = true
+idle_timeout = "off"
 ```
 
 ---
