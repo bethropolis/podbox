@@ -421,9 +421,9 @@ fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
 fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
     lines.push("PodmanArgs=--init".into());
     lines.push("PodmanArgs=--workdir=/home/%u".into());
-    let cap_profile = config.security.cap_profile;
-    let has_any_cap = !cap_profile.caps().is_empty() || !config.security.cap_add.is_empty();
-    for cap in cap_profile.caps() {
+    let cap_preset = config.security.cap_preset;
+    let has_any_cap = !cap_preset.caps().is_empty() || !config.security.cap_add.is_empty();
+    for cap in cap_preset.caps() {
         lines.push(format!("PodmanArgs=--cap-add={}", cap));
     }
     for cap in &config.security.cap_add {

@@ -143,7 +143,7 @@ impl Serialize for GpuMode {
 /// extra capabilities via `security.cap_add`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum CapProfile {
+pub enum CapPreset {
     /// No extra capabilities beyond Podman's defaults.
     None,
     /// Sane default: `DAC_READ_SEARCH`, `PERFMON` — needed by tools
@@ -158,7 +158,7 @@ pub enum CapProfile {
     Admin,
 }
 
-impl CapProfile {
+impl CapPreset {
     pub fn caps(&self) -> &'static [&'static str] {
         match self {
             Self::None => &[],

@@ -99,8 +99,8 @@ TERM = "xterm-256color"
 | `no_new_privileges` | bool | `true` | Block privilege escalation via setuid binaries (`sudo`, `su`, AUR helpers). Emits `NoNewPrivileges=true` in the Quadlet. Set `false` to allow. |
 | `read_only_rootfs` | bool | `false` | Make root filesystem read-only. Emits `ReadOnly=true` in Quadlet |
 | `userns` | string | — | User namespace mode override. Defaults to `"keep-id"`. Supported: `"keep-id"`, `"nomap"`, `"private"` |
-| `cap_profile` | string | `"default"` | Capability preset. Options: `"none"`, `"default"`, `"monitoring"`, `"admin"`. Adds a predefined set of `--cap-add` entries alongside any `cap_add` list below |
-| `cap_add` | string[] | `[]` | Extra Linux capabilities to add (e.g. `["SYS_ADMIN"]`). Combined with `cap_profile` caps |
+| `cap_preset` | string | `"default"` | Capability preset. Options: `"none"`, `"default"`, `"monitoring"`, `"admin"`. Adds a predefined set of `--cap-add` entries alongside any `cap_add` list below |
+| `cap_add` | string[] | `[]` | Extra Linux capabilities to add (e.g. `["SYS_ADMIN"]`). Combined with `cap_preset` caps |
 
 ```toml
 [security]
@@ -108,7 +108,7 @@ apparmor = "unconfined"
 seccomp = "default"
 read_only_rootfs = true
 userns = "nomap"
-cap_profile = "monitoring"
+cap_preset = "monitoring"
 cap_add = ["SYS_ADMIN"]
 ```
 
