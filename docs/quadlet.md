@@ -110,6 +110,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 
 | Source | Destination | Mode | Condition |
 |--------|-------------|------|-----------|
+| `<context>/.flatpak-info` | `/.flatpak-info` | `ro` | Always (sandbox detection — tricks apps into using portals) |
 | `%h/containers/<name>` | `/home/%u` | `Z` | Always (isolated home) |
 | XDG dirs | `/home/%u/<dir>` | `ro,z` or `z` | Per `[integration.xdg_dirs]` |
 | `%h/.themes` | `/home/%u/.themes` | `ro` | `sync_themes` + path exists |

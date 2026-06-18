@@ -417,6 +417,13 @@ podbox edit myenv --rebuild
 
 ## Commands at a Glance
 
+### Profiles
+
+| Command | Description |
+|---------|-------------|
+| `podbox profile list` | List all available profiles (bundled + custom) |
+| `podbox profile show <name>` | Show the TOML configuration of a profile |
+
 ### Creating and building
 
 | Command | Description |

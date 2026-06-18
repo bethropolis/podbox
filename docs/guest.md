@@ -14,7 +14,11 @@ to the host via a Unix socket connection.
 
 The container starts with `podbox-guest --entry [<command>...]`.
 
-1. **`fork()`** splits into two processes:
+1. **Create flatpak sandbox marker** — symlink `/run/user/%U/flatpak-info`
+   → `/.flatpak-info` so that portal-aware toolkits believe they are inside a
+   Flatpak sandbox and route audio/video capture through portals.
+
+2. **`fork()`** splits into two processes:
 
    - **Child** (daemon process): redirects stdio to `/dev/null`, then
      execs `podbox-guest --daemon` (re-exec). Runs the event loop.
@@ -23,7 +27,7 @@ The container starts with `podbox-guest --entry [<command>...]`.
      via `execv`. If empty, execs a login shell (`$SHELL` or `/bin/bash`,
      with `argv[0]` prefixed by `-` for login mode).
 
-2. The parent **replaces itself** with the shell/command. The child runs
+3. The parent **replaces itself** with the shell/command. The child runs
    independently as a background daemon with a 5-minute idle timeout.
 
 ---

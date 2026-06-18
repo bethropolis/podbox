@@ -108,6 +108,7 @@ Key Quadlet settings (see [quadlet.md](quadlet.md) for full list):
 | `NoNewPrivileges` | `true` | Block setuid escalation (sudo, su) |
 | `PodmanArgs` | `--init` | catatonit as PID 1 (zombie reaping) |
 | `PodmanArgs` | `--workdir=/home/%u` | Default working directory |
+| `Volume` | `<context>/.flatpak-info:/.flatpak-info:ro` | Sandbox detection marker (portals) |
 | `Volume` | `%h/containers/<name>:/home/%u:Z` | Isolated home (never the host home) |
 | `Volume` | `%t/podbox/<name>.sock:%t/podbox/<name>.sock` | Host-guest socket |
 | `Environment` | `HOST_USER`, `HOST_UID`, `HOST_GID` | Host identity injected |
@@ -227,6 +228,7 @@ podbox/
 │   │       ├── lock.rs           # build lock file
 │   │       ├── podman.rs         # version detection + subcommand wrappers
 │   │       ├── process.rs        # exec_replace, run_piped, spawn
+│   │       ├── profiles.rs       # named config templates (bundled + custom)
 │   │       ├── profiles/         # built-in profile TOMLs
 │   │       │   ├── cachy.toml
 │   │       │   ├── dev.toml

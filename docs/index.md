@@ -31,6 +31,8 @@
 
 ```bash
 podbox use <name>                # set active context
+podbox profile list              # list available profiles
+podbox profile show <name>       # show profile TOML
 podbox create <profile>          # create + build + enable + start
 podbox enter <name>              # open a shell
 podbox exec -- <cmd>             # run a command
