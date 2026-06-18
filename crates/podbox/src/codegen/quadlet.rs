@@ -421,7 +421,12 @@ fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
 fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
     lines.push("PodmanArgs=--init".into());
     lines.push("PodmanArgs=--workdir=/home/%u".into());
-    lines.push(String::new());
+    for cap in &config.security.cap_add {
+        lines.push(format!("PodmanArgs=--cap-add={}", cap));
+    }
+    if !config.security.cap_add.is_empty() {
+        lines.push(String::new());
+    }
     if let Some(ref cmd) = config.container.reload_cmd {
         lines.push(format!("ReloadCmd={}", cmd));
         lines.push(String::new());

@@ -350,6 +350,8 @@ pub struct SecurityConfig {
     pub read_only_rootfs: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub userns: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cap_add: Vec<String>,
 }
 
 impl Default for SecurityConfig {
@@ -361,6 +363,7 @@ impl Default for SecurityConfig {
             no_new_privileges: true,
             read_only_rootfs: false,
             userns: None,
+            cap_add: Vec::new(),
         }
     }
 }
