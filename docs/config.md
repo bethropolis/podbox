@@ -99,6 +99,8 @@ TERM = "xterm-256color"
 | `no_new_privileges` | bool | `true` | Block privilege escalation via setuid binaries (`sudo`, `su`, AUR helpers). Emits `NoNewPrivileges=true` in the Quadlet. Set `false` to allow. |
 | `read_only_rootfs` | bool | `false` | Make root filesystem read-only. Emits `ReadOnly=true` in Quadlet |
 | `userns` | string | — | User namespace mode override. Defaults to `"keep-id"`. Supported: `"keep-id"`, `"nomap"`, `"private"` |
+| `cap_profile` | string | `"default"` | Capability preset. Options: `"none"`, `"default"`, `"monitoring"`, `"admin"`. Adds a predefined set of `--cap-add` entries alongside any `cap_add` list below |
+| `cap_add` | string[] | `[]` | Extra Linux capabilities to add (e.g. `["SYS_ADMIN"]`). Combined with `cap_profile` caps |
 
 ```toml
 [security]
@@ -106,6 +108,8 @@ apparmor = "unconfined"
 seccomp = "default"
 read_only_rootfs = true
 userns = "nomap"
+cap_profile = "monitoring"
+cap_add = ["SYS_ADMIN"]
 ```
 
 ---
@@ -298,38 +302,116 @@ See [dbus-proxy.md](dbus-proxy.md) for details.
 
 ## Full Example
 
-A typical config is ~25 lines. Empty/default sections are omitted automatically.
+This is a **reference example** showing every available key with sane defaults.
+It is **not** a working config — most install lists, env vars, and mounts
+are placeholders. Pick only what you need; omitted keys use their defaults.
 
 ```toml
+# ── Image ──────────────────────────────────────────────
 [image]
-base = "fedora:44"
-name = "myenv"
+base = "fedora:44"              # Base image for custom builds
+name = "myenv"                  # Image tag name
+image = "ghcr.io/user/myenv:latest"  # Prebuilt ref (omit for custom builds)
+pull_retry = 3                  # Pull retry count
+pull_retry_delay = "5s"         # Delay between pull retries
 
 [image.packages]
 install = ["git", "gcc", "ripgrep"]
+remove = ["vim-minimal"]
+manager = "dnf"                 # auto-detected; override: dnf, apt, pacman, apk, zypper
 
+[image.run]
+commands = ["dnf clean all"]    # Extra RUN steps
+
+# ── Container ──────────────────────────────────────────
 [container]
-name = "myenv"
-home = "~/containers/myenv"
-shell = "bash"
-memory = "4G"
-cpus = "2.0"
+name = "myenv"                  # Required; used for unit names and socket paths
+home = "~/containers/myenv"     # Required; isolated home directory (~ expands)
+shell = "fish"                  # Default login shell
+memory = "4G"                   # Memory limit (e.g. "4G", "512M", omitted = unlimited)
+cpus = "2.0"                    # CPU limit (e.g. "2.0", "0.5", omitted = unlimited)
+reload_cmd = "systemctl reload …"  # systemd ReloadCmd (omitted = none)
 
+[container.mounts]
+extra = ["~/Work:/home/user/Work:z"]
+
+[container.env]
+EDITOR = "nvim"
+TERM = "xterm-256color"
+
+# ── Security ───────────────────────────────────────────
 [security]
-read_only_rootfs = true
+apparmor = "unconfined"         # AppArmor profile (omitted = none)
+seccomp = "default"             # Seccomp profile (omitted = none, "unconfined" = off)
+security_label_disable = true   # Disable SELinux labels (needed for Wayland)
+no_new_privileges = true        # Block setuid escalation (sudo, su, AUR helpers)
+read_only_rootfs = false        # Make rootfs read-only (requires writable volumes)
+userns = "keep-id"              # UserNS mode: keep-id, nomap, private (omitted = keep-id)
+cap_add = ["SYS_PTRACE"]        # Extra Linux capabilities (omitted = none)
 
+# ── Network ────────────────────────────────────────────
 [network]
-mode = "bridge"
-ports = ["8080:80"]
+mode = "host"                   # host, bridge, none, pasta, slirp4netns, private
+ports = ["8080:80"]             # Port mappings (ignored in host mode)
 
+# ── Integration ────────────────────────────────────────
 [integration]
-wayland = true
-audio = true
-gpu = "auto"
+wayland     = true              # Share Wayland socket
+audio       = true              # Share PipeWire / PulseAudio
+gpu         = "auto"            # GPU: true, false, "auto", "nvidia"
+dbus        = true              # Enable D-Bus session bus
+notify      = true              # Forward desktop notifications
+xdg_open    = true              # Forward URI opening (xdg-open)
+clipboard   = true              # Clipboard sharing
+ssh_agent   = false             # Forward SSH agent (needs Podman ≥ 5.6)
+gpg_agent   = false             # Forward GPG agent
+sync_fonts  = true              # Sync ~/.fonts / ~/.local/share/fonts (ro)
+sync_icons  = true              # Sync ~/.icons / ~/.local/share/icons (ro)
+sync_themes = true              # Sync ~/.themes / ~/.local/share/themes (ro)
+
+[integration.host_exec]
+enabled = false
+allowlist = { git = "/usr/bin/git" }  # Alias → absolute path (required when enabled)
 
 [integration.xdg_dirs]
-documents = true
-downloads = true
+documents = false
+downloads = false
+pictures  = false
+music     = false
+videos    = false
+desktop   = false
+projects  = false
+
+[integration.export]
+apps = ["gedit", "nautilus"]    # Export .desktop files for these apps
+bins = ["rg", "gcc"]            # Create bin shims for these commands
+
+# ── Lifecycle ──────────────────────────────────────────
+[lifecycle]
+quadlet      = false            # Generate systemd Quadlet files on enable
+autostart    = false            # Start container on user login
+on_stop      = "keep"           # Container behavior on stop: "keep" or "remove"
+auto_update  = false            # Label for auto-updates (registry/local)
+idle_timeout = "off"            # Guest daemon idle timeout: "off", "30s", "5m", "1h"
+
+# ── systemd dependencies ────────────────────────────────
+[systemd]
+requires = ["postgres.service", "redis.service"]
+after    = ["network-online.target"]
+
+# ── D-Bus ──────────────────────────────────────────────
+[dbus]
+preset = "portal"               # Named preset: flatpak, gnome, kde, portal ("" = none)
+talk = ["org.freedesktop.Notifications"]
+own  = ["org.mpris.MediaPlayer2.podbox_app"]
+
+# ── Wayland firewall ───────────────────────────────────
+[wayland]
+firewall = true                 # Enable Wayland protocol firewall
+blocked_interfaces = [          # Blocked Wayland globals (default list)
+    "zwlr_screencopy_manager_v1",
+    "ext_image_copy_capture_v1",
+]
 ```
 
-For a reference of every supported key, see the tables above.
+Omitted keys use their defaults. See the tables above for every supported key.

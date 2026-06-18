@@ -47,8 +47,11 @@ COPY podbox-guest /usr/local/bin/podbox-guest
 RUN chmod +x /usr/local/bin/podbox-guest
 
 ENV PODBOX_CONTAINER=myenv
+ENV PODBOX_HOST_VERSION=0.5.0
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
-CMD ["/usr/bin/bash"]
+CMD ["/usr/bin/fish"]
 ```
 
 ### Build Context Layout
@@ -61,7 +64,7 @@ CMD ["/usr/bin/bash"]
 
 ## Generated Quadlet Files
 
-Three files written to `~/.config/containers/systemd/`.
+Files written to `~/.config/containers/systemd/`:
 
 ### `myenv.build`
 
@@ -82,6 +85,7 @@ Description=podbox host-guest socket — myenv
 
 [Socket]
 ListenStream=%t/podbox/myenv.sock
+Service=myenv-host.service
 SocketMode=0600
 DirectoryMode=0700
 
@@ -99,13 +103,19 @@ Key Quadlet settings (see [quadlet.md](quadlet.md) for full list):
 | Setting | Value | Purpose |
 |---------|-------|---------|
 | `UserNS` | `keep-id` | Maps host UID/GID into container |
+| `User` | `root` | Run as root (UID mapped via UserNS) |
 | `SecurityLabelDisable` | `true` | Required for Wayland socket access |
+| `NoNewPrivileges` | `true` | Block setuid escalation (sudo, su) |
 | `PodmanArgs` | `--init` | catatonit as PID 1 (zombie reaping) |
-| `Volume` | `%h/containers/<name>:/root:Z` | Isolated home (never the host home) |
+| `PodmanArgs` | `--workdir=/home/%u` | Default working directory |
+| `Volume` | `%h/containers/<name>:/home/%u:Z` | Isolated home (never the host home) |
+| `Volume` | `%t/podbox/<name>.sock:%t/podbox/<name>.sock` | Host-guest socket |
+| `Environment` | `HOST_USER`, `HOST_UID`, `HOST_GID` | Host identity injected |
+| `Environment` | `PATH=/run/podbox/bin:…` | Interceptor directory prepended |
 | `Restart` | `on-failure` | Auto-restart on crash |
 
-Volumes for Wayland, audio, D-Bus, XDG dirs, and the host-guest socket are
-added conditionally based on the config.
+Volumes for Wayland, audio, D-Bus, XDG dirs, GPU devices, and theme/icon/font
+sync are added conditionally based on the config.
 
 ## Host-Guest Socket Protocol
 
@@ -131,17 +141,19 @@ Its behavior is determined by `argv[0]`:
 | `podbox-guest --daemon` | Event loop, interceptor setup |
 | `notify-send` (symlink) | Parse args, forward to daemon |
 | `xdg-open` (symlink) | Parse args, forward to daemon |
+| `podbox-clipboard` (symlink) | Read stdin / write stdout for clipboard |
 | `host-exec` (symlink) | Execute command on host, relay output |
 
 ### Daemon startup sequence
 
 1. Read `PODBOX_CONTAINER` env → derive socket paths
 2. Create `/run/podbox/bin/` directory
-3. Connect to host socket (3 retries × 500ms)
-4. Handshake: send capabilities, receive accepted list
-5. Install interceptor symlinks in `/run/podbox/bin/`
-6. Prepend `/run/podbox/bin` to `$PATH` via `/etc/environment.d/podbox.conf`
-7. Enter event loop (poll-based, 0% CPU when idle, 5-min idle timeout)
+3. Check version drift — compare `PODBOX_HOST_VERSION` against podbox-guest version
+4. Connect to host socket (3 retries × 500ms)
+5. Handshake: send capabilities, receive accepted list and idle timeout
+6. Install interceptor symlinks in `/run/podbox/bin/` for accepted capabilities
+7. Prepend `/run/podbox/bin` to `$PATH` via `/etc/profile.d/podbox.sh` and `/etc/fish/conf.d/podbox.fish`
+8. Enter event loop (poll + pidfd-based, 0% CPU when idle, configurable idle timeout)
 
 If the socket is absent at startup, the daemon logs a warning and exits cleanly.
 The container continues running without integration — this is intentional.

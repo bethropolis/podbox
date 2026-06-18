@@ -134,7 +134,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 |-----|-------|
 | `--init` | catatonit as PID 1 (zombie reaping) |
 | `--workdir=/home/%u` | Default working directory |
-| `--cap-add=<cap>` | Per `security.cap_add` (conditional) |
+| `--cap-add=<cap>` | Per `security.cap_profile` + `security.cap_add` (conditional) |
 
 ### `[Service]`
 

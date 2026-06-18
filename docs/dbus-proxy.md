@@ -4,13 +4,12 @@ description: Filtered D-Bus access for podbox containers via xdg-dbus-proxy — 
 
 # D-Bus Proxy
 
-By default, `integration.dbus = true` bind-mounts the host's D-Bus session
-bus socket (`%t/bus`) directly into the container — giving the container
-**unfiltered access** to the entire host session bus.
+By default, `integration.dbus = true` enables a proxied D-Bus session bus
+with only the portal preset (`org.freedesktop.portal.*`) — the container
+never gets unfiltered host bus access unless you explicitly opt in.
 
-For better isolation, `podbox` can generate a companion systemd unit that
-runs `xdg-dbus-proxy` to filter which D-Bus services the container can
-interact with.
+This is handled by a companion systemd unit that runs `xdg-dbus-proxy`
+to filter which D-Bus services the container can interact with.
 
 ---
 
@@ -64,11 +63,12 @@ Wildcards (`*`) are supported per the `xdg-dbus-proxy` filtering rules.
 
 ## Behavior matrix
 
-| `integration.dbus` | `[dbus]` talk/own | What the container gets |
-|--------------------|-------------------|------------------------|
-| `false` | any | No D-Bus access at all |
-| `true` | empty (default) | Unfiltered `Volume=%t/bus:%t/bus` |
-| `true` | at least one rule | Proxy socket via `xdg-dbus-proxy` |
+| `integration.dbus` | `[dbus]` config | What the container gets |
+|--------------------|-----------------|------------------------|
+| `false` | any | No D-Bus access |
+| `true` | default (empty) | Proxied — `preset = "portal"` applied automatically |
+| `true` | preset / talk / own set | Proxied via `xdg-dbus-proxy` with those rules |
+| `true` | `preset = ""`, empty talk + own | Unfiltered `Volume=%t/bus:%t/bus` |
 
 ---
 
