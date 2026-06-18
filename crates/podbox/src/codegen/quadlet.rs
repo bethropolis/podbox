@@ -309,6 +309,11 @@ fn emit_volumes(
         lines.push(String::new());
     }
 
+    // Sandbox environment detection marker (read-only host-side kernel mount)
+    let flatpak_info_path = crate::build::build_context_dir(name).join(".flatpak-info");
+    lines.push(format!("Volume={}:/.flatpak-info:ro", flatpak_info_path.display()));
+    lines.push(String::new());
+
     // D-Bus
     if config.integration.dbus && env.dbus_socket.is_some() {
         if config.use_dbus_proxy() {

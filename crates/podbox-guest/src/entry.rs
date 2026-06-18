@@ -303,7 +303,12 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .args(["777", &runtime_dir])
         .status();
 
-    // 6. dconf subdirectory
+    // 6. Flatpak-info compatibility symlink (points to read-only host mount)
+    let flatpak_info_symlink = Path::new(&runtime_dir).join("flatpak-info");
+    let _ = std::fs::remove_file(&flatpak_info_symlink);
+    let _ = std::os::unix::fs::symlink("//.flatpak-info", &flatpak_info_symlink);
+
+    // 7. dconf subdirectory
     let dconf_dir = Path::new(&runtime_dir).join("dconf");
     let _ = std::fs::create_dir_all(&dconf_dir);
     let owner = format!("{}:{}", uid, gid);

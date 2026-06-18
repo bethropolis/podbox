@@ -129,6 +129,10 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         return Ok(());
     }
 
+    // Ensure .flatpak-info is written to the host build directory
+    let _ = std::fs::create_dir_all(&context_dir);
+    std::fs::write(context_dir.join(".flatpak-info"), "[Application]\nname=podbox\n")?;
+
     // Pre-flight validation
     preflight_check(config);
 
