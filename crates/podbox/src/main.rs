@@ -81,6 +81,7 @@ fn run() -> Result<()> {
     if !matches!(
         &cli.command,
         Command::Completions { .. }
+            | Command::Profile { .. }
             | Command::Serve { .. }
             | Command::Compositor { .. }
     ) && which::which("podman").is_err()
@@ -123,6 +124,10 @@ fn run() -> Result<()> {
                 *no_start,
                 *edit,
             );
+        }
+
+        Command::Profile { profile_cmd } => {
+            return run_profile_command(profile_cmd);
         }
 
         Command::List { output } => {
@@ -352,6 +357,7 @@ fn run() -> Result<()> {
 
         Command::FindDefinition { .. }
         | Command::Completions { .. }
+        | Command::Profile { .. }
         | Command::Init { .. }
         | Command::Create { .. }
         | Command::Clone { .. }
@@ -506,6 +512,25 @@ fn hash_image_section(path: &std::path::Path) -> Result<String> {
         .unwrap_or_default();
     use sha2::{Digest, Sha256};
     Ok(hex::encode(Sha256::digest(image_str.as_bytes())))
+}
+
+fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<()> {
+    match cmd {
+        podbox::cli::ProfileCommand::List => {
+            let list = podbox::profiles::all();
+            println!("{:<10} {:<15} {}", "PROFILE", "LABEL", "DESCRIPTION");
+            println!("{}", "─".repeat(70));
+            for p in &list {
+                println!("{:<10} {:<15} {}", p.name, p.label, p.description);
+            }
+        }
+        podbox::cli::ProfileCommand::Show { name } => {
+            let p = podbox::profiles::find(name)
+                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
+            println!("{}", p.toml);
+        }
+    }
+    Ok(())
 }
 
 /// Open the config in the user's editor, detect [image] changes, and offer to rebuild.

@@ -269,6 +269,12 @@ pub enum Command {
         image: Option<String>,
     },
 
+    /// Manage container profiles.
+    Profile {
+        #[command(subcommand)]
+        profile_cmd: ProfileCommand,
+    },
+
     /// Run diagnostic checks.
     Doctor {
         /// Auto-fix common issues (e.g. corrupted Wayland socket ownership).
@@ -362,6 +368,17 @@ pub enum ExportCommand {
     },
     /// Remove all exports for the container.
     Clean,
+}
+
+#[derive(Subcommand)]
+pub enum ProfileCommand {
+    /// List all available profiles (built-in and custom).
+    List,
+    /// Show the configuration of a specific profile.
+    Show {
+        /// Name of the profile to display.
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
