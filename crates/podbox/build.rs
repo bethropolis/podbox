@@ -51,8 +51,7 @@ fn embed_guest() {
         .args(["target", "list", "--installed"])
         .output()
         .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains(musl_target))
-        .unwrap_or(false);
+        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains(musl_target));
 
     let (guest_path, target_label) = if musl_available {
         let path = guest_target

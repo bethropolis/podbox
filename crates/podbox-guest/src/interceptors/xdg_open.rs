@@ -13,6 +13,6 @@ pub fn run(args: &[String]) {
     let msg = GuestMessage::XdgOpen { uri };
 
     if let Err(e) = send_to_host(&msg) {
-        eprintln!("xdg-open interceptor: failed to send: {}", e);
+        eprintln!("xdg-open interceptor: failed to send: {e}");
     }
 }

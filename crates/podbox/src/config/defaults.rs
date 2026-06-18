@@ -93,7 +93,11 @@ pub fn is_default_idle_timeout(v: &str) -> bool {
 }
 
 pub fn is_default_lifecycle(v: &LifecycleConfig) -> bool {
-    !v.quadlet && !v.autostart && v.on_stop == OnStop::Keep && !v.auto_update && v.idle_timeout == "off"
+    !v.quadlet
+        && !v.autostart
+        && v.on_stop == OnStop::Keep
+        && !v.auto_update
+        && v.idle_timeout == "off"
 }
 
 pub fn is_default_systemd(v: &SystemdConfig) -> bool {

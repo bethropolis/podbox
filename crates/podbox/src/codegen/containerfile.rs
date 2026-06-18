@@ -1,4 +1,4 @@
-use crate::codegen::distros::{detect_host_locale, detect_host_shell, DistroFamily};
+use crate::codegen::distros::{DistroFamily, detect_host_locale, detect_host_shell};
 use crate::config::Config;
 
 pub fn generate(config: &Config, _guest_binary_name: &str) -> String {

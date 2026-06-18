@@ -8,23 +8,21 @@ use anyhow::Result;
 use podbox::codegen::distros;
 use podbox::config::Config;
 use podbox::env::HostEnv;
-use podbox::podman::{query_state, ContainerState};
-use podbox::protocol::{write_frame, GuestMessage};
+use podbox::podman::{ContainerState, query_state};
+use podbox::protocol::{GuestMessage, write_frame};
 
-/// Try to register a terminal session with the host's socket_host.
+/// Try to register a terminal session with the host's `socket_host`.
 ///
 /// Opens a pidfd for the current process, connects to the host socket,
 /// sends `RegisterSession` with the pidfd via `SCM_RIGHTS`, then closes
 /// the connection.  Silently skips on old kernels or when `serve` is
 /// not running.
 fn register_session(name: &str, xdg_runtime_dir: &Path) {
-    let pidfd = match podbox::process::open_pidfd(std::process::id() as i32) {
+    let pidfd = match podbox::process::open_pidfd(std::process::id().cast_signed()) {
         Ok(fd) => fd,
         _ => return,
     };
-    let socket_path = xdg_runtime_dir
-        .join("podbox")
-        .join(format!("{}.sock", name));
+    let socket_path = xdg_runtime_dir.join("podbox").join(format!("{name}.sock"));
     let mut stream = match UnixStream::connect(&socket_path) {
         Ok(s) => s,
         _ => return,
@@ -127,7 +125,7 @@ pub fn run_run(
 
 fn quadlet_installed(name: &str) -> bool {
     let qdir = podbox::quadlet_install::quadlet_dir();
-    qdir.join(format!("{}.container", name)).exists()
+    qdir.join(format!("{name}.container")).exists()
 }
 
 /// Print the container's running state.
@@ -141,26 +139,29 @@ pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) 
             ContainerState::Missing if quadlet_installed(name) => "not built",
             ContainerState::Missing => "not installed",
         };
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "name": name,
-            "status": status,
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "name": name,
+                "status": status,
+            }))?
+        );
         return Ok(());
     }
 
     if dry_run {
-        println!("podman inspect --format {{{{.State.Status}}}} {}", name);
+        println!("podman inspect --format {{{{.State.Status}}}} {name}");
         return Ok(());
     }
     let state = query_state(name)?;
     match state {
-        ContainerState::Running => println!("{} [running]", name),
-        ContainerState::Stopped => println!("{} [stopped]", name),
+        ContainerState::Running => println!("{name} [running]"),
+        ContainerState::Stopped => println!("{name} [stopped]"),
         ContainerState::Missing => {
             if quadlet_installed(name) {
-                println!("{} [not built]", name);
+                println!("{name} [not built]");
             } else {
-                println!("{} [not installed]", name);
+                println!("{name} [not installed]");
             }
         }
     }
@@ -187,7 +188,7 @@ pub fn run_logs(
         let mut args: Vec<OsString> = vec![
             "--user".into(),
             "-u".into(),
-            format!("{}.service", name).into(),
+            format!("{name}.service").into(),
         ];
         if follow {
             args.push("-f".into());
@@ -202,7 +203,7 @@ pub fn run_logs(
             println!("journalctl {}", args_to_string(&args));
             return Ok(());
         }
-        println!("Showing logs for: {}.service", name);
+        println!("Showing logs for: {name}.service");
         podbox::process::spawn_interactive("journalctl", &args).map(|_| ())
     } else {
         let mut args: Vec<OsString> = vec!["logs".into()];
@@ -272,7 +273,10 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
                     {
                         use std::os::unix::fs::MetadataExt;
                         let owner = meta.uid();
-                        if owner != env.uid {
+                        if owner == env.uid {
+                            println!("[PASS] Wayland socket owner correct");
+                            passes += 1;
+                        } else {
                             println!(
                                 "[WARN] Wayland socket owner {} != host UID {}",
                                 owner, env.uid
@@ -294,9 +298,6 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
                                     socket.display()
                                 );
                             }
-                        } else {
-                            println!("[PASS] Wayland socket owner correct");
-                            passes += 1;
                         }
                     }
                 }
@@ -323,25 +324,18 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
         Ok(content) => {
             let username = &env.username;
             if content.lines().any(|l| l.starts_with(username)) {
-                println!(
-                    "[PASS] user '{}' has sub-UID allocations in /etc/subuid",
-                    username
-                );
+                println!("[PASS] user '{username}' has sub-UID allocations in /etc/subuid");
                 passes += 1;
             } else {
                 println!(
-                    "[FAIL] user '{}' missing from /etc/subuid. Rootless Podman may fail.",
-                    username
+                    "[FAIL] user '{username}' missing from /etc/subuid. Rootless Podman may fail."
                 );
-                println!(
-                    "       Fix: sudo usermod --add-subuids 100000-165535 {}",
-                    username
-                );
+                println!("       Fix: sudo usermod --add-subuids 100000-165535 {username}");
                 failures += 1;
             }
         }
         Err(_) => {
-            println!("[WARN] could not read /etc/subuid — check manually if rootless builds fail")
+            println!("[WARN] could not read /etc/subuid — check manually if rootless builds fail");
         }
     }
 
@@ -350,25 +344,18 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
         Ok(content) => {
             let username = &env.username;
             if content.lines().any(|l| l.starts_with(username)) {
-                println!(
-                    "[PASS] user '{}' has sub-GID allocations in /etc/subgid",
-                    username
-                );
+                println!("[PASS] user '{username}' has sub-GID allocations in /etc/subgid");
                 passes += 1;
             } else {
                 println!(
-                    "[FAIL] user '{}' missing from /etc/subgid. Rootless Podman may fail.",
-                    username
+                    "[FAIL] user '{username}' missing from /etc/subgid. Rootless Podman may fail."
                 );
-                println!(
-                    "       Fix: sudo usermod --add-subgids 100000-165535 {}",
-                    username
-                );
+                println!("       Fix: sudo usermod --add-subgids 100000-165535 {username}");
                 failures += 1;
             }
         }
         Err(_) => {
-            println!("[WARN] could not read /etc/subgid — check manually if rootless builds fail")
+            println!("[WARN] could not read /etc/subgid — check manually if rootless builds fail");
         }
     }
 
@@ -390,24 +377,24 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
         checks += 1;
         if which::which("loginctl").is_ok() {
             let username = std::env::var("USER").unwrap_or_default();
-            if !username.is_empty() {
-                if let Ok(output) = podbox::process::run_piped(
+            if !username.is_empty()
+                && let Ok(output) = podbox::process::run_piped(
                     "loginctl",
                     &[
                         "show-user".into(),
                         username.into(),
                         "--property=Linger".into(),
                     ],
-                ) {
-                    let out = String::from_utf8_lossy(&output.stdout);
-                    if out.contains("yes") {
-                        println!("[PASS] loginctl linger enabled");
-                        passes += 1;
-                    } else {
-                        println!(
-                            "[WARN] loginctl linger not enabled -- run: loginctl enable-linger $USER"
-                        );
-                    }
+                )
+            {
+                let out = String::from_utf8_lossy(&output.stdout);
+                if out.contains("yes") {
+                    println!("[PASS] loginctl linger enabled");
+                    passes += 1;
+                } else {
+                    println!(
+                        "[WARN] loginctl linger not enabled -- run: loginctl enable-linger $USER"
+                    );
                 }
             }
         }
@@ -427,9 +414,9 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
         }
     }
 
-    println!("\n{} / {} checks passed", passes, checks);
+    println!("\n{passes} / {checks} checks passed");
     if failures > 0 {
-        Err(anyhow::anyhow!("{} check(s) failed", failures))
+        Err(anyhow::anyhow!("{failures} check(s) failed"))
     } else {
         Ok(())
     }

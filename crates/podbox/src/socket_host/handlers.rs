@@ -2,7 +2,7 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 
 use crate::config::IntegrationConfig;
-use crate::protocol::{write_frame, HostMessage};
+use crate::protocol::{HostMessage, write_frame};
 
 /// Handle a `Hello` handshake from the guest.
 pub(super) fn handle_hello(
@@ -166,8 +166,7 @@ pub(super) fn handle_host_exec(
                 &HostMessage::HostExecStderr {
                     data: format!(
                         "Permission denied: '{}' is not in the host-exec allowlist\nAllowed commands: {}",
-                        cmd,
-                        allowed
+                        cmd, allowed
                     ),
                 },
             )?;

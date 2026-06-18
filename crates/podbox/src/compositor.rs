@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use nix::sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags};
+use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 
 use crate::config::Config;
 
@@ -189,8 +189,8 @@ fn bridge_loop(
             }
 
             let message_bytes = &bytes_cache[consumed..consumed + msg_size];
-            let should_drop = !is_client_to_host
-                && is_blocked_global(message_bytes, opcode, &state);
+            let should_drop =
+                !is_client_to_host && is_blocked_global(message_bytes, opcode, &state);
 
             if !should_drop {
                 forward_message(&out_socket, message_bytes, &mut pending_fds)?;
@@ -210,11 +210,7 @@ fn bridge_loop(
 
 /// Check whether a host→client message is a `wl_registry::global` event
 /// announcing a blocked interface.
-fn is_blocked_global(
-    message_bytes: &[u8],
-    opcode: u16,
-    state: &Mutex<FirewallState>,
-) -> bool {
+fn is_blocked_global(message_bytes: &[u8], opcode: u16, state: &Mutex<FirewallState>) -> bool {
     // wl_registry::global (opcode 0) format:
     //   8 bytes header (object_id, size+opcode=0)
     //   4 bytes name (u32)
@@ -255,7 +251,13 @@ fn forward_message(
     } else {
         let raw_fds: Vec<RawFd> = pending_fds.iter().map(|f| f.as_raw_fd()).collect();
         let cmsg = ControlMessage::ScmRights(&raw_fds);
-        sendmsg::<()>(out_socket.as_raw_fd(), &iov, &[cmsg], MsgFlags::empty(), None)?;
+        sendmsg::<()>(
+            out_socket.as_raw_fd(),
+            &iov,
+            &[cmsg],
+            MsgFlags::empty(),
+            None,
+        )?;
         pending_fds.clear();
     }
 

@@ -5,8 +5,8 @@ use podbox::config::{self, Config};
 /// Clone an existing container config to a new name.
 pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result<()> {
     let config_dir = config::config_dir();
-    let src_path = config_dir.join(format!("{}.toml", src));
-    let dst_path = config_dir.join(format!("{}.toml", dst));
+    let src_path = config_dir.join(format!("{src}.toml"));
+    let dst_path = config_dir.join(format!("{dst}.toml"));
 
     if !src_path.exists() {
         anyhow::bail!(
@@ -24,7 +24,7 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     }
 
     if dry_run {
-        println!("Would clone '{}' to '{}'", src, dst);
+        println!("Would clone '{src}' to '{dst}'");
         if copy_home {
             println!("Would also copy home directory contents.");
         }
@@ -53,12 +53,9 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
             .join("containers")
             .join(src);
         if home.exists() {
-            let entries = std::fs::read_dir(&home).map(|e| e.count()).unwrap_or(0);
+            let entries = std::fs::read_dir(&home).map_or(0, std::iter::Iterator::count);
             if entries > 500 {
-                eprintln!(
-                    "Warning: source home has {} items. Copying may take a while.",
-                    entries
-                );
+                eprintln!("Warning: source home has {entries} items. Copying may take a while.");
             }
             let status = std::process::Command::new("cp")
                 .args(["-a", &home.to_string_lossy(), &new_home.to_string_lossy()])
@@ -76,7 +73,7 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     }
 
     println!();
-    println!("Cloned '{}' → '{}'", src, dst);
-    println!("Run `podbox build {}` to build and start.", dst);
+    println!("Cloned '{src}' → '{dst}'");
+    println!("Run `podbox build {dst}` to build and start.");
     Ok(())
 }

@@ -1,6 +1,6 @@
 use std::os::unix::net::UnixStream;
 
-use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
 use crate::socket::host_socket_path;
 
 pub fn run(args: &[String]) {
@@ -15,11 +15,11 @@ pub fn run(args: &[String]) {
     };
 
     let path = host_socket_path().unwrap_or_else(|e| {
-        eprintln!("host-exec: {}", e);
+        eprintln!("host-exec: {e}");
         std::process::exit(1);
     });
     let mut stream = UnixStream::connect(&path).unwrap_or_else(|e| {
-        eprintln!("host-exec: connect failed: {}", e);
+        eprintln!("host-exec: connect failed: {e}");
         std::process::exit(1);
     });
 
@@ -28,13 +28,12 @@ pub fn run(args: &[String]) {
     let mut exit_code = 0i32;
     while let Ok(Some(bytes)) = read_frame(&mut stream) {
         match serde_json::from_slice::<HostMessage>(&bytes) {
-            Ok(HostMessage::HostExecStdout { data }) => print!("{}", data),
-            Ok(HostMessage::HostExecStderr { data }) => eprint!("{}", data),
+            Ok(HostMessage::HostExecStdout { data }) => print!("{data}"),
+            Ok(HostMessage::HostExecStderr { data }) => eprint!("{data}"),
             Ok(HostMessage::HostExecDone { exit_code: code }) => {
                 exit_code = code;
                 break;
             }
-            Ok(HostMessage::Shutdown) => break,
             _ => break,
         }
     }

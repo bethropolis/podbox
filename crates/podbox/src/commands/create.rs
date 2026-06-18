@@ -14,12 +14,12 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
         println!("podbox build");
     } else {
         let local_tag = format!("localhost/podbox-{}:latest", cfg.image.name);
-        if !podbox::podman::image_exists(&local_tag).unwrap_or(false) {
+        if podbox::podman::image_exists(&local_tag).unwrap_or(false) {
+            println!("Image already exists, skipping build.");
+        } else {
             let env = podbox::env::resolve()?;
             let xdg = podbox::xdg::resolve(&cfg.integration.xdg_dirs)?;
             podbox::build::run(cfg, &env, &xdg, false, false)?;
-        } else {
-            println!("Image already exists, skipping build.");
         }
     }
 
@@ -34,12 +34,9 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
 
     if no_start {
         println!("Container created but not started (--no-start).");
-        println!(
-            "Run `podbox shell {}` to start and enter it.",
-            container_name
-        );
+        println!("Run `podbox shell {container_name}` to start and enter it.");
     } else if dry_run {
-        println!("podman start {}", container_name);
+        println!("podman start {container_name}");
     } else {
         println!("Starting container...");
         if systemd::is_available() {
@@ -48,7 +45,7 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
             let args = podbox::process::args(&["start", container_name]);
             podbox::process::spawn_interactive("podman", &args)?;
         }
-        println!("Container '{}' is running!", container_name);
+        println!("Container '{container_name}' is running!");
         println!("Run `podbox shell` to enter.");
     }
 
@@ -62,7 +59,7 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
 pub(super) fn read_profile_content(profile: &str) -> Result<String> {
     if profile.contains('/') || profile.contains('\\') {
         std::fs::read_to_string(Path::new(profile))
-            .with_context(|| format!("failed to read profile '{}'", profile))
+            .with_context(|| format!("failed to read profile '{profile}'"))
     } else {
         let found = podbox::profiles::find(profile).ok_or_else(|| {
             let names = podbox::profiles::list_names();
@@ -80,9 +77,9 @@ pub(super) fn derive_container_name(image: &str, custom_name: Option<&str>) -> S
     if let Some(name) = custom_name {
         return name.to_string();
     }
-    let image_part = image.split_once(':').map(|(n, _)| n).unwrap_or(image);
+    let image_part = image.split_once(':').map_or(image, |(n, _)| n);
     let short = image_part.split('/').next_back().unwrap_or(image_part);
-    let tag = image.split_once(':').map(|(_, t)| t).unwrap_or("latest");
+    let tag = image.split_once(':').map_or("latest", |(_, t)| t);
     if tag == "latest" || tag.is_empty() {
         short.to_string()
     } else {
@@ -115,7 +112,7 @@ pub fn run_init(
         let result = podbox::wizard::run_wizard(&profiles, &shell_info)?;
         if !result.confirmed {
             let toml = toml::to_string_pretty(&result.config)?;
-            println!("{}", toml);
+            println!("{toml}");
             return Ok(());
         }
         let config_dir = config::config_dir();
@@ -129,7 +126,7 @@ pub fn run_init(
         if dry_run {
             let toml = toml::to_string_pretty(&result.config)?;
             println!("Would write to: {}", config_path.display());
-            println!("---\n{}", toml);
+            println!("---\n{toml}");
             return Ok(());
         }
         std::fs::create_dir_all(&config_dir)?;
@@ -151,7 +148,7 @@ pub fn run_init(
         let toml_str = toml::to_string_pretty(&cfg)?;
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
         let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{}.toml", container_name));
+        let config_path = config_dir.join(format!("{container_name}.toml"));
 
         if config_path.exists() && !dry_run {
             anyhow::bail!(
@@ -162,7 +159,7 @@ pub fn run_init(
 
         if dry_run {
             println!("Would create: {}", config_path.display());
-            println!("---\n{}", toml_str);
+            println!("---\n{toml_str}");
             return Ok(());
         }
 
@@ -171,8 +168,7 @@ pub fn run_init(
         println!("Created config: {}", config_path.display());
         println!();
         println!(
-            "Profile created! Run `podbox create {}` or `podbox start` to spin it up.",
-            container_name
+            "Profile created! Run `podbox create {container_name}` or `podbox start` to spin it up."
         );
         return Ok(());
     }
@@ -209,10 +205,10 @@ pub fn run_init(
     cfg.validate()?;
     let toml_str = toml::to_string_pretty(&cfg)?;
     let config_dir = config::config_dir();
-    let config_path = config_dir.join(format!("{}.toml", container_name));
+    let config_path = config_dir.join(format!("{container_name}.toml"));
 
     if config_path.exists() && !dry_run {
-        let alt = format!("{}-alt", container_name);
+        let alt = format!("{container_name}-alt");
         anyhow::bail!(
             "Config already exists at '{}'.\n\
              Use --name to specify a different name (e.g. --name {}).",
@@ -223,7 +219,7 @@ pub fn run_init(
 
     if dry_run {
         println!("Would create: {}", config_path.display());
-        println!("---\n{}", toml_str);
+        println!("---\n{toml_str}");
         return Ok(());
     }
 
@@ -232,8 +228,7 @@ pub fn run_init(
     println!("Created config: {}", config_path.display());
     println!();
     println!(
-        "Container created! Run `podbox create {}` or `podbox start` to spin it up.",
-        container_name
+        "Container created! Run `podbox create {container_name}` or `podbox start` to spin it up."
     );
 
     Ok(())
@@ -261,7 +256,7 @@ pub fn run_create(
         let mut cfg = Config::parse(&profile_content)?;
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
-            for pkg in pkgs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
                 if !cfg.image.packages.install.contains(&pkg.to_string()) {
                     cfg.image.packages.install.push(pkg.to_string());
                 }
@@ -271,7 +266,7 @@ pub fn run_create(
         cfg.container.name = container_name.clone();
         cfg.image.name = container_name.clone();
         let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{}.toml", container_name));
+        let config_path = config_dir.join(format!("{container_name}.toml"));
 
         if config_path.exists() && !dry_run {
             eprintln!(
@@ -282,7 +277,7 @@ pub fn run_create(
             let config_toml = toml::to_string_pretty(&cfg)?;
             if dry_run {
                 println!("Would create config: {}", config_path.display());
-                println!("---\n{}", config_toml);
+                println!("---\n{config_toml}");
             } else {
                 std::fs::create_dir_all(&config_dir)?;
                 std::fs::write(&config_path, &config_toml)?;
@@ -308,8 +303,8 @@ pub fn run_create(
 
     let config_dir = config::config_dir();
     let existing = match name {
-        Some(n) => config_dir.join(format!("{}.toml", n)),
-        None => config_dir.join(format!("{}.toml", image)),
+        Some(n) => config_dir.join(format!("{n}.toml")),
+        None => config_dir.join(format!("{image}.toml")),
     };
     if existing.exists() {
         let stem = existing.file_stem().unwrap_or_default().to_string_lossy();
@@ -324,7 +319,7 @@ pub fn run_create(
     }
 
     if dry_run {
-        println!("podman pull {}", image);
+        println!("podman pull {image}");
         return Ok(());
     }
 
@@ -335,10 +330,15 @@ pub fn run_create(
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .map_err(|_| PodboxError::PullFailed { image: image.into() })?;
+        .map_err(|_| PodboxError::PullFailed {
+            image: image.into(),
+        })?;
 
     if !status.success() {
-        return Err(PodboxError::PullFailed { image: image.into() }.into());
+        return Err(PodboxError::PullFailed {
+            image: image.into(),
+        }
+        .into());
     }
 
     if let Some(n) = name {
@@ -356,7 +356,7 @@ pub fn run_create(
         cfg.container.shell.clear();
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
-            for pkg in pkgs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
                 if !cfg.image.packages.install.contains(&pkg.to_string()) {
                     cfg.image.packages.install.push(pkg.to_string());
                 }
@@ -365,7 +365,7 @@ pub fn run_create(
         cfg.validate()?;
 
         let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{}.toml", container_name));
+        let config_path = config_dir.join(format!("{container_name}.toml"));
         if config_path.exists() {
             eprintln!(
                 "Config already exists at '{}'. Reusing existing config.",
@@ -383,15 +383,14 @@ pub fn run_create(
             editor::open(&ed, &config_path)?;
         }
 
-        println!("Image '{}' pulled and configured.", image);
+        println!("Image '{image}' pulled and configured.");
         return finish_create(&cfg, &container_name, dry_run, no_start);
     }
 
-    println!("Image '{}' pulled.", image);
+    println!("Image '{image}' pulled.");
     let suggested = derive_container_name(image, None);
     println!(
-        "Run `podbox init {} --name <name>` to create a config (e.g. --name {}).",
-        image, suggested
+        "Run `podbox init {image} --name <name>` to create a config (e.g. --name {suggested})."
     );
     Ok(())
 }

@@ -47,7 +47,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
 fn main() -> ExitCode {
     let result = run();
     if let Err(e) = result {
-        eprintln!("Error: {:#}", e);
+        eprintln!("Error: {e:#}");
         exit_code_for_error(&e)
     } else {
         ExitCode::SUCCESS
@@ -258,9 +258,7 @@ fn run() -> Result<()> {
         }
 
         Command::Stats {
-            no_stream,
-            output,
-            ..
+            no_stream, output, ..
         } => {
             commands::stats::run_stats(&name, *no_stream, *output)?;
         }
@@ -330,7 +328,7 @@ fn run() -> Result<()> {
 
         Command::Compositor { name: comp_name } => {
             let config_dir = podbox::config::config_dir();
-            let config_path = config_dir.join(format!("{}.toml", comp_name));
+            let config_path = config_dir.join(format!("{comp_name}.toml"));
             let config = podbox::config::Config::load(&config_path)?;
             podbox::compositor::run_compositor(&config, comp_name)?;
         }
@@ -387,7 +385,7 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
         }
     } else if let Some(ref container_name) = target_name {
         let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{}.toml", container_name));
+        let config_path = config_dir.join(format!("{container_name}.toml"));
         Config::load(&config_path).map_err(|e| {
             anyhow::anyhow!(
                 "{}\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
@@ -427,7 +425,7 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
                     .items(&items)
                     .default(0)
                     .interact()
-                    .map_err(|e| anyhow::anyhow!("selection failed: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("selection failed: {e}"))?;
             Config::load(&config_list[selection])?
         } else if config_list.len() == 1 {
             Config::load(&config_list[0])?
@@ -448,10 +446,10 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
 
     if needs_image_labels(&cli.command) {
         let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
-        if let Ok(true) = podbox::podman::image_exists(&local_tag) {
-            if let Ok(labels) = podbox::labels::fetch(&local_tag) {
-                podbox::labels::apply_defaults(&mut config, &labels);
-            }
+        if let Ok(true) = podbox::podman::image_exists(&local_tag)
+            && let Ok(labels) = podbox::labels::fetch(&local_tag)
+        {
+            podbox::labels::apply_defaults(&mut config, &labels);
         }
     }
 
@@ -461,7 +459,7 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
 /// Resolve the config file path for the given container name (or auto-detect).
 fn resolve_config_path(container: Option<&str>) -> Result<PathBuf> {
     if let Some(name) = container {
-        let path = config::config_dir().join(format!("{}.toml", name));
+        let path = config::config_dir().join(format!("{name}.toml"));
         if !path.exists() {
             anyhow::bail!(
                 "no config found for container '{}' at '{}'",
@@ -508,7 +506,7 @@ fn hash_image_section(path: &std::path::Path) -> Result<String> {
     let table: toml::Value = raw.parse()?;
     let image_str = table
         .get("image")
-        .map(|v| v.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
     use sha2::{Digest, Sha256};
     Ok(hex::encode(Sha256::digest(image_str.as_bytes())))
@@ -518,7 +516,7 @@ fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<()> {
     match cmd {
         podbox::cli::ProfileCommand::List => {
             let list = podbox::profiles::all();
-            println!("{:<10} {:<15} {}", "PROFILE", "LABEL", "DESCRIPTION");
+            println!("{:<10} {:<15} DESCRIPTION", "PROFILE", "LABEL");
             println!("{}", "─".repeat(70));
             for p in &list {
                 println!("{:<10} {:<15} {}", p.name, p.label, p.description);
@@ -526,7 +524,7 @@ fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<()> {
         }
         podbox::cli::ProfileCommand::Show { name } => {
             let p = podbox::profiles::find(name)
-                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", name))?;
+                .ok_or_else(|| anyhow::anyhow!("Profile '{name}' not found"))?;
             println!("{}", p.toml);
         }
     }

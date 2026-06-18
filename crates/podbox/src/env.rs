@@ -86,11 +86,7 @@ pub fn resolve() -> Result<HostEnv> {
     });
     let gpg_agent_socket = gpg_home.as_ref().and_then(|gpg| {
         let sock = gpg.join("S.gpg-agent");
-        if sock.exists() {
-            Some(sock)
-        } else {
-            None
-        }
+        if sock.exists() { Some(sock) } else { None }
     });
 
     Ok(HostEnv {

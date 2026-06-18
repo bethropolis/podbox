@@ -7,11 +7,11 @@ use podbox::config;
 pub fn run_find_definition(name: Option<&str>) -> Result<()> {
     match name {
         Some(n) => {
-            let path = config::config_dir().join(format!("{}.toml", n));
+            let path = config::config_dir().join(format!("{n}.toml"));
             if path.exists() {
                 println!("{}", path.display());
             } else {
-                println!("(no config found for '{}')", n);
+                println!("(no config found for '{n}')");
             }
         }
         None => match config::find_definition() {
@@ -40,18 +40,23 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
         let entries: Vec<serde_json::Value> = configs
             .iter()
             .map(|cp| {
-                let name = cp.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                let name = cp
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 let state_label = match podbox::podman::query_state(&name) {
                     Ok(podbox::podman::ContainerState::Running) => "running",
                     Ok(podbox::podman::ContainerState::Stopped)
-                        if podbox::systemd::is_unit_failed(&name) => "failed",
+                        if podbox::systemd::is_unit_failed(&name) =>
+                    {
+                        "failed"
+                    }
                     Ok(podbox::podman::ContainerState::Stopped) => "stopped",
                     Ok(podbox::podman::ContainerState::Missing) => "unbuilt",
                     Err(_) => "unknown",
                 };
-                let autostart = config::Config::load(cp)
-                    .map(|c| c.lifecycle.autostart)
-                    .unwrap_or(false);
+                let autostart = config::Config::load(cp).is_ok_and(|c| c.lifecycle.autostart);
                 serde_json::json!({
                     "name": name,
                     "status": state_label,
@@ -60,7 +65,10 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({"containers": entries}))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({"containers": entries}))?
+        );
         return Ok(());
     }
 
@@ -89,7 +97,7 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
         let autostart = format_autostart(&config_path, use_color);
         let active = format_active(&name, &active_ctx, use_color);
 
-        println!("{:<20} {:<24} {:<10} {}", name, status, autostart, active);
+        println!("{name:<20} {status:<24} {autostart:<10} {active}");
     }
 
     Ok(())
@@ -99,23 +107,43 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
 fn format_status(name: &str, color: bool) -> String {
     let (dot, label) = match podbox::podman::query_state(name) {
         Ok(podbox::podman::ContainerState::Running) => {
-            if color { ("\x1b[32m●\x1b[0m", "running") } else { ("●", "running") }
+            if color {
+                ("\x1b[32m●\x1b[0m", "running")
+            } else {
+                ("●", "running")
+            }
         }
         Ok(podbox::podman::ContainerState::Stopped) => {
             if podbox::systemd::is_unit_failed(name) {
-                if color { ("\x1b[31m⚠\x1b[0m", "failed") } else { ("⚠", "failed") }
+                if color {
+                    ("\x1b[31m⚠\x1b[0m", "failed")
+                } else {
+                    ("⚠", "failed")
+                }
             } else {
-                if color { ("\x1b[90m○\x1b[0m", "stopped") } else { ("○", "stopped") }
+                if color {
+                    ("\x1b[90m○\x1b[0m", "stopped")
+                } else {
+                    ("○", "stopped")
+                }
             }
         }
         Ok(podbox::podman::ContainerState::Missing) => {
-            if color { ("\x1b[33m○\x1b[0m", "unbuilt") } else { ("○", "unbuilt") }
+            if color {
+                ("\x1b[33m○\x1b[0m", "unbuilt")
+            } else {
+                ("○", "unbuilt")
+            }
         }
         Err(_) => {
-            if color { ("\x1b[31m?\x1b[0m", "unknown") } else { ("?", "unknown") }
+            if color {
+                ("\x1b[31m?\x1b[0m", "unknown")
+            } else {
+                ("?", "unknown")
+            }
         }
     };
-    format!("{} {}", dot, label)
+    format!("{dot} {label}")
 }
 
 /// Format the autostart column, reading from the TOML config.
@@ -147,7 +175,7 @@ fn format_active(name: &str, active_ctx: &Option<String>, color: bool) -> String
 /// Wrap text in ANSI color/reset if color is enabled.
 fn color_if(text: &str, color: bool, ansi_on: &str, ansi_off: &str) -> String {
     if color {
-        format!("{}{}{}", ansi_on, text, ansi_off)
+        format!("{ansi_on}{text}{ansi_off}")
     } else {
         text.to_string()
     }

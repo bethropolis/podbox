@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::config::Config;
 use crate::config::validation::parse_idle_timeout_secs;
 use crate::process;
-use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
 use crate::systemd;
 
 mod handlers;
@@ -33,11 +33,7 @@ struct SharedState {
 }
 
 /// Run the host socket server for a container.
-pub fn run(
-    socket_path: &Path,
-    config: &Config,
-    container_name: &str,
-) -> anyhow::Result<()> {
+pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
     let config = config.clone();
     let path = socket_path.to_path_buf();
     let idle_timeout_secs = parse_idle_timeout_secs(&config.lifecycle.idle_timeout);
@@ -212,7 +208,7 @@ fn monitor_pidfd(raw_fd: RawFd, state: Arc<SharedState>) {
     };
 
     loop {
-        let ret = unsafe { nix::libc::poll(&mut pfd, 1, -1) };
+        let ret = unsafe { nix::libc::poll(&raw mut pfd, 1, -1) };
         if ret < 0 {
             let errno = unsafe { *nix::libc::__errno_location() };
             if errno == nix::libc::EINTR {
@@ -334,12 +330,14 @@ mod tests {
         assert!(validate_host_exec_args(&["python".into(), "--load=malicious".into()]).is_err());
         assert!(validate_host_exec_args(&["python".into(), "--module=malicious".into()]).is_err());
         assert!(validate_host_exec_args(&["git".into(), "--remote=evil".into()]).is_err());
-        assert!(validate_host_exec_args(&[
-            "ssh".into(),
-            "-o".into(),
-            "StrictHostKeyChecking=no".into()
-        ])
-        .is_err());
+        assert!(
+            validate_host_exec_args(&[
+                "ssh".into(),
+                "-o".into(),
+                "StrictHostKeyChecking=no".into()
+            ])
+            .is_err()
+        );
     }
 
     #[test]

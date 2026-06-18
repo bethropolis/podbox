@@ -151,7 +151,10 @@ impl Config {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(PodboxError::ConfigValidationFailed { details: errors.join("\n  - ") }.into())
+            Err(PodboxError::ConfigValidationFailed {
+                details: errors.join("\n  - "),
+            }
+            .into())
         }
     }
 }

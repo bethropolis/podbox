@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use podbox::podman::{query_state, ContainerState};
+use podbox::podman::{ContainerState, query_state};
 use podbox::systemd;
 
 pub mod clone;
@@ -29,7 +29,7 @@ pub fn ensure_running(name: &str, dry_run: bool, timeout_secs: u64) -> Result<()
         ContainerState::Running => Ok(()),
         ContainerState::Stopped | ContainerState::Missing => {
             if dry_run {
-                println!("podman start {}", name);
+                println!("podman start {name}");
                 return Ok(());
             }
             if systemd::is_available() {
@@ -53,11 +53,8 @@ fn wait_for_running(name: &str, timeout_secs: u64) -> Result<()> {
             _ if Instant::now() >= deadline => {
                 let state = query_state(name)?;
                 anyhow::bail!(
-                    "Container '{}' did not become ready within {}s \
-                     (final state: {:?})",
-                    name,
-                    timeout_secs,
-                    state,
+                    "Container '{name}' did not become ready within {timeout_secs}s \
+                     (final state: {state:?})",
                 );
             }
             _ => {

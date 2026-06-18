@@ -1,8 +1,8 @@
 use crate::config::{GpuMode, OnStop, XdgDirConfig, XdgDirValue};
 use crate::profiles;
 
-use super::shell::ShellInfo;
 use super::ProfileChoice;
+use super::shell::ShellInfo;
 
 pub(super) fn prompt_profile(profiles: &[profiles::Profile]) -> ProfileChoice<'_> {
     let items: Vec<String> = {
@@ -360,7 +360,9 @@ pub(super) fn prompt_auto_update(config: &crate::config::Config) -> bool {
             .interact()
             .expect("failed to get auto_update selection");
         if enabled {
-            eprintln!("Warning: auto_update is enabled but the image is built from source. Auto-update requires a prebuilt image.");
+            eprintln!(
+                "Warning: auto_update is enabled but the image is built from source. Auto-update requires a prebuilt image."
+            );
         }
         return enabled;
     }

@@ -5,7 +5,7 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Output};
 
-use nix::sys::socket::{recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags};
+use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 
 /// Build a `Vec<OsString>` from a slice of `&str`/`&String` literals.
 pub fn args<S: AsRef<str>>(items: &[S]) -> Vec<OsString> {
@@ -48,7 +48,14 @@ pub fn open_pidfd(pid: i32) -> io::Result<OwnedFd> {
     if ret < 0 {
         Err(io::Error::last_os_error())
     } else {
-        Ok(unsafe { OwnedFd::from_raw_fd(ret as i32) })
+        let fd = i32::try_from(ret).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "pidfd_open returned invalid fd",
+            )
+        })?;
+        // SAFETY: fd is a non-negative fd returned by the kernel.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
     }
 }
 

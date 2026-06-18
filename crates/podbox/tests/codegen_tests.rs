@@ -435,7 +435,11 @@ fn quadlet_systemd_dependencies_absent_by_default() {
     assert_eq!(requires_lines.len(), 3);
     assert!(requires_lines.iter().any(|l| l.ends_with(".socket")));
     assert!(requires_lines.iter().any(|l| l.ends_with("-proxy.service")));
-    assert!(requires_lines.iter().any(|l| l.ends_with("-compositor.service")));
+    assert!(
+        requires_lines
+            .iter()
+            .any(|l| l.ends_with("-compositor.service"))
+    );
 }
 
 #[test]
@@ -759,9 +763,7 @@ fn compositor_service_structure() {
     let unit = quadlet::generate_compositor_service("myenv", &config)
         .expect("compositor service should be generated");
     assert!(unit.starts_with("[Unit]"));
-    assert!(unit.contains(
-        "Description=Wayland Firewall Proxy for podbox container myenv"
-    ));
+    assert!(unit.contains("Description=Wayland Firewall Proxy for podbox container myenv"));
     assert!(unit.contains("PartOf=myenv.service"));
     assert!(unit.contains("[Service]"));
     assert!(unit.contains("Type=simple"));

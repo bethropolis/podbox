@@ -18,7 +18,7 @@ pub fn run(args: &[String]) {
                     text: text.trim().to_string(),
                 };
                 if let Err(e) = send_to_host(&msg) {
-                    eprintln!("clipboard set: failed: {}", e);
+                    eprintln!("clipboard set: failed: {e}");
                 }
             }
         }
@@ -32,7 +32,7 @@ pub fn run(args: &[String]) {
                     eprintln!("clipboard get: unexpected response");
                 }
                 Err(e) => {
-                    eprintln!("clipboard get: failed: {}", e);
+                    eprintln!("clipboard get: failed: {e}");
                 }
             }
         }

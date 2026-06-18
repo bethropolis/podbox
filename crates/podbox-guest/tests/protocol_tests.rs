@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use podbox_guest::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+use podbox_guest::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
 
 #[test]
 fn hello_serializes_with_type_tag() {

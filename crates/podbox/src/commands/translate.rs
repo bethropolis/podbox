@@ -19,12 +19,10 @@ pub fn run_translate_path(
     let home_in_container = if username == "root" {
         "/root".to_string()
     } else {
-        format!("/home/{}", username)
+        format!("/home/{username}")
     };
     let host_path = if Path::new(path_str).is_relative() {
-        std::env::current_dir()
-            .map(|d| d.join(path_str))
-            .unwrap_or_else(|_| PathBuf::from(path_str))
+        std::env::current_dir().map_or_else(|_| PathBuf::from(path_str), |d| d.join(path_str))
     } else {
         PathBuf::from(path_str)
     };
@@ -72,7 +70,7 @@ pub fn run_translate_path(
             ("Desktop", &xdg.desktop),
         ] {
             if let Some(resolved) = host_dir {
-                let container_prefix = format!("{}/{}/", home_in_container, dir_name);
+                let container_prefix = format!("{home_in_container}/{dir_name}/");
                 if path_str.starts_with(&container_prefix) {
                     let relative = path_str.strip_prefix(&container_prefix).unwrap_or("");
                     let host_path = resolved.path.join(relative);

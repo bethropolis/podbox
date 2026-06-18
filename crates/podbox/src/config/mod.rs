@@ -61,7 +61,10 @@ impl Config {
 
     pub fn load(path: &std::path::Path) -> Result<Config> {
         if !path.exists() {
-            return Err(PodboxError::DefinitionNotFound { path: path.to_path_buf() }.into());
+            return Err(PodboxError::DefinitionNotFound {
+                path: path.to_path_buf(),
+            }
+            .into());
         }
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read definition file '{}'", path.display()))?;
@@ -129,11 +132,12 @@ home = "~/containers/myenv"
         let cfg = Config::parse(toml).unwrap();
         let home = dirs::home_dir().unwrap();
         assert!(cfg.container.home.starts_with(&home));
-        assert!(cfg
-            .container
-            .home
-            .to_string_lossy()
-            .contains("containers/myenv"));
+        assert!(
+            cfg.container
+                .home
+                .to_string_lossy()
+                .contains("containers/myenv")
+        );
     }
 
     #[test]

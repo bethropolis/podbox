@@ -5,7 +5,7 @@ pub mod xdg_open;
 
 use std::os::unix::net::UnixStream;
 
-use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
 use crate::socket;
 
 /// Connect directly to the host socket, send a one-shot message.

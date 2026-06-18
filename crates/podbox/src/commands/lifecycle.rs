@@ -9,7 +9,7 @@ use podbox::systemd;
 use podbox::xdg::ResolvedXdgDirs;
 
 fn snapshot_tag(tag: &str, name: &str) -> String {
-    format!("localhost/podbox-{}:snapshot-{}", name, tag)
+    format!("localhost/podbox-{name}:snapshot-{tag}")
 }
 
 fn snapshots_dir() -> PathBuf {
@@ -22,17 +22,13 @@ pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<(
         Some(t) => t.to_string(),
         None => std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs().to_string())
-            .unwrap_or_else(|_| "0".to_string()),
+            .map_or_else(|_| "0".to_string(), |d| d.as_secs().to_string()),
     };
 
-    let container_name = format!("podbox-{}", name);
+    let container_name = format!("podbox-{name}");
     let image_tag = snapshot_tag(&tag, name);
 
-    eprintln!(
-        "Snapshotting container '{}' as '{}'...",
-        container_name, image_tag
-    );
+    eprintln!("Snapshotting container '{container_name}' as '{image_tag}'...");
 
     let output = podbox::process::run_piped(
         "podman",
@@ -43,15 +39,12 @@ pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<(
     // Store metadata
     let dir = snapshots_dir().join(name);
     std::fs::create_dir_all(&dir)?;
-    let meta_path = dir.join(format!("{}.toml", tag));
+    let meta_path = dir.join(format!("{tag}.toml"));
     let now_rfc = date_now_rfc3339();
-    let meta = format!(
-        "tag = \"{}\"\ncreated = \"{}\"\nimage = \"{}\"\n",
-        tag, now_rfc, image_tag
-    );
+    let meta = format!("tag = \"{tag}\"\ncreated = \"{now_rfc}\"\nimage = \"{image_tag}\"\n");
     std::fs::write(&meta_path, &meta)?;
 
-    println!("✓ Snapshot '{}' saved (tag: {})", image_tag, tag);
+    println!("✓ Snapshot '{image_tag}' saved (tag: {tag})");
     Ok(())
 }
 
@@ -69,11 +62,8 @@ fn date_now_rfc3339() -> String {
     let seconds = time_secs % 60;
 
     // Compute year/month/day from days since epoch
-    let (year, month, day) = days_to_date(days as i64);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
-        year, month, day, hours, minutes, seconds
-    )
+    let (year, month, day) = days_to_date(days.cast_signed());
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}+00:00")
 }
 
 fn days_to_date(days: i64) -> (i64, u32, u32) {
@@ -88,29 +78,30 @@ fn days_to_date(days: i64) -> (i64, u32, u32) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     (y, m as u32, d as u32)
 }
 
 /// Restore a container from a snapshot image.
 pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
     let snapshot_img = snapshot_tag(tag, name);
-    let latest_img = format!("localhost/podbox-{}:latest", name);
+    let latest_img = format!("localhost/podbox-{name}:latest");
 
     // Verify snapshot exists
     let exists = podbox::podman::image_exists(&snapshot_img).unwrap_or(false);
     if !exists {
-        anyhow::bail!("Snapshot '{}' not found as image '{}'", tag, snapshot_img);
+        anyhow::bail!("Snapshot '{tag}' not found as image '{snapshot_img}'");
     }
 
     // Stop the container
-    eprintln!("Stopping container 'podbox-{}'...", name);
+    eprintln!("Stopping container 'podbox-{name}'...");
     let _ = podbox::process::run_piped(
         "podman",
-        &podbox::process::args(&["stop", &format!("podbox-{}", name)]),
+        &podbox::process::args(&["stop", &format!("podbox-{name}")]),
     );
 
     // Re-tag snapshot as the main image
-    eprintln!("Restoring from snapshot '{}'...", snapshot_img);
+    eprintln!("Restoring from snapshot '{snapshot_img}'...");
     let output = podbox::process::run_piped(
         "podman",
         &podbox::process::args(&["tag", &snapshot_img, &latest_img]),
@@ -123,10 +114,10 @@ pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
     eprintln!("Starting container...");
     let _ = podbox::process::run_piped(
         "podman",
-        &podbox::process::args(&["start", &format!("podbox-{}", name)]),
+        &podbox::process::args(&["start", &format!("podbox-{name}")]),
     );
 
-    println!("✓ Restored '{}' from snapshot '{}'", name, tag);
+    println!("✓ Restored '{name}' from snapshot '{tag}'");
     Ok(())
 }
 
@@ -146,17 +137,17 @@ pub fn run_build(
     // Post-build drift check (best-effort).
     if !dry_run && !no_diff {
         let name = &config.container.name;
-        if let Ok(state) = podbox::podman::query_state(name) {
-            if state == podbox::podman::ContainerState::Running {
-                match podbox::diff::compute(config, name, &env.username) {
-                    Ok(result) if result.has_drift => {
-                        println!("\n── Package drift detected ──");
-                        println!("{}", podbox::diff::format_report(&result));
-                        println!("Run `podbox diff --apply` to update the TOML.");
-                    }
-                    Ok(_) => {}
-                    Err(e) => eprintln!("Warning: drift check skipped ({})", e),
+        if let Ok(state) = podbox::podman::query_state(name)
+            && state == podbox::podman::ContainerState::Running
+        {
+            match podbox::diff::compute(config, name, &env.username) {
+                Ok(result) if result.has_drift => {
+                    println!("\n── Package drift detected ──");
+                    println!("{}", podbox::diff::format_report(&result));
+                    println!("Run `podbox diff --apply` to update the TOML.");
                 }
+                Ok(_) => {}
+                Err(e) => eprintln!("Warning: drift check skipped ({e})"),
             }
         }
     }
@@ -192,7 +183,7 @@ pub fn run_start(
     timeout_secs: u64,
 ) -> Result<()> {
     if dry_run {
-        println!("podman start {}", name);
+        println!("podman start {name}");
         return Ok(());
     }
 
@@ -205,7 +196,7 @@ pub fn run_start(
     let qdir = dirs::config_dir()
         .unwrap_or_else(|| podbox::config::expand_tilde("~/.config"))
         .join("containers/systemd");
-    let container_file = qdir.join(format!("{}.container", name));
+    let container_file = qdir.join(format!("{name}.container"));
     if !container_file.exists() {
         println!("Quadlet files not found, installing...");
         podbox::quadlet_install::install(config, env, xdg, false)?;
@@ -213,7 +204,7 @@ pub fn run_start(
 
     println!("Starting container...");
     crate::commands::ensure_running(name, false, timeout_secs)?;
-    println!("Container '{}' is running!", name);
+    println!("Container '{name}' is running!");
     Ok(())
 }
 
@@ -225,9 +216,9 @@ pub fn run_start(
 pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
         if config.lifecycle.quadlet && systemd::is_available() {
-            println!("systemctl --user stop {}", name);
+            println!("systemctl --user stop {name}");
         } else {
-            println!("podman stop {}", name);
+            println!("podman stop {name}");
         }
         return Ok(());
     }
@@ -249,19 +240,19 @@ pub fn run_update(
     no_restart: bool,
 ) -> Result<()> {
     if dry_run {
-        println!("podbox update: pull/rebuild and restart {}", name);
+        println!("podbox update: pull/rebuild and restart {name}");
         println!("  build::run(config, env, xdg, dry_run: true, rebuild: true)");
         if !no_restart {
             if config.lifecycle.quadlet && systemd::is_available() {
-                println!("  systemctl --user restart {}", name);
+                println!("  systemctl --user restart {name}");
             } else {
-                println!("  podman restart {}", name);
+                println!("  podman restart {name}");
             }
         }
         return Ok(());
     }
 
-    println!("Updating '{}'...", name);
+    println!("Updating '{name}'...");
 
     podbox::build::run(config, env, xdg, false, true)?;
 
@@ -292,14 +283,17 @@ pub fn run_remove(
     remove_config: bool,
 ) -> Result<()> {
     if dry_run {
-        println!("podman stop {}", name);
-        println!("podman rm -f {}", name);
+        println!("podman stop {name}");
+        println!("podman rm -f {name}");
         if config.lifecycle.quadlet {
-            println!("quadlet_install::uninstall({})", name);
-            println!("systemctl --user reset-failed {}.service", name);
+            println!("quadlet_install::uninstall({name})");
+            println!("systemctl --user reset-failed {name}.service");
         }
         if remove_config {
-            println!("rm {}.toml", podbox::config::config_dir().join(name).display());
+            println!(
+                "rm {}.toml",
+                podbox::config::config_dir().join(name).display()
+            );
         }
         if all {
             println!("rm -rf {}", config.container.home.display());
@@ -308,7 +302,7 @@ pub fn run_remove(
     }
 
     if !force {
-        print!("Remove container '{}'? [y/N] ", name);
+        print!("Remove container '{name}'? [y/N] ");
         std::io::stdout().flush()?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
@@ -331,14 +325,14 @@ pub fn run_remove(
 
     // 3. Optionally delete the TOML definition
     if remove_config {
-        let config_path = podbox::config::config_dir().join(format!("{}.toml", name));
+        let config_path = podbox::config::config_dir().join(format!("{name}.toml"));
         if config_path.exists() {
             std::fs::remove_file(&config_path)?;
             println!("Config '{}' removed.", config_path.display());
         }
     }
 
-    println!("Container '{}' removed.", name);
+    println!("Container '{name}' removed.");
 
     // 4. Optionally remove the home directory
     if all {
@@ -388,9 +382,9 @@ fn find_stale_containers() -> Vec<String> {
     if let Ok(entries) = std::fs::read_dir(&qdir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map(|e| e == "container").unwrap_or(false) {
+            if path.extension().is_some_and(|e| e == "container") {
                 let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                let config_path = config_dir.join(format!("{}.toml", name));
+                let config_path = config_dir.join(format!("{name}.toml"));
                 if !config_path.exists() {
                     stale.push(name);
                 }
@@ -414,7 +408,7 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
 
     println!("Orphaned Quadlet runtimes found:");
     for name in &stale {
-        println!("  {}  (no config TOML)", name);
+        println!("  {name}  (no config TOML)");
     }
 
     if !force {
@@ -430,19 +424,19 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
 
     for name in &stale {
         if dry_run {
-            println!("Would remove: {}", name);
+            println!("Would remove: {name}");
             continue;
         }
 
         if let Err(e) = podbox::quadlet_install::uninstall(name) {
-            eprintln!("Warning: failed to uninstall '{}': {}", name, e);
+            eprintln!("Warning: failed to uninstall '{name}': {e}");
         }
 
         let _ = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]));
 
         let _ = systemd::reset_failed(name);
 
-        println!("✓ Stale runtime files for '{}' removed", name);
+        println!("✓ Stale runtime files for '{name}' removed");
     }
 
     Ok(())

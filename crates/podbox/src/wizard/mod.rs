@@ -5,7 +5,7 @@ mod prompts;
 pub mod shell;
 mod summary;
 
-pub use shell::{apply_shell_defaults, detect_host_shell, ShellInfo};
+pub use shell::{ShellInfo, apply_shell_defaults, detect_host_shell};
 
 /// Result of the interactive wizard.
 pub struct WizardResult {

@@ -13,7 +13,7 @@ pub fn run_pull(config: &Config, image: &Option<String>, dry_run: bool) -> Resul
         },
     };
     if dry_run {
-        println!("podman pull {}", image_ref);
+        println!("podman pull {image_ref}");
         println!(
             "podman tag {} localhost/podbox-{}:latest",
             image_ref, config.image.name
@@ -21,24 +21,34 @@ pub fn run_pull(config: &Config, image: &Option<String>, dry_run: bool) -> Resul
         return Ok(());
     }
     let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
-    println!("Pulling {}...", image_ref);
+    println!("Pulling {image_ref}...");
     let status = std::process::Command::new("podman")
         .args(["pull", &image_ref])
         .stdin(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status()
-        .map_err(|_| PodboxError::PullFailed { image: image_ref.clone() })?;
+        .map_err(|_| PodboxError::PullFailed {
+            image: image_ref.clone(),
+        })?;
     if !status.success() {
-        return Err(PodboxError::PullFailed { image: image_ref.clone() }.into());
+        return Err(PodboxError::PullFailed {
+            image: image_ref.clone(),
+        }
+        .into());
     }
-    println!("Tagging {} as {}...", image_ref, local_tag);
+    println!("Tagging {image_ref} as {local_tag}...");
     let tag_status = std::process::Command::new("podman")
         .args(["tag", &image_ref, &local_tag])
         .status()
-        .map_err(|_| PodboxError::TagFailed { image: image_ref.clone() })?;
+        .map_err(|_| PodboxError::TagFailed {
+            image: image_ref.clone(),
+        })?;
     if !tag_status.success() {
-        return Err(PodboxError::TagFailed { image: image_ref.clone() }.into());
+        return Err(PodboxError::TagFailed {
+            image: image_ref.clone(),
+        }
+        .into());
     }
     let context_dir = podbox::build::build_context_dir(&config.image.name);
     std::fs::create_dir_all(&context_dir)?;

@@ -14,22 +14,20 @@ pub fn run(args: &[String]) {
         app_name: String::new(),
     };
 
-    if !has_actions {
-        if let Err(e) = send_to_host(&msg) {
-            eprintln!("notify-send interceptor: failed to send: {}", e);
-        }
-    } else {
+    if has_actions {
         match send_to_host_and_read_response(&msg) {
             Ok(HostMessage::NotifyActionResult { action_key, .. }) => {
                 if !action_key.is_empty() {
-                    println!("{}", action_key);
+                    println!("{action_key}");
                 }
             }
             Ok(_) => {}
             Err(e) => {
-                eprintln!("notify-send interceptor: failed: {}", e);
+                eprintln!("notify-send interceptor: failed: {e}");
             }
         }
+    } else if let Err(e) = send_to_host(&msg) {
+        eprintln!("notify-send interceptor: failed to send: {e}");
     }
 }
 
@@ -44,7 +42,7 @@ fn parse_args(args: &[String]) -> (String, String, String, Vec<NotifyAction>) {
         match args[i].as_str() {
             "-u" | "--urgency" => {
                 if i + 1 < args.len() {
-                    urgency = args[i + 1].clone();
+                    urgency.clone_from(&args[i + 1]);
                     i += 2;
                 } else {
                     i += 1;

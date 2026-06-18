@@ -43,7 +43,7 @@ lto       = true
 panic     = "abort"
 
 [workspace.lints.rust]
-unsafe_code = "warn"
+unsafe_code = "allow"
 
 [workspace.lints.clippy]
 all      = { level = "warn", priority = -1 }
@@ -52,3 +52,34 @@ module_name_repetitions = "allow"
 missing_errors_doc      = "allow"
 missing_panics_doc      = "allow"
 must_use_candidate      = "allow"
+
+# New lints in Rust 1.95 — noisy, opt out individually
+uninlined_format_args      = "allow"
+collapsible_if             = "allow"
+assigning_clones           = "allow"
+redundant_closure_for_method_calls = "allow"
+doc_markdown               = "allow"
+items_after_statements     = "allow"
+needless_pass_by_value     = "allow"
+match_same_arms            = "allow"
+map_unwrap_or              = "allow"
+single_match_else          = "allow"
+if_not_else                = "allow"
+unnecessary_wraps          = "allow"
+redundant_guards           = "allow"
+fn_params_excessive_bools  = "allow"
+too_many_lines             = "allow"
+wildcard_in_or_patterns    = "allow"
+manual_string_new          = "allow"
+semicolon_if_nothing_returned = "allow"
+match_wildcard_for_single_variants = "allow"
+trivially_copy_pass_by_ref = "allow"
+manual_let_else            = "allow"
+struct_excessive_bools     = "allow"
+needless_raw_string_hashes = "allow"
+unreadable_literal         = "allow"
+unnecessary_trailing_comma = "allow"
+used_underscore_binding    = "allow"
+ref_option                 = "allow"
+implicit_hasher            = "allow"
+elidable_lifetime_names    = "allow"

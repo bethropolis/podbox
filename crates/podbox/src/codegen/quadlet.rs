@@ -136,6 +136,7 @@ fn emit_container_image(
     }
     if let Some(ref cpus) = config.container.cpus {
         if let Ok(v) = cpus.parse::<f64>() {
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let quota = (v * 100_000.0) as u64;
             lines.push(format!("CpuQuota={}", quota));
         }
@@ -289,7 +290,9 @@ fn emit_volumes(
             lines.push("SshAgent=default".into());
             lines.push("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock".into());
         } else {
-            eprintln!("Warning: ssh_agent = true requires Podman >= 5.6 for SSH_AUTH_SOCK passthrough. Skipping SSH agent.");
+            eprintln!(
+                "Warning: ssh_agent = true requires Podman >= 5.6 for SSH_AUTH_SOCK passthrough. Skipping SSH agent."
+            );
         }
         lines.push(String::new());
     }
@@ -304,14 +307,19 @@ fn emit_volumes(
             lines.push("Environment=GPG_TTY=/dev/pts/0".into());
             lines.push("Environment=GNUPGHOME=/run/podbox/gnupg".into());
         } else {
-            eprintln!("Warning: gpg_agent = true but S.gpg-agent socket not found on host. Skipping GPG agent.");
+            eprintln!(
+                "Warning: gpg_agent = true but S.gpg-agent socket not found on host. Skipping GPG agent."
+            );
         }
         lines.push(String::new());
     }
 
     // Sandbox environment detection marker (read-only host-side kernel mount)
     let flatpak_info_path = crate::build::build_context_dir(name).join(".flatpak-info");
-    lines.push(format!("Volume={}:/.flatpak-info:ro", flatpak_info_path.display()));
+    lines.push(format!(
+        "Volume={}:/.flatpak-info:ro",
+        flatpak_info_path.display()
+    ));
     lines.push(String::new());
 
     // D-Bus

@@ -49,7 +49,7 @@ pub enum GuestMessage {
         args: Vec<String>,
     },
     /// Sent by the host CLI to register a new terminal session.
-    /// The pidfd follows via SCM_RIGHTS on the same connection.
+    /// The `pidfd` follows via `SCM_RIGHTS` on the same connection.
     RegisterSession,
     /// Sent by the guest daemon when user processes are still running.
     Busy,
@@ -99,7 +99,9 @@ pub enum HostMessage {
 /// Write a length-prefixed JSON frame.
 pub fn write_frame<W: Write>(w: &mut W, msg: &impl Serialize) -> io::Result<()> {
     let json = serde_json::to_vec(msg)?;
-    let len = (json.len() as u32).to_be_bytes();
+    let len = u32::try_from(json.len())
+        .expect("frame payload exceeds 4 GiB")
+        .to_be_bytes();
     w.write_all(&len)?;
     w.write_all(&json)?;
     w.flush()?;
@@ -121,7 +123,7 @@ pub fn read_frame<R: Read>(r: &mut R) -> io::Result<Option<Vec<u8>>> {
     if len > MAX_FRAME_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("frame too large: {} bytes (max {})", len, MAX_FRAME_SIZE),
+            format!("frame too large: {len} bytes (max {MAX_FRAME_SIZE})"),
         ));
     }
     let mut buf = vec![0u8; len];

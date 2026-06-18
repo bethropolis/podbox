@@ -3,7 +3,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 use crate::error::GuestError;
-use crate::protocol::{read_frame, write_frame, GuestMessage, HostMessage};
+use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
 
 /// Container name from the environment.
 pub fn container_name() -> Result<String, GuestError> {
@@ -19,7 +19,7 @@ pub fn host_socket_path() -> Result<PathBuf, GuestError> {
         .unwrap_or_else(|_| format!("/run/user/{}", nix::unistd::getuid()));
     Ok(PathBuf::from(&xdg_runtime)
         .join("podbox")
-        .join(format!("{}.sock", cn)))
+        .join(format!("{cn}.sock")))
 }
 
 /// Connect to the host socket with retries using exponential backoff.
@@ -50,7 +50,7 @@ pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
 
 /// Perform the hello handshake.
 ///
-/// Returns (accepted_capabilities, idle_timeout_secs).
+/// Returns (`accepted_capabilities`, `idle_timeout_secs`).
 pub fn handshake(
     host_stream: &mut UnixStream,
     container_name: &str,

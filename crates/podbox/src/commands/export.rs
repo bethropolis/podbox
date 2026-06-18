@@ -15,7 +15,7 @@ pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportComman
                     config.ok_or_else(|| anyhow::anyhow!("Config required for --all export"))?;
                 for app in &cfg.integration.export.apps {
                     if let Err(e) = podbox::export::export_app(name, app) {
-                        eprintln!("Warning: export app '{}' failed: {}", app, e);
+                        eprintln!("Warning: export app '{app}' failed: {e}");
                     }
                 }
             } else if let Some(app_name) = app_name {
@@ -31,7 +31,7 @@ pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportComman
                     config.ok_or_else(|| anyhow::anyhow!("Config required for --all export"))?;
                 for bin in &cfg.integration.export.bins {
                     if let Err(e) = podbox::export::export_bin(name, bin) {
-                        eprintln!("Warning: export bin '{}' failed: {}", bin, e);
+                        eprintln!("Warning: export bin '{bin}' failed: {e}");
                     }
                 }
             } else if let Some(bin_name) = bin_name {

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
-use crate::podman::{query_state, ContainerState};
+use crate::podman::{ContainerState, query_state};
 
 const POLL_INTERVAL_MS: u64 = 300;
 
@@ -105,11 +105,7 @@ pub fn start_host_service(name: &str) -> Result<()> {
         return Ok(());
     }
     let mut cmd = Command::new("systemctl");
-    cmd.args([
-        "--user",
-        "start",
-        &format!("{}-host.service", name),
-    ]);
+    cmd.args(["--user", "start", &format!("{}-host.service", name)]);
     let _ = cmd.status();
     Ok(())
 }
@@ -119,10 +115,7 @@ pub fn stop_socket_and_host(name: &str) -> Result<()> {
     if !is_available() {
         return Ok(());
     }
-    for unit in [
-        format!("{}.socket", name),
-        format!("{}-host.service", name),
-    ] {
+    for unit in [format!("{}.socket", name), format!("{}-host.service", name)] {
         let mut cmd = Command::new("systemctl");
         cmd.args(["--user", "stop", &unit]);
         let _ = cmd.status();
@@ -174,7 +167,12 @@ pub fn is_unit_enabled(name: &str) -> bool {
         return false;
     }
     Command::new("systemctl")
-        .args(["--user", "--quiet", "is-enabled", &format!("{}.service", name)])
+        .args([
+            "--user",
+            "--quiet",
+            "is-enabled",
+            &format!("{}.service", name),
+        ])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -212,16 +210,10 @@ pub fn query_unit_status(name: &str) -> Result<UnitStatus> {
 
     if !output.status.success() && output.stdout.is_empty() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "unit '{}' not found by systemd: {}",
-            name,
-            stderr.trim()
-        );
+        anyhow::bail!("unit '{}' not found by systemd: {}", name, stderr.trim());
     }
 
-    Ok(parse_unit_show(
-        &String::from_utf8_lossy(&output.stdout),
-    ))
+    Ok(parse_unit_show(&String::from_utf8_lossy(&output.stdout)))
 }
 
 fn parse_unit_show(raw: &str) -> UnitStatus {
@@ -285,7 +277,10 @@ fn diagnose(status: &UnitStatus, journal: Option<&str>) -> (String, String) {
     let error_msg = if !load_error.is_empty() {
         load_error.clone()
     } else {
-        format!("ActiveState={}, SubState={}", status.active_state, status.sub_state)
+        format!(
+            "ActiveState={}, SubState={}",
+            status.active_state, status.sub_state
+        )
     };
 
     let hint = if load_error.contains("Invalid environment")
@@ -304,7 +299,10 @@ fn diagnose(status: &UnitStatus, journal: Option<&str>) -> (String, String) {
         "systemd reported a permission error. \
          Check that your home and mount directories are accessible."
             .to_string()
-    } else if load_error.contains("mount") || load_error.contains("volume") || load_error.contains("Volume") {
+    } else if load_error.contains("mount")
+        || load_error.contains("volume")
+        || load_error.contains("Volume")
+    {
         "A mount directory specified in your config may not exist. \
          Verify your XDG and custom mount paths are correct."
             .to_string()
@@ -375,7 +373,11 @@ fn diagnostic_card(name: &str, status: &UnitStatus, journal: Option<&str>) -> St
     let journal_section = match journal {
         Some(j) if !j.trim().is_empty() => {
             let lines: Vec<&str> = j.lines().collect();
-            let tail = if lines.len() > 5 { &lines[lines.len() - 5..] } else { &lines };
+            let tail = if lines.len() > 5 {
+                &lines[lines.len() - 5..]
+            } else {
+                &lines
+            };
             let body = tail
                 .iter()
                 .map(|l| format!("    {}", l))

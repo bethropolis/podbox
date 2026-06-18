@@ -28,11 +28,12 @@ fn home_tilde_is_expanded() {
 
     let home = dirs::home_dir().unwrap();
     assert!(cfg.container.home.starts_with(&home));
-    assert!(cfg
-        .container
-        .home
-        .to_string_lossy()
-        .contains("containers/myenv"));
+    assert!(
+        cfg.container
+            .home
+            .to_string_lossy()
+            .contains("containers/myenv")
+    );
 }
 
 #[test]

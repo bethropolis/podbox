@@ -3,10 +3,10 @@ use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
-use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
 use crate::error::GuestError;
-use crate::protocol::{write_frame, GuestMessage, HostMessage};
+use crate::protocol::{GuestMessage, HostMessage, write_frame};
 use crate::socket;
 
 const EXCLUDED_COMMS: &[&str] = &[
@@ -29,7 +29,14 @@ fn open_pidfd(pid: i32) -> std::io::Result<OwnedFd> {
         Err(std::io::Error::last_os_error())
     } else {
         // SAFETY: ret is a non-negative fd returned by the kernel.
-        Ok(unsafe { OwnedFd::from_raw_fd(ret as i32) })
+        let fd = i32::try_from(ret).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "pidfd_open returned invalid fd",
+            )
+        })?;
+        // SAFETY: fd is a non-negative fd returned by the kernel.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
     }
 }
 
@@ -38,7 +45,7 @@ struct TrackedProcess {
     fd: OwnedFd,
 }
 
-/// Scan /proc for user processes (anything not in EXCLUDED_COMMS).
+/// Scan /proc for user processes (anything not in `EXCLUDED_COMMS`).
 fn scan_user_processes() -> Vec<i32> {
     let mut pids = Vec::new();
     let Ok(entries) = std::fs::read_dir("/proc") else {
@@ -47,14 +54,14 @@ fn scan_user_processes() -> Vec<i32> {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if name_str.chars().all(|c| c.is_ascii_digit()) {
-            if let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) {
-                let comm_trimmed = comm.trim();
-                if !EXCLUDED_COMMS.contains(&comm_trimmed) {
-                    if let Ok(pid) = name_str.parse::<i32>() {
-                        pids.push(pid);
-                    }
-                }
+        if name_str.chars().all(|c| c.is_ascii_digit())
+            && let Ok(comm) = std::fs::read_to_string(entry.path().join("comm"))
+        {
+            let comm_trimmed = comm.trim();
+            if !EXCLUDED_COMMS.contains(&comm_trimmed)
+                && let Ok(pid) = name_str.parse::<i32>()
+            {
+                pids.push(pid);
             }
         }
     }
@@ -64,7 +71,11 @@ fn scan_user_processes() -> Vec<i32> {
 /// Open pidfds for a list of PIDs.
 fn track_processes(pids: &[i32]) -> Vec<TrackedProcess> {
     pids.iter()
-        .filter_map(|&pid| open_pidfd(pid).ok().map(|fd| TrackedProcess { _pid: pid, fd }))
+        .filter_map(|&pid| {
+            open_pidfd(pid)
+                .ok()
+                .map(|fd| TrackedProcess { _pid: pid, fd })
+        })
         .collect()
 }
 
@@ -95,7 +106,7 @@ pub fn run() -> Result<(), GuestError> {
     let (accepted, idle_timeout_secs) =
         socket::handshake(&mut host_stream, &container_name, &all_caps)?;
     let accepted_set: HashSet<String> = accepted.iter().cloned().collect();
-    eprintln!("podbox-guest: accepted capabilities: {:?}", accepted);
+    eprintln!("podbox-guest: accepted capabilities: {accepted:?}");
 
     // 4. Check version drift
     check_version_drift(&accepted_set, &mut host_stream, &container_name);
@@ -142,11 +153,10 @@ fn check_version_drift(
     _host_stream: &mut UnixStream,
     container_name: &str,
 ) {
-    let baked_host_version = match std::env::var("PODBOX_HOST_VERSION")
-        .or_else(|_| std::env::var("PODMGR_HOST_VERSION"))
-    {
-        Ok(v) => v,
-        Err(_) => return,
+    let Ok(baked_host_version) =
+        std::env::var("PODBOX_HOST_VERSION").or_else(|_| std::env::var("PODMGR_HOST_VERSION"))
+    else {
+        return;
     };
 
     let guest_version = crate::VERSION;
@@ -170,7 +180,9 @@ fn check_version_drift(
         };
         let _ = crate::socket::connect_and_send_oneshot(&msg);
     } else {
-        eprintln!("podbox-guest: image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`.");
+        eprintln!(
+            "podbox-guest: image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`."
+        );
     }
 }
 
@@ -191,14 +203,12 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Max poll interval in ms (PollTimeout caps at u16::MAX = 65535).
+/// Max poll interval in ms (`PollTimeout` caps at `u16::MAX` = 65535).
 const MAX_POLL_MS: i64 = 60_000;
 
-fn event_loop(
-    host_stream: &mut UnixStream,
-    idle_timeout_secs: u64,
-) -> Result<(), GuestError> {
-    let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)) as i64;
+#[allow(clippy::too_many_lines)]
+fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<(), GuestError> {
+    let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
     let mut tracked: Vec<TrackedProcess> = Vec::new();
     let mut remaining_ms = idle_limit_ms;
 
@@ -215,7 +225,7 @@ fn event_loop(
 
             let timeout = if tracked.is_empty() && remaining_ms > 0 {
                 let poll_ms = remaining_ms.min(MAX_POLL_MS);
-                PollTimeout::from(Some(poll_ms as u16))
+                PollTimeout::from(Some(u16::try_from(poll_ms).unwrap_or(u16::MAX)))
             } else {
                 PollTimeout::from(None::<u16>)
             };
@@ -261,13 +271,15 @@ fn event_loop(
                     eprintln!("podbox-guest: received shutdown, exiting.");
                     return Ok(());
                 }
-                Ok(Some(HostMessage::Ping)) => {}
-                Ok(Some(HostMessage::HelloAck { .. })) => {}
-                Ok(Some(HostMessage::ClipboardData { .. })) => {}
-                Ok(Some(HostMessage::HostExecStdout { .. })) => {}
-                Ok(Some(HostMessage::HostExecStderr { .. })) => {}
-                Ok(Some(HostMessage::HostExecDone { .. })) => {}
-                Ok(Some(HostMessage::NotifyActionResult { .. })) => {}
+                Ok(Some(
+                    HostMessage::Ping
+                    | HostMessage::HelloAck { .. }
+                    | HostMessage::ClipboardData { .. }
+                    | HostMessage::HostExecStdout { .. }
+                    | HostMessage::HostExecStderr { .. }
+                    | HostMessage::HostExecDone { .. }
+                    | HostMessage::NotifyActionResult { .. },
+                )) => {}
                 Ok(Some(HostMessage::CheckIdle)) => {
                     let active = scan_user_processes();
                     if active.is_empty() {

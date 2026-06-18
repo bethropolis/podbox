@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use crate::codegen::quadlet;
 use crate::config::{self, Config};
 use crate::env::HostEnv;
-use crate::podman::{podman_version, PodmanVersion};
+use crate::podman::{PodmanVersion, podman_version};
 use crate::systemd;
 use crate::xdg::ResolvedXdgDirs;
 
@@ -131,7 +131,10 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
     // Ensure .flatpak-info is written to the host build directory
     let _ = std::fs::create_dir_all(&context_dir);
-    std::fs::write(context_dir.join(".flatpak-info"), "[Application]\nname=podbox\n")?;
+    std::fs::write(
+        context_dir.join(".flatpak-info"),
+        "[Application]\nname=podbox\n",
+    )?;
 
     // Pre-flight validation
     preflight_check(config);
@@ -267,7 +270,12 @@ pub fn uninstall(name: &str) -> Result<()> {
     }
 
     // Remove custom systemd units
-    for unit in ["socket", "host.service", "proxy.service", "compositor.service"] {
+    for unit in [
+        "socket",
+        "host.service",
+        "proxy.service",
+        "compositor.service",
+    ] {
         let path = sdir.join(format!("{}.{}", name, unit));
         if path.exists() {
             std::fs::remove_file(&path)?;
