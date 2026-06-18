@@ -9,7 +9,7 @@ use crate::config::defaults::{
     is_default_packages, is_default_pkg_mgr, is_default_pull_retry, is_default_pull_retry_delay,
     is_default_run, is_default_shell, is_empty_hashmap, is_false, is_true,
 };
-use crate::config::enums::{GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
+use crate::config::enums::{CapProfile, GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 use crate::config::expand_tilde;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -350,8 +350,14 @@ pub struct SecurityConfig {
     pub read_only_rootfs: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub userns: Option<String>,
+    #[serde(default, skip_serializing_if = "is_default_cap_profile")]
+    pub cap_profile: CapProfile,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cap_add: Vec<String>,
+}
+
+fn is_default_cap_profile(v: &CapProfile) -> bool {
+    *v == CapProfile::Default
 }
 
 impl Default for SecurityConfig {
@@ -363,6 +369,7 @@ impl Default for SecurityConfig {
             no_new_privileges: true,
             read_only_rootfs: false,
             userns: None,
+            cap_profile: CapProfile::Default,
             cap_add: Vec::new(),
         }
     }

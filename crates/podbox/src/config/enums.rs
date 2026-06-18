@@ -138,6 +138,45 @@ impl Serialize for GpuMode {
     }
 }
 
+/// Predefined capability profiles that bundle commonly-needed Linux
+/// capabilities.  The profile caps are always emitted; users can add
+/// extra capabilities via `security.cap_add`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CapProfile {
+    /// No extra capabilities beyond Podman's defaults.
+    None,
+    /// Sane default: `DAC_READ_SEARCH`, `PERFMON` — needed by tools
+    /// such as btop and htop for file-descriptor and perf monitoring.
+    #[default]
+    Default,
+    /// Monitoring / observability: like `Default` plus `SYS_PTRACE`,
+    /// `SYS_NICE`, `SYSLOG`.
+    Monitoring,
+    /// Powerful / dangerous: like `Monitoring` plus `SYS_ADMIN`,
+    /// `NET_ADMIN`.  Only use when you trust the container fully.
+    Admin,
+}
+
+impl CapProfile {
+    pub fn caps(&self) -> &'static [&'static str] {
+        match self {
+            Self::None => &[],
+            Self::Default => &["DAC_READ_SEARCH", "PERFMON"],
+            Self::Monitoring => &["DAC_READ_SEARCH", "PERFMON", "SYS_PTRACE", "SYS_NICE"],
+            Self::Admin => &[
+                "DAC_READ_SEARCH",
+                "PERFMON",
+                "SYS_PTRACE",
+                "SYS_NICE",
+                "SYS_ADMIN",
+                "NET_ADMIN",
+                "SYSLOG",
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum OnStop {
