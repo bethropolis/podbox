@@ -38,10 +38,13 @@ pub fn compute(config: &Config, name: &str, username: &str) -> Result<DiffResult
 
     let missing: Vec<String> = config_set.difference(&container_set).cloned().collect();
 
-    // For prebuilt images only report missing packages — the unexpected
-    // list is always noisy because prebuilt images ship hundreds of
-    // packages that aren't in our base-package reference.
-    let unexpected = if config.image.source().is_prebuilt() {
+    // For prebuilt images and registry-based base images only report
+    // missing packages — the unexpected list is always noisy because
+    // these images ship hundreds of packages that aren't in our
+    // base-package reference.
+    let unexpected = if config.image.source().is_prebuilt()
+        || config.image.base.contains('/')
+    {
         vec![]
     } else {
         compute_unexpected(&container_set, &config_set, manager)
