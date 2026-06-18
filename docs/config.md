@@ -96,7 +96,7 @@ TERM = "xterm-256color"
 | `apparmor` | string | — | AppArmor profile name. Passed as `AppArmor=` in Quadlet (`"unconfined"` to disable) |
 | `seccomp` | string | — | Seccomp profile path, `"default"`, or `"unconfined"`. Passed as `SeccompProfile=` |
 | `security_label_disable` | bool | `true` | Disable SELinux process labeling. Emits `SecurityLabelDisable=true` when set |
-| `no_new_privileges` | bool | `true` | Block privilege escalation (`sudo`, `su`, AUR helpers). Set `false` to allow with `NoNewPrivileges=false` |
+| `no_new_privileges` | bool | `true` | Block privilege escalation via setuid binaries (`sudo`, `su`, AUR helpers). Emits `NoNewPrivileges=true` in the Quadlet. Set `false` to allow. |
 | `read_only_rootfs` | bool | `false` | Make root filesystem read-only. Emits `ReadOnly=true` in Quadlet |
 | `userns` | string | — | User namespace mode override. Defaults to `"keep-id"`. Supported: `"keep-id"`, `"nomap"`, `"private"` |
 

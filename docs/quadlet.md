@@ -69,7 +69,7 @@ Four Quadlet/systemd unit files are generated per container:
 | `User` | `root` | Run as root inside the container (UID mapped via `UserNS`) |
 | `SecurityLabelDisable` | `true` | Required for Wayland socket access |
 | `SeccompProfile` | From `security.seccomp` | Seccomp profile (conditional, e.g. `"default"`, `"unconfined"`) |
-| `NoNewPrivileges` | `false` | Only emitted when `security.no_new_privileges = false` (default is `true`, omitted) |
+| `NoNewPrivileges` | `true` | Emitted when `security.no_new_privileges = true` (default). Set `false` to allow `sudo`, `su`, AUR helpers. |
 | `Memory` | From `container.memory` | Memory limit (conditional, e.g. `"4G"`) |
 | `CpuQuota` | From `container.cpus` × 100000µs | CPU quota (conditional, e.g. `"2.0"` → `CpuQuota=200000`) |
 | `ReadOnly` | `true` | Read-only rootfs (conditional on `security.read_only_rootfs`) |

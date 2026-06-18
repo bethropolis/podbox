@@ -128,8 +128,8 @@ fn emit_container_image(
     if let Some(ref seccomp) = config.security.seccomp {
         lines.push(format!("SeccompProfile={}", seccomp));
     }
-    if !config.security.no_new_privileges {
-        lines.push("NoNewPrivileges=false".into());
+    if config.security.no_new_privileges {
+        lines.push("NoNewPrivileges=true".into());
     }
     if let Some(ref mem) = config.container.memory {
         lines.push(format!("Memory={}", mem));
