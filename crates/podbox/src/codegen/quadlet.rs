@@ -39,6 +39,8 @@ pub fn generate_socket(config: &Config) -> String {
     lines.push(format!("Service={}", host_service));
     lines.push("SocketMode=0600".into());
     lines.push("DirectoryMode=0700".into());
+    lines.push("RuntimeDirectory=podbox".into());
+    lines.push("RuntimeDirectoryMode=0700".into());
     lines.push(String::new());
 
     lines.push("[Install]".into());
@@ -497,7 +499,6 @@ PartOf={name}.service
 
 [Service]
 Type=simple
-RuntimeDirectory=podbox
 ExecStart={exec_start}
 Restart=on-failure
 RestartSec=1s
@@ -527,7 +528,6 @@ PartOf={name}.service
 
 [Service]
 Type=simple
-RuntimeDirectory=podbox
 ExecStart={podbox_bin} compositor {name}
 Restart=on-failure
 RestartSec=1s
@@ -555,7 +555,6 @@ Type=simple
 ExecStart={podbox_bin} serve {name}
 Restart=on-failure
 RestartSec=2s
-RuntimeDirectory=podbox
 
 [Install]
 WantedBy={name}.socket

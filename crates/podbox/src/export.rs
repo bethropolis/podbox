@@ -162,7 +162,7 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "podbox".to_string());
     let shim = format!(
-        "#!/bin/sh\nexec {} --container \"{}\" run \"{}\" \"$@\"\n",
+        "#!/bin/sh\nexec {} --container \"{}\" exec \"{}\" \"$@\"\n",
         exe,
         container_name.replace('"', "\\\""),
         bin.replace('"', "\\\"")

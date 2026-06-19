@@ -99,17 +99,6 @@ pub fn enable_now_socket(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Start a host service unit.
-pub fn start_host_service(name: &str) -> Result<()> {
-    if !is_available() {
-        return Ok(());
-    }
-    let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "start", &format!("{}-host.service", name)]);
-    let _ = cmd.status();
-    Ok(())
-}
-
 /// Stop socket and host service units.
 pub fn stop_socket_and_host(name: &str) -> Result<()> {
     if !is_available() {

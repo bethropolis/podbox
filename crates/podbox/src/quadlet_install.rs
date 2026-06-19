@@ -187,7 +187,6 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             systemd::stop_compositor(name)?;
         }
         systemd::enable_now_socket(name)?;
-        systemd::start_host_service(name)?;
     } else {
         // 5.5 fallback: copy files manually
         std::fs::create_dir_all(&qdir)?;
@@ -215,7 +214,6 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             systemd::stop_compositor(name)?;
         }
         systemd::enable_now_socket(name)?;
-        systemd::start_host_service(name)?;
     }
 
     // Auto-export apps and bins

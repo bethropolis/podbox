@@ -31,35 +31,45 @@ fn register_session(name: &str, xdg_runtime_dir: &Path) {
     let _ = podbox::process::send_fd(&stream, pidfd.as_raw_fd());
 }
 
+/// Read the user's resolved PATH from the container's `/run/podbox/path`.
+///
+/// Returns `None` if the container is not running or the daemon hasn't
+/// written the file yet (graceful fallback to Quadlet default PATH).
+fn read_user_path(name: &str) -> Option<String> {
+    let args = podbox::process::args(&["exec", name, "cat", "/run/podbox/path"]);
+    let output = podbox::process::run_piped("podman", &args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let resolved = String::from_utf8(output.stdout).ok()?;
+    let trimmed = resolved.trim().to_string();
+    if trimmed.is_empty() { None } else { Some(trimmed) }
+}
+
 /// Enter a shell inside the container.
 pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool) -> Result<()> {
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
     let home_in_container = format!("/home/{}", env.username);
+
+    let mut exec_args: Vec<OsString> = vec![
+        "exec".into(),
+        tty_flag.into(),
+        "-u".into(),
+        env.username.as_str().into(),
+        "--workdir".into(),
+        home_in_container.as_str().into(),
+    ];
+    if let Some(ref path) = read_user_path(name) {
+        exec_args.push(format!("--env=PATH={}", path).into());
+    }
+    exec_args.push(name.into());
+    exec_args.push(config.container.shell.as_str().into());
+
     if dry_run {
-        let exec_args = podbox::process::args(&[
-            "exec",
-            tty_flag,
-            "-u",
-            &env.username,
-            "--workdir",
-            &home_in_container,
-            name,
-            &config.container.shell,
-        ]);
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    let exec_args = podbox::process::args(&[
-        "exec",
-        tty_flag,
-        "-u",
-        &env.username,
-        "--workdir",
-        &home_in_container,
-        name,
-        &config.container.shell,
-    ]);
     register_session(name, &env.xdg_runtime_dir);
     let err = podbox::process::exec_replace("podman", &exec_args);
     Err(err)
@@ -74,24 +84,25 @@ pub fn run_exec(
     root: bool,
 ) -> Result<()> {
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
-    let base_args: &[&str] = if root {
-        &["exec", tty_flag, name]
-    } else {
-        &["exec", tty_flag, "-u", &env.username, name]
-    };
-    if dry_run {
-        let mut exec_args: Vec<OsString> = podbox::process::args(base_args);
-        for a in cmd_args {
-            exec_args.push(a.into());
+
+    let mut exec_args: Vec<OsString> = vec!["exec".into(), tty_flag.into()];
+    if !root {
+        exec_args.push("-u".into());
+        exec_args.push(env.username.as_str().into());
+        if let Some(ref path) = read_user_path(name) {
+            exec_args.push(format!("--env=PATH={}", path).into());
         }
+    }
+    exec_args.push(name.into());
+    for a in cmd_args {
+        exec_args.push(a.into());
+    }
+
+    if dry_run {
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    let mut exec_args: Vec<OsString> = podbox::process::args(base_args);
-    for a in cmd_args {
-        exec_args.push(a.into());
-    }
     register_session(name, &env.xdg_runtime_dir);
     let err = podbox::process::exec_replace("podman", &exec_args);
     Err(err)
@@ -105,21 +116,26 @@ pub fn run_run(
     app_args: &[String],
     dry_run: bool,
 ) -> Result<()> {
+    let mut exec_args: Vec<OsString> = vec![
+        "exec".into(),
+        "-d".into(),
+        "-u".into(),
+        env.username.as_str().into(),
+    ];
+    if let Some(ref path) = read_user_path(name) {
+        exec_args.push(format!("--env=PATH={}", path).into());
+    }
+    exec_args.push(name.into());
+    exec_args.push(app.into());
+    for a in app_args {
+        exec_args.push(a.into());
+    }
+
     if dry_run {
-        let mut exec_args: Vec<OsString> =
-            podbox::process::args(&["exec", "-d", "-u", &env.username, name, app]);
-        for a in app_args {
-            exec_args.push(a.into());
-        }
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    let mut exec_args: Vec<OsString> =
-        podbox::process::args(&["exec", "-d", "-u", &env.username, name, app]);
-    for a in app_args {
-        exec_args.push(a.into());
-    }
     podbox::process::spawn_interactive("podman", &exec_args).map(|_| ())
 }
 

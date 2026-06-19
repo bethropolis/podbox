@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
+use std::process::Command;
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
@@ -117,7 +119,10 @@ pub fn run() -> Result<(), GuestError> {
     // 6. Write PATH injection
     write_path_injection(&bin_dir)?;
 
-    // 7. Enter event loop (listen for host messages)
+    // 7. Resolve and export the user's full PATH for host-side consumption
+    resolve_user_path();
+
+    // 8. Enter event loop (listen for host messages)
     event_loop(&mut host_stream, idle_timeout_secs)?;
 
     Ok(())
@@ -201,6 +206,80 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+/// Resolve the user's full PATH by spawning their configured shell in
+/// interactive mode and capturing `$PATH`.  Writes the result to
+/// `/run/podbox/path` for consumption by the host-side `read_user_path()`.
+///
+/// Silently skips on any error (no file = host falls back to Quadlet default).
+fn resolve_user_path() {
+    let host_user = std::env::var("HOST_USER").ok();
+    let host_uid = std::env::var("HOST_UID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok());
+    let host_gid = std::env::var("HOST_GID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok());
+
+    let (Some(ref user), Some(uid), Some(gid)) = (host_user.as_ref(), host_uid, host_gid) else {
+        return;
+    };
+
+    // Determine the best shell for PATH resolution.
+    // The user's actual interactive shell (e.g. fish) adds bun, cargo,
+    // mise, etc. to PATH via its config — the passwd shell may be /bin/sh
+    // which won't source those.  Try fish first, then passwd, then bash.
+    let passwd_shell = std::fs::read_to_string("/etc/passwd")
+        .ok()
+        .and_then(|p| {
+            p.lines()
+                .find(|l| l.starts_with(&format!("{user}:")))
+                .and_then(|l| l.split(':').nth(6))
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "/bin/sh".to_string());
+
+    let mut candidates = vec![
+        PathBuf::from("/usr/bin/fish"),
+        PathBuf::from(&passwd_shell),
+        PathBuf::from("/bin/bash"),
+        PathBuf::from("/bin/sh"),
+    ];
+    candidates.dedup();
+
+    let mut best_path = String::new();
+
+    for shell in &candidates {
+        if !shell.exists() {
+            continue;
+        }
+        let mut cmd = Command::new(shell);
+        cmd.args(["-ic", "echo \"$PATH\""])
+            .uid(uid)
+            .gid(gid)
+            .env("HOME", format!("/home/{user}"))
+            .env("USER", user)
+            .env("LOGNAME", user)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                let resolved = String::from_utf8_lossy(&output.stdout);
+                let trimmed = resolved.trim();
+                if trimmed.len() > best_path.len() {
+                    best_path = trimmed.to_string();
+                }
+            }
+        }
+    }
+
+    if best_path.is_empty() {
+        return;
+    }
+
+    let _ = std::fs::write(PathBuf::from("/run/podbox/path"), &best_path);
 }
 
 /// Max poll interval in ms (`PollTimeout` caps at `u16::MAX` = 65535).
