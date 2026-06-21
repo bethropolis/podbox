@@ -280,8 +280,6 @@ pub(super) fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate a URI from inside the container, returning a safe-to-open
-/// string (or `None` to refuse).
 pub(super) fn validate_uri(uri: &str) -> Option<String> {
     let s = uri.trim();
     if s.is_empty() || s.starts_with('/') || s.starts_with('.') {
@@ -290,14 +288,32 @@ pub(super) fn validate_uri(uri: &str) -> Option<String> {
 
     match url::Url::parse(s) {
         Ok(parsed) => {
-            let scheme = parsed.scheme();
-            if scheme == "http" || scheme == "https" || scheme == "mailto" {
+            let scheme = parsed.scheme().to_ascii_lowercase();
+
+            // Blacklist local disk access, XSS, and command-injection vectors
+            let dangerous_schemes = [
+                "file", "javascript", "data", "ghelp", "help", "info",
+                "man", "shell", "exec", "run", "local", "ssh"
+            ];
+
+            if dangerous_schemes.contains(&scheme.as_str()) {
+                return None;
+            }
+
+            // Ensure the schema format complies with RFC 3986 standards
+            let is_valid_format = scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-');
+
+            if is_valid_format {
                 Some(s.to_string())
             } else {
                 None
             }
         }
-        Err(url::ParseError::RelativeUrlWithoutBase) => Some(format!("https://{}", s)),
+        Err(url::ParseError::RelativeUrlWithoutBase) => {
+            // Automatically wrap raw hostnames like "github.com"
+            Some(format!("https://{}", s))
+        }
         _ => None,
     }
 }

@@ -62,23 +62,36 @@ pub fn open_pidfd(pid: i32) -> io::Result<OwnedFd> {
 /// Send a raw file descriptor over a connected Unix stream via `SCM_RIGHTS`.
 ///
 /// Sends one dummy byte alongside the descriptor so the receiver can detect EOF.
+/// Retries on `EINTR` to prevent spurious session drops.
 pub fn send_fd(stream: &UnixStream, fd: RawFd) -> io::Result<()> {
     let raw_fd = stream.as_raw_fd();
     let cmsg = ControlMessage::ScmRights(&[fd]);
     let iov = [IoSlice::new(&[0u8])];
-    sendmsg::<()>(raw_fd, &iov, &[cmsg], MsgFlags::empty(), None)?;
-    Ok(())
+    loop {
+        match sendmsg::<()>(raw_fd, &iov, &[cmsg], MsgFlags::empty(), None) {
+            Ok(_) => return Ok(()),
+            Err(nix::errno::Errno::EINTR) => {}
+            Err(e) => return Err(io::Error::from(e)),
+        }
+    }
 }
 
 /// Receive a raw file descriptor from a connected Unix stream via `SCM_RIGHTS`.
 ///
 /// Returns `None` when the sender has closed the connection (EOF).
+/// Retries on `EINTR` to prevent spurious session drops.
 pub fn recv_fd(stream: &UnixStream) -> io::Result<Option<RawFd>> {
     let raw_fd = stream.as_raw_fd();
     let mut buf = [0u8; 1];
     let mut iov = [IoSliceMut::new(&mut buf)];
     let mut cmsg_buf = vec![0u8; 256];
-    let msg = recvmsg::<()>(raw_fd, &mut iov, Some(&mut cmsg_buf), MsgFlags::empty())?;
+    let msg = loop {
+        match recvmsg::<()>(raw_fd, &mut iov, Some(&mut cmsg_buf), MsgFlags::empty()) {
+            Ok(m) => break m,
+            Err(nix::errno::Errno::EINTR) => {}
+            Err(e) => return Err(io::Error::from(e)),
+        }
+    };
 
     if msg.bytes == 0 {
         return Ok(None);

@@ -37,7 +37,15 @@ pub fn resolve() -> Result<HostEnv> {
     let uid = getuid().as_raw();
     let username = env::var("USER")
         .or_else(|_| env::var("LOGNAME"))
-        .unwrap_or_else(|_| "user".into());
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid))
+                .ok()
+                .flatten()
+                .map(|u| u.name)
+                .unwrap_or_else(|| "user".into())
+        });
 
     let xdg_runtime_dir: PathBuf = env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)

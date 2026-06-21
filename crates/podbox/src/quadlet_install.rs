@@ -98,6 +98,17 @@ fn preflight_check(config: &Config) -> Result<()> {
         }
     }
 
+    // Intelligently check if container is running
+    let is_running = crate::podman::query_state(name)
+        .map(|state| state == crate::podman::ContainerState::Running)
+        .unwrap_or(false);
+
+    // Only run port bind tests if the container is stopped
+    if is_running {
+        println!("  Note: container '{}' is running. Skipping port conflict checks for upgrade.", name);
+        return Ok(());
+    }
+
     // Check for port conflicts
     for port_str in &config.network.ports {
         let host_port_str = match port_str.split(':').collect::<Vec<_>>().as_slice() {

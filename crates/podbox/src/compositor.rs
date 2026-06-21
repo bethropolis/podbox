@@ -5,7 +5,6 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
@@ -120,11 +119,6 @@ fn bridge_loop(
     done: &AtomicBool,
     is_client_to_host: bool,
 ) -> Result<()> {
-    // Set a read timeout so that recvmsg periodically unblocks and checks
-    // the `done` flag. Without this, a thread blocked on recvmsg would
-    // never notice the opposite direction has failed.
-    in_socket.set_read_timeout(Some(Duration::from_millis(100)))?;
-
     let mut read_buf = [0u8; 16384];
     let mut cmsg_buffer = vec![0u8; 4096];
     let mut bytes_cache = Vec::with_capacity(32768);
@@ -145,13 +139,12 @@ fn bridge_loop(
             ) {
                 Ok(m) => m,
                 Err(e) if e == nix::errno::Errno::EINTR => continue,
-                Err(e) if e == nix::errno::Errno::EAGAIN => {
-                    if done.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    continue;
+                Err(e) => {
+                    done.store(true, Ordering::Relaxed);
+                    let _ = in_socket.shutdown(std::net::Shutdown::Both);
+                    let _ = out_socket.shutdown(std::net::Shutdown::Both);
+                    return Err(e.into());
                 }
-                Err(e) => return Err(e.into()),
             };
 
             let bytes = msg.bytes;
@@ -184,7 +177,14 @@ fn bridge_loop(
             let msg_size = (size_and_opcode >> 16) as usize;
             let opcode = (size_and_opcode & 0xFFFF) as u16;
 
-            if msg_size < 8 || consumed + msg_size > bytes_cache.len() {
+            if msg_size < 8 {
+                done.store(true, Ordering::Relaxed);
+                let _ = in_socket.shutdown(std::net::Shutdown::Both);
+                let _ = out_socket.shutdown(std::net::Shutdown::Both);
+                anyhow::bail!("Invalid Wayland message size: {}", msg_size);
+            }
+
+            if consumed + msg_size > bytes_cache.len() {
                 break;
             }
 
@@ -205,6 +205,10 @@ fn bridge_loop(
         bytes_cache.drain(..consumed);
     }
 
+    // Signal shutdown to the sibling thread
+    done.store(true, Ordering::Relaxed);
+    let _ = in_socket.shutdown(std::net::Shutdown::Both);
+    let _ = out_socket.shutdown(std::net::Shutdown::Both);
     Ok(())
 }
 
@@ -222,7 +226,13 @@ fn is_blocked_global(message_bytes: &[u8], opcode: u16, state: &Mutex<FirewallSt
     }
 
     let str_len = u32::from_ne_bytes(message_bytes[12..16].try_into().unwrap()) as usize;
-    if str_len < 2 || message_bytes.len() < 16 + str_len {
+    
+    // Guard against integer overflow on 32-bit platforms
+    if message_bytes.len().checked_sub(16).is_none_or(|rem| rem < str_len) {
+        return false;
+    }
+
+    if str_len < 2 {
         return false;
     }
 

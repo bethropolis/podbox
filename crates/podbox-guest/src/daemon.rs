@@ -208,6 +208,33 @@ fn write_path_injection(bin_dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn run_command_with_timeout(
+    mut cmd: Command,
+    timeout: std::time::Duration,
+) -> Option<std::process::Output> {
+    let mut child = cmd.spawn().ok()?;
+    let child_id = child.id();
+
+    // Spawn a monitor thread to enforce the timeout
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(timeout).is_err() {
+            // Timeout reached; terminate the child process safely
+            #[cfg(unix)]
+            {
+                let _ = nix::sys::signal::kill(
+                    nix::unistd::Pid::from_raw(child_id as i32),
+                    nix::sys::signal::Signal::SIGKILL,
+                );
+            }
+        }
+    });
+
+    let output = child.wait_with_output().ok();
+    let _ = tx.send(()); // Signal the monitor thread to exit
+    output
+}
+
 /// Resolve the user's full PATH by spawning their configured shell in
 /// interactive mode and capturing `$PATH`.  Writes the result to
 /// `/run/podbox/path` for consumption by the host-side `read_user_path()`.
@@ -227,7 +254,7 @@ fn resolve_user_path() {
     };
 
     // Determine the best shell for PATH resolution.
-    // The user's actual interactive shell (e.g. fish) adds bun, cargo,
+    // The user's interactive shell (e.g. fish) adds bun, cargo,
     // mise, etc. to PATH via its config — the passwd shell may be /bin/sh
     // which won't source those.  Try fish first, then passwd, then bash.
     let passwd_shell = std::fs::read_to_string("/etc/passwd")
@@ -264,7 +291,7 @@ fn resolve_user_path() {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
 
-        if let Ok(output) = cmd.output() {
+        if let Some(output) = run_command_with_timeout(cmd, std::time::Duration::from_secs(2)) {
             if output.status.success() {
                 let resolved = String::from_utf8_lossy(&output.stdout);
                 let trimmed = resolved.trim();

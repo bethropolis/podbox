@@ -144,6 +144,33 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         return;
     }
 
+    // Atomic process locking using standard library fs directory operations
+    let lock_dir = Path::new("/run/podbox/setup.lock");
+    let mut acquired_lock = false;
+
+    if let Some(parent) = lock_dir.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    for _ in 0..100 { // Retry for up to 10 seconds
+        if marker.exists() {
+            return;
+        }
+        match std::fs::create_dir(lock_dir) {
+            Ok(()) => {
+                acquired_lock = true;
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(_) => {
+                // Graceful fallback to avoid locking system indefinitely on permission errors
+                break;
+            }
+        }
+    }
+
     let passwd = || std::fs::read_to_string("/etc/passwd").unwrap_or_default();
     let group_file = || std::fs::read_to_string("/etc/group").unwrap_or_default();
 
@@ -318,4 +345,9 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::write(marker, b"");
+
+    // Release lock
+    if acquired_lock {
+        let _ = std::fs::remove_dir(lock_dir);
+    }
 }
