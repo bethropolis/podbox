@@ -29,7 +29,7 @@ hex             = "0.4"
 url             = "2.5"
 toml_edit       = "0.22"
 shell-words     = "1.1.1"
-owo-colors      = "4.3.0"
+owo-colors      = { version = "4.3.0", features = ["supports-colors"] }
 fd-lock         = "4.0.4"
 podbox-protocol = { path = "crates/podbox-protocol" }
 

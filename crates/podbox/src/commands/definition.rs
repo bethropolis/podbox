@@ -1,4 +1,5 @@
 use anyhow::Result;
+use owo_colors::{OwoColorize, Stream};
 
 use podbox::cli::OutputFormat;
 use podbox::config;
@@ -34,7 +35,6 @@ pub fn run_completions(shell: clap_complete::shells::Shell) -> Result<()> {
 pub fn run_list(output: OutputFormat) -> Result<()> {
     let configs = config::list_configs();
     let active_ctx = config::read_active_context();
-    let use_color = podbox::codegen::distros::is_tty();
 
     if matches!(output, OutputFormat::Json) {
         let entries: Vec<serde_json::Value> = configs
@@ -79,10 +79,10 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
 
     println!(
         "{:<20} {:<24} {:<10} {}",
-        color_if("CONTAINER", use_color, "\x1b[1m", "\x1b[0m"),
-        color_if("STATUS", use_color, "\x1b[1m", "\x1b[0m"),
-        color_if("AUTOSTART", use_color, "\x1b[1m", "\x1b[0m"),
-        color_if("ACTIVE CONTEXT", use_color, "\x1b[1m", "\x1b[0m"),
+        "CONTAINER".if_supports_color(Stream::Stdout, |s| s.bold()),
+        "STATUS".if_supports_color(Stream::Stdout, |s| s.bold()),
+        "AUTOSTART".if_supports_color(Stream::Stdout, |s| s.bold()),
+        "ACTIVE CONTEXT".if_supports_color(Stream::Stdout, |s| s.bold()),
     );
     println!("{}", "─".repeat(75));
 
@@ -93,9 +93,9 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
             .to_string_lossy()
             .to_string();
 
-        let status = format_status(&name, use_color);
-        let autostart = format_autostart(&config_path, use_color);
-        let active = format_active(&name, &active_ctx, use_color);
+        let status = format_status(&name);
+        let autostart = format_autostart(&config_path);
+        let active = format_active(&name, &active_ctx);
 
         println!("{name:<20} {status:<24} {autostart:<10} {active}");
     }
@@ -103,80 +103,47 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-/// Format the container status with optional ANSI color.
-fn format_status(name: &str, color: bool) -> String {
+/// Format the container status with owo-colors styling.
+fn format_status(name: &str) -> String {
     let (dot, label) = match podbox::podman::query_state(name) {
         Ok(podbox::podman::ContainerState::Running) => {
-            if color {
-                ("\x1b[32m●\x1b[0m", "running")
-            } else {
-                ("●", "running")
-            }
+            ("●".if_supports_color(Stream::Stdout, |s| s.green()).to_string(), "running")
         }
         Ok(podbox::podman::ContainerState::Stopped) => {
             if podbox::systemd::is_unit_failed(name) {
-                if color {
-                    ("\x1b[31m⚠\x1b[0m", "failed")
-                } else {
-                    ("⚠", "failed")
-                }
+                ("⚠".if_supports_color(Stream::Stdout, |s| s.red()).to_string(), "failed")
             } else {
-                if color {
-                    ("\x1b[90m○\x1b[0m", "stopped")
-                } else {
-                    ("○", "stopped")
-                }
+                ("○".if_supports_color(Stream::Stdout, |s| s.bright_black()).to_string(), "stopped")
             }
         }
         Ok(podbox::podman::ContainerState::Missing) => {
-            if color {
-                ("\x1b[33m○\x1b[0m", "unbuilt")
-            } else {
-                ("○", "unbuilt")
-            }
+            ("○".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string(), "unbuilt")
         }
         Err(_) => {
-            if color {
-                ("\x1b[31m?\x1b[0m", "unknown")
-            } else {
-                ("?", "unknown")
-            }
+            ("?".if_supports_color(Stream::Stdout, |s| s.red()).to_string(), "unknown")
         }
     };
     format!("{dot} {label}")
 }
 
 /// Format the autostart column, reading from the TOML config.
-fn format_autostart(config_path: &std::path::Path, color: bool) -> String {
+fn format_autostart(config_path: &std::path::Path) -> String {
     let autostart = match config::Config::load(config_path) {
         Ok(cfg) => cfg.lifecycle.autostart,
-        Err(_) => return color_if("err", color, "\x1b[31m", "\x1b[0m"),
+        Err(_) => return "err".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
     };
     if autostart {
-        color_if("yes", color, "\x1b[32m", "\x1b[0m")
+        "yes".if_supports_color(Stream::Stdout, |s| s.green()).to_string()
     } else {
         "no".to_string()
     }
 }
 
 /// Format the active-context marker.
-fn format_active(name: &str, active_ctx: &Option<String>, color: bool) -> String {
+fn format_active(name: &str, active_ctx: &Option<String>) -> String {
     if active_ctx.as_deref() == Some(name) {
-        if color {
-            "\x1b[33m★ active\x1b[0m".to_string()
-        } else {
-            "active".to_string()
-        }
+        "★ active".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string()
     } else {
         String::new()
-    }
-}
-
-/// Wrap text in ANSI color/reset if color is enabled.
-fn color_if(text: &str, color: bool, ansi_on: &str, ansi_off: &str) -> String {
-    if color {
-        format!("{ansi_on}{text}{ansi_off}")
-    } else {
-        text.to_string()
     }
 }
