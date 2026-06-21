@@ -31,8 +31,8 @@ pub fn resolve() -> Result<Editor> {
     for (name, env_val) in &candidates {
         let path = match env_val {
             Some(val) => {
-                let mut parts = val.split_whitespace();
-                let bin_part = parts.next().unwrap_or(val);
+                let parts = shell_words::split(val).unwrap_or_else(|_| vec![val.to_string()]);
+                let bin_part = parts.first().map(|s| s.as_str()).unwrap_or(val);
                 let p = PathBuf::from(bin_part);
                 if p.is_absolute() && p.exists() {
                     p
@@ -51,7 +51,9 @@ pub fn resolve() -> Result<Editor> {
 
         let mut args = editor_args(name);
         if let Some(val) = env_val {
-            args.extend(val.split_whitespace().skip(1).map(String::from));
+            if let Ok(words) = shell_words::split(val) {
+                args.extend(words.into_iter().skip(1));
+            }
         }
         let editor = Editor {
             bin: path,

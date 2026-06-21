@@ -19,6 +19,7 @@ serde_json      = { workspace = true }
 anyhow          = { workspace = true }
 nix             = { workspace = true }
 thiserror       = { workspace = true }
+fd-lock         = { workspace = true }
 podbox-protocol = { workspace = true }
 
 [lints.rust]

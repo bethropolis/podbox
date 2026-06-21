@@ -28,6 +28,9 @@ sha2            = "0.10"
 hex             = "0.4"
 url             = "2.5"
 toml_edit       = "0.22"
+shell-words     = "1.1.1"
+owo-colors      = "4.3.0"
+fd-lock         = "4.0.4"
 podbox-protocol = { path = "crates/podbox-protocol" }
 
 # Testing

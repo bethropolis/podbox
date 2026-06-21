@@ -31,6 +31,8 @@ sha2            = { workspace = true }
 hex             = { workspace = true }
 url             = { workspace = true }
 toml_edit       = { workspace = true }
+shell-words     = { workspace = true }
+owo-colors      = { workspace = true }
 podbox-protocol = { workspace = true }
 
 [dev-dependencies]

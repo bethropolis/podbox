@@ -578,6 +578,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
+name = "fd-lock"
+version = "4.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
+dependencies = [
+ "cfg-if",
+ "rustix 1.1.4",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1080,6 +1091,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "owo-colors"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1123,11 +1140,13 @@ dependencies = [
  "insta",
  "nix",
  "notify-rust",
+ "owo-colors",
  "podbox-protocol",
  "predicates",
  "serde",
  "serde_json",
  "sha2",
+ "shell-words",
  "tempfile",
  "thiserror 2.0.18",
  "toml",
@@ -1141,6 +1160,7 @@ name = "podbox-guest"
 version = "0.5.2"
 dependencies = [
  "anyhow",
+ "fd-lock",
  "nix",
  "podbox-protocol",
  "serde",
