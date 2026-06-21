@@ -31,11 +31,13 @@ pub fn resolve() -> Result<Editor> {
     for (name, env_val) in &candidates {
         let path = match env_val {
             Some(val) => {
-                let p = PathBuf::from(val);
+                let mut parts = val.split_whitespace();
+                let bin_part = parts.next().unwrap_or(val);
+                let p = PathBuf::from(bin_part);
                 if p.is_absolute() && p.exists() {
                     p
                 } else {
-                    match which::which(val) {
+                    match which::which(bin_part) {
                         Ok(p) => p,
                         Err(_) => continue,
                     }
@@ -47,9 +49,13 @@ pub fn resolve() -> Result<Editor> {
             },
         };
 
+        let mut args = editor_args(name);
+        if let Some(val) = env_val {
+            args.extend(val.split_whitespace().skip(1).map(String::from));
+        }
         let editor = Editor {
             bin: path,
-            args: editor_args(name),
+            args,
         };
         return Ok(editor);
     }

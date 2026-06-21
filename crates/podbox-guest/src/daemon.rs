@@ -122,10 +122,27 @@ pub fn run() -> Result<(), GuestError> {
     // 7. Resolve and export the user's full PATH for host-side consumption
     resolve_user_path();
 
-    // 8. Enter event loop (listen for host messages)
-    event_loop(&mut host_stream, idle_timeout_secs)?;
+    // 8. Handle connections and self-heal on host disconnects/restarts
+    loop {
+        if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs) {
+            eprintln!("podbox-guest: connection error: {e}. Reconnecting...");
+        } else {
+            eprintln!("podbox-guest: host disconnected. Retrying connection...");
+        }
 
-    Ok(())
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        match socket::connect_to_host(&host_socket_path) {
+            Ok(stream) => {
+                host_stream = stream;
+                if let Ok((_caps, _)) =
+                    socket::handshake(&mut host_stream, &container_name, &all_caps)
+                {
+                    eprintln!("podbox-guest: re-established connection and handshook successfully.");
+                }
+            }
+            Err(_) => {}
+        }
+    }
 }
 
 fn install_interceptors(

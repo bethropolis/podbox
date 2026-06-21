@@ -227,9 +227,14 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
     let marker = format!("--container \"{}\"", container_name);
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                if content.contains(&marker) {
-                    let _ = std::fs::remove_file(entry.path());
+            if let Ok(mut file) = std::fs::File::open(entry.path()) {
+                use std::io::Read;
+                let mut chunk = vec![0u8; 4096];
+                if let Ok(bytes_read) = file.read(&mut chunk) {
+                    let content = String::from_utf8_lossy(&chunk[..bytes_read]);
+                    if content.contains(&marker) {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
                 }
             }
         }
