@@ -524,7 +524,7 @@ fn quadlet_dbus_proxy_unit_generated() {
     assert!(unit.contains("Description=D-Bus Proxy for podbox container myenv"));
     assert!(unit.contains("PartOf=myenv.service"));
     assert!(unit.contains("[Service]"));
-    assert!(unit.contains("RuntimeDirectory=podbox"));
+    assert!(!unit.contains("RuntimeDirectory=podbox"));
     assert!(unit.contains("/usr/bin/xdg-dbus-proxy"));
     assert!(unit.contains("--filter"));
     assert!(unit.contains("--talk=org.freedesktop.Notifications"));
@@ -771,7 +771,7 @@ fn compositor_service_structure() {
     assert!(unit.contains("compositor myenv"));
     assert!(unit.contains("Restart=on-failure"));
     assert!(unit.contains("RestartSec=1s"));
-    assert!(unit.contains("RuntimeDirectory=podbox"));
+    assert!(!unit.contains("RuntimeDirectory=podbox"));
     assert!(unit.contains("[Install]"));
     assert!(unit.contains("WantedBy=myenv.service"));
 }
@@ -789,7 +789,7 @@ fn host_service_structure() {
     assert!(unit.contains("serve myenv"));
     assert!(unit.contains("Restart=on-failure"));
     assert!(unit.contains("RestartSec=2s"));
-    assert!(unit.contains("RuntimeDirectory=podbox"));
+    assert!(!unit.contains("RuntimeDirectory=podbox"));
     assert!(unit.contains("[Install]"));
     assert!(unit.contains("WantedBy=myenv.socket"));
 }

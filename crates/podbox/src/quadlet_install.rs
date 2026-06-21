@@ -49,7 +49,7 @@ fn write_custom_units(
 }
 
 /// Validate that mount paths referenced in extra mounts exist on the host.
-fn preflight_check(config: &Config) {
+fn preflight_check(config: &Config) -> Result<()> {
     let name = &config.container.name;
 
     // Check home directory
@@ -68,13 +68,69 @@ fn preflight_check(config: &Config) {
         };
         let path = std::path::Path::new(host_path);
         if !path.exists() {
-            eprintln!(
-                "Warning: mount path '{}' does not exist on the host (container '{}').",
-                path.display(),
-                name
-            );
+            if crate::codegen::distros::is_tty() {
+                let prompt = format!(
+                    "Mount path '{}' does not exist on the host. Create it?",
+                    path.display()
+                );
+                let create = dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt(prompt)
+                    .default(true)
+                    .interact_opt()?;
+                if create == Some(true) {
+                    std::fs::create_dir_all(path).with_context(|| {
+                        format!("failed to create mount directory '{}'", path.display())
+                    })?;
+                    println!("✓ Directory '{}' created.", path.display());
+                } else {
+                    eprintln!(
+                        "Warning: mount path '{}' does not exist on the host. This may cause the container to fail to load.",
+                        path.display()
+                    );
+                }
+            } else {
+                eprintln!(
+                    "Warning: mount path '{}' does not exist on the host (container '{}').",
+                    path.display(),
+                    name
+                );
+            }
         }
     }
+
+    // Check for port conflicts
+    for port_str in &config.network.ports {
+        let host_port_str = match port_str.split(':').collect::<Vec<_>>().as_slice() {
+            [host_port, _container_port] => Some(*host_port),
+            [_ip, host_port, _container_port] => Some(*host_port),
+            _ => None,
+        };
+        if let Some(host_port_str) = host_port_str {
+            if let Ok(host_port) = host_port_str.parse::<u16>() {
+                // Check TCP conflicts on both 0.0.0.0 and 127.0.0.1
+                let tcp_conflict = std::net::TcpListener::bind(format!("0.0.0.0:{}", host_port)).is_err()
+                    || std::net::TcpListener::bind(format!("127.0.0.1:{}", host_port)).is_err();
+                if tcp_conflict {
+                    anyhow::bail!(
+                        "Port conflict: TCP port '{}' is already in use on the host.",
+                        host_port
+                    );
+                }
+
+                // Check UDP conflicts on both 0.0.0.0 and 127.0.0.1
+                let udp_conflict = std::net::UdpSocket::bind(format!("0.0.0.0:{}", host_port)).is_err()
+                    || std::net::UdpSocket::bind(format!("127.0.0.1:{}", host_port)).is_err();
+                if udp_conflict {
+                    anyhow::bail!(
+                        "Port conflict: UDP port '{}' is already in use on the host.",
+                        host_port
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Install systemd service and socket files for a container.
@@ -137,7 +193,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     )?;
 
     // Pre-flight validation
-    preflight_check(config);
+    preflight_check(config)?;
 
     // Ensure home and runtime dirs exist
     std::fs::create_dir_all(&config.container.home).with_context(|| {

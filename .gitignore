@@ -24,3 +24,6 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 site/
+
+# Insta pending snapshots
+*.snap.new
