@@ -13,20 +13,26 @@
 </p>
 
 <p align="center">
-  <em>Define once. Run anywhere. No daemon.</em>
+  <em>Define once. Run anywhere. No host daemon.</em>
 </p>
 
-## Key features
+podbox is a declarative container environment manager for Linux. You write a TOML file, podbox turns it into an OCI image and a set of systemd Quadlet units, and from then on systemd owns the lifecycle: autostart, restart, socket activation, all of it. No background service of podbox's own running on your machine.
 
-- **Declarative TOML** — one file defines the image, packages, config, and lifecycle
-- **Isolated home** — never mounts your host home; opt-in directory sharing
-- **systemd-managed** — Quadlet units for autostart, restart, and socket activation
-- **Guest integration** — notifications, clipboard, URI opening, host commands
-- **GPU / Wayland / audio** — auto-detected, opt-out integration
+Think distrobox, but the environment is a file you can commit to git instead of a sequence of flags you ran once and forgot.
 
-## Why podbox?
+## What it does
 
-Most desktop container tools make a trade-off: full integration means mounting your entire home directory into the container. podbox doesn't. You declare exactly what the container can see — directories, devices, and services — and nothing else is shared.
+Each environment is one TOML file: image, packages, config, and how it should run. `podbox build` turns that into an OCI image and the matching systemd Quadlet units, nothing hand-edited.
+
+The container gets its own home directory by default. Extra folders, devices, GPU, and the Wayland socket are all opt-in. Notifications, clipboard, opening links, and running a command on the host all work, routed through a small guest interceptor rather than a raw bind mount.
+
+systemd owns the lifecycle from there: autostart, restarts, socket activation. There's no podbox process running in the background.
+
+## vs distrobox
+
+Distrobox mounts your home directory and session bus by default and gets out of the way after that, which is the right approach if you want a container that feels like the host. podbox defaults to the opposite: nothing is shared unless it's in the TOML, and the environment is reproducible from that file rather than whatever state the container happened to drift into.
+
+It's not a replacement for distrobox, it solves a different problem.
 
 | | podbox | Distrobox / Toolbox | Raw `podman run` |
 |---|---|---|---|
@@ -40,28 +46,26 @@ Most desktop container tools make a trade-off: full integration means mounting y
 | **Clipboard** | Guest interceptor → host | Via shared home | Not supported |
 | **Host commands** | `host-exec` interceptor | `distrobox-host-exec` | Not supported |
 | **SSH agent** | Socket forward (opt-in) | Auto-mounted | Not supported |
-| **Baked images** | Yes — packages in image, not runtime | No — packages reinstalled on rebuild | N/A |
-| **Reproducibility** | Full — TOML → image → unit | Partial — image only | None |
+| **Baked images** | Yes: packages in image, not runtime | No: packages reinstalled on rebuild | N/A |
+| **Reproducibility** | Full: TOML → image → unit | Partial: image only | None |
 | **Runtime** | Podman only | Podman / Docker / lilipod | Any OCI runtime |
 
-> podbox is not a distrobox replacement. Distrobox optimises for maximum host integration and is excellent at that. podbox optimises for declared, reproducible environments where you control exactly what is shared.
-
-## Quick Start
+## Quick start
 
 ```bash
-# Install via pre-built binary
+# Grab the binary
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 
-# Create and enter a Fedora container
+# Spin up a Fedora container and hop in
 podbox create fedora
 podbox enter fedora
 ```
 
-See the [Getting Started Guide](docs/getting-started.md) for prebuilt and custom build workflows.
+That's a prebuilt environment with no config file needed. For anything custom, see the [Getting Started Guide](docs/getting-started.md).
 
-## How It Works
+## How it works
 
-A single TOML definition is your single source of truth. `podbox build` processes it into OCI images and systemd Quadlet units — no manual Containerfile or systemd editing.
+You write one TOML file. `podbox build` turns it into an OCI image plus the systemd Quadlet units that run it: no hand-edited Containerfile, no manually written unit files.
 
 <p align="center">
   <picture>
@@ -71,126 +75,112 @@ A single TOML definition is your single source of truth. `podbox build` processe
 </p>
 
 ---
+
 ## Configuration
 
-Config files live in `~/.config/podbox/<name>.toml` or `./.podbox.toml`. See [the config reference](docs/config.md) for all keys.
+Configs live in `~/.config/podbox/<name>.toml`, or `./.podbox.toml` if you'd rather keep one per project. Every key is documented in the [config reference](docs/config.md).
 
-## Usage
+## Using it day to day
 
-**Prebuilt (quick):**
+**Prebuilt environments, ready in seconds:**
 ```bash
-podbox create cachy                
-podbox create fedora --name dev 
+podbox create cachy
+podbox create fedora --name dev
 ```
 
-**Custom build (from a base image):**
+**Building from a base image instead:**
 ```bash
-# Scaffold a non-prebuilt config
+# Scaffold a config you can edit
 podbox init fedora:44 --name myenv
 
-# Build, enable, start
+# Build it, enable it, start it
 podbox create myenv
 ```
 
-**One-shot with any OCI image:**
+**Or just point it at any OCI image:**
 ```bash
 podbox create ubuntu:24.04 --name dev
 podbox create ghcr.io/user/img --name myenv
 ```
 
-**Interactive wizard:**
+**Not sure what you want? There's a wizard:**
 ```bash
 podbox init -i
 ```
 
-**Active context — set once, then bare commands work:**
-
+**Tired of typing the env name every time?** Set an active context and bare commands target it:
 ```bash
-# Set myenv as the default target
 podbox use myenv
 
-# All commands now target myenv
 podbox status
 podbox logs
 podbox exec -- htop
 ```
 
-**Run things:**
-
+**Getting in and running things:**
 ```bash
 podbox enter myenv
 podbox exec -- htop
 podbox run firefox
 ```
 
-**Export to your host:**
-
+**Pulling apps and binaries out to your host:**
 ```bash
 podbox export app firefox
 podbox export bin rg
 ```
 
-**Manage state:**
-
+**Snapshots, restores, clones:**
 ```bash
 podbox snapshot myenv
 podbox restore myenv <tag>
 podbox clone work dev
 ```
 
-**Inspect:**
-
+**Peeking under the hood:**
 ```bash
 podbox inspect myenv
 podbox inspect myenv --quadlet
 ```
 
-## Install
+## Installing
 
-**Online (pre-built binary):**
-
+**Pre-built binary:**
 ```bash
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 ```
 
-**AUR (Arch Linux):**
-
+**Arch Linux, via AUR:**
 ```bash
 paru -S podbox-bin
 ```
 
-**Local source build:**
-
+**Building from source:**
 ```bash
-# Install to ~/.local/bin
-scripts/install.sh
-
-# Install system-wide (requires sudo)
-scripts/install.sh --system
+scripts/install.sh            # installs to ~/.local/bin
+scripts/install.sh --system   # system-wide, needs sudo
 ```
 
-## Requirements
+## What you'll need
 
-### Required
+**Required:**
+- Podman ≥ 5.5 (5.6+ if you want SSH agent passthrough)
+- A systemd user session
+- Linux with a Wayland compositor (X11 apps work via Xwayland)
 
-- **Podman** ≥ 5.5 (SSH agent passthrough needs ≥ 5.6)
-- **systemd** — user session
-- **Linux** with Wayland (X11 apps run via Xwayland)
+**Nice to have:**
+- `xdg-dbus-proxy`, for filtered D-Bus access. Usually already on your system if you've got Flatpak installed.
 
-### Nice to have
+## Something not working?
 
-- `xdg-dbus-proxy` — needed for filtered D-Bus access (commonly shipped with Flatpak)
+Run `podbox doctor` first. It catches most of the common setup issues on its own. If that doesn't sort it out, the [Troubleshooting Guide](docs/troubleshooting.md) covers specific problems in more depth.
 
-## Troubleshooting
+Every command also takes `--dry-run` if you want to see what it'd do before it does it.
 
-Run `podbox doctor` first — it checks the most common issues automatically.
+## Full command reference
 
-For details on specific issues, see the [Troubleshooting Guide](docs/troubleshooting.md).
+See [Commands at a Glance](docs/getting-started.md#commands-at-a-glance) or the [Quick Reference](docs/index.md#quick-reference) for the complete list.
 
-> All commands support `--dry-run` to preview without side effects.
+---
 
-## Full Command Reference
-
-See [Commands at a Glance](docs/getting-started.md#commands-at-a-glance) and the [Quick Reference](docs/index.md#quick-reference).
-
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). MIT license.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.
