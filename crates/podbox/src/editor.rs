@@ -55,10 +55,7 @@ pub fn resolve() -> Result<Editor> {
                 args.extend(words.into_iter().skip(1));
             }
         }
-        let editor = Editor {
-            bin: path,
-            args,
-        };
+        let editor = Editor { bin: path, args };
         return Ok(editor);
     }
 

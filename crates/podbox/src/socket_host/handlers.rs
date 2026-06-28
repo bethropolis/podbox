@@ -103,11 +103,8 @@ pub(super) fn handle_notify(
 pub(super) fn handle_xdg_open(uri: String) -> anyhow::Result<()> {
     if let Some(validated) = validate_uri(&uri) {
         let args = [validated.into()];
-        let _ = crate::process::spawn_interactive_timeout(
-            "xdg-open",
-            &args,
-            Duration::from_secs(30),
-        );
+        let _ =
+            crate::process::spawn_interactive_timeout("xdg-open", &args, Duration::from_secs(30));
     }
     Ok(())
 }
@@ -294,8 +291,18 @@ pub(super) fn validate_uri(uri: &str) -> Option<String> {
 
             // Blacklist local disk access, XSS, and command-injection vectors
             let dangerous_schemes = [
-                "file", "javascript", "data", "ghelp", "help", "info",
-                "man", "shell", "exec", "run", "local", "ssh"
+                "file",
+                "javascript",
+                "data",
+                "ghelp",
+                "help",
+                "info",
+                "man",
+                "shell",
+                "exec",
+                "run",
+                "local",
+                "ssh",
             ];
 
             if dangerous_schemes.contains(&scheme.as_str()) {
@@ -304,7 +311,9 @@ pub(super) fn validate_uri(uri: &str) -> Option<String> {
 
             // Ensure the schema format complies with RFC 3986 standards
             let is_valid_format = scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-                && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-');
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-');
 
             if is_valid_format {
                 Some(s.to_string())

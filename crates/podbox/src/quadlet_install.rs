@@ -73,10 +73,11 @@ fn preflight_check(config: &Config) -> Result<()> {
                     "Mount path '{}' does not exist on the host. Create it?",
                     path.display()
                 );
-                let create = dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                    .with_prompt(prompt)
-                    .default(true)
-                    .interact_opt()?;
+                let create =
+                    dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                        .with_prompt(prompt)
+                        .default(true)
+                        .interact_opt()?;
                 if create == Some(true) {
                     std::fs::create_dir_all(path).with_context(|| {
                         format!("failed to create mount directory '{}'", path.display())
@@ -105,7 +106,10 @@ fn preflight_check(config: &Config) -> Result<()> {
 
     // Only run port bind tests if the container is stopped
     if is_running {
-        println!("  Note: container '{}' is running. Skipping port conflict checks for upgrade.", name);
+        println!(
+            "  Note: container '{}' is running. Skipping port conflict checks for upgrade.",
+            name
+        );
         return Ok(());
     }
 
@@ -119,7 +123,8 @@ fn preflight_check(config: &Config) -> Result<()> {
         if let Some(host_port_str) = host_port_str {
             if let Ok(host_port) = host_port_str.parse::<u16>() {
                 // Check TCP conflicts on both 0.0.0.0 and 127.0.0.1
-                let tcp_conflict = std::net::TcpListener::bind(format!("0.0.0.0:{}", host_port)).is_err()
+                let tcp_conflict = std::net::TcpListener::bind(format!("0.0.0.0:{}", host_port))
+                    .is_err()
                     || std::net::TcpListener::bind(format!("127.0.0.1:{}", host_port)).is_err();
                 if tcp_conflict {
                     anyhow::bail!(
@@ -129,7 +134,8 @@ fn preflight_check(config: &Config) -> Result<()> {
                 }
 
                 // Check UDP conflicts on both 0.0.0.0 and 127.0.0.1
-                let udp_conflict = std::net::UdpSocket::bind(format!("0.0.0.0:{}", host_port)).is_err()
+                let udp_conflict = std::net::UdpSocket::bind(format!("0.0.0.0:{}", host_port))
+                    .is_err()
                     || std::net::UdpSocket::bind(format!("127.0.0.1:{}", host_port)).is_err();
                 if udp_conflict {
                     anyhow::bail!(

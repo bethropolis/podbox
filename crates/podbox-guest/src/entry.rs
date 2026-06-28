@@ -149,7 +149,9 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     // flock auto-releases if the process crashes — no stale locks.
     let lock_path = Path::new("/run/podbox/setup.lock");
     let _ = std::fs::create_dir_all(lock_path.parent().unwrap());
-    let Ok(lock_file) = std::fs::File::create(lock_path) else { return };
+    let Ok(lock_file) = std::fs::File::create(lock_path) else {
+        return;
+    };
     let mut lock = fd_lock::RwLock::new(lock_file);
     let Ok(_guard) = lock.write() else { return };
     if marker.exists() {

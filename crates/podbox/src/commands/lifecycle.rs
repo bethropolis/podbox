@@ -320,7 +320,9 @@ pub fn run_remove(
     if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name])) {
         eprintln!("Warning: failed to stop container '{name}': {e}");
     }
-    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name])) {
+    if let Err(e) =
+        podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]))
+    {
         eprintln!("Warning: failed to remove container '{name}': {e}");
     }
 
@@ -446,7 +448,9 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
             eprintln!("Warning: failed to uninstall '{name}': {e}");
         }
 
-        if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name])) {
+        if let Err(e) =
+            podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]))
+        {
             eprintln!("Warning: failed to remove container '{name}': {e}");
         }
 

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 
 use crate::config::Config;
 use crate::config::validation::parse_idle_timeout_secs;
@@ -172,7 +172,10 @@ fn handle_connection(
             } => {
                 // Store the daemon stream so we can send CheckIdle later
                 if let Ok(clone) = stream.try_clone() {
-                    *state.daemon_stream.lock().unwrap_or_else(|e| e.into_inner()) = Some(clone);
+                    *state
+                        .daemon_stream
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = Some(clone);
                 }
                 handlers::handle_hello(
                     stream,
@@ -187,8 +190,14 @@ fn handle_connection(
                 // Autostart check: if idle_timeout is enabled and no sessions
                 // are active yet, prompt the guest to check for idleness.
                 if state.idle_timeout_secs > 0 && state.session_count.load(Ordering::SeqCst) == 0 {
-                    let mut guard = state.daemon_stream.lock().unwrap_or_else(|e| e.into_inner());
-                    if guard.as_mut().is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err()) {
+                    let mut guard = state
+                        .daemon_stream
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if guard
+                        .as_mut()
+                        .is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err())
+                    {
                         eprintln!("podbox: warning: failed to send CheckIdle after hello");
                         *guard = None;
                     }
@@ -259,11 +268,17 @@ fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
 
     let prev = state.session_count.fetch_sub(1, Ordering::SeqCst);
     if prev == 1 {
-    let mut guard = state.daemon_stream.lock().unwrap_or_else(|e| e.into_inner());
-    if guard.as_mut().is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err()) {
-        eprintln!("podbox: warning: failed to send CheckIdle after session end");
-        *guard = None;
-    }
+        let mut guard = state
+            .daemon_stream
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if guard
+            .as_mut()
+            .is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err())
+        {
+            eprintln!("podbox: warning: failed to send CheckIdle after session end");
+            *guard = None;
+        }
     }
 }
 

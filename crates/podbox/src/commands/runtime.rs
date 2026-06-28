@@ -43,13 +43,18 @@ fn register_session(name: &str, xdg_runtime_dir: &Path) {
 /// written the file yet (graceful fallback to Quadlet default PATH).
 fn read_user_path(name: &str) -> Option<String> {
     let args = podbox::process::args(&["exec", name, "cat", "/run/podbox/path"]);
-    let output = podbox::process::run_piped_timeout("podman", &args, Duration::from_secs(10)).ok()?;
+    let output =
+        podbox::process::run_piped_timeout("podman", &args, Duration::from_secs(10)).ok()?;
     if !output.status.success() {
         return None;
     }
     let resolved = String::from_utf8(output.stdout).ok()?;
     let trimmed = resolved.trim().to_string();
-    if trimmed.is_empty() { None } else { Some(trimmed) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 /// Enter a shell inside the container.

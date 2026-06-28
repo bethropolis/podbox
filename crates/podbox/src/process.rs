@@ -6,7 +6,7 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Output};
 use std::time::Duration;
 
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::{Signal, kill};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 use nix::unistd::Pid;
 
@@ -46,7 +46,11 @@ pub fn spawn_interactive(bin: &str, args: &[OsString]) -> anyhow::Result<ExitSta
 /// Run a command with a timeout, capturing stdout and stderr.
 ///
 /// The child process receives SIGKILL after `timeout` if it has not exited.
-pub fn run_piped_timeout(bin: &str, args: &[OsString], timeout: Duration) -> anyhow::Result<Output> {
+pub fn run_piped_timeout(
+    bin: &str,
+    args: &[OsString],
+    timeout: Duration,
+) -> anyhow::Result<Output> {
     let child = Command::new(bin)
         .args(args)
         .stdout(std::process::Stdio::piped())

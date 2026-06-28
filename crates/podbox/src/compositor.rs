@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 
 /// Set by SIGTERM/SIGINT handler to request clean compositor shutdown.
@@ -264,9 +264,13 @@ fn is_blocked_global(message_bytes: &[u8], opcode: u16, state: &Mutex<FirewallSt
     }
 
     let str_len = u32::from_ne_bytes(message_bytes[12..16].try_into().unwrap()) as usize;
-    
+
     // Guard against integer overflow on 32-bit platforms
-    if message_bytes.len().checked_sub(16).is_none_or(|rem| rem < str_len) {
+    if message_bytes
+        .len()
+        .checked_sub(16)
+        .is_none_or(|rem| rem < str_len)
+    {
         return false;
     }
 

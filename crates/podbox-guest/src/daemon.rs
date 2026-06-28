@@ -7,7 +7,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 
 /// Set by SIGTERM/SIGINT handler to request clean daemon shutdown.
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -159,8 +159,7 @@ pub fn run() -> Result<(), GuestError> {
         std::thread::sleep(std::time::Duration::from_secs(3));
         if let Ok(stream) = socket::connect_to_host(&host_socket_path) {
             host_stream = stream;
-            if let Ok((_caps, _)) =
-                socket::handshake(&mut host_stream, &container_name, &all_caps)
+            if let Ok((_caps, _)) = socket::handshake(&mut host_stream, &container_name, &all_caps)
             {
                 eprintln!("podbox-guest: re-established connection and handshook successfully.");
             }
@@ -333,13 +332,14 @@ fn resolve_user_path() {
             .stderr(std::process::Stdio::null());
 
         if let Some(output) = run_command_with_timeout(cmd, std::time::Duration::from_secs(2))
-            && output.status.success() {
-                let resolved = String::from_utf8_lossy(&output.stdout);
-                let trimmed = resolved.trim();
-                if trimmed.len() > best_path.len() {
-                    best_path = trimmed.to_string();
-                }
+            && output.status.success()
+        {
+            let resolved = String::from_utf8_lossy(&output.stdout);
+            let trimmed = resolved.trim();
+            if trimmed.len() > best_path.len() {
+                best_path = trimmed.to_string();
             }
+        }
     }
 
     if best_path.is_empty() {

@@ -106,22 +106,40 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
 /// Format the container status with owo-colors styling.
 fn format_status(name: &str) -> String {
     let (dot, label) = match podbox::podman::query_state(name) {
-        Ok(podbox::podman::ContainerState::Running) => {
-            ("●".if_supports_color(Stream::Stdout, |s| s.green()).to_string(), "running")
-        }
+        Ok(podbox::podman::ContainerState::Running) => (
+            "●"
+                .if_supports_color(Stream::Stdout, |s| s.green())
+                .to_string(),
+            "running",
+        ),
         Ok(podbox::podman::ContainerState::Stopped) => {
             if podbox::systemd::is_unit_failed(name) {
-                ("⚠".if_supports_color(Stream::Stdout, |s| s.red()).to_string(), "failed")
+                (
+                    "⚠"
+                        .if_supports_color(Stream::Stdout, |s| s.red())
+                        .to_string(),
+                    "failed",
+                )
             } else {
-                ("○".if_supports_color(Stream::Stdout, |s| s.bright_black()).to_string(), "stopped")
+                (
+                    "○"
+                        .if_supports_color(Stream::Stdout, |s| s.bright_black())
+                        .to_string(),
+                    "stopped",
+                )
             }
         }
-        Ok(podbox::podman::ContainerState::Missing) => {
-            ("○".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string(), "unbuilt")
-        }
-        Err(_) => {
-            ("?".if_supports_color(Stream::Stdout, |s| s.red()).to_string(), "unknown")
-        }
+        Ok(podbox::podman::ContainerState::Missing) => (
+            "○"
+                .if_supports_color(Stream::Stdout, |s| s.yellow())
+                .to_string(),
+            "unbuilt",
+        ),
+        Err(_) => (
+            "?".if_supports_color(Stream::Stdout, |s| s.red())
+                .to_string(),
+            "unknown",
+        ),
     };
     format!("{dot} {label}")
 }
@@ -130,10 +148,16 @@ fn format_status(name: &str) -> String {
 fn format_autostart(config_path: &std::path::Path) -> String {
     let autostart = match config::Config::load(config_path) {
         Ok(cfg) => cfg.lifecycle.autostart,
-        Err(_) => return "err".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+        Err(_) => {
+            return "err"
+                .if_supports_color(Stream::Stdout, |s| s.red())
+                .to_string();
+        }
     };
     if autostart {
-        "yes".if_supports_color(Stream::Stdout, |s| s.green()).to_string()
+        "yes"
+            .if_supports_color(Stream::Stdout, |s| s.green())
+            .to_string()
     } else {
         "no".to_string()
     }
@@ -142,7 +166,9 @@ fn format_autostart(config_path: &std::path::Path) -> String {
 /// Format the active-context marker.
 fn format_active(name: &str, active_ctx: &Option<String>) -> String {
     if active_ctx.as_deref() == Some(name) {
-        "★ active".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string()
+        "★ active"
+            .if_supports_color(Stream::Stdout, |s| s.yellow())
+            .to_string()
     } else {
         String::new()
     }
