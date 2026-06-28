@@ -265,7 +265,24 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
             {
                 let state = String::from_utf8_lossy(&sys.stdout).trim().to_string();
                 match state.as_str() {
-                    "active" => return Ok(ContainerState::Running),
+                    "active" => {
+                        // Systemd says active, but verify the podman container
+                        // actually exists. Quadlet's OnStop=remove can delete
+                        // the container while the unit is restarting. If the
+                        // container is truly gone, return Stopped so that
+                        // ensure_running() tries to start it.
+                        if let Ok(out) = Command::new("podman")
+                            .args(["ps", "-q", "--filter", &format!("name=^{name}$")])
+                            .output()
+                        {
+                            if out.status.success()
+                                && !String::from_utf8_lossy(&out.stdout).trim().is_empty()
+                            {
+                                return Ok(ContainerState::Running);
+                            }
+                        }
+                        return Ok(ContainerState::Stopped);
+                    }
                     "inactive" | "failed" => return Ok(ContainerState::Stopped),
                     _ => {
                         // "unknown" — unit not loaded.  Check whether quadlet

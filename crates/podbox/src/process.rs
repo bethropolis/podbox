@@ -4,8 +4,11 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Output};
+use std::time::Duration;
 
+use nix::sys::signal::{kill, Signal};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
+use nix::unistd::Pid;
 
 /// Build a `Vec<OsString>` from a slice of `&str`/`&String` literals.
 pub fn args<S: AsRef<str>>(items: &[S]) -> Vec<OsString> {
@@ -38,6 +41,57 @@ pub fn run_piped(bin: &str, args: &[OsString]) -> anyhow::Result<Output> {
 pub fn spawn_interactive(bin: &str, args: &[OsString]) -> anyhow::Result<ExitStatus> {
     let status = Command::new(bin).args(args).status()?;
     Ok(status)
+}
+
+/// Run a command with a timeout, capturing stdout and stderr.
+///
+/// The child process receives SIGKILL after `timeout` if it has not exited.
+pub fn run_piped_timeout(bin: &str, args: &[OsString], timeout: Duration) -> anyhow::Result<Output> {
+    let child = Command::new(bin)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    wait_child_timeout(child, timeout)
+}
+
+/// Run an interactive command with a timeout (SIGTERM, then SIGKILL).
+///
+/// Unlike `run_piped_timeout`, this sends SIGTERM first with a 5-second
+/// grace period before SIGKILL, giving well-behaved processes a chance
+/// to clean up.
+pub fn spawn_interactive_timeout(
+    bin: &str,
+    args: &[OsString],
+    timeout: Duration,
+) -> anyhow::Result<ExitStatus> {
+    let mut child = Command::new(bin).args(args).spawn()?;
+    let pid = Pid::from_raw(child.id().cast_signed());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(timeout).is_err() {
+            let _ = kill(pid, Signal::SIGTERM);
+            std::thread::sleep(Duration::from_secs(5));
+            let _ = kill(pid, Signal::SIGKILL);
+        }
+    });
+    let status = child.wait()?;
+    let _ = tx.send(());
+    Ok(status)
+}
+
+/// Wait for a child process to complete, enforcing a timeout via SIGKILL.
+pub fn wait_child_timeout(child: std::process::Child, timeout: Duration) -> anyhow::Result<Output> {
+    let pid = Pid::from_raw(child.id().cast_signed());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(timeout).is_err() {
+            let _ = kill(pid, Signal::SIGKILL);
+        }
+    });
+    let output = child.wait_with_output()?;
+    let _ = tx.send(());
+    Ok(output)
 }
 
 /// Open a pidfd for a given PID (Linux 5.3+).

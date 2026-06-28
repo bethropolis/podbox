@@ -138,7 +138,7 @@ pub fn start_unit(name: &str) -> Result<()> {
 pub fn stop_unit(name: &str) -> Result<()> {
     let mut cmd = Command::new("systemctl");
     cmd.args(["--user", "stop", &format!("{}.service", name)]);
-    let _ = cmd.status();
+    cmd.status()?;
     Ok(())
 }
 
@@ -146,7 +146,7 @@ pub fn stop_unit(name: &str) -> Result<()> {
 pub fn restart_unit(name: &str) -> Result<()> {
     let mut cmd = Command::new("systemctl");
     cmd.args(["--user", "restart", &format!("{}.service", name)]);
-    let _ = cmd.status();
+    cmd.status()?;
     Ok(())
 }
 

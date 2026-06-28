@@ -4,8 +4,32 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+
+/// Set by SIGTERM/SIGINT handler to request clean daemon shutdown.
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Register SIGTERM/SIGINT handlers that set `SHUTDOWN_REQUESTED`.
+/// Without `SA_RESTART`, `poll()` returns `EINTR` so the event loop can check.
+fn setup_signal_handler() {
+    extern "C" fn handle_signal(_: i32) {
+        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+    }
+    let sig_action = SigAction::new(
+        SigHandler::Handler(handle_signal),
+        SaFlags::empty(),
+        SigSet::empty(),
+    );
+    // SAFETY: signal handler only writes to an AtomicBool, which is
+    // signal-safe on Linux.
+    unsafe {
+        let _ = sigaction(Signal::SIGTERM, &sig_action);
+        let _ = sigaction(Signal::SIGINT, &sig_action);
+    }
+}
 
 use crate::error::GuestError;
 use crate::protocol::{GuestMessage, HostMessage, write_frame};
@@ -89,6 +113,8 @@ fn has_event(revents: PollFlags) -> bool {
 }
 
 pub fn run() -> Result<(), GuestError> {
+    setup_signal_handler();
+
     let host_socket_path = socket::host_socket_path()?;
     let container_name = socket::container_name()?;
     let bin_dir = PathBuf::from("/run/podbox/bin");
@@ -131,16 +157,13 @@ pub fn run() -> Result<(), GuestError> {
         }
 
         std::thread::sleep(std::time::Duration::from_secs(3));
-        match socket::connect_to_host(&host_socket_path) {
-            Ok(stream) => {
-                host_stream = stream;
-                if let Ok((_caps, _)) =
-                    socket::handshake(&mut host_stream, &container_name, &all_caps)
-                {
-                    eprintln!("podbox-guest: re-established connection and handshook successfully.");
-                }
+        if let Ok(stream) = socket::connect_to_host(&host_socket_path) {
+            host_stream = stream;
+            if let Ok((_caps, _)) =
+                socket::handshake(&mut host_stream, &container_name, &all_caps)
+            {
+                eprintln!("podbox-guest: re-established connection and handshook successfully.");
             }
-            Err(_) => {}
         }
     }
 }
@@ -229,7 +252,7 @@ fn run_command_with_timeout(
     mut cmd: Command,
     timeout: std::time::Duration,
 ) -> Option<std::process::Output> {
-    let mut child = cmd.spawn().ok()?;
+    let child = cmd.spawn().ok()?;
     let child_id = child.id();
 
     // Spawn a monitor thread to enforce the timeout
@@ -240,7 +263,7 @@ fn run_command_with_timeout(
             #[cfg(unix)]
             {
                 let _ = nix::sys::signal::kill(
-                    nix::unistd::Pid::from_raw(child_id as i32),
+                    nix::unistd::Pid::from_raw(child_id.cast_signed()),
                     nix::sys::signal::Signal::SIGKILL,
                 );
             }
@@ -257,6 +280,7 @@ fn run_command_with_timeout(
 /// `/run/podbox/path` for consumption by the host-side `read_user_path()`.
 ///
 /// Silently skips on any error (no file = host falls back to Quadlet default).
+#[allow(clippy::similar_names)]
 fn resolve_user_path() {
     let host_user = std::env::var("HOST_USER").ok();
     let host_uid = std::env::var("HOST_UID")
@@ -280,7 +304,7 @@ fn resolve_user_path() {
             p.lines()
                 .find(|l| l.starts_with(&format!("{user}:")))
                 .and_then(|l| l.split(':').nth(6))
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
         })
         .unwrap_or_else(|| "/bin/sh".to_string());
 
@@ -308,15 +332,14 @@ fn resolve_user_path() {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
 
-        if let Some(output) = run_command_with_timeout(cmd, std::time::Duration::from_secs(2)) {
-            if output.status.success() {
+        if let Some(output) = run_command_with_timeout(cmd, std::time::Duration::from_secs(2))
+            && output.status.success() {
                 let resolved = String::from_utf8_lossy(&output.stdout);
                 let trimmed = resolved.trim();
                 if trimmed.len() > best_path.len() {
                     best_path = trimmed.to_string();
                 }
             }
-        }
     }
 
     if best_path.is_empty() {
@@ -336,6 +359,11 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
     let mut remaining_ms = idle_limit_ms;
 
     loop {
+        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+            eprintln!("podbox-guest: received shutdown signal, exiting.");
+            return Ok(());
+        }
+
         let host_revents: PollFlags;
         let pid_revents: Vec<PollFlags>;
 
@@ -377,7 +405,13 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                         .map(|f| f.revents().unwrap_or(PollFlags::empty()))
                         .collect();
                 }
-                Err(nix::errno::Errno::EINTR) => continue,
+                Err(nix::errno::Errno::EINTR) => {
+                    if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+                        eprintln!("podbox-guest: received shutdown signal, exiting.");
+                        return Ok(());
+                    }
+                    continue;
+                }
                 Err(e) => return Err(GuestError::Io(e.into())),
             }
         }

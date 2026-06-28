@@ -2,6 +2,7 @@ use std::ffi::OsString;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Result;
 
@@ -27,8 +28,13 @@ fn register_session(name: &str, xdg_runtime_dir: &Path) {
         Ok(s) => s,
         _ => return,
     };
-    let _ = write_frame(&mut stream, &GuestMessage::RegisterSession);
-    let _ = podbox::process::send_fd(&stream, pidfd.as_raw_fd());
+    if let Err(e) = write_frame(&mut stream, &GuestMessage::RegisterSession) {
+        eprintln!("podbox: warning: failed to register session: {e}");
+        return;
+    }
+    if let Err(e) = podbox::process::send_fd(&stream, pidfd.as_raw_fd()) {
+        eprintln!("podbox: warning: failed to send pidfd to host: {e}");
+    }
 }
 
 /// Read the user's resolved PATH from the container's `/run/podbox/path`.
@@ -37,7 +43,7 @@ fn register_session(name: &str, xdg_runtime_dir: &Path) {
 /// written the file yet (graceful fallback to Quadlet default PATH).
 fn read_user_path(name: &str) -> Option<String> {
     let args = podbox::process::args(&["exec", name, "cat", "/run/podbox/path"]);
-    let output = podbox::process::run_piped("podman", &args).ok()?;
+    let output = podbox::process::run_piped_timeout("podman", &args, Duration::from_secs(10)).ok()?;
     if !output.status.success() {
         return None;
     }

@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
 use crate::config::IntegrationConfig;
 use crate::protocol::{HostMessage, write_frame};
@@ -101,12 +102,12 @@ pub(super) fn handle_notify(
 /// Handle an `XdgOpen` message from the guest.
 pub(super) fn handle_xdg_open(uri: String) -> anyhow::Result<()> {
     if let Some(validated) = validate_uri(&uri) {
-        if let Ok(mut child) = std::process::Command::new("xdg-open")
-            .arg(&validated)
-            .spawn()
-        {
-            let _ = child.wait();
-        }
+        let args = [validated.into()];
+        let _ = crate::process::spawn_interactive_timeout(
+            "xdg-open",
+            &args,
+            Duration::from_secs(30),
+        );
     }
     Ok(())
 }
@@ -119,7 +120,8 @@ pub(super) fn handle_clipboard_set(text: String) -> anyhow::Result<()> {
     if let Some(ref mut stdin) = child.stdin {
         let _ = stdin.write_all(text.as_bytes());
     }
-    let _ = child.wait();
+    drop(child.stdin.take());
+    let _ = crate::process::wait_child_timeout(child, Duration::from_secs(10))?;
     Ok(())
 }
 
@@ -193,7 +195,7 @@ pub(super) fn handle_host_exec(
         .spawn()
     {
         Ok(child) => {
-            let output = child.wait_with_output()?;
+            let output = crate::process::wait_child_timeout(child, Duration::from_secs(60))?;
             if !output.stdout.is_empty() {
                 write_frame(
                     stream,

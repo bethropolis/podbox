@@ -7,7 +7,28 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
+use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
+
+/// Set by SIGTERM/SIGINT handler to request clean compositor shutdown.
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Register SIGTERM/SIGINT handlers that set `SHUTDOWN_REQUESTED`.
+fn setup_signal_handler() {
+    extern "C" fn handle_signal(_: i32) {
+        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+    }
+    let sig_action = SigAction::new(
+        SigHandler::Handler(handle_signal),
+        SaFlags::empty(),
+        SigSet::empty(),
+    );
+    // SAFETY: handler only writes to an AtomicBool (signal-safe on Linux).
+    unsafe {
+        let _ = sigaction(Signal::SIGTERM, &sig_action);
+        let _ = sigaction(Signal::SIGINT, &sig_action);
+    }
+}
 
 use crate::config::Config;
 
@@ -57,6 +78,8 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
     let _ = std::fs::remove_file(&socket_path);
     std::fs::create_dir_all(socket_path.parent().context("socket path has no parent")?)?;
 
+    setup_signal_handler();
+
     let listener = UnixListener::bind(&socket_path).with_context(|| {
         format!(
             "Failed to bind Wayland proxy socket at {}",
@@ -66,7 +89,22 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
 
     let blocked = config.wayland.blocked_interfaces.clone();
 
-    for stream in listener.incoming().flatten().take(MAX_CONNECTIONS) {
+    let mut connections = 0;
+    loop {
+        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) || connections >= MAX_CONNECTIONS {
+            break;
+        }
+
+        let stream = match listener.accept() {
+            Ok((s, _)) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                eprintln!("podbox-compositor: accept failed: {e}");
+                break;
+            }
+        };
+        connections += 1;
+
         let host_conn = match UnixStream::connect(&host_socket) {
             Ok(s) => s,
             Err(e) => {
@@ -243,7 +281,7 @@ fn is_blocked_global(message_bytes: &[u8], opcode: u16, state: &Mutex<FirewallSt
         Err(_) => return false,
     };
 
-    let guard = state.lock().unwrap();
+    let guard = state.lock().unwrap_or_else(|e| e.into_inner());
     guard.blocked_interfaces.contains(interface_name)
 }
 
@@ -282,16 +320,16 @@ mod tests {
         let raw = interface.as_bytes();
         let str_len = raw.len().checked_add(1).unwrap();
         let padded_len = str_len.next_multiple_of(4);
-        let msg_size = (8 + 4 + 4 + padded_len + 4) as u32;
+        let msg_size = u32::try_from(8 + 4 + 4 + padded_len + 4).unwrap();
 
         let mut buf = Vec::with_capacity(msg_size as usize);
         buf.extend_from_slice(&object_id.to_ne_bytes());
-        buf.extend_from_slice(&((msg_size << 16) | 0).to_ne_bytes());
+        buf.extend_from_slice(&(msg_size << 16).to_ne_bytes());
         buf.extend_from_slice(&name.to_ne_bytes());
-        buf.extend_from_slice(&(str_len as u32).to_ne_bytes());
+        buf.extend_from_slice(&u32::try_from(str_len).unwrap().to_ne_bytes());
         buf.extend_from_slice(raw);
         buf.push(0);
-        while buf.len() < (8 + 4 + 4 + padded_len) as usize {
+        while buf.len() < (8 + 4 + 4 + padded_len) {
             buf.push(0);
         }
         buf.extend_from_slice(&version.to_ne_bytes());
@@ -301,7 +339,7 @@ mod tests {
     fn make_message(object_id: u32, size: u32, opcode: u16) -> Vec<u8> {
         let mut buf = Vec::with_capacity(size as usize);
         buf.extend_from_slice(&object_id.to_ne_bytes());
-        buf.extend_from_slice(&((size << 16) | opcode as u32).to_ne_bytes());
+        buf.extend_from_slice(&((size << 16) | u32::from(opcode)).to_ne_bytes());
         while buf.len() < size as usize {
             buf.push(0);
         }

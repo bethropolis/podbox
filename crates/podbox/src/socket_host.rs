@@ -1,10 +1,11 @@
-use std::os::fd::RawFd;
-use std::os::unix::io::FromRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 
 use crate::config::Config;
 use crate::config::validation::parse_idle_timeout_secs;
@@ -20,6 +21,27 @@ const MAX_CONCURRENT: usize = 4;
 /// How often the host sends a keepalive `Ping` to a connected guest.
 const PING_INTERVAL: Duration = Duration::from_secs(60);
 
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Register SIGTERM/SIGINT handlers that set `SHUTDOWN_REQUESTED`.
+/// Without SA_RESTART, blocking syscalls return EINTR, letting the
+/// accept loop check the flag.
+fn setup_signal_handler() -> nix::Result<()> {
+    extern "C" fn handle_signal(_: i32) {
+        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+    }
+    let sig_action = SigAction::new(
+        SigHandler::Handler(handle_signal),
+        SaFlags::empty(),
+        SigSet::empty(),
+    );
+    unsafe {
+        sigaction(Signal::SIGTERM, &sig_action)?;
+        sigaction(Signal::SIGINT, &sig_action)?;
+    }
+    Ok(())
+}
+
 /// Shared mutable state between all connections and PID monitor threads.
 struct SharedState {
     /// The first (and only) guest-daemon stream — used to send CheckIdle.
@@ -34,6 +56,8 @@ struct SharedState {
 
 /// Run the host socket server for a container.
 pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
+    let _ = setup_signal_handler();
+
     let config = config.clone();
     let path = socket_path.to_path_buf();
     let idle_timeout_secs = parse_idle_timeout_secs(&config.lifecycle.idle_timeout);
@@ -56,6 +80,15 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
     loop {
+        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+            eprintln!("podbox: shutdown requested, draining connections...");
+            drop(listener);
+            for h in handles {
+                let _ = h.join();
+            }
+            return Ok(());
+        }
+
         match listener.accept() {
             Ok((mut stream, _)) => {
                 handles.retain_mut(|h| !h.is_finished());
@@ -77,6 +110,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 });
                 handles.push(handle);
             }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(e) => {
                 eprintln!("Socket accept failed: {}", e);
                 break;
@@ -138,7 +172,7 @@ fn handle_connection(
             } => {
                 // Store the daemon stream so we can send CheckIdle later
                 if let Ok(clone) = stream.try_clone() {
-                    *state.daemon_stream.lock().unwrap() = Some(clone);
+                    *state.daemon_stream.lock().unwrap_or_else(|e| e.into_inner()) = Some(clone);
                 }
                 handlers::handle_hello(
                     stream,
@@ -153,19 +187,21 @@ fn handle_connection(
                 // Autostart check: if idle_timeout is enabled and no sessions
                 // are active yet, prompt the guest to check for idleness.
                 if state.idle_timeout_secs > 0 && state.session_count.load(Ordering::SeqCst) == 0 {
-                    let mut daemon = state.daemon_stream.lock().unwrap();
-                    if let Some(ref mut daemon) = *daemon {
-                        let _ = write_frame(daemon, &HostMessage::CheckIdle);
+                    let mut guard = state.daemon_stream.lock().unwrap_or_else(|e| e.into_inner());
+                    if guard.as_mut().is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err()) {
+                        eprintln!("podbox: warning: failed to send CheckIdle after hello");
+                        *guard = None;
                     }
                 }
             }
             GuestMessage::RegisterSession => {
                 // Receive the pidfd via SCM_RIGHTS
-                let fd = match process::recv_fd(stream) {
+                let raw_fd = match process::recv_fd(stream) {
                     Ok(Some(fd)) => fd,
                     Ok(None) => return Ok(()),
                     Err(_) => return Ok(()),
                 };
+                let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
                 state.session_count.fetch_add(1, Ordering::SeqCst);
                 let s = Arc::clone(state);
                 std::thread::spawn(move || monitor_pidfd(fd, s));
@@ -200,9 +236,9 @@ fn handle_connection(
 
 /// Block until `fd` (a pidfd) becomes readable, then decrement the session
 /// counter.  If the count reaches zero, send `CheckIdle` to the guest daemon.
-fn monitor_pidfd(raw_fd: RawFd, state: Arc<SharedState>) {
+fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
     let mut pfd = nix::libc::pollfd {
-        fd: raw_fd,
+        fd: fd.as_raw_fd(),
         events: nix::libc::POLLIN,
         revents: 0,
     };
@@ -221,14 +257,13 @@ fn monitor_pidfd(raw_fd: RawFd, state: Arc<SharedState>) {
         }
     }
 
-    unsafe { nix::libc::close(raw_fd) };
-
     let prev = state.session_count.fetch_sub(1, Ordering::SeqCst);
     if prev == 1 {
-        let mut daemon = state.daemon_stream.lock().unwrap();
-        if let Some(ref mut daemon) = *daemon {
-            let _ = write_frame(daemon, &HostMessage::CheckIdle);
-        }
+    let mut guard = state.daemon_stream.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.as_mut().is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err()) {
+        eprintln!("podbox: warning: failed to send CheckIdle after session end");
+        *guard = None;
+    }
     }
 }
 

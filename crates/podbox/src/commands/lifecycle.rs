@@ -95,10 +95,12 @@ pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
 
     // Stop the container
     eprintln!("Stopping container 'podbox-{name}'...");
-    let _ = podbox::process::run_piped(
+    if let Err(e) = podbox::process::run_piped(
         "podman",
         &podbox::process::args(&["stop", &format!("podbox-{name}")]),
-    );
+    ) {
+        eprintln!("Warning: failed to stop container 'podbox-{name}': {e}");
+    }
 
     // Re-tag snapshot as the main image
     eprintln!("Restoring from snapshot '{snapshot_img}'...");
@@ -112,10 +114,12 @@ pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
 
     // Start the container
     eprintln!("Starting container...");
-    let _ = podbox::process::run_piped(
+    if let Err(e) = podbox::process::run_piped(
         "podman",
         &podbox::process::args(&["start", &format!("podbox-{name}")]),
-    );
+    ) {
+        eprintln!("Warning: failed to start container 'podbox-{name}': {e}");
+    }
 
     println!("✓ Restored '{name}' from snapshot '{tag}'");
     Ok(())
@@ -313,14 +317,24 @@ pub fn run_remove(
     }
 
     // 1. Stop and remove the podman container (best-effort)
-    let _ = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name]));
-    let _ = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]));
+    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name])) {
+        eprintln!("Warning: failed to stop container '{name}': {e}");
+    }
+    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name])) {
+        eprintln!("Warning: failed to remove container '{name}': {e}");
+    }
 
     // 2. Clean up Quadlet files and systemd units
     if config.lifecycle.quadlet {
-        let _ = systemd::stop_unit(name);
-        let _ = podbox::quadlet_install::uninstall(name);
-        let _ = systemd::reset_failed(name);
+        if let Err(e) = systemd::stop_unit(name) {
+            eprintln!("Warning: failed to stop systemd unit '{name}': {e}");
+        }
+        if let Err(e) = podbox::quadlet_install::uninstall(name) {
+            eprintln!("Warning: failed to uninstall Quadlet files for '{name}': {e}");
+        }
+        if let Err(e) = systemd::reset_failed(name) {
+            eprintln!("Warning: failed to reset failed state for '{name}': {e}");
+        }
     }
 
     // 3. Optionally delete the TOML definition
@@ -432,9 +446,13 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
             eprintln!("Warning: failed to uninstall '{name}': {e}");
         }
 
-        let _ = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]));
+        if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name])) {
+            eprintln!("Warning: failed to remove container '{name}': {e}");
+        }
 
-        let _ = systemd::reset_failed(name);
+        if let Err(e) = systemd::reset_failed(name) {
+            eprintln!("Warning: failed to reset failed state for '{name}': {e}");
+        }
 
         println!("✓ Stale runtime files for '{name}' removed");
     }
