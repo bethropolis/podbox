@@ -11,13 +11,14 @@ fi
 
 NEW_VERSION="$1"
 
-# Validate version format (semver)
-if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+# Validate version format (semver with optional pre-release suffix)
+if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
     echo "Error: version must be MAJOR.MINOR.PATCH (e.g. 0.3.6)"
+    echo "  or MAJOR.MINOR.PATCH-PRE (e.g. 0.6.0-pre.1)"
     exit 1
 fi
 
-# Ensure we're on main and clean
+# Warn if not on main, but allow (useful for staging pre-releases)
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [ "$CURRENT_BRANCH" != "main" ]; then
     echo "Warning: not on main branch (currently on '$CURRENT_BRANCH')"

@@ -1,67 +1,34 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver version (e.g. 0.6.0 or 0.6.0-pre.1)'
+        required: true
 
-permissions:
-  contents: write
-  packages: write
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  goreleaser:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install targets
-        run: rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu aarch64-unknown-linux-musl
-
-      - name: Install cross-compilation dependencies
-        run: sudo apt-get update && sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log into GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set podbox version
-        run: echo "PODBOX_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-
-      - name: Upload release artifacts
+      - name: Tag
         run: |
-          gh release upload "${{ github.ref_name }}" \
-            ./dist/*.tar.gz ./dist/*.txt --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git tag v${{ inputs.version }}
+          git push origin v${{ inputs.version }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: cargo build --release
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          prerelease: ${{ contains(inputs.version, '-') }}
+          files: target/release/podbox
+          generate_release_notes: true
