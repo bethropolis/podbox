@@ -147,6 +147,7 @@ pub fn run_run(
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    register_session(name, &env.xdg_runtime_dir);
     podbox::process::spawn_interactive("podman", &exec_args).map(|_| ())
 }
 

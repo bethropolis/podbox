@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use nix::fcntl::{Flock, FlockArg};
 
 use crate::codegen::quadlet;
 use crate::config::{self, Config};
@@ -201,6 +202,15 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         }
         return Ok(());
     }
+
+    // Acquire exclusive install lock (auto-releases on panic/crash via kernel flock)
+    let _install_lock = {
+        let lock_path = context_dir.join(".install.lock");
+        let _ = std::fs::create_dir_all(&context_dir);
+        let file = std::fs::File::create(&lock_path)
+            .with_context(|| format!("failed to create install lock at '{}'", lock_path.display()))?;
+        Flock::lock(file, FlockArg::LockExclusive).map_err(|(_, e)| e)?
+    };
 
     // Ensure .flatpak-info is written to the host build directory
     let _ = std::fs::create_dir_all(&context_dir);

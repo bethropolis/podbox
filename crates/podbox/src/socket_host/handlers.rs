@@ -185,7 +185,37 @@ pub(super) fn handle_host_exec(
         return Ok(());
     }
 
-    match std::process::Command::new(resolved)
+    // Canonicalize the resolved path to mitigate TOCTOU symlink swaps.
+    // If the path resolves outside expected system directories (e.g.
+    // /nix/store, /usr/bin, etc.), we still allow it — the important thing
+    // is that it points to a real regular file right now.
+    let canonical_path = match std::fs::canonicalize(resolved) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("podbox: host-exec: failed to canonicalize '{}': {e}", resolved);
+            write_frame(
+                stream,
+                &HostMessage::HostExecStderr {
+                    data: format!("Failed to resolve executable path '{}': {e}", resolved),
+                },
+            )?;
+            write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+            return Ok(());
+        }
+    };
+    if !canonical_path.is_file() {
+        write_frame(
+            stream,
+            &HostMessage::HostExecStderr {
+                data: format!("'{}' is not a regular file", canonical_path.display()),
+            },
+        )?;
+        write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+        return Ok(());
+    }
+    eprintln!("podbox: host-exec: resolved '{}' -> {}", resolved, canonical_path.display());
+
+    match std::process::Command::new(&canonical_path)
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

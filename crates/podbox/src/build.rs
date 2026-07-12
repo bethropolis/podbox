@@ -3,6 +3,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use nix::fcntl::{Flock, FlockArg};
 use sha2::{Digest, Sha256};
 
 use crate::codegen::containerfile;
@@ -53,6 +54,15 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
     let context_dir = build_context_dir(&config.container.name);
     let lock_path = context_dir.join(".podbox.lock");
     let has_packages = !config.image.packages.install.is_empty();
+
+    // Acquire exclusive build lock (auto-releases on panic/crash via kernel flock)
+    let _build_lock = if !dry_run {
+        std::fs::create_dir_all(&context_dir)?;
+        let file = std::fs::File::create(context_dir.join(".build.lock"))?;
+        Some(Flock::lock(file, FlockArg::LockExclusive).map_err(|(_, e)| e)?)
+    } else {
+        None
+    };
 
     // Checksum covers both the image ref and the install list so that
     // changing either triggers a rebuild.
@@ -212,6 +222,15 @@ fn run_build(
     let context_dir = build_context_dir(name);
     let containerfile_path = context_dir.join("Containerfile");
     let lock_path = context_dir.join(".podbox.lock");
+
+    // Acquire exclusive build lock (auto-releases on panic/crash via kernel flock)
+    let _build_lock = if !dry_run {
+        std::fs::create_dir_all(&context_dir)?;
+        let file = std::fs::File::create(context_dir.join(".build.lock"))?;
+        Some(Flock::lock(file, FlockArg::LockExclusive).map_err(|(_, e)| e)?)
+    } else {
+        None
+    };
 
     let guest_bin = crate::guest::PODBOX_GUEST_BINARY;
 
