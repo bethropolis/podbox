@@ -17,8 +17,20 @@ const DESKTOP_SEARCH_PATHS: &[&str] = &[
     "/opt",
 ];
 
+fn is_valid_app_name(app: &str) -> bool {
+    !app.is_empty()
+        && app.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
 /// Export an application as a .desktop file on the host.
 pub fn export_app(container_name: &str, app: &str) -> Result<()> {
+    if !is_valid_app_name(app) {
+        return Err(PodboxError::ExportFailed {
+            details: format!("invalid app name: '{app}'"),
+        }
+        .into());
+    }
+
     // 1. Locate .desktop file in container, searching XDG directories.
     let (container_path, desktop_content) = find_desktop_file(container_name, app)?;
 
@@ -66,6 +78,12 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
 /// Find a `.desktop` file in the container by searching XDG dirs,
 /// falling back to user-installed locations.
 fn find_desktop_file(container_name: &str, app: &str) -> Result<(String, String)> {
+    if !is_valid_app_name(app) {
+        return Err(PodboxError::ExportFailed {
+            details: format!("invalid app name: '{app}'"),
+        }
+        .into());
+    }
     let filename = format!("{}.desktop", app);
 
     // First: search well-known system locations.
@@ -326,4 +344,59 @@ fn copy_icon_from_container(container_name: &str, icon_name: &str, _profile: &st
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_app_names() {
+        for name in &["firefox", "Firefox", "code-oss", "code_oss", "v1.2.3", "a"] {
+            assert!(is_valid_app_name(name), "expected '{name}' to be valid");
+        }
+    }
+
+    #[test]
+    fn reject_empty_name() {
+        assert!(!is_valid_app_name(""));
+    }
+
+    #[test]
+    fn reject_shell_metacharacters() {
+        for bad in &[
+            "foo;rm",
+            "foo\"bar",
+            "foo`bar",
+            "foo$bar",
+            "foo|bar",
+            "foo>bar",
+            "foo<bar",
+            "foo&bar",
+            "foo\nbar",
+            "../foo",
+            "foo/bar",
+            "foo bar",
+            "foo\\bar",
+            "foo'bar",
+        ] {
+            assert!(!is_valid_app_name(bad), "expected '{bad}' to be rejected");
+        }
+    }
+
+    #[test]
+    fn export_app_rejects_invalid_name() {
+        let result = export_app("test-container", "foo;rm");
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("foo;rm") || err.contains("invalid"), "error should mention the name: {err}");
+    }
+
+    #[test]
+    fn find_desktop_file_rejects_invalid_name() {
+        let result = find_desktop_file("test-container", "foo`whoami`");
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("foo`whoami`") || err.contains("invalid"), "error should mention the name: {err}");
+    }
 }
