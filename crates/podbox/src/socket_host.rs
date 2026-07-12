@@ -81,7 +81,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
 
     loop {
         if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
-            eprintln!("podbox: shutdown requested, draining connections...");
+            tracing::info!("podbox: shutdown requested, draining connections...");
             drop(listener);
             for h in handles {
                 let _ = h.join();
@@ -94,8 +94,8 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 handles.retain_mut(|h| !h.is_finished());
 
                 if handles.len() >= MAX_CONCURRENT {
-                    eprintln!(
-                        "podbox: dropping connection: {} concurrent clients already in flight",
+                    tracing::warn!(
+                        "dropping connection: {} concurrent clients already in flight",
                         handles.len()
                     );
                     continue;
@@ -105,14 +105,14 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 let state = Arc::clone(&state);
                 let handle = std::thread::spawn(move || {
                     if let Err(e) = handle_connection(&mut stream, &cfg, &state) {
-                        eprintln!("Error handling connection: {}", e);
+                        tracing::error!("error handling connection: {}", e);
                     }
                 });
                 handles.push(handle);
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(e) => {
-                eprintln!("Socket accept failed: {}", e);
+                tracing::error!("socket accept failed: {}", e);
                 break;
             }
         }
@@ -198,7 +198,7 @@ fn handle_connection(
                         .as_mut()
                         .is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err())
                     {
-                        eprintln!("podbox: warning: failed to send CheckIdle after hello");
+                        tracing::warn!("failed to send CheckIdle after hello");
                         *guard = None;
                     }
                 }
@@ -222,7 +222,7 @@ fn handle_connection(
             GuestMessage::IdleTimeout => {
                 if state.idle_timeout_secs > 0 {
                     let name = &state.container_name;
-                    eprintln!("podbox: container '{}' idle — stopping", name);
+                    tracing::info!("container '{}' idle — stopping", name);
                     let _ = systemd::stop_unit(name);
                 }
             }
@@ -276,7 +276,7 @@ fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
             .as_mut()
             .is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err())
         {
-            eprintln!("podbox: warning: failed to send CheckIdle after session end");
+            tracing::warn!("failed to send CheckIdle after session end");
             *guard = None;
         }
     }

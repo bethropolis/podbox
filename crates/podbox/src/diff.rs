@@ -2,12 +2,13 @@ use std::collections::BTreeSet;
 use std::process::Command;
 
 use anyhow::Result;
+use serde::Serialize;
 
 use crate::codegen::distros::DistroFamily;
 use crate::config::Config;
 use crate::config::PackageManager;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DiffResult {
     /// Packages listed in `config.image.packages.install`.
     pub config_install: Vec<String>,

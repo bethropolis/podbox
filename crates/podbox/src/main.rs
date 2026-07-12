@@ -21,6 +21,7 @@ fn needs_image_labels(cmd: &Command) -> bool {
     )
 }
 
+#[allow(clippy::unnested_or_patterns)]
 fn extract_positional_name(cmd: &Command) -> Option<String> {
     match cmd {
         Command::Build { name, .. }
@@ -35,7 +36,9 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Logs { name, .. }
         | Command::Update { name, .. }
         | Command::Diff { name, .. }
-        | Command::Snapshot { name, .. }
+        | Command::Snapshot { snapshot_cmd: podbox::cli::SnapshotCommand::Create { name, .. } }
+        | Command::Snapshot { snapshot_cmd: podbox::cli::SnapshotCommand::List { name } }
+        | Command::Snapshot { snapshot_cmd: podbox::cli::SnapshotCommand::Prune { name, .. } }
         | Command::Restore { name, .. }
         | Command::Inspect { name, .. }
         | Command::FindDefinition { name }
@@ -44,7 +47,25 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
     }
 }
 
+fn init_tracing() {
+    use tracing_subscriber::prelude::*;
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    if let Ok(layer) = tracing_journald::layer() {
+        let _ = tracing_subscriber::registry()
+            .with(env_filter)
+            .with(layer)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_writer(std::io::stderr)
+            .try_init();
+    }
+}
+
 fn main() -> ExitCode {
+    init_tracing();
     let result = run();
     if let Err(e) = result {
         eprintln!("Error: {e:#}");
@@ -272,12 +293,12 @@ fn run() -> Result<()> {
             commands::runtime::run_logs(&name, *follow, *tail, since.clone(), cli.dry_run)?;
         }
 
-        Command::Diff { apply, .. } => {
-            commands::diff::run_diff(&config, &name, &env.username, *apply)?;
+        Command::Diff { apply, output, .. } => {
+            commands::diff::run_diff(&config, &name, &env.username, *apply, *output)?;
         }
 
-        Command::Snapshot { tag, .. } => {
-            commands::lifecycle::run_snapshot(&config, &name, tag.as_deref())?;
+        Command::Snapshot { snapshot_cmd } => {
+            run_snapshot_command(snapshot_cmd, &config, &name, cli.dry_run)?;
         }
 
         Command::Restore { tag, .. } => {
@@ -288,6 +309,7 @@ fn run() -> Result<()> {
             config: show_config,
             quadlet: show_quadlet,
             env: show_env,
+            output,
             ..
         } => {
             commands::inspect::run_inspect(
@@ -298,6 +320,7 @@ fn run() -> Result<()> {
                 *show_config,
                 *show_quadlet,
                 *show_env,
+                *output,
             )?;
         }
 
@@ -341,8 +364,8 @@ fn run() -> Result<()> {
             commands::pull::run_pull(&config, image, cli.dry_run)?;
         }
 
-        Command::Doctor { fix } => {
-            commands::runtime::run_doctor(&config, &env, *fix)?;
+        Command::Doctor { fix, output } => {
+            commands::runtime::run_doctor(&config, &env, *fix, *output)?;
         }
 
         Command::TranslatePath {
@@ -510,6 +533,33 @@ fn hash_image_section(path: &std::path::Path) -> Result<String> {
         .unwrap_or_default();
     use sha2::{Digest, Sha256};
     Ok(hex::encode(Sha256::digest(image_str.as_bytes())))
+}
+
+fn run_snapshot_command(
+    cmd: &podbox::cli::SnapshotCommand,
+    config: &Config,
+    resolved_name: &str,
+    dry_run: bool,
+) -> Result<()> {
+    let name = match cmd {
+        podbox::cli::SnapshotCommand::Create { name: n, .. }
+        | podbox::cli::SnapshotCommand::List { name: n }
+        | podbox::cli::SnapshotCommand::Prune { name: n, .. } => {
+            n.as_deref().unwrap_or(resolved_name)
+        }
+    };
+    match cmd {
+        podbox::cli::SnapshotCommand::Create { tag, .. } => {
+            commands::lifecycle::run_snapshot(config, name, tag.as_deref())?;
+        }
+        podbox::cli::SnapshotCommand::List { .. } => {
+            commands::lifecycle::run_snapshot_list(name)?;
+        }
+        podbox::cli::SnapshotCommand::Prune { keep, .. } => {
+            commands::lifecycle::run_snapshot_prune(name, *keep, dry_run)?;
+        }
+    }
+    Ok(())
 }
 
 fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<()> {

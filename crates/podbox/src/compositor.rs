@@ -99,7 +99,7 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
             Ok((s, _)) => s,
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(e) => {
-                eprintln!("podbox-compositor: accept failed: {e}");
+                tracing::error!("compositor: accept failed: {e}");
                 break;
             }
         };
@@ -108,7 +108,7 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
         let host_conn = match UnixStream::connect(&host_socket) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("podbox-compositor: failed to connect to host Wayland socket: {e}");
+                tracing::error!("compositor: failed to connect to host Wayland socket: {e}");
                 continue;
             }
         };
@@ -123,7 +123,7 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
 
         std::thread::spawn(move || {
             if let Err(e) = bridge_loop(stream, host_clone, state_c2h, &done_c2h, true) {
-                eprintln!("podbox-compositor: client→host bridge error: {e}");
+                tracing::error!("compositor: client→host bridge error: {e}");
             }
             done_c2h.store(true, Ordering::Relaxed);
         });
@@ -133,7 +133,7 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
 
         std::thread::spawn(move || {
             if let Err(e) = bridge_loop(host_conn, client_clone, state_h2c, &done_h2c, false) {
-                eprintln!("podbox-compositor: host→client bridge error: {e}");
+                tracing::error!("compositor: host→client bridge error: {e}");
             }
             done_h2c.store(true, Ordering::Relaxed);
         });

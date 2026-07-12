@@ -20,7 +20,10 @@ anyhow          = { workspace = true }
 nix             = { workspace = true }
 thiserror       = { workspace = true }
 fd-lock         = { workspace = true }
-podbox-protocol = { workspace = true }
+tracing         = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-journald   = { workspace = true }
+podbox-protocol   = { workspace = true }
 
 [lints.rust]
 unsafe_code = "allow"

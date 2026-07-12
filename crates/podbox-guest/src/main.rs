@@ -9,7 +9,25 @@ use std::path::Path;
 
 pub const VERSION: &str = env!("PODBOX_VERSION");
 
+fn init_tracing() {
+    use tracing_subscriber::prelude::*;
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    if let Ok(layer) = tracing_journald::layer() {
+        let _ = tracing_subscriber::registry()
+            .with(env_filter)
+            .with(layer)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_writer(std::io::stderr)
+            .try_init();
+    }
+}
+
 fn main() {
+    init_tracing();
     let args: Vec<String> = std::env::args().collect();
     let argv0 = args
         .first()

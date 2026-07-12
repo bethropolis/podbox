@@ -5,7 +5,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
+use serde::Serialize;
 
+use podbox::cli::OutputFormat;
 use podbox::codegen::distros;
 use podbox::config::Config;
 use podbox::env::HostEnv;
@@ -29,11 +31,11 @@ fn register_session(name: &str, xdg_runtime_dir: &Path) {
         _ => return,
     };
     if let Err(e) = write_frame(&mut stream, &GuestMessage::RegisterSession) {
-        eprintln!("podbox: warning: failed to register session: {e}");
+        tracing::warn!("failed to register session: {e}");
         return;
     }
     if let Err(e) = podbox::process::send_fd(&stream, pidfd.as_raw_fd()) {
-        eprintln!("podbox: warning: failed to send pidfd to host: {e}");
+        tracing::warn!("failed to send pidfd to host: {e}");
     }
 }
 
@@ -253,48 +255,52 @@ pub fn run_logs(
     }
 }
 
-/// Run diagnostics on the container and host environment.
-pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
-    let mut checks = 0;
-    let mut passes = 0;
-    let mut failures = 0;
+#[derive(Serialize)]
+struct DoctorEntry {
+    name: String,
+    status: String,
+    message: String,
+}
 
-    checks += 1;
+/// Run diagnostics on the container and host environment.
+pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputFormat) -> Result<()> {
+    let mut entries: Vec<DoctorEntry> = Vec::new();
+    let mut passes = 0u32;
+    let mut failures = 0u32;
+
+    macro_rules! check {
+        ($name:expr, $status:expr, $msg:expr $(,)?) => {{
+            entries.push(DoctorEntry {
+                name: $name.to_string(),
+                status: $status.to_string(),
+                message: $msg.to_string(),
+            });
+            match $status {
+                "pass" => passes += 1,
+                "fail" => failures += 1,
+                _ => {}
+            }
+        }};
+    }
+
     match podbox::podman::podman_version() {
         Ok(ver) if ver.at_least(5, 6) => {
-            println!(
-                "[PASS] podman {}.{}.{} (>= 5.6)",
-                ver.major, ver.minor, ver.patch
-            );
-            passes += 1;
+            check!("podman", "pass", format!("{}.{}.{} (>= 5.6)", ver.major, ver.minor, ver.patch));
         }
         Ok(ver) if ver.at_least(5, 5) => {
-            println!(
-                "[WARN] podman {}.{}.{} (< 5.6) — upgrade to 5.6+ for Environment passthrough and native Quadlet management",
-                ver.major, ver.minor, ver.patch
-            );
-            passes += 1;
+            check!("podman", "warn", format!("{}.{}.{} (< 5.6)", ver.major, ver.minor, ver.patch));
         }
         Ok(ver) => {
-            println!(
-                "[FAIL] podman {}.{}.{} (< 5.5) — minimum supported version is 5.5",
-                ver.major, ver.minor, ver.patch
-            );
-            failures += 1;
+            check!("podman", "fail", format!("{}.{}.{} (< 5.5)", ver.major, ver.minor, ver.patch));
         }
         Err(_) => {
-            println!("[FAIL] podman not found in PATH");
-            failures += 1;
+            check!("podman", "fail", "not found in PATH".to_string());
         }
     }
 
     if config.integration.wayland {
-        checks += 1;
         if let Some(ref socket) = env.wayland_socket {
-            println!("[PASS] Wayland socket found");
-            passes += 1;
-
-            checks += 1;
+            check!("Wayland socket", "pass", "found");
             match socket.metadata() {
                 Ok(meta) => {
                     #[cfg(unix)]
@@ -302,107 +308,71 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
                         use std::os::unix::fs::MetadataExt;
                         let owner = meta.uid();
                         if owner == env.uid {
-                            println!("[PASS] Wayland socket owner correct");
-                            passes += 1;
-                        } else {
-                            println!(
-                                "[WARN] Wayland socket owner {} != host UID {}",
-                                owner, env.uid
-                            );
-                            if fix {
-                                match fix_wayland_socket_ownership(socket) {
-                                    Ok(()) => {
-                                        println!("       -> Ownership fixed");
-                                        passes += 1;
-                                    }
-                                    Err(e) => {
-                                        println!("       -> Fix failed: {e}");
-                                        failures += 1;
-                                    }
+                            check!("Wayland socket owner", "pass", "correct");
+                        } else if fix {
+                            match fix_wayland_socket_ownership(socket) {
+                                Ok(()) => {
+                                    check!("Wayland socket owner", "pass", "fixed via --fix");
                                 }
-                            } else {
-                                println!(
-                                    "       Run with --fix to repair, or: podman unshare chown 0:0 {}",
-                                    socket.display()
-                                );
+                                Err(e) => {
+                                    check!("Wayland socket owner", "fail", format!("fix failed: {e}"));
+                                }
                             }
+                        } else {
+                            check!("Wayland socket owner", "warn", format!("owner {} != host UID {}", owner, env.uid));
                         }
                     }
                 }
                 Err(e) => {
-                    println!("[WARN] Could not stat Wayland socket: {e}");
+                    check!("Wayland socket", "warn", format!("could not stat: {e}"));
                 }
             }
         } else {
-            println!("[WARN] Wayland socket not found (WAYLAND_DISPLAY may not be set)");
+            check!("Wayland socket", "warn", "not found (WAYLAND_DISPLAY may not be set)");
         }
     }
 
-    checks += 1;
     match which::which("xdg-user-dir") {
-        Ok(_) => {
-            println!("[PASS] xdg-user-dir found");
-            passes += 1;
-        }
-        Err(_) => println!("[WARN] xdg-user-dir not found -- install xdg-user-dirs"),
+        Ok(_) => check!("xdg-user-dir", "pass", "found"),
+        Err(_) => check!("xdg-user-dir", "warn", "not found"),
     }
 
-    checks += 1;
     match std::fs::read_to_string("/etc/subuid") {
         Ok(content) => {
             let username = &env.username;
             if content.lines().any(|l| l.starts_with(username)) {
-                println!("[PASS] user '{username}' has sub-UID allocations in /etc/subuid");
-                passes += 1;
+                check!("/etc/subuid", "pass", format!("user '{username}' has sub-UID allocations"));
             } else {
-                println!(
-                    "[FAIL] user '{username}' missing from /etc/subuid. Rootless Podman may fail."
-                );
-                println!("       Fix: sudo usermod --add-subuids 100000-165535 {username}");
-                failures += 1;
+                check!("/etc/subuid", "fail", format!("user '{username}' missing from /etc/subuid"));
             }
         }
         Err(_) => {
-            println!("[WARN] could not read /etc/subuid — check manually if rootless builds fail");
+            check!("/etc/subuid", "warn", "could not read /etc/subuid");
         }
     }
 
-    checks += 1;
     match std::fs::read_to_string("/etc/subgid") {
         Ok(content) => {
             let username = &env.username;
             if content.lines().any(|l| l.starts_with(username)) {
-                println!("[PASS] user '{username}' has sub-GID allocations in /etc/subgid");
-                passes += 1;
+                check!("/etc/subgid", "pass", format!("user '{username}' has sub-GID allocations"));
             } else {
-                println!(
-                    "[FAIL] user '{username}' missing from /etc/subgid. Rootless Podman may fail."
-                );
-                println!("       Fix: sudo usermod --add-subgids 100000-165535 {username}");
-                failures += 1;
+                check!("/etc/subgid", "fail", format!("user '{username}' missing from /etc/subgid"));
             }
         }
         Err(_) => {
-            println!("[WARN] could not read /etc/subgid — check manually if rootless builds fail");
+            check!("/etc/subgid", "warn", "could not read /etc/subgid");
         }
     }
 
-    checks += 1;
     let has_embedded = !podbox::guest::PODBOX_GUEST_BINARY.is_empty();
     if has_embedded {
-        println!(
-            "[PASS] podbox-guest binary embedded ({} bytes)",
-            podbox::guest::PODBOX_GUEST_BINARY.len()
-        );
-        passes += 1;
+        check!("embedded guest binary", "pass", format!("{} bytes", podbox::guest::PODBOX_GUEST_BINARY.len()));
     } else {
-        println!("[FAIL] podbox-guest binary embedded, but is empty");
-        println!("       Rebuild podbox: cargo build --release -p podbox");
-        failures += 1;
+        check!("embedded guest binary", "fail", "binary is empty");
     }
 
     if config.lifecycle.autostart {
-        checks += 1;
         if which::which("loginctl").is_ok() {
             let username = std::env::var("USER").unwrap_or_default();
             if !username.is_empty()
@@ -417,32 +387,151 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool) -> Result<()> {
             {
                 let out = String::from_utf8_lossy(&output.stdout);
                 if out.contains("yes") {
-                    println!("[PASS] loginctl linger enabled");
-                    passes += 1;
+                    check!("loginctl linger", "pass", "enabled");
                 } else {
-                    println!(
-                        "[WARN] loginctl linger not enabled -- run: loginctl enable-linger $USER"
-                    );
+                    check!("loginctl linger", "warn", "not enabled");
                 }
             }
         }
     }
 
     if config.lifecycle.quadlet {
-        checks += 1;
         let qdir = dirs::config_dir()
             .unwrap_or_else(|| podbox::config::expand_tilde("~/.config"))
             .join("containers/systemd");
         let container_file = qdir.join(format!("{}.container", config.container.name));
         if container_file.exists() {
-            println!("[PASS] Quadlet files installed");
-            passes += 1;
+            check!("Quadlet files", "pass", "installed");
         } else {
-            println!("[WARN] Quadlet files not found -- run: podbox enable");
+            check!("Quadlet files", "warn", "not found");
         }
     }
 
-    println!("\n{passes} / {checks} checks passed");
+    // ── wl-copy / wl-paste / xdg-dbus-proxy ──
+    for &(bin, desc) in &[
+        ("wl-copy", "clipboard copy from container"),
+        ("wl-paste", "clipboard paste to container"),
+        ("xdg-dbus-proxy", "D-Bus proxy"),
+    ] {
+        match which::which(bin) {
+            Ok(_) => check!(bin, "pass", "found"),
+            Err(_) => check!(bin, "warn", format!("not found — {desc} will fail")),
+        }
+    }
+
+    // ── Stale sockets ──
+    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        let sock_dir = Path::new(&runtime_dir).join("podbox");
+        if let Ok(entries) = std::fs::read_dir(&sock_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "sock") {
+                    if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                        if !name.is_empty() && !podbox::config::config_dir().join(format!("{name}.toml")).exists() {
+                            check!("stale socket", "warn", format!("{} (no config)", path.display()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Orphaned snapshot images ──
+    if let Ok(output) = podbox::process::run_piped(
+        "podman",
+        &podbox::process::args(&["images", "--filter", "reference=localhost/podbox-*:snapshot-*", "--format", "{{.Repository}}:{{.Tag}}"]),
+    ) {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines().filter(|l| !l.is_empty()) {
+            if let Some((repo, full_tag)) = line.rsplit_once(':') {
+                if let Some(box_name) = repo.strip_prefix("localhost/podbox-") {
+                    if let Some(tag) = full_tag.strip_prefix("snapshot-") {
+                        let meta_path = podbox::config::config_dir()
+                            .join("snapshots")
+                            .join(box_name)
+                            .join(format!("{tag}.toml"));
+                        if !meta_path.exists() {
+                            check!("orphaned snapshot", "warn", format!("{line} (no metadata)"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Dead export shims (desktop files) ──
+    if let Some(apps_dir) = dirs::data_dir().map(|d| d.join("applications")) {
+        if let Ok(entries) = std::fs::read_dir(&apps_dir) {
+            for entry in entries.flatten() {
+                let fname = entry.file_name();
+                let fname_str = fname.to_string_lossy();
+                if (fname_str.starts_with("podbox-") || fname_str.starts_with("podmgr-")) && fname_str.ends_with(".desktop") {
+                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                        if let Some(exec_line) = content.lines().find(|l| l.starts_with("Exec=")) {
+                            let rest = exec_line.strip_prefix("Exec=").unwrap_or("");
+                            let args = shell_words::split(rest).unwrap_or_default();
+                            let pos = args.iter().position(|a| a == "-C" || a == "--container");
+                            if let Some(name) = pos.and_then(|p| args.get(p + 1)) {
+                                if !podbox::config::config_dir().join(format!("{name}.toml")).exists() {
+                                    check!("dead export", "warn", format!("{} (container '{name}' missing)", entry.path().display()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Dead export shims (bin shims) ──
+    if let Some(bin_dir) = dirs::home_dir().map(|h| h.join(".local/bin")) {
+        if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    continue;
+                }
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if content.contains("--container") || content.contains("-C ") {
+                        let args = shell_words::split(&content).unwrap_or_default();
+                        let pos = args.iter().position(|a| a == "-C" || a == "--container");
+                        if let Some(name) = pos.and_then(|p| args.get(p + 1)) {
+                            if !podbox::config::config_dir().join(format!("{name}.toml")).exists() {
+                                check!("dead export", "warn", format!("{} (container '{name}' missing)", path.display()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    match output {
+        OutputFormat::Json => {
+            let report = serde_json::json!({
+                "checks": entries,
+                "summary": {
+                    "passes": passes,
+                    "failures": failures,
+                    "total": entries.len(),
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        OutputFormat::Text => {
+            for entry in &entries {
+                let tag = match entry.status.as_str() {
+                    "pass" => "PASS",
+                    "warn" => "WARN",
+                    "fail" => "FAIL",
+                    _ => &entry.status,
+                };
+                println!("[{tag}] {}: {}", entry.name, entry.message);
+            }
+            println!("\n{passes} / {} checks passed", entries.len());
+        }
+    }
+
     if failures > 0 {
         Err(anyhow::anyhow!("{failures} check(s) failed"))
     } else {

@@ -16,16 +16,16 @@ pub(super) fn handle_hello(
     capabilities: Vec<String>,
 ) -> anyhow::Result<()> {
     if protocol_version != crate::protocol::PROTOCOL_VERSION {
-        eprintln!(
-            "Host: protocol mismatch — got v{}, expected v{}",
+        tracing::error!(
+            "protocol mismatch — got v{}, expected v{}",
             protocol_version,
             crate::protocol::PROTOCOL_VERSION
         );
         write_frame(stream, &HostMessage::Shutdown)?;
         return Ok(());
     }
-    eprintln!(
-        "Host: Guest hello (v{}, container: {}, caps: {:?})",
+    tracing::info!(
+        "guest hello (v{}, container: {}, caps: {:?})",
         guest_version, container, capabilities
     );
     let mut accepted = Vec::new();
@@ -192,7 +192,7 @@ pub(super) fn handle_host_exec(
     let canonical_path = match std::fs::canonicalize(resolved) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("podbox: host-exec: failed to canonicalize '{}': {e}", resolved);
+            tracing::error!("host-exec: failed to canonicalize '{}': {e}", resolved);
             write_frame(
                 stream,
                 &HostMessage::HostExecStderr {
@@ -213,7 +213,7 @@ pub(super) fn handle_host_exec(
         write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
         return Ok(());
     }
-    eprintln!("podbox: host-exec: resolved '{}' -> {}", resolved, canonical_path.display());
+    tracing::info!("host-exec: resolved '{}' -> {}", resolved, canonical_path.display());
 
     match std::process::Command::new(&canonical_path)
         .args(&args)

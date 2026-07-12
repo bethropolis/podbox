@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use podbox::cli::OutputFormat;
 use podbox::config::Config;
 use podbox::diff;
 
@@ -11,15 +12,27 @@ use podbox::diff;
 ///   the `install` list.
 /// - Unexpected packages found in the container are added to the `install`
 ///   list.
-pub fn run_diff(config: &Config, name: &str, username: &str, apply: bool) -> Result<()> {
+pub fn run_diff(
+    config: &Config,
+    name: &str,
+    username: &str,
+    apply: bool,
+    output: OutputFormat,
+) -> Result<()> {
     let result = diff::compute(config, name, username)?;
 
-    if !result.has_drift {
-        println!("✓ No drift detected — all declared packages are installed.");
-        return Ok(());
+    match output {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        OutputFormat::Text => {
+            if !result.has_drift {
+                println!("✓ No drift detected — all declared packages are installed.");
+                return Ok(());
+            }
+            println!("{}", diff::format_report(&result));
+        }
     }
-
-    println!("{}", diff::format_report(&result));
 
     if apply {
         let definition_path = podbox::config::find_definition()

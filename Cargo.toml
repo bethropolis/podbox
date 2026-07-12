@@ -30,8 +30,11 @@ url             = "2.5"
 toml_edit       = "0.22"
 shell-words     = "1.1.1"
 owo-colors      = { version = "4.3.0", features = ["supports-colors"] }
-fd-lock         = "4.0.4"
-podbox-protocol = { path = "crates/podbox-protocol" }
+fd-lock              = "4.0.4"
+tracing              = "0.1.44"
+tracing-subscriber   = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }
+tracing-journald     = "0.3.2"
+podbox-protocol      = { path = "crates/podbox-protocol" }
 
 # Testing
 assert_cmd = "2.0"

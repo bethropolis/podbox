@@ -123,7 +123,7 @@ pub fn run() -> Result<(), GuestError> {
     std::fs::create_dir_all(&bin_dir)?;
 
     // 2. Connect to host socket with retry
-    eprintln!("podbox-guest: connecting to host socket...");
+    tracing::info!("guest: connecting to host socket...");
     let mut host_stream = socket::connect_to_host(&host_socket_path)?;
 
     // 3. Handshake
@@ -134,7 +134,7 @@ pub fn run() -> Result<(), GuestError> {
     let (accepted, idle_timeout_secs) =
         socket::handshake(&mut host_stream, &container_name, &all_caps)?;
     let accepted_set: HashSet<String> = accepted.iter().cloned().collect();
-    eprintln!("podbox-guest: accepted capabilities: {accepted:?}");
+    tracing::info!("guest: accepted capabilities: {accepted:?}");
 
     // 4. Check version drift
     check_version_drift(&accepted_set, &mut host_stream, &container_name);
@@ -151,9 +151,9 @@ pub fn run() -> Result<(), GuestError> {
     // 8. Handle connections and self-heal on host disconnects/restarts
     loop {
         if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs) {
-            eprintln!("podbox-guest: connection error: {e}. Reconnecting...");
+            tracing::error!("guest: connection error: {e}. Reconnecting...");
         } else {
-            eprintln!("podbox-guest: host disconnected. Retrying connection...");
+            tracing::warn!("guest: host disconnected. Retrying connection...");
         }
 
         std::thread::sleep(std::time::Duration::from_secs(3));
@@ -161,7 +161,7 @@ pub fn run() -> Result<(), GuestError> {
             host_stream = stream;
             if let Ok((_caps, _)) = socket::handshake(&mut host_stream, &container_name, &all_caps)
             {
-                eprintln!("podbox-guest: re-established connection and handshook successfully.");
+                tracing::info!("guest: re-established connection and handshook successfully.");
             }
         }
     }
@@ -224,8 +224,8 @@ fn check_version_drift(
         };
         let _ = crate::socket::connect_and_send_oneshot(&msg);
     } else {
-        eprintln!(
-            "podbox-guest: image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`."
+        tracing::warn!(
+            "image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`."
         );
     }
 }
@@ -360,7 +360,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
 
     loop {
         if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
-            eprintln!("podbox-guest: received shutdown signal, exiting.");
+            tracing::info!("guest: received shutdown signal, exiting.");
             return Ok(());
         }
 
@@ -407,7 +407,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                 }
                 Err(nix::errno::Errno::EINTR) => {
                     if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
-                        eprintln!("podbox-guest: received shutdown signal, exiting.");
+                        tracing::info!("guest: received shutdown signal, exiting.");
                         return Ok(());
                     }
                     continue;
@@ -418,14 +418,14 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
 
         // ── Host socket events ──
         if host_revents.contains(PollFlags::POLLHUP) || host_revents.contains(PollFlags::POLLERR) {
-            eprintln!("podbox-guest: host socket hung up.");
+            tracing::warn!("guest: host socket hung up.");
             return Ok(());
         }
 
         if host_revents.contains(PollFlags::POLLIN) {
             match socket::read_host_message(host_stream) {
                 Ok(Some(HostMessage::Shutdown)) => {
-                    eprintln!("podbox-guest: received shutdown, exiting.");
+                    tracing::info!("guest: received shutdown, exiting.");
                     return Ok(());
                 }
                 Ok(Some(
@@ -448,7 +448,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                     }
                 }
                 Ok(None) => {
-                    eprintln!("podbox-guest: host disconnected.");
+                    tracing::warn!("guest: host disconnected.");
                     return Ok(());
                 }
                 Err(e) => {

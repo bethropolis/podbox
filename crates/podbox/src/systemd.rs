@@ -406,7 +406,7 @@ pub fn start_unit_friendly(name: &str, timeout_secs: u64) -> Result<()> {
     // Check if daemon-reload is needed first
     match query_unit_status(name) {
         Ok(status) if status.need_daemon_reload => {
-            eprintln!("systemd needs reload — running daemon-reload...");
+            tracing::info!("systemd needs reload — running daemon-reload...");
             daemon_reload()?;
         }
         Ok(_) => {}

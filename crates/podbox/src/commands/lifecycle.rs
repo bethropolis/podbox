@@ -2,17 +2,18 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use serde::Deserialize;
 
 use podbox::config::Config;
 use podbox::env::HostEnv;
 use podbox::systemd;
 use podbox::xdg::ResolvedXdgDirs;
 
-fn snapshot_tag(tag: &str, name: &str) -> String {
+pub(crate) fn snapshot_tag(tag: &str, name: &str) -> String {
     format!("localhost/podbox-{name}:snapshot-{tag}")
 }
 
-fn snapshots_dir() -> PathBuf {
+pub(crate) fn snapshots_dir() -> PathBuf {
     podbox::config::config_dir().join("snapshots")
 }
 
@@ -45,6 +46,91 @@ pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<(
     std::fs::write(&meta_path, &meta)?;
 
     println!("✓ Snapshot '{image_tag}' saved (tag: {tag})");
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct SnapshotMeta {
+    tag: String,
+    created: String,
+    image: String,
+}
+
+fn list_snapshots(name: &str) -> Result<Vec<SnapshotMeta>> {
+    let dir = snapshots_dir().join(name);
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut snapshots: Vec<SnapshotMeta> = Vec::new();
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = entry?;
+        if entry.path().extension().is_some_and(|e| e == "toml") {
+            let content = std::fs::read_to_string(entry.path())?;
+            if let Ok(meta) = toml::from_str::<SnapshotMeta>(&content) {
+                snapshots.push(meta);
+            }
+        }
+    }
+    Ok(snapshots)
+}
+
+/// List all snapshots for a container.
+pub fn run_snapshot_list(name: &str) -> Result<()> {
+    let snapshots = list_snapshots(name)?;
+    if snapshots.is_empty() {
+        println!("No snapshots for '{name}'.");
+        return Ok(());
+    }
+    println!("{:<16}  {:<29}  IMAGE", "TAG", "CREATED");
+    println!("{}", "─".repeat(80));
+    for s in &snapshots {
+        println!("{:<16}  {:<29}  {}", s.tag, s.created, s.image);
+    }
+    Ok(())
+}
+
+/// Prune old snapshots, keeping the newest N.
+pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> {
+    let mut snapshots = list_snapshots(name)?;
+    if snapshots.len() <= keep {
+        if !dry_run {
+            println!("Only {} snapshot(s) exist, nothing to prune (keep={keep}).", snapshots.len());
+        }
+        return Ok(());
+    }
+
+    // Sort newest-first
+    snapshots.sort_by(|a, b| b.created.cmp(&a.created));
+
+    let to_remove: Vec<&SnapshotMeta> = snapshots.iter().skip(keep).collect();
+    println!("Pruning {} snapshot(s), keeping {}:", to_remove.len(), keep);
+
+    for s in &to_remove {
+        if dry_run {
+            println!("  Would remove: {} (image: {})", s.tag, s.image);
+            continue;
+        }
+        // Remove podman image
+        let result = podbox::process::run_piped(
+            "podman",
+            &podbox::process::args(&["rmi", &s.image]),
+        );
+        if let Err(e) = result {
+            eprintln!("Warning: failed to remove image '{}': {e}", s.image);
+        } else {
+            println!("  Removed image: {}", s.image);
+        }
+
+        // Delete metadata file
+        let meta_path = snapshots_dir().join(name).join(format!("{}.toml", s.tag));
+        if meta_path.exists() {
+            std::fs::remove_file(&meta_path)?;
+        }
+    }
+
+    if dry_run {
+        println!("(dry run, no changes made)");
+    }
     Ok(())
 }
 

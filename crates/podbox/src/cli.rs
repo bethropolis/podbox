@@ -173,6 +173,9 @@ pub enum Command {
         /// Show the computed environment variables.
         #[arg(long)]
         env: bool,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Run the host socket server (socket-activated by systemd).
@@ -280,6 +283,9 @@ pub enum Command {
         /// Auto-fix common issues (e.g. corrupted Wayland socket ownership).
         #[arg(long)]
         fix: bool,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Generate shell completions.
@@ -295,15 +301,15 @@ pub enum Command {
         /// Update the config TOML's install list to match the container.
         #[arg(long)]
         apply: bool,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Snapshot the current container state as a tagged image.
     Snapshot {
-        /// Container name (overrides auto-detection / active context).
-        name: Option<String>,
-        /// Snapshot tag (defaults to timestamp).
-        #[arg(long, short)]
-        tag: Option<String>,
+        #[command(subcommand)]
+        snapshot_cmd: SnapshotCommand,
     },
 
     /// Restore a container from a snapshot.
@@ -378,6 +384,31 @@ pub enum ProfileCommand {
     Show {
         /// Name of the profile to display.
         name: String,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SnapshotCommand {
+    /// Take a snapshot of the current container state.
+    Create {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+        /// Snapshot tag (defaults to timestamp).
+        #[arg(long, short)]
+        tag: Option<String>,
+    },
+    /// List snapshots for a container.
+    List {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
+    /// Prune old snapshots, keeping the newest N.
+    Prune {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+        /// Number of snapshots to keep (default: 5).
+        #[arg(long, default_value_t = 5)]
+        keep: usize,
     },
 }
 

@@ -148,6 +148,29 @@ fn preflight_check(config: &Config) -> Result<()> {
         }
     }
 
+    // Check admin cap_preset
+    if config.security.cap_preset == crate::config::CapPreset::Admin {
+        if crate::codegen::distros::is_tty() {
+            let caps = config.security.cap_preset.caps().join(", ");
+            let confirmed = dialoguer::Confirm::with_theme(
+                &dialoguer::theme::ColorfulTheme::default(),
+            )
+            .with_prompt(format!(
+                "WARNING: CapPreset::Admin grants {caps}. Only proceed if you fully trust this container. Continue?"
+            ))
+            .default(false)
+            .interact()?;
+            if !confirmed {
+                anyhow::bail!("Aborted — set cap_preset to a lower level or use cap_add for specific caps");
+            }
+        } else {
+            let caps = config.security.cap_preset.caps().join(", ");
+            eprintln!(
+                "Note: cap_preset = \"admin\" grants {caps}. Non-interactive mode, continuing without confirmation."
+            );
+        }
+    }
+
     Ok(())
 }
 
