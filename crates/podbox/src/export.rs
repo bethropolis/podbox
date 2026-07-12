@@ -157,7 +157,7 @@ fn find_desktop_in_opt(container_name: &str, app: &str) -> Result<Option<(String
         return Ok(None);
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
+    for line in stdout.lines().take(500) {
         let line = line.trim();
         if line.is_empty() {
             continue;

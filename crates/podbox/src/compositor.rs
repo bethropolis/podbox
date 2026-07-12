@@ -5,6 +5,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
@@ -142,6 +143,22 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Token-bucket rate-limit check.
+/// Returns `true` if the message is allowed through.
+fn rate_allow(bucket: &mut f64, last_refill: &mut Instant) -> bool {
+    const RATE: f64 = 10_000.0;
+    let now = Instant::now();
+    let elapsed = now.duration_since(*last_refill).as_secs_f64();
+    *bucket = (*bucket + elapsed * RATE).min(RATE);
+    *last_refill = now;
+    if *bucket >= 1.0 {
+        *bucket -= 1.0;
+        true
+    } else {
+        false
+    }
+}
+
 /// Bidirectional byte-stream bridge between two Unix sockets.
 ///
 /// For the host→client direction, `is_client_to_host = false`, and the
@@ -161,6 +178,11 @@ fn bridge_loop(
     let mut cmsg_buffer = vec![0u8; 4096];
     let mut bytes_cache = Vec::with_capacity(32768);
     let mut pending_fds: Vec<OwnedFd> = Vec::new();
+
+    // Token-bucket rate limiter for host→client direction.
+    // Protects the guest from slow-client memory exhaustion.
+    let mut bucket: f64 = 10_000.0;
+    let mut last_refill = Instant::now();
 
     loop {
         if done.load(Ordering::Relaxed) {
@@ -230,11 +252,17 @@ fn bridge_loop(
             let should_drop =
                 !is_client_to_host && is_blocked_global(message_bytes, opcode, &state);
 
-            if !should_drop {
+            if should_drop {
+                pending_fds.clear();
+            } else if is_client_to_host || rate_allow(&mut bucket, &mut last_refill) {
                 forward_message(&out_socket, message_bytes, &mut pending_fds)?;
             } else {
-                // Close fds belonging to the dropped message.
                 pending_fds.clear();
+                done.store(true, Ordering::Relaxed);
+                let _ = in_socket.shutdown(std::net::Shutdown::Both);
+                let _ = out_socket.shutdown(std::net::Shutdown::Both);
+                tracing::warn!("compositor: rate-limited, closing connection");
+                return Ok(());
             }
 
             consumed += msg_size;
@@ -420,5 +448,34 @@ mod tests {
     fn allows_similar_but_not_blocked() {
         let data = make_global(2, 99, "zwlr_layer_shell_v1", 1);
         assert!(!is_blocked_global(&data, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn rate_allow_accepts_first_message() {
+        let mut bucket = 10_000.0;
+        let mut last = Instant::now();
+        assert!(rate_allow(&mut bucket, &mut last));
+    }
+
+    #[test]
+    fn rate_allow_drains_bucket() {
+        let mut bucket = 2.0;
+        let mut last = Instant::now();
+        assert!(rate_allow(&mut bucket, &mut last));
+        assert!(rate_allow(&mut bucket, &mut last));
+        assert!(!rate_allow(&mut bucket, &mut last));
+    }
+
+    #[test]
+    fn rate_allow_refills_over_time() {
+        let mut bucket = 0.0;
+        let mut last = Instant::now();
+        assert!(!rate_allow(&mut bucket, &mut last));
+        // Simulate a small delay
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        let mut bucket = 0.0;
+        let mut last_refill = Instant::now();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        assert!(rate_allow(&mut bucket, &mut last_refill));
     }
 }

@@ -3,6 +3,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::PodboxError;
 
+/// Latest config schema version. Increment when making a backwards-incompatible
+/// change, and add a migration function in `run_migrations`.
+const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+/// Schema version newtype with a default of 1.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchemaVersion(u32);
+
+impl Default for SchemaVersion {
+    fn default() -> Self {
+        Self(CURRENT_SCHEMA_VERSION)
+    }
+}
+
+impl SchemaVersion {
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
+}
+
 pub mod defaults;
 pub mod enums;
 pub mod fs;
@@ -23,6 +43,8 @@ pub use types::{
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
+    #[serde(default)]
+    pub schema_version: SchemaVersion,
     pub image: ImageConfig,
     pub container: ContainerConfig,
     #[serde(default)]
@@ -54,6 +76,7 @@ impl Config {
     pub fn parse(content: &str) -> Result<Config> {
         let mut config: Config = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
+        config.run_migrations();
         config.apply_defaults();
         config.validate()?;
         Ok(config)
@@ -75,6 +98,18 @@ impl Config {
         Self::parse(EMBEDDED_DEFAULT).expect("embedded default is valid TOML")
     }
 
+    /// Run migration chain up to `CURRENT_SCHEMA_VERSION`.
+    fn run_migrations(&mut self) {
+        while self.schema_version.0 < CURRENT_SCHEMA_VERSION {
+            match self.schema_version.0 {
+                0 => {} // v0 was never released; silently bump to v1.
+                1 => migrate_v1_to_v2(self),
+                _ => break,
+            }
+            self.schema_version.0 += 1;
+        }
+    }
+
     fn apply_defaults(&mut self) {
         if self.integration.dbus
             && self.dbus.preset.is_empty()
@@ -85,6 +120,9 @@ impl Config {
         }
     }
 }
+
+/// Placeholder migration — no changes from v1 to v2 yet.
+fn migrate_v1_to_v2(_config: &mut Config) {}
 
 #[cfg(test)]
 mod tests {
@@ -520,5 +558,55 @@ home = "~/env"
 userns = "invalid"
 "#;
         assert!(Config::parse(toml).is_err());
+    }
+
+    #[test]
+    fn test_schema_version_defaults_to_current() {
+        let cfg = Config::embedded();
+        assert_eq!(cfg.schema_version.as_u32(), CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_schema_version_parsed_from_toml() {
+        let toml = r#"
+schema_version = 1
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.schema_version.as_u32(), 1);
+    }
+
+    #[test]
+    fn test_schema_version_defaults_when_omitted() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.schema_version.as_u32(), CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_schema_version_migration_bumps_old_schema() {
+        let toml = r#"
+schema_version = 0
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.schema_version.as_u32(), CURRENT_SCHEMA_VERSION);
     }
 }
