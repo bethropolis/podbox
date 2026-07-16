@@ -52,6 +52,11 @@ struct SharedState {
     container_name: String,
     /// Idle timeout in seconds (0 = disabled).
     idle_timeout_secs: u64,
+    /// Whether this process was launched via systemd socket activation
+    /// (`LISTEN_PID`/`LISTEN_FDS` set). If true, the process may
+    /// self-terminate on idle timeout — systemd will re-spawn it via
+    /// socket activation on the next connection.
+    was_socket_activated: bool,
 }
 
 /// Run the host socket server for a container.
@@ -62,7 +67,9 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     let path = socket_path.to_path_buf();
     let idle_timeout_secs = parse_idle_timeout_secs(&config.lifecycle.idle_timeout);
 
-    let listener = match listen_fd() {
+    let activation_fd = listen_fd();
+    let was_socket_activated = activation_fd.is_some();
+    let listener = match activation_fd {
         Some(fd) => unsafe { UnixListener::from_raw_fd(fd) },
         None => {
             let _ = std::fs::remove_file(&path);
@@ -75,6 +82,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
         session_count: AtomicU32::new(0),
         container_name: container_name.to_string(),
         idle_timeout_secs,
+        was_socket_activated,
     });
 
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
@@ -224,6 +232,14 @@ fn handle_connection(
                     let name = &state.container_name;
                     tracing::info!("container '{}' idle — stopping", name);
                     let _ = systemd::stop_unit(name);
+                    // If socket-activated, self-terminate so the host
+                    // service doesn't sit resident forever.  systemd
+                    // re-spawns it via socket activation on the next
+                    // connection.  Non-systemd (manual bind) must stay
+                    // alive — it has no re-launch mechanism.
+                    if state.was_socket_activated {
+                        std::process::exit(0);
+                    }
                 }
             }
             GuestMessage::Notify {
