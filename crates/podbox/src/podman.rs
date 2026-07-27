@@ -289,8 +289,7 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
                         // files exist; if so the container was built but is
                         // stopped (OnStop=remove may have removed the podman
                         // object while leaving the quadlet infrastructure).
-                        let qdir = crate::quadlet_install::quadlet_dir();
-                        if qdir.join(format!("{}.container", name)).exists() {
+                        if crate::quadlet_install::is_installed(name) {
                             return Ok(ContainerState::Stopped);
                         }
                         return Ok(ContainerState::Missing);
@@ -298,8 +297,7 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
                 };
             }
             // systemctl not available — check quadlet files as last resort
-            let qdir = crate::quadlet_install::quadlet_dir();
-            if qdir.join(format!("{}.container", name)).exists() {
+            if crate::quadlet_install::is_installed(name) {
                 return Ok(ContainerState::Stopped);
             }
             return Ok(ContainerState::Missing);

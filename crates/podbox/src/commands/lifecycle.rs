@@ -283,11 +283,7 @@ pub fn run_start(
         podbox::build::run(config, env, xdg, false, false)?;
     }
 
-    let qdir = dirs::config_dir()
-        .unwrap_or_else(|| podbox::config::expand_tilde("~/.config"))
-        .join("containers/systemd");
-    let container_file = qdir.join(format!("{name}.container"));
-    if !container_file.exists() {
+    if !podbox::quadlet_install::is_installed(name) {
         println!("Quadlet files not found, installing...");
         podbox::quadlet_install::install(config, env, xdg, false)?;
     }
@@ -474,23 +470,13 @@ pub fn run_remove(
 /// disk but the corresponding `~/.config/podbox/<name>.toml` has been
 /// deleted.  Stopped or failed containers with a config are never stale.
 fn find_stale_containers() -> Vec<String> {
-    let qdir = dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.config"))
-        .join("containers/systemd");
     let config_dir = podbox::config::config_dir();
-
     let mut stale = Vec::new();
 
-    if let Ok(entries) = std::fs::read_dir(&qdir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "container") {
-                let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                let config_path = config_dir.join(format!("{name}.toml"));
-                if !config_path.exists() {
-                    stale.push(name);
-                }
-            }
+    for name in podbox::quadlet_install::list_installed_names() {
+        let config_path = config_dir.join(format!("{name}.toml"));
+        if !config_path.exists() {
+            stale.push(name);
         }
     }
 

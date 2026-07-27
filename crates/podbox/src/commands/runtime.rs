@@ -154,8 +154,7 @@ pub fn run_run(
 }
 
 fn quadlet_installed(name: &str) -> bool {
-    let qdir = podbox::quadlet_install::quadlet_dir();
-    qdir.join(format!("{name}.container")).exists()
+    podbox::quadlet_install::is_installed(name)
 }
 
 /// Print the container's running state.
@@ -284,14 +283,33 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     }
 
     match podbox::podman::podman_version() {
+        Ok(ver) if ver.at_least(6, 0) => {
+            check!(
+                "podman",
+                "pass",
+                format!("{}.{}.{} (6.x file-based Quadlet install)", ver.major, ver.minor, ver.patch)
+            );
+        }
         Ok(ver) if ver.at_least(5, 6) => {
-            check!("podman", "pass", format!("{}.{}.{} (>= 5.6)", ver.major, ver.minor, ver.patch));
+            check!(
+                "podman",
+                "pass",
+                format!("{}.{}.{} (>= 5.6)", ver.major, ver.minor, ver.patch)
+            );
         }
         Ok(ver) if ver.at_least(5, 5) => {
-            check!("podman", "warn", format!("{}.{}.{} (< 5.6)", ver.major, ver.minor, ver.patch));
+            check!(
+                "podman",
+                "warn",
+                format!("{}.{}.{} (< 5.6)", ver.major, ver.minor, ver.patch)
+            );
         }
         Ok(ver) => {
-            check!("podman", "fail", format!("{}.{}.{} (< 5.5)", ver.major, ver.minor, ver.patch));
+            check!(
+                "podman",
+                "fail",
+                format!("{}.{}.{} (< 5.5)", ver.major, ver.minor, ver.patch)
+            );
         }
         Err(_) => {
             check!("podman", "fail", "not found in PATH".to_string());
@@ -396,11 +414,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     }
 
     if config.lifecycle.quadlet {
-        let qdir = dirs::config_dir()
-            .unwrap_or_else(|| podbox::config::expand_tilde("~/.config"))
-            .join("containers/systemd");
-        let container_file = qdir.join(format!("{}.container", config.container.name));
-        if container_file.exists() {
+        if podbox::quadlet_install::is_installed(&config.container.name) {
             check!("Quadlet files", "pass", "installed");
         } else {
             check!("Quadlet files", "warn", "not found");
