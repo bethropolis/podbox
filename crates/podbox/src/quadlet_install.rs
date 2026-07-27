@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use nix::fcntl::{Flock, FlockArg};
@@ -17,6 +17,69 @@ pub fn quadlet_dir() -> PathBuf {
         .join("containers/systemd")
 }
 
+/// Flat install path: `~/.config/containers/systemd/<name>.container`.
+pub fn flat_container_path(name: &str) -> PathBuf {
+    quadlet_dir().join(format!("{name}.container"))
+}
+
+/// Application-scoped install path (Podman 6 directory/`--application` layout):
+/// `~/.config/containers/systemd/<name>/<name>.container`.
+pub fn application_container_path(name: &str) -> PathBuf {
+    quadlet_dir().join(name).join(format!("{name}.container"))
+}
+
+/// True if a `.container` Quadlet exists in either flat or application layout.
+pub fn is_installed(name: &str) -> bool {
+    container_unit_path(name).is_some()
+}
+
+/// Path to the installed `.container` unit, if any (flat preferred, then app dir).
+pub fn container_unit_path(name: &str) -> Option<PathBuf> {
+    let flat = flat_container_path(name);
+    if flat.exists() {
+        return Some(flat);
+    }
+    let app = application_container_path(name);
+    if app.exists() {
+        return Some(app);
+    }
+    None
+}
+
+/// Names of installed `.container` units under the Quadlet dir (flat + one app level).
+pub fn list_installed_names() -> Vec<String> {
+    let qdir = quadlet_dir();
+    let mut names = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir(&qdir) else {
+        return names;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "container") {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                names.push(stem.to_string());
+            }
+            continue;
+        }
+        // Application subdir: <name>/<name>.container
+        if path.is_dir() {
+            let Some(dir_name) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let nested = path.join(format!("{dir_name}.container"));
+            if nested.exists() {
+                names.push(dir_name.to_string());
+            }
+        }
+    }
+
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// Directory for user systemd unit files.
 fn systemd_user_dir() -> PathBuf {
     dirs::config_dir()
@@ -28,7 +91,7 @@ fn systemd_user_dir() -> PathBuf {
 /// and compositor) to sdir.
 fn write_custom_units(
     name: &str,
-    sdir: &std::path::Path,
+    sdir: &Path,
     socket_content: &str,
     host_service_content: &str,
     dbus_proxy_content: Option<&str>,
@@ -47,6 +110,85 @@ fn write_custom_units(
         std::fs::write(sdir.join(format!("{}-compositor.service", name)), comp)?;
     }
     Ok(())
+}
+
+/// Activate custom units after Quadlet files are in place.
+fn finalize_units(
+    name: &str,
+    sdir: &Path,
+    socket_content: &str,
+    host_service_content: &str,
+    dbus_proxy_content: Option<&str>,
+    compositor_service_content: Option<&str>,
+    use_wayland_proxy: bool,
+) -> Result<()> {
+    write_custom_units(
+        name,
+        sdir,
+        socket_content,
+        host_service_content,
+        dbus_proxy_content,
+        compositor_service_content,
+    )?;
+    println!("Systemd units installed to {}", sdir.display());
+
+    systemd::daemon_reload()?;
+    systemd::reset_failed(name)?;
+    systemd::stop_socket_and_host(name)?;
+    if use_wayland_proxy {
+        systemd::stop_compositor(name)?;
+    }
+    systemd::enable_now_socket(name)?;
+    Ok(())
+}
+
+/// Install `.container` (+ optional `.build`) via `podman quadlet install` using
+/// **file** arguments, not a directory.
+///
+/// Podman 6 requires `--application` when the source is a directory. Passing
+/// individual files keeps the flat layout (`…/systemd/<name>.container`) on
+/// both 5.6 and 6.x, so status/doctor/start path checks stay consistent.
+fn podman_quadlet_install_files(
+    name: &str,
+    container_content: &str,
+    build_content: Option<&str>,
+) -> Result<()> {
+    let tmp = std::env::temp_dir().join(format!("podbox-install-{name}"));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp)?;
+
+    let container_path = tmp.join(format!("{name}.container"));
+    std::fs::write(&container_path, container_content)?;
+
+    let mut args: Vec<std::ffi::OsString> = vec![
+        "quadlet".into(),
+        "install".into(),
+        "--replace".into(),
+        container_path.into(),
+    ];
+
+    if let Some(bc) = build_content {
+        let build_path = tmp.join(format!("{name}.build"));
+        std::fs::write(&build_path, bc)?;
+        args.push(build_path.into());
+    }
+
+    let output = crate::process::run_piped("podman", &args)?;
+    let _ = std::fs::remove_dir_all(&tmp);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("podman quadlet install failed: {stderr}");
+    }
+    println!("Quadlet files installed via podman quadlet install.");
+    Ok(())
+}
+
+/// Best-effort removal of leftover application-scoped install dirs.
+fn remove_application_dir(name: &str) {
+    let app_dir = quadlet_dir().join(name);
+    if app_dir.is_dir() {
+        let _ = std::fs::remove_dir_all(&app_dir);
+    }
 }
 
 /// Validate that mount paths referenced in extra mounts exist on the host.
@@ -253,8 +395,50 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         )
     })?;
 
-    if ver.at_least(5, 6) {
-        // 5.6+: podman quadlet install handles .container + .build placement and daemon-reload
+    if ver.at_least(6, 0) {
+        // 6.0+: podman quadlet install with --application for directory installs
+        let tmp = std::env::temp_dir().join(format!("podbox-install-{}", name));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp)?;
+        if let Some(ref bc) = build_content {
+            std::fs::write(tmp.join(format!("{}.build", name)), bc)?;
+        }
+        std::fs::write(tmp.join(format!("{}.container", name)), container_content)?;
+
+        let args: Vec<std::ffi::OsString> = vec![
+            "quadlet".into(),
+            "install".into(),
+            "--replace".into(),
+            "--application".into(),
+            name.into(),
+            tmp.into(),
+        ];
+        let output = crate::process::run_piped("podman", &args)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("podman quadlet install failed: {}", stderr);
+        }
+        println!("Quadlet files installed via podman quadlet install.");
+
+        write_custom_units(
+            name,
+            &sdir,
+            &socket_content,
+            &host_service_content,
+            dbus_proxy_content.as_deref(),
+            compositor_service_content.as_deref(),
+        )?;
+        println!("Systemd units installed to {}", sdir.display());
+
+        systemd::daemon_reload()?;
+        systemd::reset_failed(name)?;
+        systemd::stop_socket_and_host(name)?;
+        if config.use_wayland_proxy() {
+            systemd::stop_compositor(name)?;
+        }
+        systemd::enable_now_socket(name)?;
+    } else if ver.at_least(5, 6) {
+        // 5.6–5.x: podman quadlet install without --application
         let tmp = std::env::temp_dir().join(format!("podbox-install-{}", name));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp)?;
@@ -275,6 +459,24 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             anyhow::bail!("podman quadlet install failed: {}", stderr);
         }
         println!("Quadlet files installed via podman quadlet install.");
+
+        write_custom_units(
+            name,
+            &sdir,
+            &socket_content,
+            &host_service_content,
+            dbus_proxy_content.as_deref(),
+            compositor_service_content.as_deref(),
+        )?;
+        println!("Systemd units installed to {}", sdir.display());
+
+        systemd::daemon_reload()?;
+        systemd::reset_failed(name)?;
+        systemd::stop_socket_and_host(name)?;
+        if config.use_wayland_proxy() {
+            systemd::stop_compositor(name)?;
+        }
+        systemd::enable_now_socket(name)?;
 
         write_custom_units(
             name,
@@ -351,7 +553,20 @@ pub fn uninstall(name: &str) -> Result<()> {
     let qdir = quadlet_dir();
     let sdir = systemd_user_dir();
 
-    if ver.at_least(5, 6) {
+    if ver.at_least(6, 0) {
+        let args: Vec<std::ffi::OsString> = vec![
+            "quadlet".into(),
+            "rm".into(),
+            "--recursive".into(),
+            name.into(),
+        ];
+        let output = crate::process::run_piped("podman", &args)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("podman quadlet rm failed: {}", stderr);
+        }
+        println!("Quadlet files removed via podman quadlet rm.");
+    } else if ver.at_least(5, 6) {
         let args: Vec<std::ffi::OsString> = vec![
             "quadlet".into(),
             "rm".into(),
