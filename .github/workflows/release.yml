@@ -33,12 +33,10 @@ jobs:
             aarch64-unknown-linux-musl
       - name: Log in to ghcr.io
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-      - name: Run goreleaser
-        run: |
-          SKIP=""
-          if [ -z "$AUR_KEY" ]; then SKIP="$SKIP --skip=aur"; fi
-          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then SKIP="$SKIP --skip=homebrew"; fi
-          goreleaser release --clean $SKIP
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean --skip=aur --skip=homebrew
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
