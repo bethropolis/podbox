@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,11 +25,29 @@ jobs:
           git tag v${{ inputs.version }}
           git push origin v${{ inputs.version }}
       - uses: dtolnay/rust-toolchain@stable
-      - run: rustup target add x86_64-unknown-linux-musl
-      - run: cargo build --release
+      - run: |
+          rustup target add \
+            x86_64-unknown-linux-gnu \
+            aarch64-unknown-linux-gnu \
+            x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Run goreleaser
+        run: |
+          SKIP=""
+          if [ -z "$AUR_KEY" ]; then SKIP="$SKIP --skip=aur"; fi
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then SKIP="$SKIP --skip=homebrew"; fi
+          goreleaser release --clean $SKIP
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
           prerelease: ${{ contains(inputs.version, '-') }}
-          files: target/release/podbox
+          files: |
+            dist/podbox-*.tar.gz
+            dist/checksums.txt
           generate_release_notes: true
