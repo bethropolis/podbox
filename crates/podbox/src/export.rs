@@ -19,7 +19,9 @@ const DESKTOP_SEARCH_PATHS: &[&str] = &[
 
 fn is_valid_app_name(app: &str) -> bool {
     !app.is_empty()
-        && app.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        && app
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
 /// Export an application as a .desktop file on the host.
@@ -365,20 +367,8 @@ mod tests {
     #[test]
     fn reject_shell_metacharacters() {
         for bad in &[
-            "foo;rm",
-            "foo\"bar",
-            "foo`bar",
-            "foo$bar",
-            "foo|bar",
-            "foo>bar",
-            "foo<bar",
-            "foo&bar",
-            "foo\nbar",
-            "../foo",
-            "foo/bar",
-            "foo bar",
-            "foo\\bar",
-            "foo'bar",
+            "foo;rm", "foo\"bar", "foo`bar", "foo$bar", "foo|bar", "foo>bar", "foo<bar", "foo&bar",
+            "foo\nbar", "../foo", "foo/bar", "foo bar", "foo\\bar", "foo'bar",
         ] {
             assert!(!is_valid_app_name(bad), "expected '{bad}' to be rejected");
         }
@@ -389,7 +379,10 @@ mod tests {
         let result = export_app("test-container", "foo;rm");
         assert!(result.is_err());
         let err = format!("{}", result.unwrap_err());
-        assert!(err.contains("foo;rm") || err.contains("invalid"), "error should mention the name: {err}");
+        assert!(
+            err.contains("foo;rm") || err.contains("invalid"),
+            "error should mention the name: {err}"
+        );
     }
 
     #[test]
@@ -397,6 +390,9 @@ mod tests {
         let result = find_desktop_file("test-container", "foo`whoami`");
         assert!(result.is_err());
         let err = format!("{}", result.unwrap_err());
-        assert!(err.contains("foo`whoami`") || err.contains("invalid"), "error should mention the name: {err}");
+        assert!(
+            err.contains("foo`whoami`") || err.contains("invalid"),
+            "error should mention the name: {err}"
+        );
     }
 }

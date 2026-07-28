@@ -118,25 +118,32 @@ fn resolve_container_workdir(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDi
     for (host_path, container_path) in mounts {
         if host_cwd == host_path || host_cwd.starts_with(&host_path) {
             match &best {
-                Some((best_host, _)) if best_host.components().count() >= host_path.components().count() => {}
+                Some((best_host, _))
+                    if best_host.components().count() >= host_path.components().count() => {}
                 _ => best = Some((host_path, container_path)),
             }
         }
     }
 
     match best {
-        Some((host_path, container_path)) => {
-            match host_cwd.strip_prefix(&host_path) {
-                Ok(rel) if !rel.as_os_str().is_empty() => container_path.join(rel).to_string_lossy().to_string(),
-                _ => container_path.to_string_lossy().to_string(),
+        Some((host_path, container_path)) => match host_cwd.strip_prefix(&host_path) {
+            Ok(rel) if !rel.as_os_str().is_empty() => {
+                container_path.join(rel).to_string_lossy().to_string()
             }
-        }
+            _ => container_path.to_string_lossy().to_string(),
+        },
         None => home,
     }
 }
 
 /// Enter a shell inside the container.
-pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool, xdg: &ResolvedXdgDirs) -> Result<()> {
+pub fn run_shell_enter(
+    env: &HostEnv,
+    config: &Config,
+    name: &str,
+    dry_run: bool,
+    xdg: &ResolvedXdgDirs,
+) -> Result<()> {
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
     let workdir = resolve_container_workdir(config, env, xdg);
 
@@ -363,7 +370,10 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
             check!(
                 "podman",
                 "pass",
-                format!("{}.{}.{} (6.x file-based Quadlet install)", ver.major, ver.minor, ver.patch)
+                format!(
+                    "{}.{}.{} (6.x file-based Quadlet install)",
+                    ver.major, ver.minor, ver.patch
+                )
             );
         }
         Ok(ver) if ver.at_least(5, 6) => {
@@ -409,11 +419,19 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                     check!("Wayland socket owner", "pass", "fixed via --fix");
                                 }
                                 Err(e) => {
-                                    check!("Wayland socket owner", "fail", format!("fix failed: {e}"));
+                                    check!(
+                                        "Wayland socket owner",
+                                        "fail",
+                                        format!("fix failed: {e}")
+                                    );
                                 }
                             }
                         } else {
-                            check!("Wayland socket owner", "warn", format!("owner {} != host UID {}", owner, env.uid));
+                            check!(
+                                "Wayland socket owner",
+                                "warn",
+                                format!("owner {} != host UID {}", owner, env.uid)
+                            );
                         }
                     }
                 }
@@ -422,7 +440,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 }
             }
         } else {
-            check!("Wayland socket", "warn", "not found (WAYLAND_DISPLAY may not be set)");
+            check!(
+                "Wayland socket",
+                "warn",
+                "not found (WAYLAND_DISPLAY may not be set)"
+            );
         }
     }
 
@@ -435,9 +457,17 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         Ok(content) => {
             let username = &env.username;
             if content.lines().any(|l| l.starts_with(username)) {
-                check!("/etc/subuid", "pass", format!("user '{username}' has sub-UID allocations"));
+                check!(
+                    "/etc/subuid",
+                    "pass",
+                    format!("user '{username}' has sub-UID allocations")
+                );
             } else {
-                check!("/etc/subuid", "fail", format!("user '{username}' missing from /etc/subuid"));
+                check!(
+                    "/etc/subuid",
+                    "fail",
+                    format!("user '{username}' missing from /etc/subuid")
+                );
             }
         }
         Err(_) => {
@@ -449,9 +479,17 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         Ok(content) => {
             let username = &env.username;
             if content.lines().any(|l| l.starts_with(username)) {
-                check!("/etc/subgid", "pass", format!("user '{username}' has sub-GID allocations"));
+                check!(
+                    "/etc/subgid",
+                    "pass",
+                    format!("user '{username}' has sub-GID allocations")
+                );
             } else {
-                check!("/etc/subgid", "fail", format!("user '{username}' missing from /etc/subgid"));
+                check!(
+                    "/etc/subgid",
+                    "fail",
+                    format!("user '{username}' missing from /etc/subgid")
+                );
             }
         }
         Err(_) => {
@@ -461,7 +499,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
 
     let has_embedded = !podbox::guest::PODBOX_GUEST_BINARY.is_empty();
     if has_embedded {
-        check!("embedded guest binary", "pass", format!("{} bytes", podbox::guest::PODBOX_GUEST_BINARY.len()));
+        check!(
+            "embedded guest binary",
+            "pass",
+            format!("{} bytes", podbox::guest::PODBOX_GUEST_BINARY.len())
+        );
     } else {
         check!("embedded guest binary", "fail", "binary is empty");
     }
@@ -517,8 +559,16 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "sock") {
                     if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                        if !name.is_empty() && !podbox::config::config_dir().join(format!("{name}.toml")).exists() {
-                            check!("stale socket", "warn", format!("{} (no config)", path.display()));
+                        if !name.is_empty()
+                            && !podbox::config::config_dir()
+                                .join(format!("{name}.toml"))
+                                .exists()
+                        {
+                            check!(
+                                "stale socket",
+                                "warn",
+                                format!("{} (no config)", path.display())
+                            );
                         }
                     }
                 }
@@ -529,7 +579,13 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     // ── Orphaned snapshot images ──
     if let Ok(output) = podbox::process::run_piped(
         "podman",
-        &podbox::process::args(&["images", "--filter", "reference=localhost/podbox-*:snapshot-*", "--format", "{{.Repository}}:{{.Tag}}"]),
+        &podbox::process::args(&[
+            "images",
+            "--filter",
+            "reference=localhost/podbox-*:snapshot-*",
+            "--format",
+            "{{.Repository}}:{{.Tag}}",
+        ]),
     ) {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines().filter(|l| !l.is_empty()) {
@@ -555,15 +611,27 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
             for entry in entries.flatten() {
                 let fname = entry.file_name();
                 let fname_str = fname.to_string_lossy();
-                if (fname_str.starts_with("podbox-") || fname_str.starts_with("podmgr-")) && fname_str.ends_with(".desktop") {
+                if (fname_str.starts_with("podbox-") || fname_str.starts_with("podmgr-"))
+                    && fname_str.ends_with(".desktop")
+                {
                     if let Ok(content) = std::fs::read_to_string(entry.path()) {
                         if let Some(exec_line) = content.lines().find(|l| l.starts_with("Exec=")) {
                             let rest = exec_line.strip_prefix("Exec=").unwrap_or("");
                             let args = shell_words::split(rest).unwrap_or_default();
                             let pos = args.iter().position(|a| a == "-C" || a == "--container");
                             if let Some(name) = pos.and_then(|p| args.get(p + 1)) {
-                                if !podbox::config::config_dir().join(format!("{name}.toml")).exists() {
-                                    check!("dead export", "warn", format!("{} (container '{name}' missing)", entry.path().display()));
+                                if !podbox::config::config_dir()
+                                    .join(format!("{name}.toml"))
+                                    .exists()
+                                {
+                                    check!(
+                                        "dead export",
+                                        "warn",
+                                        format!(
+                                            "{} (container '{name}' missing)",
+                                            entry.path().display()
+                                        )
+                                    );
                                 }
                             }
                         }
@@ -586,8 +654,15 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                         let args = shell_words::split(&content).unwrap_or_default();
                         let pos = args.iter().position(|a| a == "-C" || a == "--container");
                         if let Some(name) = pos.and_then(|p| args.get(p + 1)) {
-                            if !podbox::config::config_dir().join(format!("{name}.toml")).exists() {
-                                check!("dead export", "warn", format!("{} (container '{name}' missing)", path.display()));
+                            if !podbox::config::config_dir()
+                                .join(format!("{name}.toml"))
+                                .exists()
+                            {
+                                check!(
+                                    "dead export",
+                                    "warn",
+                                    format!("{} (container '{name}' missing)", path.display())
+                                );
                             }
                         }
                     }

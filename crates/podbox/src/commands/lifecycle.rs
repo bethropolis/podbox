@@ -94,7 +94,10 @@ pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> 
     let mut snapshots = list_snapshots(name)?;
     if snapshots.len() <= keep {
         if !dry_run {
-            println!("Only {} snapshot(s) exist, nothing to prune (keep={keep}).", snapshots.len());
+            println!(
+                "Only {} snapshot(s) exist, nothing to prune (keep={keep}).",
+                snapshots.len()
+            );
         }
         return Ok(());
     }
@@ -111,10 +114,8 @@ pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> 
             continue;
         }
         // Remove podman image
-        let result = podbox::process::run_piped(
-            "podman",
-            &podbox::process::args(&["rmi", &s.image]),
-        );
+        let result =
+            podbox::process::run_piped("podman", &podbox::process::args(&["rmi", &s.image]));
         if let Err(e) = result {
             eprintln!("Warning: failed to remove image '{}': {e}", s.image);
         } else {

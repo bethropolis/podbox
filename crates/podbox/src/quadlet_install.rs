@@ -195,10 +195,7 @@ fn podman_quadlet_install_application(
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp)?;
 
-    std::fs::write(
-        tmp.join(format!("{name}.container")),
-        container_content,
-    )?;
+    std::fs::write(tmp.join(format!("{name}.container")), container_content)?;
     if let Some(bc) = build_content {
         std::fs::write(tmp.join(format!("{name}.build")), bc)?;
     }
@@ -365,7 +362,9 @@ fn preflight_check(config: &Config) -> Result<()> {
             .default(false)
             .interact()?;
             if !confirmed {
-                anyhow::bail!("Aborted — set cap_preset to a lower level or use cap_add for specific caps");
+                anyhow::bail!(
+                    "Aborted — set cap_preset to a lower level or use cap_add for specific caps"
+                );
             }
         } else {
             let caps = config.security.cap_preset.caps().join(", ");
@@ -434,8 +433,9 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     let _install_lock = {
         let lock_path = context_dir.join(".install.lock");
         let _ = std::fs::create_dir_all(&context_dir);
-        let file = std::fs::File::create(&lock_path)
-            .with_context(|| format!("failed to create install lock at '{}'", lock_path.display()))?;
+        let file = std::fs::File::create(&lock_path).with_context(|| {
+            format!("failed to create install lock at '{}'", lock_path.display())
+        })?;
         Flock::lock(file, FlockArg::LockExclusive).map_err(|(_, e)| e)?
     };
 
@@ -553,9 +553,7 @@ pub fn uninstall(name: &str) -> Result<()> {
                     removed_via_podman = true;
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    eprintln!(
-                        "Warning: podman quadlet rm --recursive {name} failed: {stderr}"
-                    );
+                    eprintln!("Warning: podman quadlet rm --recursive {name} failed: {stderr}");
                 }
             }
             remove_application_dir(name);

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use podbox::protocol::{
-    GuestMessage, HostMessage, read_frame, write_frame, ALL_CAPABILITIES, PROTOCOL_VERSION,
+    ALL_CAPABILITIES, GuestMessage, HostMessage, PROTOCOL_VERSION, read_frame, write_frame,
 };
 
 fn temp_dir() -> tempfile::TempDir {
@@ -104,18 +104,12 @@ fn spawn_server(
                     *guard = Some(text);
                 }
                 GuestMessage::ClipboardGet => {
-                    let text = stored_clipboard
-                        .lock()
-                        .unwrap()
-                        .clone()
-                        .unwrap_or_default();
+                    let text = stored_clipboard.lock().unwrap().clone().unwrap_or_default();
                     let _ = write_frame(&mut stream, &HostMessage::ClipboardData { text });
                 }
                 GuestMessage::HostExec { cmd, args } => {
                     // Simulate host-exec by running the command locally.
-                    let output = std::process::Command::new(&cmd)
-                        .args(&args)
-                        .output();
+                    let output = std::process::Command::new(&cmd).args(&args).output();
                     match output {
                         Ok(out) => {
                             if !out.stdout.is_empty() {

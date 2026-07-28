@@ -26,7 +26,9 @@ pub(super) fn handle_hello(
     }
     tracing::info!(
         "guest hello (v{}, container: {}, caps: {:?})",
-        guest_version, container, capabilities
+        guest_version,
+        container,
+        capabilities
     );
     let mut accepted = Vec::new();
     let mut rejected = Vec::new();
@@ -213,7 +215,11 @@ pub(super) fn handle_host_exec(
         write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
         return Ok(());
     }
-    tracing::info!("host-exec: resolved '{}' -> {}", resolved, canonical_path.display());
+    tracing::info!(
+        "host-exec: resolved '{}' -> {}",
+        resolved,
+        canonical_path.display()
+    );
 
     match std::process::Command::new(&canonical_path)
         .args(&args)

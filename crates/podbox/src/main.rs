@@ -36,9 +36,15 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Logs { name, .. }
         | Command::Update { name, .. }
         | Command::Diff { name, .. }
-        | Command::Snapshot { snapshot_cmd: podbox::cli::SnapshotCommand::Create { name, .. } }
-        | Command::Snapshot { snapshot_cmd: podbox::cli::SnapshotCommand::List { name } }
-        | Command::Snapshot { snapshot_cmd: podbox::cli::SnapshotCommand::Prune { name, .. } }
+        | Command::Snapshot {
+            snapshot_cmd: podbox::cli::SnapshotCommand::Create { name, .. },
+        }
+        | Command::Snapshot {
+            snapshot_cmd: podbox::cli::SnapshotCommand::List { name },
+        }
+        | Command::Snapshot {
+            snapshot_cmd: podbox::cli::SnapshotCommand::Prune { name, .. },
+        }
         | Command::Restore { name, .. }
         | Command::Inspect { name, .. }
         | Command::FindDefinition { name }
