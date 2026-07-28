@@ -175,7 +175,7 @@ fn connect_client(socket_path: &std::path::Path) -> UnixStream {
 #[test]
 fn hello_handshake() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -211,7 +211,7 @@ fn hello_handshake() {
 #[test]
 fn protocol_version_mismatch_triggers_shutdown() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -239,7 +239,7 @@ fn protocol_version_mismatch_triggers_shutdown() {
 #[test]
 fn capability_negotiation_rejects_unknown() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -276,7 +276,7 @@ fn capability_negotiation_rejects_unknown() {
 #[test]
 fn notify_without_actions_immediately_acknowledged() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -324,7 +324,7 @@ fn notify_without_actions_immediately_acknowledged() {
 #[test]
 fn notify_with_actions_returns_selected_action() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -380,7 +380,7 @@ fn notify_with_actions_returns_selected_action() {
 #[test]
 fn clipboard_roundtrip() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, Arc::clone(&clipboard));
@@ -421,7 +421,7 @@ fn clipboard_roundtrip() {
 #[test]
 fn clipboard_get_returns_empty_when_not_set() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -454,7 +454,7 @@ fn clipboard_get_returns_empty_when_not_set() {
 #[test]
 fn host_exec_echo_roundtrip() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -503,7 +503,7 @@ fn host_exec_echo_roundtrip() {
 #[test]
 fn host_exec_failing_command_reports_stderr_and_error_code() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
@@ -543,7 +543,7 @@ fn host_exec_failing_command_reports_stderr_and_error_code() {
 #[test]
 fn host_exec_nonexistent_command_reports_error() {
     let dir = temp_dir();
-    let path = socket_path(&dir.path());
+    let path = socket_path(dir.path());
     let listener = UnixListener::bind(&path).unwrap();
     let clipboard = Arc::new(Mutex::new(None));
     let _server = spawn_server(listener, clipboard);
