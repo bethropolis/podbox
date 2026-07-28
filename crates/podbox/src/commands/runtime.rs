@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -13,6 +13,7 @@ use podbox::config::Config;
 use podbox::env::HostEnv;
 use podbox::podman::{ContainerState, query_state};
 use podbox::protocol::{GuestMessage, write_frame};
+use podbox::xdg::ResolvedXdgDirs;
 
 /// Try to register a terminal session with the host's `socket_host`.
 ///
@@ -59,10 +60,85 @@ fn read_user_path(name: &str) -> Option<String> {
     }
 }
 
+/// Resolve the working directory inside the container from the host CWD.
+///
+/// Builds a map of host→container mount paths from the config, canonicalizes
+/// the host CWD, and picks the longest-prefix match. Falls back to
+/// `/home/<username>` when nothing matches.
+fn resolve_container_workdir(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs) -> String {
+    let home = format!("/home/{}", env.username);
+
+    let host_cwd = match std::env::current_dir() {
+        Ok(p) => match std::fs::canonicalize(&p) {
+            Ok(c) => c,
+            Err(_) => p,
+        },
+        Err(_) => return home.clone(),
+    };
+
+    // (canonicalized host path, container path)
+    let mut mounts: Vec<(PathBuf, PathBuf)> = Vec::new();
+
+    // Home dir
+    if let Ok(h) = std::fs::canonicalize(&config.container.home) {
+        mounts.push((h, PathBuf::from(&home)));
+    }
+
+    // XDG dirs
+    let xdg_map: &[(&Option<podbox::xdg::ResolvedXdgDir>, &str)] = &[
+        (&xdg.documents, "Documents"),
+        (&xdg.downloads, "Downloads"),
+        (&xdg.pictures, "Pictures"),
+        (&xdg.music, "Music"),
+        (&xdg.videos, "Videos"),
+        (&xdg.desktop, "Desktop"),
+        (&xdg.projects, "Projects"),
+    ];
+    for (dir, name) in xdg_map {
+        if let Some(resolved) = dir {
+            if let Ok(h) = std::fs::canonicalize(&resolved.path) {
+                mounts.push((h, PathBuf::from(format!("{home}/{name}"))));
+            }
+        }
+    }
+
+    // Extra mounts: "host:container[:opts]"
+    for mount in &config.container.mounts.extra {
+        let parts: Vec<&str> = mount.split(':').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        if let Ok(h) = std::fs::canonicalize(parts[0]) {
+            mounts.push((h, PathBuf::from(parts[1])));
+        }
+    }
+
+    // Find longest host prefix match
+    let mut best: Option<(PathBuf, PathBuf)> = None;
+    for (host_path, container_path) in mounts {
+        if host_cwd == host_path || host_cwd.starts_with(&host_path) {
+            match &best {
+                Some((best_host, _)) if best_host.components().count() >= host_path.components().count() => {}
+                _ => best = Some((host_path, container_path)),
+            }
+        }
+    }
+
+    match best {
+        Some((host_path, container_path)) => {
+            match host_cwd.strip_prefix(&host_path) {
+                Ok(rel) if !rel.as_os_str().is_empty() => container_path.join(rel).to_string_lossy().to_string(),
+                _ => container_path.to_string_lossy().to_string(),
+            }
+        }
+        None => home,
+    }
+}
+
 /// Enter a shell inside the container.
-pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool) -> Result<()> {
+pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool, xdg: &ResolvedXdgDirs) -> Result<()> {
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
-    let home_in_container = format!("/home/{}", env.username);
+    let workdir = resolve_container_workdir(config, env, xdg);
 
     let mut exec_args: Vec<OsString> = vec![
         "exec".into(),
@@ -70,7 +146,7 @@ pub fn run_shell_enter(env: &HostEnv, config: &Config, name: &str, dry_run: bool
         "-u".into(),
         env.username.as_str().into(),
         "--workdir".into(),
-        home_in_container.as_str().into(),
+        workdir.into(),
     ];
     if let Some(ref path) = read_user_path(name) {
         exec_args.push(format!("--env=PATH={}", path).into());

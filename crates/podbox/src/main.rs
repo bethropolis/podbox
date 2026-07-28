@@ -256,11 +256,11 @@ fn run() -> Result<()> {
                 let ed = editor::resolve()?;
                 editor::open(&ed, &config_path)?;
             }
-            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run)?;
+            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run, &xdg)?;
         }
 
         Command::Enter { name: _ } => {
-            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run)?;
+            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run, &xdg)?;
         }
 
         Command::Exec {
