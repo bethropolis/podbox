@@ -5,10 +5,19 @@ use std::time::Duration;
 use crate::config::IntegrationConfig;
 use crate::protocol::{HostMessage, write_frame};
 
+/// Outcome of a `Hello` handshake.
+pub(super) enum HelloOutcome {
+    /// Handshake accepted; carries the list of granted capabilities.
+    Accepted(Vec<String>),
+    /// Handshake rejected (e.g. protocol version mismatch).
+    Rejected,
+}
+
 /// Handle a `Hello` handshake from the guest.
 ///
-/// Returns the list of accepted capabilities, which the connection uses to
-/// gate subsequent messages.
+/// On success returns the list of accepted capabilities, which the connection
+/// uses to gate subsequent messages. A protocol version mismatch is a failed
+/// negotiation and must not grant any capability or claim the daemon stream.
 pub(super) fn handle_hello(
     stream: &mut UnixStream,
     config: &IntegrationConfig,
@@ -17,7 +26,7 @@ pub(super) fn handle_hello(
     guest_version: String,
     container: String,
     capabilities: Vec<String>,
-) -> anyhow::Result<Vec<String>> {
+) -> anyhow::Result<HelloOutcome> {
     if protocol_version != crate::protocol::PROTOCOL_VERSION {
         tracing::error!(
             "protocol mismatch — got v{}, expected v{}",
@@ -25,7 +34,7 @@ pub(super) fn handle_hello(
             crate::protocol::PROTOCOL_VERSION
         );
         write_frame(stream, &HostMessage::Shutdown)?;
-        return Ok(Vec::new());
+        return Ok(HelloOutcome::Rejected);
     }
     tracing::info!(
         "guest hello (v{}, container: {}, caps: {:?})",
@@ -55,7 +64,7 @@ pub(super) fn handle_hello(
         idle_timeout_secs,
     };
     write_frame(stream, &response)?;
-    Ok(accepted)
+    Ok(HelloOutcome::Accepted(accepted))
 }
 
 /// Handle a `Notify` message from the guest.

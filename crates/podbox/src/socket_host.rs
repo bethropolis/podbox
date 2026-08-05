@@ -157,6 +157,9 @@ fn handle_connection(
     // messages are rejected until this is populated, and each is further
     // gated on the specific capability the admin enabled.
     let mut negotiated: Option<HashSet<String>> = None;
+    // Consecutive failed negotiations. The connection is dropped (fail-closed)
+    // once this reaches `MAX_NEGOTIATION_FAILURES`.
+    let mut failures: u32 = 0;
 
     loop {
         let msg_bytes = match read_frame(stream) {
@@ -178,7 +181,16 @@ fn handle_connection(
         };
 
         last_ping = std::time::Instant::now();
-        let msg: GuestMessage = serde_json::from_slice(&msg_bytes)?;
+        let msg: GuestMessage = match serde_json::from_slice(&msg_bytes) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("malformed frame from peer: {e}");
+                if note_failure(stream, &mut failures, "malformed frame") {
+                    return Ok(());
+                }
+                continue;
+            }
+        };
 
         match msg {
             GuestMessage::Hello {
@@ -187,7 +199,7 @@ fn handle_connection(
                 container,
                 capabilities,
             } => {
-                let accepted = handlers::handle_hello(
+                let outcome = handlers::handle_hello(
                     stream,
                     &config.integration,
                     state.idle_timeout_secs,
@@ -196,6 +208,14 @@ fn handle_connection(
                     container,
                     capabilities,
                 )?;
+                let handlers::HelloOutcome::Accepted(accepted) = outcome else {
+                    // Failed negotiation: no capabilities granted, daemon stream
+                    // stays unclaimed. Drop after repeated failures.
+                    if note_failure(stream, &mut failures, "hello rejected") {
+                        return Ok(());
+                    }
+                    continue;
+                };
                 negotiated = Some(accepted.into_iter().collect());
 
                 // Claim the daemon stream (used for CheckIdle) only if no
@@ -266,24 +286,17 @@ fn handle_connection(
             }
             GuestMessage::Busy => {
                 if negotiated.is_none() {
-                    let _ = write_frame(
-                        stream,
-                        &HostMessage::Error {
-                            reason: "hello required".into(),
-                        },
-                    );
-                    return Ok(());
+                    if note_failure(stream, &mut failures, "hello required") {
+                        return Ok(());
+                    }
                 }
             }
             GuestMessage::IdleTimeout => {
                 if negotiated.is_none() {
-                    let _ = write_frame(
-                        stream,
-                        &HostMessage::Error {
-                            reason: "hello required".into(),
-                        },
-                    );
-                    return Ok(());
+                    if note_failure(stream, &mut failures, "hello required") {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 if state.idle_timeout_secs > 0 {
                     let name = &state.container_name;
@@ -307,31 +320,46 @@ fn handle_connection(
                 app_name: _,
             } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_NOTIFY) {
-                    return reject(stream, "capability 'notify' not accepted");
+                    if note_failure(stream, &mut failures, "capability 'notify' not accepted") {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 handlers::handle_notify(stream, summary, body, actions)?
             }
             GuestMessage::XdgOpen { uri } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN) {
-                    return reject(stream, "capability 'xdg_open' not accepted");
+                    if note_failure(stream, &mut failures, "capability 'xdg_open' not accepted") {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 handlers::handle_xdg_open(uri)?
             }
             GuestMessage::ClipboardSet { text } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
-                    return reject(stream, "capability 'clipboard' not accepted");
+                    if note_failure(stream, &mut failures, "capability 'clipboard' not accepted") {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 handlers::handle_clipboard_set(text)?
             }
             GuestMessage::ClipboardGet => {
                 if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
-                    return reject(stream, "capability 'clipboard' not accepted");
+                    if note_failure(stream, &mut failures, "capability 'clipboard' not accepted") {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 handlers::handle_clipboard_get(stream)?
             }
             GuestMessage::HostExec { cmd, args } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC) {
-                    return reject(stream, "capability 'host_exec' not accepted");
+                    if note_failure(stream, &mut failures, "capability 'host_exec' not accepted") {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 handlers::handle_host_exec(stream, &config.integration, cmd, args)?
             }
@@ -339,15 +367,22 @@ fn handle_connection(
     }
 }
 
-/// Write a typed `Error` frame and close the connection.
-fn reject(stream: &mut UnixStream, reason: &str) -> anyhow::Result<()> {
+/// Maximum consecutive failed negotiations (bad hello, unauthenticated
+/// privileged message, malformed frame) before the connection is dropped.
+const MAX_NEGOTIATION_FAILURES: u32 = 5;
+
+/// Count a failed negotiation and reply with a typed `Error` frame. Returns
+/// true once the connection should be dropped (fail-closed after
+/// `MAX_NEGOTIATION_FAILURES` failures).
+fn note_failure(stream: &mut UnixStream, failures: &mut u32, reason: &str) -> bool {
+    *failures = failures.saturating_add(1);
     let _ = write_frame(
         stream,
         &HostMessage::Error {
             reason: reason.to_string(),
         },
     );
-    Ok(())
+    *failures >= MAX_NEGOTIATION_FAILURES
 }
 
 /// True if `negotiated` contains the given capability.
@@ -432,7 +467,7 @@ fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
 #[cfg(test)]
 mod tests {
     use super::handlers::{validate_host_exec_args, validate_uri};
-    use super::has_cap;
+    use super::{has_cap, note_failure};
     use std::collections::HashSet;
 
     // ── validate_uri tests ──
@@ -589,5 +624,110 @@ mod tests {
         assert!(has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD));
         assert!(!has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN));
         assert!(!has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC));
+    }
+
+    // ── note_failure tests ──
+
+    fn socket_pair() -> (std::os::unix::net::UnixStream, std::os::unix::net::UnixStream) {
+        std::os::unix::net::UnixStream::pair().expect("socketpair")
+    }
+
+    #[test]
+    fn note_failure_is_false_below_threshold() {
+        let (mut server, _client) = socket_pair();
+        let mut failures: u32 = 0;
+        for _ in 0..(super::MAX_NEGOTIATION_FAILURES - 1) {
+            assert!(!note_failure(&mut server, &mut failures, "probe"));
+        }
+        assert_eq!(failures, super::MAX_NEGOTIATION_FAILURES - 1);
+    }
+
+    #[test]
+    fn note_failure_drops_after_threshold() {
+        let (mut server, mut client) = socket_pair();
+        let mut failures: u32 = 0;
+        for _ in 0..(super::MAX_NEGOTIATION_FAILURES - 1) {
+            assert!(!note_failure(&mut server, &mut failures, "probe"));
+        }
+        assert!(note_failure(&mut server, &mut failures, "probe"));
+        assert_eq!(failures, super::MAX_NEGOTIATION_FAILURES);
+
+        // Every failure was answered with a typed Error frame.
+        use crate::protocol::read_frame;
+        for _ in 0..super::MAX_NEGOTIATION_FAILURES {
+            let bytes = read_frame(&mut client).unwrap().expect("error frame");
+            let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+            assert!(matches!(msg, crate::protocol::HostMessage::Error { reason } if reason == "probe"));
+        }
+    }
+
+    // ── handle_hello tests ──
+
+    #[test]
+    fn hello_protocol_mismatch_is_rejected() {
+        use super::handlers::{HelloOutcome, handle_hello};
+        let (mut server, mut client) = socket_pair();
+        let config = crate::config::Config::embedded();
+        let outcome = handle_hello(
+            &mut server,
+            &config.integration,
+            0,
+            crate::protocol::PROTOCOL_VERSION + 1,
+            "test".into(),
+            "test".into(),
+            vec![],
+        )
+        .unwrap();
+        assert!(matches!(outcome, HelloOutcome::Rejected));
+
+        // The peer is told to shut down, and no capabilities are granted.
+        let bytes = crate::protocol::read_frame(&mut client)
+            .unwrap()
+            .expect("shutdown frame");
+        let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+        assert!(matches!(msg, crate::protocol::HostMessage::Shutdown));
+    }
+
+    #[test]
+    fn hello_accepts_enabled_capabilities() {
+        use super::handlers::{HelloOutcome, handle_hello};
+        let (mut server, mut client) = socket_pair();
+        let mut config = crate::config::Config::embedded();
+        config.integration.notify = true;
+        config.integration.clipboard = true;
+        config.integration.xdg_open = false;
+        let outcome = handle_hello(
+            &mut server,
+            &config.integration,
+            0,
+            crate::protocol::PROTOCOL_VERSION,
+            "test".into(),
+            "test".into(),
+            vec![
+                crate::protocol::CAP_NOTIFY.to_string(),
+                crate::protocol::CAP_XDG_OPEN.to_string(),
+            ],
+        )
+        .unwrap();
+        let HelloOutcome::Accepted(accepted) = outcome else {
+            panic!("expected Accepted");
+        };
+        assert_eq!(accepted, vec![crate::protocol::CAP_NOTIFY]);
+
+        let bytes = crate::protocol::read_frame(&mut client)
+            .unwrap()
+            .expect("hello ack");
+        let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+        match msg {
+            crate::protocol::HostMessage::HelloAck {
+                accepted,
+                rejected,
+                ..
+            } => {
+                assert_eq!(accepted, vec![crate::protocol::CAP_NOTIFY]);
+                assert_eq!(rejected, vec![crate::protocol::CAP_XDG_OPEN]);
+            }
+            other => panic!("expected HelloAck, got {other:?}"),
+        }
     }
 }
