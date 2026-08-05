@@ -30,7 +30,7 @@ if ! git diff --quiet; then
 fi
 
 # Update workspace Cargo.toml
-sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+sed -i -E "s/^version[[:space:]]*=[[:space:]]*\".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
 
 # Update individual crate versions if they use workspace version
 # (they inherit from workspace.package, so only the workspace Cargo.toml needs updating)
