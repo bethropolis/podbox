@@ -6,6 +6,9 @@ use crate::config::IntegrationConfig;
 use crate::protocol::{HostMessage, write_frame};
 
 /// Handle a `Hello` handshake from the guest.
+///
+/// Returns the list of accepted capabilities, which the connection uses to
+/// gate subsequent messages.
 pub(super) fn handle_hello(
     stream: &mut UnixStream,
     config: &IntegrationConfig,
@@ -14,7 +17,7 @@ pub(super) fn handle_hello(
     guest_version: String,
     container: String,
     capabilities: Vec<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<String>> {
     if protocol_version != crate::protocol::PROTOCOL_VERSION {
         tracing::error!(
             "protocol mismatch — got v{}, expected v{}",
@@ -22,7 +25,7 @@ pub(super) fn handle_hello(
             crate::protocol::PROTOCOL_VERSION
         );
         write_frame(stream, &HostMessage::Shutdown)?;
-        return Ok(());
+        return Ok(Vec::new());
     }
     tracing::info!(
         "guest hello (v{}, container: {}, caps: {:?})",
@@ -47,12 +50,12 @@ pub(super) fn handle_hello(
         }
     }
     let response = HostMessage::HelloAck {
-        accepted,
+        accepted: accepted.clone(),
         rejected,
         idle_timeout_secs,
     };
     write_frame(stream, &response)?;
-    Ok(())
+    Ok(accepted)
 }
 
 /// Handle a `Notify` message from the guest.

@@ -435,7 +435,8 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                     | HostMessage::HostExecStdout { .. }
                     | HostMessage::HostExecStderr { .. }
                     | HostMessage::HostExecDone { .. }
-                    | HostMessage::NotifyActionResult { .. },
+                    | HostMessage::NotifyActionResult { .. }
+                    | HostMessage::Error { .. },
                 )) => {}
                 Ok(Some(HostMessage::CheckIdle)) => {
                     let active = scan_user_processes();

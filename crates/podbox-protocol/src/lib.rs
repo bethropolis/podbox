@@ -94,6 +94,11 @@ pub enum HostMessage {
     /// Sent by the host when all CLI sessions have ended; guest responds
     /// with `IdleTimeout` or `Busy` after scanning `/proc`.
     CheckIdle,
+    /// Sent by the host when a guest message is rejected (missing `Hello`
+    /// negotiation, or a capability that was not accepted).
+    Error {
+        reason: String,
+    },
 }
 
 /// Write a length-prefixed JSON frame.

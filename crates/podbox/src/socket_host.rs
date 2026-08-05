@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -6,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
+use nix::sys::socket::{getsockopt, sockopt};
 
 use crate::config::Config;
 use crate::config::validation::parse_idle_timeout_secs;
@@ -17,6 +19,9 @@ mod handlers;
 
 /// Max number of concurrent host threads handling guest connections.
 const MAX_CONCURRENT: usize = 4;
+
+/// Max number of tracked terminal sessions (pidfd monitors).
+const MAX_SESSIONS: u32 = 64;
 
 /// How often the host sends a keepalive `Ping` to a connected guest.
 const PING_INTERVAL: Duration = Duration::from_secs(60);
@@ -148,6 +153,10 @@ fn handle_connection(
 ) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(PING_INTERVAL))?;
     let mut last_ping = std::time::Instant::now();
+    // Capabilities accepted for this connection during `Hello`. Privileged
+    // messages are rejected until this is populated, and each is further
+    // gated on the specific capability the admin enabled.
+    let mut negotiated: Option<HashSet<String>> = None;
 
     loop {
         let msg_bytes = match read_frame(stream) {
@@ -178,14 +187,7 @@ fn handle_connection(
                 container,
                 capabilities,
             } => {
-                // Store the daemon stream so we can send CheckIdle later
-                if let Ok(clone) = stream.try_clone() {
-                    *state
-                        .daemon_stream
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) = Some(clone);
-                }
-                handlers::handle_hello(
+                let accepted = handlers::handle_hello(
                     stream,
                     &config.integration,
                     state.idle_timeout_secs,
@@ -194,6 +196,20 @@ fn handle_connection(
                     container,
                     capabilities,
                 )?;
+                negotiated = Some(accepted.into_iter().collect());
+
+                // Claim the daemon stream (used for CheckIdle) only if no
+                // live one exists yet — a second connection must not be able
+                // to hijack it while the current one is alive.
+                {
+                    let mut guard = state
+                        .daemon_stream
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if guard.as_ref().is_none_or(|d| !stream_is_alive(d)) {
+                        *guard = Some(stream.try_clone()?);
+                    }
+                }
 
                 // Autostart check: if idle_timeout is enabled and no sessions
                 // are active yet, prompt the guest to check for idleness.
@@ -212,6 +228,28 @@ fn handle_connection(
                 }
             }
             GuestMessage::RegisterSession => {
+                // host-CLI-only: the peer must be inside the host user
+                // namespace (i.e. running on the host, not in the container).
+                if !peer_is_in_host_userns(stream) {
+                    tracing::warn!("rejecting RegisterSession from foreign user namespace");
+                    let _ = write_frame(
+                        stream,
+                        &HostMessage::Error {
+                            reason: "register_session is host-only".into(),
+                        },
+                    );
+                    return Ok(());
+                }
+                if state.session_count.load(Ordering::SeqCst) >= MAX_SESSIONS {
+                    tracing::warn!("rejecting RegisterSession: session cap reached");
+                    let _ = write_frame(
+                        stream,
+                        &HostMessage::Error {
+                            reason: "session limit reached".into(),
+                        },
+                    );
+                    return Ok(());
+                }
                 // Receive the pidfd via SCM_RIGHTS
                 let raw_fd = match process::recv_fd(stream) {
                     Ok(Some(fd)) => fd,
@@ -226,8 +264,27 @@ fn handle_connection(
                 // sending RegisterSession + pidfd.
                 return Ok(());
             }
-            GuestMessage::Busy => {}
+            GuestMessage::Busy => {
+                if negotiated.is_none() {
+                    let _ = write_frame(
+                        stream,
+                        &HostMessage::Error {
+                            reason: "hello required".into(),
+                        },
+                    );
+                    return Ok(());
+                }
+            }
             GuestMessage::IdleTimeout => {
+                if negotiated.is_none() {
+                    let _ = write_frame(
+                        stream,
+                        &HostMessage::Error {
+                            reason: "hello required".into(),
+                        },
+                    );
+                    return Ok(());
+                }
                 if state.idle_timeout_secs > 0 {
                     let name = &state.container_name;
                     tracing::info!("container '{}' idle — stopping", name);
@@ -248,15 +305,89 @@ fn handle_connection(
                 urgency: _,
                 actions,
                 app_name: _,
-            } => handlers::handle_notify(stream, summary, body, actions)?,
-            GuestMessage::XdgOpen { uri } => handlers::handle_xdg_open(uri)?,
-            GuestMessage::ClipboardSet { text } => handlers::handle_clipboard_set(text)?,
-            GuestMessage::ClipboardGet => handlers::handle_clipboard_get(stream)?,
+            } => {
+                if !has_cap(&negotiated, crate::protocol::CAP_NOTIFY) {
+                    return reject(stream, "capability 'notify' not accepted");
+                }
+                handlers::handle_notify(stream, summary, body, actions)?
+            }
+            GuestMessage::XdgOpen { uri } => {
+                if !has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN) {
+                    return reject(stream, "capability 'xdg_open' not accepted");
+                }
+                handlers::handle_xdg_open(uri)?
+            }
+            GuestMessage::ClipboardSet { text } => {
+                if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
+                    return reject(stream, "capability 'clipboard' not accepted");
+                }
+                handlers::handle_clipboard_set(text)?
+            }
+            GuestMessage::ClipboardGet => {
+                if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
+                    return reject(stream, "capability 'clipboard' not accepted");
+                }
+                handlers::handle_clipboard_get(stream)?
+            }
             GuestMessage::HostExec { cmd, args } => {
+                if !has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC) {
+                    return reject(stream, "capability 'host_exec' not accepted");
+                }
                 handlers::handle_host_exec(stream, &config.integration, cmd, args)?
             }
         }
     }
+}
+
+/// Write a typed `Error` frame and close the connection.
+fn reject(stream: &mut UnixStream, reason: &str) -> anyhow::Result<()> {
+    let _ = write_frame(
+        stream,
+        &HostMessage::Error {
+            reason: reason.to_string(),
+        },
+    );
+    Ok(())
+}
+
+/// True if `negotiated` contains the given capability.
+fn has_cap(negotiated: &Option<HashSet<String>>, cap: &str) -> bool {
+    negotiated
+        .as_ref()
+        .is_some_and(|caps| caps.iter().any(|c| c == cap))
+}
+
+/// Whether the peer of `stream` lives in the host user namespace.
+///
+/// Compares `SO_PEERCRED`'s pid against `/proc/self/ns/user`. The host CLI
+/// runs in the host userns; anything inside the container runs in the
+/// container's private userns (rootless podman), so the inode differs.
+fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
+    let creds = match getsockopt(stream, sockopt::PeerCredentials) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let self_ns = std::fs::read_link("/proc/self/ns/user").ok();
+    let peer_ns = std::fs::read_link(format!("/proc/{}/ns/user", creds.pid())).ok();
+    match (self_ns, peer_ns) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Whether a connected stream is still alive (peer hasn't hung up).
+///
+/// Uses a non-blocking poll: if the peer closed or errored, `POLLHUP` /
+/// `POLLERR` is returned immediately. This lets a fresh guest-daemon
+/// connection reclaim the daemon stream only once the old one is gone.
+fn stream_is_alive(stream: &UnixStream) -> bool {
+    let mut pfd = nix::libc::pollfd {
+        fd: stream.as_raw_fd(),
+        events: 0,
+        revents: 0,
+    };
+    let ret = unsafe { nix::libc::poll(&raw mut pfd, 1, 0) };
+    ret >= 0 && pfd.revents & (nix::libc::POLLHUP | nix::libc::POLLERR) == 0
 }
 
 /// Block until `fd` (a pidfd) becomes readable, then decrement the session
@@ -301,6 +432,8 @@ fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
 #[cfg(test)]
 mod tests {
     use super::handlers::{validate_host_exec_args, validate_uri};
+    use super::has_cap;
+    use std::collections::HashSet;
 
     // ── validate_uri tests ──
 
@@ -438,5 +571,23 @@ mod tests {
             validate_host_exec_args(&["git".into(), "--\u{0130}".into()]).is_ok(),
             "Turkish \u{0130} is non-ASCII"
         );
+    }
+
+    // ── has_cap tests ──
+
+    #[test]
+    fn has_cap_none_negotiated_rejects() {
+        assert!(!has_cap(&None, crate::protocol::CAP_NOTIFY));
+        assert!(!has_cap(&None, crate::protocol::CAP_CLIPBOARD));
+    }
+
+    #[test]
+    fn has_cap_accepts_negotiated() {
+        let caps = HashSet::from(["notify".to_string(), "clipboard".to_string()]);
+        let negotiated = Some(caps);
+        assert!(has_cap(&negotiated, crate::protocol::CAP_NOTIFY));
+        assert!(has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD));
+        assert!(!has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN));
+        assert!(!has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC));
     }
 }
