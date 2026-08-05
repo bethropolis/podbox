@@ -535,6 +535,46 @@ fn quadlet_dbus_proxy_unit_generated() {
 }
 
 #[test]
+fn quadlet_dbus_proxy_portal_rules_interface_scoped() {
+    let mut config = load_config("full.toml");
+    config.dbus.talk = vec!["org.freedesktop.Notifications".into()];
+    let unit = quadlet::generate_dbus_proxy_service("myenv", &config)
+        .expect("proxy service should be generated");
+    assert!(
+        !unit.contains("--talk=org.freedesktop.portal.*"),
+        "portal name must never be granted wholesale via --talk"
+    );
+    assert!(unit.contains(
+        "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Notification.*@/org/freedesktop/portal/desktop"
+    ));
+    assert!(unit.contains(
+        "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.OpenURI.*@/org/freedesktop/portal/desktop"
+    ));
+    assert!(unit.contains(
+        "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/*"
+    ));
+    assert!(unit.contains(
+        "--broadcast=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/*"
+    ));
+    assert!(unit.contains(
+        "--call=org.freedesktop.portal.Desktop=org.freedesktop.DBus.Introspectable.*@/org/freedesktop/portal/*"
+    ));
+    assert!(!unit.contains("DynamicLauncher"));
+}
+
+#[test]
+fn quadlet_dbus_proxy_portal_rules_absent_when_caps_disabled() {
+    let mut config = load_config("full.toml");
+    config.dbus.talk = vec!["org.freedesktop.Notifications".into()];
+    config.integration.notify = false;
+    config.integration.xdg_open = false;
+    config.integration.clipboard = false;
+    let unit = quadlet::generate_dbus_proxy_service("myenv", &config)
+        .expect("proxy service should be generated");
+    assert!(!unit.contains("org.freedesktop.portal"));
+}
+
+#[test]
 fn quadlet_dbus_proxy_unit_none_when_dbus_disabled() {
     let mut config = load_config("full.toml");
     config.integration.dbus = false;

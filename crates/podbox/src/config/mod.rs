@@ -64,26 +64,77 @@ pub struct Config {
 }
 
 impl Config {
-    /// Effective D-Bus talk list, filtered by the enabled capabilities.
+    /// Effective D-Bus talk list.
     ///
-    /// The `portal` preset grants `org.freedesktop.portal.*` wholesale, which
-    /// covers Notification, Screenshot, ScreenCast and friends regardless of
-    /// what `integration.notify` / `integration.clipboard` say. When none of
-    /// the portal-facing capabilities are enabled, the portal name is dropped
-    /// so a disabled capability can't be exercised through the proxy.
+    /// The `portal` preset no longer contributes `org.freedesktop.portal.*`
+    /// here — the portal name is exposed through interface-scoped
+    /// `--call=`/`--broadcast=` rules instead (see [`Self::dbus_portal_calls`]),
+    /// so host-privileged portal interfaces (DynamicLauncher, Screenshot,
+    /// ScreenCast, Settings, ...) are unreachable from the container.
     pub fn dbus_effective_talk(&self) -> Vec<String> {
-        let portal_allowed =
-            self.integration.notify || self.integration.xdg_open || self.integration.clipboard;
-        self.dbus
-            .effective_talk()
-            .into_iter()
-            .filter(|svc| portal_allowed || !svc.starts_with("org.freedesktop.portal"))
-            .collect()
+        self.dbus.effective_talk()
+    }
+
+    /// Interface-scoped `--call=`/`--broadcast=` rules for the XDG portal name.
+    ///
+    /// The portal preset no longer grants `org.freedesktop.portal.*` wholesale
+    /// via `--talk=`. Instead, only the interfaces actually needed by the
+    /// enabled capabilities are exposed as `xdg-dbus-proxy` rules scoped to
+    /// `org.freedesktop.portal.Desktop`:
+    ///
+    /// - `integration.notify` → `org.freedesktop.portal.Notification.*`
+    /// - `integration.xdg_open` → `org.freedesktop.portal.OpenURI.*`
+    ///
+    /// Portals use the async Request pattern, so the `Request` interface on the
+    /// `/org/freedesktop/portal/desktop/request/*` subtree is always allowed
+    /// alongside (method calls for `Request.Close`, and the `Request.Response`
+    /// broadcast signal that carries the actual result). A read-only
+    /// `org.freedesktop.DBus.Introspectable` rule is added so GIO-based clients
+    /// can introspect the service (gdbus needs the XML to parse arguments).
+    pub fn dbus_portal_calls(&self) -> Vec<String> {
+        let mut rules: Vec<String> = Vec::new();
+        if self.integration.notify {
+            rules.push(
+                "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Notification.*@/org/freedesktop/portal/desktop"
+                    .into(),
+            );
+        }
+        if self.integration.xdg_open {
+            rules.push(
+                "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.OpenURI.*@/org/freedesktop/portal/desktop"
+                    .into(),
+            );
+        }
+        if self.integration.notify || self.integration.xdg_open {
+            // Portals use the async Request pattern, so the `Request` interface
+            // on the `/org/freedesktop/portal/desktop/request/*` subtree is
+            // always allowed alongside (method calls for `Request.Close`, and
+            // the `Request.Response` signal that carries the actual result).
+            rules.push(
+                "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/*"
+                    .into(),
+            );
+            rules.push(
+                "--broadcast=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/*"
+                    .into(),
+            );
+            // GIO-based clients introspect the service before calling (gdbus
+            // uses the resulting XML to parse arguments). Introspection is
+            // read-only (returns interface metadata) and doesn't grant any
+            // method access, so it is allowed over the portal subtree.
+            rules.push(
+                "--call=org.freedesktop.portal.Desktop=org.freedesktop.DBus.Introspectable.*@/org/freedesktop/portal/*"
+                    .into(),
+            );
+        }
+        rules
     }
 
     pub fn use_dbus_proxy(&self) -> bool {
         self.integration.dbus
-            && (!self.dbus_effective_talk().is_empty() || !self.dbus.own.is_empty())
+            && (!self.dbus_effective_talk().is_empty()
+                || !self.dbus_portal_calls().is_empty()
+                || !self.dbus.own.is_empty())
     }
 
     pub fn use_wayland_proxy(&self) -> bool {
@@ -310,8 +361,11 @@ sync_fonts = true
     fn test_dbus_config_defaults_empty() {
         let cfg = Config::embedded();
         assert_eq!(cfg.dbus.preset, "portal");
-        assert_eq!(cfg.dbus.effective_talk(), vec!["org.freedesktop.portal.*"]);
+        assert!(cfg.dbus_effective_talk().is_empty());
         assert!(cfg.use_dbus_proxy());
+        let calls = cfg.dbus_portal_calls();
+        assert!(calls.iter().any(|r| r.contains("org.freedesktop.portal.Notification.*")));
+        assert!(calls.iter().any(|r| r.contains("org.freedesktop.portal.OpenURI.*")));
     }
 
     #[test]
@@ -332,6 +386,7 @@ clipboard = false
 "#;
         let cfg = Config::parse(toml).unwrap();
         assert!(cfg.dbus_effective_talk().is_empty());
+        assert!(cfg.dbus_portal_calls().is_empty());
         assert!(!cfg.use_dbus_proxy());
     }
 
@@ -352,8 +407,42 @@ xdg_open = false
 clipboard = false
 "#;
         let cfg = Config::parse(toml).unwrap();
-        assert_eq!(cfg.dbus_effective_talk(), vec!["org.freedesktop.portal.*"]);
+        assert!(cfg.dbus_effective_talk().is_empty());
         assert!(cfg.use_dbus_proxy());
+        let calls = cfg.dbus_portal_calls();
+        assert_eq!(calls.len(), 4);
+        assert!(calls[0].starts_with("--call=org.freedesktop.portal.Desktop="));
+        assert!(calls[0].contains("org.freedesktop.portal.Notification.*"));
+        assert!(calls[1].starts_with("--call=org.freedesktop.portal.Desktop="));
+        assert!(calls[1].contains("org.freedesktop.portal.Request.*"));
+        assert!(calls[2].starts_with("--broadcast=org.freedesktop.portal.Desktop="));
+        assert!(calls[2].contains("org.freedesktop.portal.Request.*"));
+        assert!(calls[3].starts_with("--call=org.freedesktop.portal.Desktop="));
+        assert!(calls[3].contains("org.freedesktop.DBus.Introspectable.*"));
+    }
+
+    #[test]
+    fn test_dbus_portal_calls_gated_by_capabilities() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+preset = "portal"
+[integration]
+notify = false
+xdg_open = true
+clipboard = false
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        let calls = cfg.dbus_portal_calls();
+        assert_eq!(calls.len(), 4);
+        assert!(!calls.iter().any(|r| r.contains("Notification")));
+        assert!(calls.iter().any(|r| r.contains("OpenURI.*")));
+        assert!(calls.iter().any(|r| r.contains("Introspectable")));
     }
 
     #[test]

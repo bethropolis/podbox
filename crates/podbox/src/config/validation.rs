@@ -137,6 +137,18 @@ impl Config {
             }
         }
 
+        for svc in &self.dbus.talk {
+            if is_portal_family(svc) {
+                eprintln!(
+                    "warning: dbus.talk entry '{}' grants the container access to the full \
+                     xdg-desktop-portal bus surface (DynamicLauncher, Screenshot, ScreenCast, \
+                     Settings, ...). Prefer relying on the built-in interface-scoped portal rules \
+                     from integration.notify / integration.xdg_open instead.",
+                    svc
+                );
+            }
+        }
+
         let t = &self.lifecycle.idle_timeout;
         if t != "off" {
             let (digits, suffix) = parse_duration_suffix(t);
@@ -167,6 +179,14 @@ fn is_valid_name(s: &str) -> bool {
 
 fn is_absolute_path(s: &str) -> bool {
     s.starts_with('/')
+}
+
+/// True when `svc` names the xdg-desktop-portal bus surface (the Desktop
+/// service itself or anything under its name prefix).
+fn is_portal_family(svc: &str) -> bool {
+    svc == "org.freedesktop.portal.Desktop"
+        || svc.starts_with("org.freedesktop.portal")
+        || svc.starts_with("org.freedesktop.impl.portal")
 }
 
 /// Parse a duration string into (digit_part, suffix_char).

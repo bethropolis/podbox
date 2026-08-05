@@ -267,8 +267,8 @@ D-Bus access control via `xdg-dbus-proxy`. Requires `integration.dbus = true`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `preset` | string | `""` | Named preset to expand into talk rules. Supported: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. When set, auto-fills `talk` with the preset's service names |
-| `talk` | string[] | `[]` | D-Bus services the container can call (two-way) |
+| `preset` | string | `""` | Named preset to expand into talk rules. Supported: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. When set, auto-fills `talk` with the preset's service names. Note: portal-family presets never grant `org.freedesktop.portal.*` via `talk` — the portal name is exposed through interface-scoped `--call=`/`--broadcast=` rules for `integration.notify` / `integration.xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
+| `talk` | string[] | `[]` | D-Bus services the container can call (two-way). Adding a portal-family name re-grants the full portal surface — a warning is printed |
 | `own` | string[] | `[]` | D-Bus services the container can register on the host bus |
 
 ```toml
@@ -295,8 +295,8 @@ See [dbus-proxy.md](dbus-proxy.md) for details.
 | `integration.dbus` | `[dbus]` talk/own | Result |
 |--------------------|-------------------|--------|
 | `false` | any | No D-Bus access |
-| `true` | empty (default) | Unfiltered `Volume=%t/bus` |
-| `true` | populated | Proxy socket via `xdg-dbus-proxy` |
+| `true` | empty (default) | Proxied — `preset = "portal"` applied automatically with interface-scoped portal rules for `notify` / `xdg_open` |
+| `true` | populated | Proxy socket via `xdg-dbus-proxy` with those rules plus interface-scoped portal rules for enabled capabilities |
 
 ---
 

@@ -299,22 +299,15 @@ impl DbusConfig {
 
 pub fn dbus_preset_talk(preset: &str) -> &[&str] {
     match preset {
-        "flatpak" => &[
-            "org.freedesktop.Flatpak",
-            "org.freedesktop.Flatpak.*",
-            "org.freedesktop.portal.*",
-            "org.freedesktop.portal.Flatpak.*",
-        ],
+        "flatpak" => &["org.freedesktop.Flatpak", "org.freedesktop.Flatpak.*"],
         "gnome" => &[
             "org.gnome.Shell",
             "org.gnome.Shell.*",
             "org.gnome.ScreenSaver",
             "org.gnome.Mutter.*",
             "org.gnome.keyring.*",
-            "org.freedesktop.portal.*",
         ],
-        "kde" => &["org.kde.*", "org.freedesktop.portal.*"],
-        "portal" => &["org.freedesktop.portal.*"],
+        "kde" => &["org.kde.*"],
         _ => &[],
     }
 }

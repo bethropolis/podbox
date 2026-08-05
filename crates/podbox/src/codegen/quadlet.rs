@@ -288,12 +288,12 @@ fn emit_volumes(
     // SSH agent
     if config.integration.ssh_agent {
         let ver = crate::podman::podman_version().ok();
-        if ver.is_some_and(|v| v.at_least(5, 6)) {
+        if ver.is_some_and(|v| v.at_least(5, 6) && !v.at_least(6, 0)) {
             lines.push("SshAgent=default".into());
             lines.push("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock".into());
         } else {
             eprintln!(
-                "Warning: ssh_agent = true requires Podman >= 5.6 for SSH_AUTH_SOCK passthrough. Skipping SSH agent."
+                "Warning: ssh_agent = true requires Podman 5.6 - 5.x for SSH_AUTH_SOCK passthrough. Skipping SSH agent."
             );
         }
         lines.push(String::new());
@@ -485,6 +485,9 @@ pub fn generate_dbus_proxy_service(name: &str, config: &Config) -> Option<String
 
     for service in &config.dbus_effective_talk() {
         args.push(format!("--talk={}", service));
+    }
+    for rule in config.dbus_portal_calls() {
+        args.push(rule);
     }
     for service in &config.dbus.own {
         args.push(format!("--own={}", service));

@@ -5,8 +5,16 @@ description: Filtered D-Bus access for podbox containers via xdg-dbus-proxy — 
 # D-Bus Proxy
 
 By default, `integration.dbus = true` enables a proxied D-Bus session bus
-with only the portal preset (`org.freedesktop.portal.*`) — the container
-never gets unfiltered host bus access unless you explicitly opt in.
+with only the XDG portal interfaces the enabled capabilities actually need
+(`org.freedesktop.portal.Notification` for notifications,
+`org.freedesktop.portal.OpenURI` for `xdg_open`) — the container never gets
+unfiltered host bus access unless you explicitly opt in.
+
+The `org.freedesktop.portal.Desktop` service is **never** granted wholesale
+via `--talk=` (which would expose host-privileged portal interfaces such as
+`DynamicLauncher`, `Screenshot`, `ScreenCast`, and `Settings`). Instead,
+access is scoped per interface with `xdg-dbus-proxy` `--call=`/`--broadcast=`
+rules.
 
 This is handled by a companion systemd unit that runs `xdg-dbus-proxy`
 to filter which D-Bus services the container can interact with.
@@ -59,6 +67,35 @@ own = [
 
 Wildcards (`*`) are supported per the `xdg-dbus-proxy` filtering rules.
 
+> **Warning**: adding `org.freedesktop.portal.*` (or any
+> `org.freedesktop.portal.*` / `org.freedesktop.impl.portal.*` name) to
+> `talk` re-grants the full portal bus surface, including host-privileged
+> interfaces like `DynamicLauncher`, `Screenshot`, `ScreenCast` and
+> `Settings`. Prefer the built-in interface-scoped rules described below;
+> `podbox` prints a warning when it sees a portal-family `talk` entry.
+
+---
+
+## Portal access model
+
+The `portal` preset (applied by default when `[dbus]` has no explicit rules)
+does **not** add `org.freedesktop.portal.*` to the talk list. Instead, the
+generated proxy exposes `org.freedesktop.portal.Desktop` through
+interface-scoped rules, one per enabled capability:
+
+| Capability | Rule granted |
+|------------|--------------|
+| `integration.notify` | `--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Notification.*@/org/freedesktop/portal/desktop` |
+| `integration.xdg_open` | `--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.OpenURI.*@/org/freedesktop/portal/desktop` |
+| either | `--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/*` (async `Request` pattern, incl. `Request.Close`) |
+| either | `--broadcast=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/*` (`Request.Response` result signals) |
+| either | `--call=org.freedesktop.portal.Desktop=org.freedesktop.DBus.Introspectable.*@/org/freedesktop/portal/*` (read-only introspection, needed by GIO clients to parse call arguments) |
+
+Because `xdg-dbus-proxy` treats any granted method or signal on a name as
+TALK for that name, these rules let the container reach exactly those portal
+interfaces — and nothing else on the portal service. A disabled capability
+contributes no rules, so it cannot be exercised through the proxy at all.
+
 ---
 
 ## Behavior matrix
@@ -66,8 +103,8 @@ Wildcards (`*`) are supported per the `xdg-dbus-proxy` filtering rules.
 | `integration.dbus` | `[dbus]` config | What the container gets |
 |--------------------|-----------------|------------------------|
 | `false` | any | No D-Bus access |
-| `true` | default (empty) | Proxied — `preset = "portal"` applied automatically |
-| `true` | preset / talk / own set | Proxied via `xdg-dbus-proxy` with those rules |
+| `true` | default (empty) | Proxied — `preset = "portal"` applied automatically with interface-scoped portal rules for `notify`/`xdg_open` |
+| `true` | preset / talk / own set | Proxied via `xdg-dbus-proxy` with those rules plus interface-scoped portal rules for enabled capabilities |
 | `true` | `preset = ""`, empty talk + own | Unfiltered `Volume=%t/bus:%t/bus` |
 
 ---
@@ -90,6 +127,11 @@ ExecStart=/usr/bin/xdg-dbus-proxy \
     %t/podbox/<name>-dbus.sock \
     --talk=org.freedesktop.Notifications \
     --talk=org.mpris.MediaPlayer2.* \
+    --call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Notification.*@/org/freedesktop/portal/desktop \
+    --call=org.freedesktop.portal.Desktop=org.freedesktop.portal.OpenURI.*@/org/freedesktop/portal/desktop \
+    --call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/* \
+    --call=org.freedesktop.portal.Desktop=org.freedesktop.DBus.Introspectable.*@/org/freedesktop/portal/* \
+    --broadcast=org.freedesktop.portal.Desktop=org.freedesktop.portal.Request.*@/org/freedesktop/portal/desktop/request/* \
     --own=org.mpris.MediaPlayer2.podbox_app
 Restart=on-failure
 
