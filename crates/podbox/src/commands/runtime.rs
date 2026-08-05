@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsFd, AsRawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -136,6 +136,91 @@ fn resolve_container_workdir(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDi
     }
 }
 
+/// Spawn a background watchdog that terminates the `podman exec` client when the
+/// user's terminal hangs up.
+///
+/// Rootless `podman exec -it` relays the user's terminal into a freshly
+/// allocated container-side pty. When the user's terminal closes, the client
+/// keeps the container-side pty master open, so the shell inside the container
+/// never sees a hangup and leaks as an orphaned PPID-0 process that also blocks
+/// idle shutdown. The watchdog polls stdin for hangup and on detection SIGTERMs
+/// (then SIGKILLs) the exec client, forcing podman to tear down the
+/// container-side session.
+///
+/// The watchdog is a forked child of the (soon-to-be-exec'd) CLI. It ignores
+/// SIGHUP/SIGINT — which it would otherwise inherit on terminal close — and
+/// exits as soon as its parent exits, so clean sessions leave no residue.
+///
+/// Only interactive sessions are guarded: `-it` requires a controlling TTY, and
+/// non-TTY stdin is relayed as EOF by podman itself.
+fn spawn_stdin_watchdog() {
+    use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+    use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, kill, sigaction};
+    use nix::unistd::{ForkResult, Pid, fork};
+
+    if !nix::unistd::isatty(std::io::stdin()).unwrap_or(false) {
+        return;
+    }
+
+    let parent_pid = Pid::from_raw(std::process::id().cast_signed());
+
+    let Ok(ForkResult::Child) = (unsafe { fork() }) else {
+        return;
+    };
+
+    let _ = unsafe {
+        sigaction(
+            Signal::SIGHUP,
+            &SigAction::new(SigHandler::SigIgn, SaFlags::empty(), SigSet::empty()),
+        )
+    };
+    let _ = unsafe {
+        sigaction(
+            Signal::SIGINT,
+            &SigAction::new(SigHandler::SigIgn, SaFlags::empty(), SigSet::empty()),
+        )
+    };
+
+    let Ok(parent_fd) = podbox::process::open_pidfd(parent_pid.as_raw()) else {
+        unsafe { nix::libc::_exit(1) };
+    };
+
+    // SAFETY: fd 0 is open — `isatty(0)` succeeded above.
+    let stdin = unsafe { std::os::fd::BorrowedFd::borrow_raw(0) };
+    let mut fds = [
+        PollFd::new(stdin, PollFlags::POLLHUP | PollFlags::POLLERR),
+        PollFd::new(parent_fd.as_fd(), PollFlags::POLLIN),
+    ];
+
+    loop {
+        match poll(&mut fds, PollTimeout::from(Some(30_000u16))) {
+            Ok(0) => {}
+            Err(nix::errno::Errno::EINTR) => {}
+            Err(_) => unsafe { nix::libc::_exit(1) },
+            Ok(_) => {
+                let parent_events = fds[1].revents().unwrap_or(PollFlags::empty());
+                if parent_events.contains(PollFlags::POLLIN)
+                    || parent_events.contains(PollFlags::POLLHUP)
+                    || parent_events.contains(PollFlags::POLLERR)
+                {
+                    // Parent (podman) exited — nothing left to watch.
+                    unsafe { nix::libc::_exit(0) };
+                }
+
+                let stdin_events = fds[0].revents().unwrap_or(PollFlags::empty());
+                if stdin_events.contains(PollFlags::POLLHUP)
+                    || stdin_events.contains(PollFlags::POLLERR)
+                {
+                    let _ = kill(parent_pid, Signal::SIGTERM);
+                    let _ = unsafe { nix::libc::usleep(2_000_000) };
+                    let _ = kill(parent_pid, Signal::SIGKILL);
+                    unsafe { nix::libc::_exit(0) };
+                }
+            }
+        }
+    }
+}
+
 /// Enter a shell inside the container.
 pub fn run_shell_enter(
     env: &HostEnv,
@@ -167,6 +252,7 @@ pub fn run_shell_enter(
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     register_session(name, &env.xdg_runtime_dir);
+    spawn_stdin_watchdog();
     let err = podbox::process::exec_replace("podman", &exec_args);
     Err(err)
 }
@@ -200,6 +286,7 @@ pub fn run_exec(
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     register_session(name, &env.xdg_runtime_dir);
+    spawn_stdin_watchdog();
     let err = podbox::process::exec_replace("podman", &exec_args);
     Err(err)
 }
