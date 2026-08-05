@@ -179,3 +179,40 @@ gdbus call --session \
 
 This should fail with an access denied error — the proxy blocks the
 unapproved `org.freedesktop.systemd1` service.
+
+### Portal surface audit
+
+The reachable `org.freedesktop.portal.Desktop` surface was audited from inside
+a container (`gdbus call` against the proxied socket). Only the capability-gated
+interfaces are allowed; every other portal interface is denied by the proxy.
+
+Allowed (must succeed):
+
+| Interface | Result |
+|---|---|
+| `org.freedesktop.portal.Notification.AddNotification` | `()` (host notification shown) |
+| `org.freedesktop.portal.OpenURI.OpenURI` | request handle returned |
+| `org.freedesktop.DBus.Introspectable.Introspect` | introspection XML (required by GIO clients) |
+
+Audited and denied (all return `org.freedesktop.DBus.Error.AccessDenied`):
+
+| Interface | Result |
+|---|---|
+| `Screenshot.Screenshot` | AccessDenied |
+| `ScreenCast.CreateSession` | AccessDenied |
+| `RemoteDesktop.CreateSession` | AccessDenied |
+| `InputCapture.CreateSession` | AccessDenied |
+| `Settings.Read` | AccessDenied |
+| `Documents.Add` | AccessDenied |
+| `Account.GetUserInformation` | AccessDenied |
+| `GameMode.QueryStatus` | AccessDenied |
+| `Lockdown.GetDisabled` | AccessDenied |
+| `Print.PreparePrint` | AccessDenied |
+| `Wallpaper.SetWallpaperURI` | AccessDenied |
+| `DynamicLauncher.RequestInstallToken` | AccessDenied |
+| `FileChooser.OpenFile` | AccessDenied |
+
+The denial happens at the proxy before any request reaches the host portal, so
+screen capture, input capture, screenshots, file access and dynamic launcher
+install are unreachable from inside a container unless the corresponding
+capability is enabled.
