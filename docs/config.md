@@ -118,7 +118,7 @@ cap_add = ["SYS_ADMIN"]
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mode` | string | `"host"` | Network mode. Supported: `"host"`, `"bridge"`, `"none"`, `"pasta"`, `"slirp4netns"`, `"private"`. Passed as `Network=` in Quadlet |
+| `mode` | string | `"private"` | Network mode. Supported: `"host"`, `"bridge"`, `"none"`, `"pasta"`, `"slirp4netns"`, `"private"`. Passed as `Network=` in Quadlet. Defaults to `"private"` (loopback only) so the container can't see the host's UNIX sockets and localhost services; `"host"` shares the host network namespace and should be an explicit, considered opt-in. |
 | `ports` | string[] | `[]` | Port mappings (`"hostPort:containerPort"`). Emitted as `PublishPort=` in Quadlet (ignored in `host` mode) |
 
 ```toml
@@ -351,7 +351,7 @@ cap_add = ["SYS_PTRACE"]        # Extra Linux capabilities (omitted = none)
 
 # ── Network ────────────────────────────────────────────
 [network]
-mode = "host"                   # host, bridge, none, pasta, slirp4netns, private
+mode = "private"                # host, bridge, none, pasta, slirp4netns, private (default: private)
 ports = ["8080:80"]             # Port mappings (ignored in host mode)
 
 # ── Integration ────────────────────────────────────────

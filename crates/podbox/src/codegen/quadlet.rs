@@ -483,7 +483,7 @@ pub fn generate_dbus_proxy_service(name: &str, config: &Config) -> Option<String
 
     args.push("--filter".into());
 
-    for service in &config.dbus.effective_talk() {
+    for service in &config.dbus_effective_talk() {
         args.push(format!("--talk={}", service));
     }
     for service in &config.dbus.own {

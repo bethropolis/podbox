@@ -64,9 +64,26 @@ pub struct Config {
 }
 
 impl Config {
+    /// Effective D-Bus talk list, filtered by the enabled capabilities.
+    ///
+    /// The `portal` preset grants `org.freedesktop.portal.*` wholesale, which
+    /// covers Notification, Screenshot, ScreenCast and friends regardless of
+    /// what `integration.notify` / `integration.clipboard` say. When none of
+    /// the portal-facing capabilities are enabled, the portal name is dropped
+    /// so a disabled capability can't be exercised through the proxy.
+    pub fn dbus_effective_talk(&self) -> Vec<String> {
+        let portal_allowed =
+            self.integration.notify || self.integration.xdg_open || self.integration.clipboard;
+        self.dbus
+            .effective_talk()
+            .into_iter()
+            .filter(|svc| portal_allowed || !svc.starts_with("org.freedesktop.portal"))
+            .collect()
+    }
+
     pub fn use_dbus_proxy(&self) -> bool {
         self.integration.dbus
-            && (!self.dbus.effective_talk().is_empty() || !self.dbus.own.is_empty())
+            && (!self.dbus_effective_talk().is_empty() || !self.dbus.own.is_empty())
     }
 
     pub fn use_wayland_proxy(&self) -> bool {
@@ -298,6 +315,48 @@ sync_fonts = true
     }
 
     #[test]
+    fn test_dbus_portal_dropped_when_caps_disabled() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+preset = "portal"
+[integration]
+notify = false
+xdg_open = false
+clipboard = false
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert!(cfg.dbus_effective_talk().is_empty());
+        assert!(!cfg.use_dbus_proxy());
+    }
+
+    #[test]
+    fn test_dbus_portal_kept_when_notify_enabled() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+preset = "portal"
+[integration]
+notify = true
+xdg_open = false
+clipboard = false
+"#;
+        let cfg = Config::parse(toml).unwrap();
+        assert_eq!(cfg.dbus_effective_talk(), vec!["org.freedesktop.portal.*"]);
+        assert!(cfg.use_dbus_proxy());
+    }
+
+    #[test]
     fn test_dbus_config_parses_talk_own() {
         let toml = r#"
 [image]
@@ -374,7 +433,7 @@ base = "fedora:41"
     }
 
     #[test]
-    fn test_network_defaults_to_host() {
+    fn test_network_defaults_to_private() {
         let toml = r#"
 [image]
 base = "fedora:41"
@@ -384,7 +443,7 @@ name = "env"
 home = "~/env"
 "#;
         let cfg = Config::parse(toml).unwrap();
-        assert_eq!(cfg.network.mode, "host");
+        assert_eq!(cfg.network.mode, "private");
         assert!(cfg.network.ports.is_empty());
     }
 

@@ -54,6 +54,15 @@ pub fn run(cmd: &[String]) -> ! {
             let _ = nix::unistd::dup2(&dev_null_w, &mut stdout);
             let _ = nix::unistd::dup2(&dev_null_w, &mut stderr);
 
+            // Drop privileges before exec'ing the daemon, matching the
+            // doc comment above and docs/guest.md. The daemon must not run
+            // as root — it only needs to observe and signal user processes
+            // (all of which run as the mapped host user).
+            if let Some((uid, gid, _)) = drop {
+                let _ = setgid(Gid::from_raw(gid));
+                let _ = setuid(Uid::from_raw(uid));
+            }
+
             let program = CString::new("/usr/local/bin/podbox-guest").unwrap();
             let arg = CString::new("--daemon").unwrap();
             match execv(&program, &[&program, &arg]) {
