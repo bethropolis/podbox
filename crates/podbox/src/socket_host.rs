@@ -628,7 +628,10 @@ mod tests {
 
     // ── note_failure tests ──
 
-    fn socket_pair() -> (std::os::unix::net::UnixStream, std::os::unix::net::UnixStream) {
+    fn socket_pair() -> (
+        std::os::unix::net::UnixStream,
+        std::os::unix::net::UnixStream,
+    ) {
         std::os::unix::net::UnixStream::pair().expect("socketpair")
     }
 
@@ -657,7 +660,9 @@ mod tests {
         for _ in 0..super::MAX_NEGOTIATION_FAILURES {
             let bytes = read_frame(&mut client).unwrap().expect("error frame");
             let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
-            assert!(matches!(msg, crate::protocol::HostMessage::Error { reason } if reason == "probe"));
+            assert!(
+                matches!(msg, crate::protocol::HostMessage::Error { reason } if reason == "probe")
+            );
         }
     }
 
@@ -720,9 +725,7 @@ mod tests {
         let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
         match msg {
             crate::protocol::HostMessage::HelloAck {
-                accepted,
-                rejected,
-                ..
+                accepted, rejected, ..
             } => {
                 assert_eq!(accepted, vec![crate::protocol::CAP_NOTIFY]);
                 assert_eq!(rejected, vec![crate::protocol::CAP_XDG_OPEN]);

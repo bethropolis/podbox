@@ -364,8 +364,16 @@ sync_fonts = true
         assert!(cfg.dbus_effective_talk().is_empty());
         assert!(cfg.use_dbus_proxy());
         let calls = cfg.dbus_portal_calls();
-        assert!(calls.iter().any(|r| r.contains("org.freedesktop.portal.Notification.*")));
-        assert!(calls.iter().any(|r| r.contains("org.freedesktop.portal.OpenURI.*")));
+        assert!(
+            calls
+                .iter()
+                .any(|r| r.contains("org.freedesktop.portal.Notification.*"))
+        );
+        assert!(
+            calls
+                .iter()
+                .any(|r| r.contains("org.freedesktop.portal.OpenURI.*"))
+        );
     }
 
     #[test]
