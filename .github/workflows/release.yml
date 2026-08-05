@@ -6,6 +6,11 @@ on:
       version:
         description: 'Semver version (e.g. 0.6.0 or 0.6.0-pre.1)'
         required: true
+      skip_aur:
+        description: 'Skip AUR package publish (e.g. AUR maintenance)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,8 +27,8 @@ jobs:
           fetch-depth: 0
       - name: Tag
         run: |
-          git tag v${{ inputs.version }}
-          git push origin v${{ inputs.version }}
+          git tag v${{ inputs.version }} 2>/dev/null || true
+          git push origin v${{ inputs.version }} 2>/dev/null || true
       - uses: dtolnay/rust-toolchain@stable
       - run: |
           rustup target add \
@@ -50,7 +55,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --clean ${{ inputs.skip_aur && '--skip=aur' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
