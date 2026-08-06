@@ -3,7 +3,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
@@ -49,8 +49,6 @@ fn setup_signal_handler() -> nix::Result<()> {
 
 /// Shared mutable state between all connections and PID monitor threads.
 struct SharedState {
-    /// The first (and only) guest-daemon stream — used to send CheckIdle.
-    daemon_stream: Mutex<Option<UnixStream>>,
     /// Number of active terminal sessions tracked via pidfd.
     session_count: AtomicU32,
     /// Container name, for `systemctl stop` on idle timeout.
@@ -83,7 +81,6 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     };
 
     let state = Arc::new(SharedState {
-        daemon_stream: Mutex::new(None),
         session_count: AtomicU32::new(0),
         container_name: container_name.to_string(),
         idle_timeout_secs,
@@ -218,34 +215,13 @@ fn handle_connection(
                 };
                 negotiated = Some(accepted.into_iter().collect());
 
-                // Claim the daemon stream (used for CheckIdle) only if no
-                // live one exists yet — a second connection must not be able
-                // to hijack it while the current one is alive.
-                {
-                    let mut guard = state
-                        .daemon_stream
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
-                    if guard.as_ref().is_none_or(|d| !stream_is_alive(d)) {
-                        *guard = Some(stream.try_clone()?);
-                    }
-                }
-
-                // Autostart check: if idle_timeout is enabled and no sessions
-                // are active yet, prompt the guest to check for idleness.
-                if state.idle_timeout_secs > 0 && state.session_count.load(Ordering::SeqCst) == 0 {
-                    let mut guard = state
-                        .daemon_stream
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
-                    if guard
-                        .as_mut()
-                        .is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err())
-                    {
-                        tracing::warn!("failed to send CheckIdle after hello");
-                        *guard = None;
-                    }
-                }
+                // Idle shutdown is driven entirely by the guest's own idle
+                // timer (which respects idle_timeout). The host must NOT
+                // probe the daemon immediately on hello: a container that was
+                // just started is, by definition, not yet idle, and stopping
+                // it at hello races `podman enter`, which is trying to spawn
+                // a session into it. An immediate check would kill the box
+                // before the user's shell can start.
             }
             GuestMessage::RegisterSession => {
                 // host-CLI-only: the peer must be inside the host user
@@ -410,23 +386,8 @@ fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
     }
 }
 
-/// Whether a connected stream is still alive (peer hasn't hung up).
-///
-/// Uses a non-blocking poll: if the peer closed or errored, `POLLHUP` /
-/// `POLLERR` is returned immediately. This lets a fresh guest-daemon
-/// connection reclaim the daemon stream only once the old one is gone.
-fn stream_is_alive(stream: &UnixStream) -> bool {
-    let mut pfd = nix::libc::pollfd {
-        fd: stream.as_raw_fd(),
-        events: 0,
-        revents: 0,
-    };
-    let ret = unsafe { nix::libc::poll(&raw mut pfd, 1, 0) };
-    ret >= 0 && pfd.revents & (nix::libc::POLLHUP | nix::libc::POLLERR) == 0
-}
-
 /// Block until `fd` (a pidfd) becomes readable, then decrement the session
-/// counter.  If the count reaches zero, send `CheckIdle` to the guest daemon.
+/// counter.
 fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
     let mut pfd = nix::libc::pollfd {
         fd: fd.as_raw_fd(),
@@ -448,20 +409,9 @@ fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
         }
     }
 
-    let prev = state.session_count.fetch_sub(1, Ordering::SeqCst);
-    if prev == 1 {
-        let mut guard = state
-            .daemon_stream
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if guard
-            .as_mut()
-            .is_some_and(|d| write_frame(d, &HostMessage::CheckIdle).is_err())
-        {
-            tracing::warn!("failed to send CheckIdle after session end");
-            *guard = None;
-        }
-    }
+    let _ = state.session_count.fetch_sub(1, Ordering::SeqCst);
+    // Idle shutdown is driven entirely by the guest's own idle timer, so
+    // there is no host-side work to do here.
 }
 
 #[cfg(test)]

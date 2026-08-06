@@ -252,11 +252,14 @@ fn emit_volumes(
         lines.push(String::new());
     }
 
+    // The guest daemon needs XDG_RUNTIME_DIR to locate the host socket
+    // regardless of Wayland/audio integration.
+    lines.push("Environment=XDG_RUNTIME_DIR=%t".into());
+
     // Wayland
     if config.integration.wayland {
         if let Some(ref display) = env.wayland_display {
             lines.push(format!("Environment=WAYLAND_DISPLAY={}", display));
-            lines.push("Environment=XDG_RUNTIME_DIR=%t".into());
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
             if config.wayland.firewall {
                 lines.push(format!(
