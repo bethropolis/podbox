@@ -21,6 +21,7 @@ pub mod guest;
 pub mod labels;
 pub mod lock;
 pub mod podman;
+pub mod ports;
 pub mod process;
 pub mod profiles;
 pub mod protocol;

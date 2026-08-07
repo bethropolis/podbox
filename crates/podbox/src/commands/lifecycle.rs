@@ -289,6 +289,27 @@ pub fn run_start(
         podbox::quadlet_install::install(config, env, xdg, false)?;
     }
 
+    // Abort early with a clear, actionable message if a published host port
+    // is already occupied — pasta would otherwise fail and the start would
+    // surface as a cryptic systemd unit failure. Skipped when the container
+    // is already running (pasta itself then holds the port).
+    let already_running = podbox::podman::query_state(name)
+        .map(|s| s == podbox::podman::ContainerState::Running)
+        .unwrap_or(false);
+    if !already_running {
+        let conflicts = podbox::ports::check_host_ports(&config.network.ports);
+        if !conflicts.is_empty() {
+            let mut msg = String::from("Cannot start: published host port(s) already in use:\n");
+            for c in &conflicts {
+                use std::fmt::Write as _;
+                let _ = writeln!(msg, "  - {}", c);
+            }
+            msg.push_str("\nFind the process with: `ss -ltnp 'sport = :<port>'`\n");
+            msg.push_str("Either stop that process or change the mapping in [network]ports.");
+            anyhow::bail!(msg);
+        }
+    }
+
     println!("Starting container...");
     crate::commands::ensure_running(name, false, timeout_secs)?;
     println!("Container '{name}' is running!");
@@ -350,6 +371,7 @@ pub fn run_update(
 
     println!("Restarting container...");
     if config.lifecycle.quadlet && systemd::is_available() {
+        systemd::reset_failed(name)?;
         systemd::restart_unit(name)?;
     } else {
         let args = podbox::process::args(&["restart", name]);

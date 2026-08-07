@@ -332,38 +332,18 @@ fn preflight_check(config: &Config) -> Result<()> {
         return Ok(());
     }
 
-    // Check for port conflicts
-    for port_str in &config.network.ports {
-        let host_port_str = match port_str.split(':').collect::<Vec<_>>().as_slice() {
-            [host_port, _container_port] => Some(*host_port),
-            [_ip, host_port, _container_port] => Some(*host_port),
-            _ => None,
-        };
-        if let Some(host_port_str) = host_port_str {
-            if let Ok(host_port) = host_port_str.parse::<u16>() {
-                // Check TCP conflicts on both 0.0.0.0 and 127.0.0.1
-                let tcp_conflict = std::net::TcpListener::bind(format!("0.0.0.0:{}", host_port))
-                    .is_err()
-                    || std::net::TcpListener::bind(format!("127.0.0.1:{}", host_port)).is_err();
-                if tcp_conflict {
-                    anyhow::bail!(
-                        "Port conflict: TCP port '{}' is already in use on the host.",
-                        host_port
-                    );
-                }
-
-                // Check UDP conflicts on both 0.0.0.0 and 127.0.0.1
-                let udp_conflict = std::net::UdpSocket::bind(format!("0.0.0.0:{}", host_port))
-                    .is_err()
-                    || std::net::UdpSocket::bind(format!("127.0.0.1:{}", host_port)).is_err();
-                if udp_conflict {
-                    anyhow::bail!(
-                        "Port conflict: UDP port '{}' is already in use on the host.",
-                        host_port
-                    );
-                }
-            }
-        }
+    // Check for port conflicts (IPv4 + IPv6, TCP + UDP)
+    let conflicts = crate::ports::check_host_ports(&config.network.ports);
+    if !conflicts.is_empty() {
+        let listed = conflicts
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "Port conflict: already in use on the host — {listed}. \
+             Find the process with: `ss -ltnp 'sport = :<port>'`"
+        );
     }
 
     // Check admin cap_preset

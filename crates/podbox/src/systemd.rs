@@ -320,7 +320,11 @@ fn extract_hint_from_journal(journal: &str) -> String {
                      Check that your home and mount directories have the correct permissions."
                 .to_string();
         }
-        if lower.contains("port already in use") {
+        if lower.contains("port already in use")
+            || lower.contains("address already in use")
+            || lower.contains("listen failed")
+            || lower.contains("couldn't listen")
+        {
             return "A mapped port is already in use on the host. \
                      Change the host port in your config's [network]ports section."
                 .to_string();
@@ -362,8 +366,8 @@ fn diagnostic_card(name: &str, status: &UnitStatus, journal: Option<&str>) -> St
     let journal_section = match journal {
         Some(j) if !j.trim().is_empty() => {
             let lines: Vec<&str> = j.lines().collect();
-            let tail = if lines.len() > 5 {
-                &lines[lines.len() - 5..]
+            let tail = if lines.len() > 10 {
+                &lines[lines.len() - 10..]
             } else {
                 &lines
             };
@@ -414,6 +418,11 @@ pub fn start_unit_friendly(name: &str, timeout_secs: u64) -> Result<()> {
             // Unit might not exist yet — that's fine, we're about to try starting.
         }
     }
+
+    // Clear any previous failure so a unit that landed in `failed` (e.g. from
+    // an idle stop or a transient error) can be started again without the
+    // user having to run `systemctl --user reset-failed` manually.
+    reset_failed(name)?;
 
     // Try to start
     let start_result = (|| -> Result<()> {
