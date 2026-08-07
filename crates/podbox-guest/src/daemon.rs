@@ -71,7 +71,8 @@ struct TrackedProcess {
     fd: OwnedFd,
 }
 
-/// Scan /proc for user processes (anything not in `EXCLUDED_COMMS`).
+/// Scan /proc for user processes (anything not in `EXCLUDED_COMMS`, plus the
+/// container init at PID 1 which is never a user task).
 fn scan_user_processes() -> Vec<i32> {
     let mut pids = Vec::new();
     let Ok(entries) = std::fs::read_dir("/proc") else {
@@ -81,13 +82,18 @@ fn scan_user_processes() -> Vec<i32> {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         if name_str.chars().all(|c| c.is_ascii_digit())
-            && let Ok(comm) = std::fs::read_to_string(entry.path().join("comm"))
+            && let Ok(pid) = name_str.parse::<i32>()
         {
-            let comm_trimmed = comm.trim();
-            if !EXCLUDED_COMMS.contains(&comm_trimmed)
-                && let Ok(pid) = name_str.parse::<i32>()
-            {
-                pids.push(pid);
+            if pid == 1 {
+                // The container init (reaper) is never a user task, whatever
+                // its comm (catatonit/tini, but also e.g. `systemd`).
+                continue;
+            }
+            if let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) {
+                let comm_trimmed = comm.trim();
+                if !EXCLUDED_COMMS.contains(&comm_trimmed) {
+                    pids.push(pid);
+                }
             }
         }
     }
@@ -352,6 +358,11 @@ fn resolve_user_path() {
 /// Max poll interval in ms (`PollTimeout` caps at `u16::MAX` = 65535).
 const MAX_POLL_MS: i64 = 60_000;
 
+/// Grace period between the final idle scan and firing `IdleTimeout`. A task
+/// that spawns during this window is caught by the confirm scan, closing the
+/// TOCTOU race where a freshly-started process would be killed by shutdown.
+const IDLE_CONFIRM_MS: u64 = 1_000;
+
 #[allow(clippy::too_many_lines)]
 fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<(), GuestError> {
     let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
@@ -386,9 +397,19 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                     if tracked.is_empty() && remaining_ms > 0 {
                         remaining_ms -= MAX_POLL_MS;
                         if remaining_ms <= 0 {
-                            let active = scan_user_processes();
+                            let mut active = scan_user_processes();
                             if active.is_empty() {
-                                let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
+                                // Confirm we're still idle after a short grace
+                                // before killing the box, so a task started in
+                                // the window since the last scan is not lost.
+                                std::thread::sleep(std::time::Duration::from_millis(
+                                    IDLE_CONFIRM_MS,
+                                ));
+                                active = scan_user_processes();
+                            }
+                            if active.is_empty() {
+                                let _ =
+                                    write_frame(host_stream, &GuestMessage::IdleTimeout);
                                 return Ok(());
                             }
                             tracked = track_processes(&active);
@@ -439,7 +460,11 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                     | HostMessage::Error { .. },
                 )) => {}
                 Ok(Some(HostMessage::CheckIdle)) => {
-                    let active = scan_user_processes();
+                    let mut active = scan_user_processes();
+                    if active.is_empty() {
+                        std::thread::sleep(std::time::Duration::from_millis(IDLE_CONFIRM_MS));
+                        active = scan_user_processes();
+                    }
                     if active.is_empty() {
                         let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
                     } else {
