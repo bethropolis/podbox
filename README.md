@@ -63,6 +63,36 @@ podbox enter fedora
 
 That's a prebuilt environment with no config file needed. For anything custom, see the [Getting Started Guide](docs/getting-started.md).
 
+<details>
+<summary>Other install options</summary>
+
+**Homebrew (Linux only):**
+```bash
+brew install bethropolis/homebrew-tap/podbox
+```
+
+**Arch Linux, via AUR:**
+```bash
+paru -S podbox-bin
+```
+
+**From crates.io:**
+```bash
+cargo install podbox-cli
+```
+> Note: the crates.io build supports **prebuilt images only** (`image_ref`
+> in your config, or `podbox create ghcr.io/bethropolis/podbox:<tag>`).
+> Custom image builds (a `[image] base = "..."` in the TOML) need a full
+> source build from the workspace, where the guest daemon is embedded at
+> compile time.
+
+**Source install (clone + build):**
+```bash
+git clone https://github.com/bethropolis/podbox
+cd podbox && scripts/install.sh   # installs to ~/.local/bin
+```
+</details>
+
 ## How it works
 
 You write one TOML file. `podbox build` turns it into an OCI image plus the systemd Quadlet units that run it: no hand-edited Containerfile, no manually written unit files.
@@ -142,34 +172,6 @@ podbox clone work dev
 podbox inspect myenv
 podbox inspect myenv --quadlet
 ```
-
-## Installing
-
-**Pre-built binary:**
-```bash
-curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
-```
-
-**Arch Linux, via AUR:**
-```bash
-paru -S podbox-bin
-```
-
-**Building from source:**
-```bash
-scripts/install.sh            # installs to ~/.local/bin
-scripts/install.sh --system   # system-wide, needs sudo
-```
-
-**From crates.io:**
-```bash
-cargo install podbox-cli
-```
-> Note: the crates.io build supports **prebuilt images only** (`image_ref`
-> in your config, or `podbox create ghcr.io/bethropolis/podbox:<tag>`).
-> Custom image builds (a `[image] base = "..."` in the TOML) need a full
-> source build from the workspace, where the guest daemon is embedded at
-> compile time.
 
 ## What you'll need
 
