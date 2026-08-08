@@ -466,9 +466,7 @@ mod tests {
 
     #[test]
     fn list_exports_lists_apps_and_bins() {
-        let apps_dir = dirs::data_dir()
-            .expect("data dir")
-            .join("applications");
+        let apps_dir = dirs::data_dir().expect("data dir").join("applications");
         std::fs::create_dir_all(&apps_dir).expect("create apps dir");
         let app_path = apps_dir.join("podbox-box-firefox.desktop");
         std::fs::write(&app_path, "[Desktop Entry]\nName=Firefox (box)\n").unwrap();

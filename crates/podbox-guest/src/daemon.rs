@@ -408,8 +408,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                                 active = scan_user_processes();
                             }
                             if active.is_empty() {
-                                let _ =
-                                    write_frame(host_stream, &GuestMessage::IdleTimeout);
+                                let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
                                 return Ok(());
                             }
                             tracked = track_processes(&active);

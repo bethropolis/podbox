@@ -40,7 +40,9 @@ fn embed_guest() {
     } else {
         std::fs::write(&dest, "pub static PODBOX_GUEST: Option<&[u8]> = None;")
             .expect("failed to write podbox_guest.rs");
-        println!("cargo:warning=no podbox-guest workspace found; custom image builds unsupported (prebuilt images only)");
+        println!(
+            "cargo:warning=no podbox-guest workspace found; custom image builds unsupported (prebuilt images only)"
+        );
     }
 }
 
