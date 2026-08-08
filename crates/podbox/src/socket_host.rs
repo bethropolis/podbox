@@ -24,7 +24,7 @@ const MAX_CONCURRENT: usize = 4;
 const MAX_SESSIONS: u32 = 64;
 
 /// How often the host sends a keepalive `Ping` to a connected guest.
-const PING_INTERVAL: Duration = Duration::from_secs(60);
+const PING_INTERVAL: Duration = Duration::from_mins(1);
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 

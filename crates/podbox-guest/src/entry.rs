@@ -114,7 +114,7 @@ pub fn run(cmd: &[String]) -> ! {
             } else {
                 // Background (e.g. systemd): keep PID 1 alive
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(3600));
+                    std::thread::sleep(std::time::Duration::from_hours(1));
                 }
             }
         }

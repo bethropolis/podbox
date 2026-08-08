@@ -240,7 +240,7 @@ pub(super) fn handle_host_exec(
         .spawn()
     {
         Ok(child) => {
-            let output = crate::process::wait_child_timeout(child, Duration::from_secs(60))?;
+            let output = crate::process::wait_child_timeout(child, Duration::from_mins(1))?;
             if !output.stdout.is_empty() {
                 write_frame(
                     stream,
