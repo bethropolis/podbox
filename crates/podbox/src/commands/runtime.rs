@@ -584,15 +584,21 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         }
     }
 
-    let has_embedded = !podbox::guest::PODBOX_GUEST_BINARY.is_empty();
-    if has_embedded {
-        check!(
-            "embedded guest binary",
-            "pass",
-            format!("{} bytes", podbox::guest::PODBOX_GUEST_BINARY.len())
-        );
-    } else {
-        check!("embedded guest binary", "fail", "binary is empty");
+    match podbox::guest::PODBOX_GUEST {
+        Some(bytes) => {
+            check!(
+                "embedded guest binary",
+                "pass",
+                format!("{} bytes", bytes.len())
+            );
+        }
+        None => {
+            check!(
+                "embedded guest binary",
+                "warn",
+                "no embedded guest — prebuilt-image build; custom `podbox build` unsupported (use a release binary or source build)"
+            );
+        }
     }
 
     if config.lifecycle.autostart {

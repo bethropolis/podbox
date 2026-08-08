@@ -1,9 +1,15 @@
 [package]
-name = "podbox"
+name = "podbox-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Declarative Podman-native container environment manager. Define an environment as a TOML file and let systemd own its lifecycle."
+documentation = "https://docs.rs/podbox-cli"
+keywords = ["container", "podman", "systemd", "quadlet", "devcontainer"]
+categories = ["command-line-utilities", "virtualization"]
 
 [lib]
 name = "podbox"

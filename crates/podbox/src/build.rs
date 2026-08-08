@@ -39,6 +39,12 @@ pub fn run(
     if config.image.source().is_prebuilt() {
         run_prebuilt(config, dry_run, rebuild)
     } else {
+        // Custom builds bake the embedded guest into the image. Builds from
+        // the published crate have no guest (PODBOX_GUEST is None); reject
+        // up front so the user never gets partway through codegen first.
+        if crate::guest::PODBOX_GUEST.is_none() {
+            return Err(PodboxError::GuestBinaryUnavailable.into());
+        }
         run_build(config, env, xdg, dry_run, rebuild)
     }
 }
@@ -232,7 +238,8 @@ fn run_build(
         None
     };
 
-    let guest_bin = crate::guest::PODBOX_GUEST_BINARY;
+    // Guarded by `run()` for custom builds; prebuilt builds never reach here.
+    let guest_bin = crate::guest::PODBOX_GUEST.expect("custom build without embedded guest");
 
     let definition_toml = toml::to_string(config)
         .with_context(|| "failed to serialize definition config".to_string())?;
@@ -248,7 +255,7 @@ fn run_build(
         }
     }
 
-    let containerfile = containerfile::generate(config, "podbox-guest");
+    let containerfile = containerfile::generate(config, "podbox-guest")?;
 
     if dry_run {
         println!("=== Build context: {} ===", context_dir.display());

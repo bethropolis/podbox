@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -27,6 +27,24 @@ fn git_describe() -> Option<String> {
 }
 
 fn embed_guest() {
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let dest = out_dir.join("podbox_guest.rs");
+
+    // The guest source only exists when building from the workspace (dev,
+    // goreleaser, source checkout). The crates.io package ships `podbox-cli`
+    // alone, so the workspace sibling is absent and custom image builds are
+    // unsupported — the crate can only manage prebuilt images.
+    let workspace_manifest = Path::new("../podbox-guest/Cargo.toml");
+    if workspace_manifest.exists() {
+        embed_guest_from_workspace(&dest);
+    } else {
+        std::fs::write(&dest, "pub static PODBOX_GUEST: Option<&[u8]> = None;")
+            .expect("failed to write podbox_guest.rs");
+        println!("cargo:warning=no podbox-guest workspace found; custom image builds unsupported (prebuilt images only)");
+    }
+}
+
+fn embed_guest_from_workspace(dest: &Path) {
     println!("cargo:rerun-if-changed=../podbox-guest/src/");
     println!("cargo:rerun-if-changed=../podbox-guest/Cargo.toml");
 
@@ -53,12 +71,13 @@ fn embed_guest() {
         .ok()
         .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains(musl_target));
 
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let (guest_path, target_label) = if musl_available {
         let path = guest_target
             .join(musl_target)
             .join("release")
             .join("podbox-guest");
-        let status = Command::new("cargo")
+        let status = Command::new(&cargo)
             .args([
                 "build",
                 "--release",
@@ -75,7 +94,7 @@ fn embed_guest() {
         (path, "musl / static")
     } else {
         let path = guest_target.join("release").join("podbox-guest");
-        let status = Command::new("cargo")
+        let status = Command::new(&cargo)
             .args(["build", "--release", "-p", "podbox-guest", "--target-dir"])
             .arg(&guest_target)
             .status()
@@ -94,11 +113,11 @@ fn embed_guest() {
     let size = guest_bytes.len();
     let code = format!(
         r#"
-pub static PODBOX_GUEST_BINARY: &[u8] = {{
+pub static PODBOX_GUEST: Option<&[u8]> = Some({{
     const RAW: &[u8; {size}] = include_bytes!(concat!(env!("OUT_DIR"), "/podbox-guest"));
     RAW
-}};
+}});
 "#,
     );
-    std::fs::write(out_dir.join("podbox_guest.rs"), code).expect("failed to write podbox_guest.rs");
+    std::fs::write(dest, code).expect("failed to write podbox_guest.rs");
 }

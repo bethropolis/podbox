@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Guest-side daemon and entrypoint for podbox containers: socket protocol, interceptors, and idle shutdown."
+documentation = "https://docs.rs/podbox-guest"
+keywords = ["container", "podman", "guest", "daemon"]
+categories = ["command-line-utilities", "virtualization"]
 
 [lib]
 name = "podbox_guest"

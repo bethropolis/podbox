@@ -44,4 +44,7 @@ pub enum PodboxError {
 
     #[error("config validation failed:\n{details}")]
     ConfigValidationFailed { details: String },
+
+    #[error("this build of podbox has no embedded guest binary and can only manage prebuilt images -- use a release binary or a source build with the podbox-guest workspace present to build custom images")]
+    GuestBinaryUnavailable,
 }

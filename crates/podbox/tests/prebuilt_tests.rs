@@ -58,7 +58,7 @@ fn source_build_has_no_image_ref() {
 #[test]
 fn containerfile_prebuilt_generates_minimal() {
     let config = load_config("prebuilt.toml");
-    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest");
+    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest").unwrap();
     assert!(cf.starts_with("FROM cachy-latest\n"));
     // Prebuilt Containerfile does NOT COPY the guest binary
     // (the image already has it embedded)
@@ -74,7 +74,7 @@ fn containerfile_prebuilt_generates_minimal() {
 #[test]
 fn containerfile_custom_has_packages() {
     let config = load_config("full.toml");
-    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest");
+    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest").unwrap();
     assert!(!cf.starts_with("FROM ghcr.io"));
     assert!(cf.contains("dnf install -y"));
     assert!(cf.contains("RUN "));

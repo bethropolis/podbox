@@ -161,6 +161,16 @@ scripts/install.sh            # installs to ~/.local/bin
 scripts/install.sh --system   # system-wide, needs sudo
 ```
 
+**From crates.io:**
+```bash
+cargo install podbox-cli
+```
+> Note: the crates.io build supports **prebuilt images only** (`image_ref`
+> in your config, or `podbox create ghcr.io/bethropolis/podbox:<tag>`).
+> Custom image builds (a `[image] base = "..."` in the TOML) need a full
+> source build from the workspace, where the guest daemon is embedded at
+> compile time.
+
 ## What you'll need
 
 **Required:**

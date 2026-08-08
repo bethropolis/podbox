@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Length-prefixed socket protocol and message types shared between the podbox host CLI and its guest daemon."
+documentation = "https://docs.rs/podbox-protocol"
+keywords = ["container", "podman", "protocol", "socket"]
+categories = ["command-line-utilities"]
 
 [lib]
 name = "podbox_protocol"

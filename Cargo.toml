@@ -6,7 +6,9 @@ resolver = "3"
 edition      = "2024"
 version = "0.6.5"
 license      = "MIT"
-rust-version = "1.90"
+rust-version = "1.95"
+repository   = "https://github.com/bethropolis/podbox"
+homepage     = "https://github.com/bethropolis/podbox"
 
 [workspace.dependencies]
 serde       = { version = "1.0", features = ["derive"] }
@@ -34,7 +36,7 @@ fd-lock              = "4.0.4"
 tracing              = "0.1.44"
 tracing-subscriber   = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }
 tracing-journald     = "0.3.2"
-podbox-protocol      = { path = "crates/podbox-protocol" }
+podbox-protocol      = { path = "crates/podbox-protocol", version = "0.6.5" }
 
 # Testing
 assert_cmd = "2.0"

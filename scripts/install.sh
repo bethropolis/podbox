@@ -163,13 +163,13 @@ build_binaries() {
 
   step "Building podbox"
 
-  printf "     ${GRAY}cargo build --release -p podbox${RST}\n"
-  if cargo build --release -p podbox 2>&1 | \
+  printf "     ${GRAY}cargo build --release -p podbox-cli${RST}\n"
+  if cargo build --release -p podbox-cli 2>&1 | \
       grep -E "^(error|warning\[)" | \
       while IFS= read -r line; do detail "$line"; done; [ "${PIPESTATUS[0]}" -eq 0 ]; then
     ok "podbox"
   else
-    cargo build --release -p podbox || die "podbox build failed"
+    cargo build --release -p podbox-cli || die "podbox build failed"
     ok "podbox"
   fi
 }

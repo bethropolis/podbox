@@ -1,9 +1,10 @@
 use crate::codegen::distros::{DistroFamily, detect_host_locale, detect_host_shell};
 use crate::config::Config;
+use crate::error::PodboxError;
 
-pub fn generate(config: &Config, _guest_binary_name: &str) -> String {
+pub fn generate(config: &Config, _guest_binary_name: &str) -> Result<String, PodboxError> {
     if config.image.source().is_prebuilt() {
-        return generate_prebuilt(config);
+        return Ok(generate_prebuilt(config));
     }
     generate_custom(config)
 }
@@ -17,18 +18,18 @@ fn generate_prebuilt(config: &Config) -> String {
         .build()
 }
 
-fn generate_custom(config: &Config) -> String {
+fn generate_custom(config: &Config) -> Result<String, PodboxError> {
     let distro = DistroFamily::from_base_image(&config.image.base);
     let host_shell = detect_host_shell();
     let host_locale = detect_host_locale();
 
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
-    builder
+    let builder = builder
         .add_base_packages(distro, host_shell.as_deref(), host_locale.as_deref())
         .add_user_packages(config.image.packages.install.clone())
         .add_run_commands(config.image.run.commands.clone())
-        .add_guest_binary()
-        .build()
+        .add_guest_binary()?;
+    Ok(builder.build())
 }
 
 struct ContainerfileBuilder {
@@ -90,9 +91,12 @@ impl ContainerfileBuilder {
         self
     }
 
-    fn add_guest_binary(mut self) -> Self {
+    fn add_guest_binary(mut self) -> Result<Self, PodboxError> {
+        if crate::guest::PODBOX_GUEST.is_none() {
+            return Err(PodboxError::GuestBinaryUnavailable);
+        }
         self.has_guest_binary = true;
-        self
+        Ok(self)
     }
 
     fn set_shell(mut self, shell: &str) -> Self {

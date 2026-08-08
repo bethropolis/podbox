@@ -16,7 +16,7 @@ builds:
       - aarch64-unknown-linux-gnu
     flags:
       - --release
-      - -p=podbox
+      - -p=podbox-cli
 
   - id: podbox-guest
     builder: rust
