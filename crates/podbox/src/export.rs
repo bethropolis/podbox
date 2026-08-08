@@ -264,6 +264,74 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// List the .desktop apps and bin shims exported to the host for a container.
+pub fn list_exports(container_name: &str) -> Result<()> {
+    let apps_dir = dirs::data_dir()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".local/share"))
+                .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
+        })
+        .join("applications");
+    let prefix = format!("podbox-{}-", container_name);
+    let suffix = ".desktop";
+
+    let mut apps: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&apps_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with(&prefix) && name.ends_with(suffix) {
+                apps.push(name[prefix.len()..name.len() - suffix.len()].to_string());
+            }
+        }
+    }
+    apps.sort();
+
+    let bin_dir = dirs::home_dir()
+        .map(|h| h.join(".local/bin"))
+        .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
+    let marker = format!("--container \"{}\"", container_name);
+    let mut bins: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(mut file) = std::fs::File::open(&path) {
+                use std::io::Read;
+                let mut chunk = vec![0u8; 4096];
+                if let Ok(bytes_read) = file.read(&mut chunk) {
+                    let content = String::from_utf8_lossy(&chunk[..bytes_read]);
+                    if content.contains(&marker) {
+                        bins.push(entry.file_name().to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+    }
+    bins.sort();
+
+    if apps.is_empty() && bins.is_empty() {
+        println!("No exports for '{}'.", container_name);
+        return Ok(());
+    }
+
+    if !apps.is_empty() {
+        println!("Apps:");
+        for app in &apps {
+            println!("  {app}");
+        }
+    }
+    if !bins.is_empty() {
+        if !apps.is_empty() {
+            println!();
+        }
+        println!("Bins:");
+        for bin in &bins {
+            println!("  {bin}");
+        }
+    }
+    Ok(())
+}
+
 fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> String {
     let exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
@@ -394,5 +462,55 @@ mod tests {
             err.contains("foo`whoami`") || err.contains("invalid"),
             "error should mention the name: {err}"
         );
+    }
+
+    #[test]
+    fn list_exports_lists_apps_and_bins() {
+        let apps_dir = dirs::data_dir()
+            .expect("data dir")
+            .join("applications");
+        std::fs::create_dir_all(&apps_dir).expect("create apps dir");
+        let app_path = apps_dir.join("podbox-box-firefox.desktop");
+        std::fs::write(&app_path, "[Desktop Entry]\nName=Firefox (box)\n").unwrap();
+
+        let bin_dir = dirs::home_dir().expect("home dir").join(".local/bin");
+        std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+        let shim_path = bin_dir.join("firefox");
+        std::fs::write(
+            &shim_path,
+            "#!/bin/sh\nexec /usr/bin/podbox --container \"box\" exec \"firefox\" \"$@\"\n",
+        )
+        .unwrap();
+
+        let apps_dir = dirs::data_dir().expect("data dir").join("applications");
+        let prefix = format!("podbox-{}-", "box");
+        let suffix = ".desktop";
+        let mut apps: Vec<String> = std::fs::read_dir(&apps_dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(&prefix) && n.ends_with(suffix))
+            .map(|n| n[prefix.len()..n.len() - suffix.len()].to_string())
+            .collect();
+        apps.sort();
+
+        let marker = format!("--container \"{}\"", "box");
+        let mut bins: Vec<String> = std::fs::read_dir(&bin_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                std::fs::read_to_string(e.path())
+                    .map(|c| c.contains(&marker))
+                    .unwrap_or(false)
+            })
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        bins.sort();
+
+        assert_eq!(apps, vec!["firefox".to_string()]);
+        assert_eq!(bins, vec!["firefox".to_string()]);
+
+        let _ = std::fs::remove_file(&app_path);
+        let _ = std::fs::remove_file(&shim_path);
     }
 }

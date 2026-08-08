@@ -41,6 +41,9 @@ pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportComman
         ExportCommand::Clean => {
             podbox::export::unexport_all(name)?;
         }
+        ExportCommand::List => {
+            podbox::export::list_exports(name)?;
+        }
     }
     Ok(())
 }

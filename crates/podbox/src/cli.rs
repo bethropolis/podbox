@@ -374,6 +374,8 @@ pub enum ExportCommand {
     },
     /// Remove all exports for the container.
     Clean,
+    /// List apps and bins exported to the host for the container.
+    List,
 }
 
 #[derive(Subcommand)]
