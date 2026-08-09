@@ -412,7 +412,7 @@ mod tests {
     #[test]
     fn detect_package_manager_apt() {
         assert_eq!(
-            detect_package_manager("ubuntu:24.04"),
+            detect_package_manager("ubuntu:26.04"),
             crate::config::PackageManager::Apt
         );
         assert_eq!(

@@ -1,15 +1,15 @@
 [image]
-name = "cachy"
-base = "cachy-latest"
-image = "ghcr.io/bethropolis/podbox:cachy-latest"
+name = "ubuntu"
+base = "ubuntu-latest"
+image = "ghcr.io/bethropolis/podbox:ubuntu-latest"
 
 [image.packages]
-manager = "pacman"
+manager = "apt"
 install = []
 
 [container]
-name = "cachy"
-home = "~/containers/cachy"
+name = "ubuntu"
+home = "~/containers/ubuntu"
 shell = "/usr/bin/fish"
 
 [integration]

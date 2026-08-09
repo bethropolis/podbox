@@ -129,7 +129,7 @@ podbox create myenv
 
 **Or just point it at any OCI image:**
 ```bash
-podbox create ubuntu:24.04 --name dev
+podbox create ubuntu:26.04 --name dev
 podbox create ghcr.io/user/img --name myenv
 ```
 

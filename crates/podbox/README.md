@@ -12,10 +12,10 @@ GUI-capable dev containers with Wayland, D-Bus, clipboard, notifications, and ho
 cargo install podbox-cli
 ```
 
-> The crates.io build supports **prebuilt images only** (`image_ref` in your
-> config, or `podbox create ghcr.io/bethropolis/podbox:<tag>`). Custom image
-> builds (a `[image] base = "..."` in the TOML) need a full source build from
-> the workspace, where the guest daemon is embedded at compile time.
+> The crates.io build works with **prebuilt images** — any image that already ships
+> the podman guest, whether that's your own (`podbox create ghcr.io/you/img:<tag>`)
+> or the official ones built from the [`images/`](https://github.com/bethropolis/podbox/tree/main/images) directory (`podbox create cachy`). Only fresh builds
+> from a bare base (`[image] base`) require a workspace build to embed the guest.
 
 ## Quick start
 
@@ -23,13 +23,6 @@ cargo install podbox-cli
 podbox create cachy          # prebuilt environment, ready in seconds
 podbox enter cachy           # hop in
 podbox export app firefox    # pull apps and binaries out to the host
-```
-
-Building from a base image instead:
-
-```bash
-podbox init fedora:44 --name myenv
-podbox create myenv
 ```
 
 ## Requirements

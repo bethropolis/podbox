@@ -106,7 +106,7 @@ Or in one step with `create`:
 ```bash
 # podbox create works with any OCI image reference
 podbox create myenv
-podbox create ubuntu:24.04 --name dev
+podbox create ubuntu:26.04 --name dev
 ```
 
 ### Interactive
@@ -131,7 +131,7 @@ When `podbox init <image>` is called without `--name`, the container name is der
 |-----------|---------------|
 | `fedora:44` | `fedora-44` |
 | `fedora:latest` | `fedora` |
-| `ubuntu:24.04` | `ubuntu-24-04` |
+| `ubuntu:26.04` | `ubuntu-26-04` |
 | `ghcr.io/user/img:v1` | `img-v1` |
 
 This avoids name conflicts when creating containers from different tags of the same base image. Use `--name` to override explicitly.

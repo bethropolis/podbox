@@ -1,13 +1,19 @@
-ARG BASE_IMAGE
+ARG BASE_IMAGE=docker.io/cachyos/cachyos:latest
 FROM ${BASE_IMAGE}
 
 ARG TARGETPLATFORM
 
 ENV PODBOX_CONTAINER=1
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LC_CTYPE=en_US.UTF-8
 
 COPY $TARGETPLATFORM/podbox-guest /usr/local/bin/podbox-guest
 
-RUN pacman -Syu --noconfirm fish fastfetch \
+RUN pacman -Syu --noconfirm \
+    sudo curl wget tar unzip which coreutils \
+    diffutils findutils grep sed gawk bash-completion \
+    fish fastfetch \
  && pacman -Scc --noconfirm \
  && localedef -i en_US -f UTF-8 en_US.UTF-8
 

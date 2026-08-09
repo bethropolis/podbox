@@ -225,7 +225,7 @@ mod tests {
             DistroFamily::DebianLike
         );
         assert_eq!(
-            DistroFamily::from_base_image("ubuntu:24.04"),
+            DistroFamily::from_base_image("ubuntu:26.04"),
             DistroFamily::DebianLike
         );
         assert_eq!(

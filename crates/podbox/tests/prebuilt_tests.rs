@@ -279,6 +279,15 @@ fn profile_dev_parses() {
 }
 
 #[test]
+fn profile_ubuntu_parses() {
+    let profile = podbox::profiles::find("ubuntu").expect("ubuntu profile exists");
+    let cfg = Config::parse(&profile.toml).unwrap();
+    assert_eq!(cfg.image.base, "ubuntu-latest");
+    assert!(cfg.image.source().is_prebuilt());
+    assert_eq!(cfg.container.shell, "/usr/bin/fish");
+}
+
+#[test]
 fn profile_unknown_returns_none() {
     assert!(podbox::profiles::find("nonexistent").is_none());
 }
@@ -288,5 +297,6 @@ fn profile_list_contains_all() {
     let names = podbox::profiles::list_names();
     assert!(names.iter().any(|n| n == "cachy"));
     assert!(names.iter().any(|n| n == "fedora"));
+    assert!(names.iter().any(|n| n == "ubuntu"));
     assert!(names.iter().any(|n| n == "dev"));
 }

@@ -10,7 +10,7 @@ pub struct Profile {
 
 /// List all available profiles (bundled + user-defined).
 pub fn all() -> Vec<Profile> {
-    let mut profiles = vec![cachy(), fedora(), dev()];
+    let mut profiles = vec![cachy(), fedora(), ubuntu(), dev()];
     profiles.extend(user_profiles());
     profiles
 }
@@ -19,7 +19,7 @@ pub fn all() -> Vec<Profile> {
 pub fn find(name: &str) -> Option<Profile> {
     let lower = name.to_lowercase();
     // Check bundled first, then user-defined
-    for p in [cachy(), fedora(), dev()] {
+    for p in [cachy(), fedora(), ubuntu(), dev()] {
         if p.name == lower {
             return Some(p);
         }
@@ -74,6 +74,15 @@ fn fedora() -> Profile {
         label: "Fedora".into(),
         description: "Fedora-based general-purpose environment".into(),
         toml: include_str!("profiles/fedora.toml").into(),
+    }
+}
+
+fn ubuntu() -> Profile {
+    Profile {
+        name: "ubuntu".into(),
+        label: "Ubuntu".into(),
+        description: "Ubuntu-based general-purpose environment".into(),
+        toml: include_str!("profiles/ubuntu.toml").into(),
     }
 }
 
