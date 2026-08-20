@@ -1,6 +1,6 @@
 use std::ffi::CString;
 use std::os::fd::{FromRawFd, OwnedFd};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 
 use nix::unistd::{ForkResult, Gid, Uid, execv, execvp, fork, setgid, setuid};
@@ -326,7 +326,30 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .args(["700", &dconf_dir.to_string_lossy()])
         .status();
 
-    // 7. Mark setup complete so subsequent execs in the same container
+    // 8. XDG data dirs must be owned by the container user.  Distro image
+    //    skeletons or a root-run first shell (e.g. fish) leave
+    //    ~/.local/share/fish root-owned, which breaks user writes such as
+    //    fish history.  Chown non-recursively and only when mis-owned:
+    //    subdirs like icons/themes/fonts are read-only host bind mounts and
+    //    must never be touched.
+    let local_dir = home_dir.join(".local");
+    let share_dir = local_dir.join("share");
+    for dir in [&local_dir, &share_dir, &share_dir.join("fish")] {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    for dir in [&local_dir, &share_dir, &share_dir.join("fish")] {
+        let needs_fix = match std::fs::metadata(dir) {
+            Ok(m) => m.uid() != uid || m.gid() != gid,
+            Err(_) => true,
+        };
+        if needs_fix {
+            let _ = std::process::Command::new("chown")
+                .args([&owner, dir.to_str().unwrap_or_default()])
+                .status();
+        }
+    }
+
+    // 9. Mark setup complete so subsequent execs in the same container
     // skip this whole block.  /run is tmpfs — re-runs once per boot.
     if let Some(parent) = marker.parent() {
         let _ = std::fs::create_dir_all(parent);

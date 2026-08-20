@@ -147,6 +147,7 @@ fn quadlet_prebuilt_uses_registry_image() {
         host_locale: None,
         gpg_agent_socket: None,
         gpg_home: None,
+        ssh_agent_socket: None,
     };
     let xdg = ResolvedXdgDirs {
         documents: None,
@@ -190,6 +191,7 @@ fn quadlet_custom_uses_build_ref() {
         host_locale: None,
         gpg_agent_socket: None,
         gpg_home: None,
+        ssh_agent_socket: None,
     };
     let xdg = ResolvedXdgDirs {
         documents: Some(ResolvedXdgDir {
@@ -236,6 +238,7 @@ fn quadlet_has_environment_home() {
         host_locale: None,
         gpg_agent_socket: None,
         gpg_home: None,
+        ssh_agent_socket: None,
     };
     let xdg = podbox::xdg::ResolvedXdgDirs {
         documents: None,

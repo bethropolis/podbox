@@ -65,7 +65,14 @@ fn default_env() -> HostEnv {
         host_locale: None,
         gpg_agent_socket: None,
         gpg_home: None,
+        ssh_agent_socket: None,
     }
+}
+
+fn env_with_ssh_agent(sock: Option<PathBuf>) -> HostEnv {
+    let mut env = default_env();
+    env.ssh_agent_socket = sock;
+    env
 }
 
 fn default_xdg() -> ResolvedXdgDirs {
@@ -230,6 +237,26 @@ fn quadlet_dbus_present() {
     // Default dbus = true with no rules → portal preset → proxied socket
     assert!(q.contains("Volume=%t/podbox/myenv-dbus.sock:/run/podbox/dbus.sock:ro"));
     assert!(q.contains("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podbox/dbus.sock"));
+}
+
+#[test]
+fn quadlet_ssh_agent_mounts_host_socket_when_present() {
+    let mut config = load_config("full.toml");
+    config.integration.ssh_agent = true;
+    let env = env_with_ssh_agent(Some(PathBuf::from("/run/user/1000/keyring/ssh")));
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(q.contains("Volume=/run/user/1000/keyring/ssh:/run/podbox/ssh-agent.sock"));
+    assert!(q.contains("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock"));
+}
+
+#[test]
+fn quadlet_ssh_agent_absent_when_no_socket() {
+    let mut config = load_config("full.toml");
+    config.integration.ssh_agent = true;
+    let env = env_with_ssh_agent(None);
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(!q.contains("ssh-agent.sock"));
+    assert!(!q.contains("SSH_AUTH_SOCK"));
 }
 
 #[test]

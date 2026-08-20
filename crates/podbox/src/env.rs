@@ -26,6 +26,7 @@ pub struct HostEnv {
     pub host_locale: Option<String>,
     pub gpg_agent_socket: Option<PathBuf>,
     pub gpg_home: Option<PathBuf>,
+    pub ssh_agent_socket: Option<PathBuf>,
 }
 
 /// Resolve the host environment.
@@ -97,6 +98,10 @@ pub fn resolve() -> Result<HostEnv> {
         if sock.exists() { Some(sock) } else { None }
     });
 
+    let ssh_agent_socket = env::var_os("SSH_AUTH_SOCK")
+        .map(PathBuf::from)
+        .filter(|p| p.exists());
+
     Ok(HostEnv {
         uid,
         username,
@@ -118,5 +123,6 @@ pub fn resolve() -> Result<HostEnv> {
         host_locale,
         gpg_agent_socket,
         gpg_home,
+        ssh_agent_socket,
     })
 }
