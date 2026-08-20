@@ -97,10 +97,21 @@ cd podbox && scripts/install.sh   # installs to ~/.local/bin
 
 You write one TOML file. `podbox build` turns it into an OCI image plus the systemd Quadlet units that run it: no hand-edited Containerfile, no manually written unit files.
 
+<p align="center"><strong>Build</strong></p>
+
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture.svg">
-    <img src="docs/assets/architecture.svg" alt="podbox architecture" width="100%" style="max-width: 820px;">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-build.svg">
+    <img src="docs/assets/architecture-build.svg" alt="podbox build-time architecture" width="100%" style="max-width: 820px;">
+  </picture>
+</p>
+
+<p align="center"><strong>Runtime</strong></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-runtime.svg">
+    <img src="docs/assets/architecture-runtime.svg" alt="podbox runtime architecture" width="100%" style="max-width: 820px;">
   </picture>
 </p>
 

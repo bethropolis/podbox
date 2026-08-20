@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 440" width="100%" height="auto">
+  <defs>
+    <filter id="text-shadow">
+      <feDropShadow dx="0" dy="1" stdDeviation="0.5" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#d946ef"/>
+    </linearGradient>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    :root {
+      --bg-canvas: #ffffff;
+      --bg-box: #f8fafc;
+      --border-box: #cbd5e1;
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      --line: #94a3b8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-canvas: #0d1117;
+        --bg-box: #161b22;
+        --border-box: #30363d;
+        --text-main: #c9d1d9;
+        --text-sub: #8b949e;
+        --line: #484f58;
+      }
+    }
+
+    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
+    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
+    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
+    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #e2e8f0; text-anchor: middle; filter: url(#text-shadow); }
+    .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
+    .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 1.5px; stroke-dasharray: 4,4; }
+
+    .accent-gradient-1 { fill: url(#grad1); stroke: #334155; stroke-width: 1px; }
+    .accent-gradient-2 { fill: url(#grad2); stroke: #334155; stroke-width: 1px; }
+    .accent-gradient-3 { fill: url(#grad3); stroke: #334155; stroke-width: 1px; }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--line)"/>
+    </marker>
+  </defs>
+
+  <!-- Guest daemon, in-container -->
+  <g transform="translate(265, 20)">
+    <rect class="accent-gradient-1" width="320" height="80" rx="8"/>
+    <text class="text-title" x="160" y="34" fill="#ffffff">podbox-guest (in container)</text>
+    <text class="text-desc-shadow" x="160" y="56">notify &#183; clipboard &#183; xdg-open &#183; host-exec</text>
+  </g>
+
+  <!-- Hello handshake, direct to socket host -->
+  <path class="conn-line" d="M 425 100 L 425 198" marker-end="url(#arrow)"/>
+  <text class="text-desc" x="458" y="147" text-anchor="start">Hello &#8596; capability negotiation</text>
+
+  <!-- Direct proxy socket connections (dashed = passthrough, not the Hello channel) -->
+  <path class="conn-line-dashed" d="M 380 100 C 380 150, 220 150, 220 198" marker-end="url(#arrow)"/>
+  <path class="conn-line-dashed" d="M 470 100 C 470 150, 630 150, 630 198" marker-end="url(#arrow)"/>
+
+  <!-- Host Security Boundary -->
+  <line x1="20" y1="150" x2="830" y2="150" stroke="var(--border-box)" stroke-width="1.5" stroke-dasharray="6,6"/>
+  <text x="30" y="142" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="600" fill="var(--text-sub)" letter-spacing="1">HOST SECURITY BOUNDARY</text>
+
+  <!-- Wayland proxy -->
+  <g transform="translate(130, 200)">
+    <rect class="accent-gradient-3" width="180" height="80" rx="8"/>
+    <text class="text-title" x="90" y="34" fill="#ffffff">Wayland proxy</text>
+    <text class="text-desc-shadow" x="90" y="54">Filters registry globals</text>
+  </g>
+
+  <!-- Socket host -->
+  <g transform="translate(335, 200)">
+    <rect class="accent-gradient-3" width="180" height="80" rx="8"/>
+    <text class="text-title" x="90" y="34" fill="#ffffff">Socket host</text>
+    <text class="text-desc-shadow" x="90" y="54">Capability-gated handshake</text>
+  </g>
+
+  <!-- D-Bus proxy -->
+  <g transform="translate(540, 200)">
+    <rect class="accent-gradient-3" width="180" height="80" rx="8"/>
+    <text class="text-title" x="90" y="34" fill="#ffffff">D-Bus proxy</text>
+    <text class="text-desc-shadow" x="90" y="54">Scoped portal call rules</text>
+  </g>
+
+  <!-- Fan-in to host resources -->
+  <path class="conn-line-dashed" d="M 220 280 C 220 310, 340 310, 340 328" marker-end="url(#arrow)"/>
+  <path class="conn-line-dashed" d="M 425 280 L 425 328" marker-end="url(#arrow)"/>
+  <path class="conn-line-dashed" d="M 630 280 C 630 310, 510 310, 510 328" marker-end="url(#arrow)"/>
+
+  <!-- Host resources -->
+  <g transform="translate(265, 330)">
+    <rect class="box-bg" width="320" height="80" rx="8"/>
+    <text class="text-title" x="160" y="34">Host resources</text>
+    <text class="text-desc" x="160" y="54">Compositor &#183; session bus &#183; GPU &#183; PipeWire &#183; XDG</text>
+  </g>
+</svg>
