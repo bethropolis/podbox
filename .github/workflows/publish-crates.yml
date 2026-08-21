@@ -22,7 +22,7 @@ jobs:
         run: |
           TAG="${{ github.event.release.tag_name }}"
           VER=$(cargo metadata --no-deps --format-version 1 \
-                | jq -r '.packages[] | select(.name=="podbox-protocol") | .version')
+                | jq -r '.packages[] | select(.name=="podbox-cli") | .version')
           if [ "${TAG#v}" != "$VER" ]; then
             echo "tag $TAG != workspace version $VER" >&2
             exit 1
@@ -34,10 +34,17 @@ jobs:
             cargo publish -p "$c" --dry-run
           done
 
-      - name: Publish podbox-protocol
+      - name: Publish podbox-protocol (skip if already on crates.io)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p podbox-protocol
+        run: |
+          VER=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="podbox-protocol") | .version')
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -A "podbox-ci" "https://crates.io/api/v1/crates/podbox-protocol/$VER")
+          if [ "$CODE" = "200" ]; then
+            echo "podbox-protocol $VER already on crates.io — skipping"
+            exit 0
+          fi
+          cargo publish -p podbox-protocol
 
       - name: Publish podbox-cli
         env:
