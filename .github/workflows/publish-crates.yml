@@ -3,6 +3,14 @@ name: Publish crates
 on:
   release:
     types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.6.7)"
+        required: false
 
 permissions:
   contents: read
@@ -10,17 +18,41 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: github.event.release.prerelease == false
+    # For release: skip prereleases. For workflow_run: only after successful Release.
+    if: >-
+      ${{
+        (github.event_name == 'release' && github.event.release.prerelease == false) ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+        github.event_name == 'workflow_dispatch'
+      }}
     steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+      - name: Skip prereleases (workflow_run / dispatch)
+        if: contains(steps.tag.outputs.tag, '-')
+        run: echo "Prerelease tag ${{ steps.tag.outputs.tag }} — skipping" && exit 0
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ steps.tag.outputs.tag }}
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Verify tag matches workspace version
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ steps.tag.outputs.tag }}"
           VER=$(cargo metadata --no-deps --format-version 1 \
                 | jq -r '.packages[] | select(.name=="podbox-cli") | .version')
           if [ "${TAG#v}" != "$VER" ]; then
