@@ -1,0 +1,50 @@
+name: Publish crates
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: github.event.release.prerelease == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify tag matches workspace version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VER=$(cargo metadata --no-deps --format-version 1 \
+                | jq -r '.packages[] | select(.name=="podbox-protocol") | .version')
+          if [ "${TAG#v}" != "$VER" ]; then
+            echo "tag $TAG != workspace version $VER" >&2
+            exit 1
+          fi
+
+      - name: Dry-run package all crates
+        run: |
+          for c in podbox-protocol podbox-cli podbox-guest; do
+            cargo publish -p "$c" --dry-run
+          done
+
+      - name: Publish podbox-protocol
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p podbox-protocol
+
+      - name: Publish podbox-cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p podbox-cli
+
+      - name: Publish podbox-guest
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p podbox-guest
