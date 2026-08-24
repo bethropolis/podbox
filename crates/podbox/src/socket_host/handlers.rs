@@ -279,6 +279,36 @@ pub(super) fn handle_host_exec(
 /// Validate arguments for host-exec, rejecting shell metacharacters and
 /// dangerous flag patterns that could alter the behaviour of a whitelisted
 /// binary (e.g. `git --exec-path=…`).
+///
+/// # Security model and limitations
+///
+/// Arguments are validated with a substring blocklist. Commands run via
+/// `execve` directly — **not** through `/bin/sh` — so metacharacters like
+/// `;`, `|`, `$(` cannot cause shell injection on ordinary ELF binaries.
+/// The blocklist exists to reduce misuse, not to make arbitrary allowlist
+/// entries safe.
+///
+/// Known bypass classes that this filter **cannot** prevent:
+///
+/// * Versatile binaries: any program with code-execution or file-access
+///   flags defeats substring filtering regardless of metacharacters —
+///   e.g. `git -C /root …`, `git clone --upload-pack=…`, `find -exec …`,
+///   `tar --to-command=…`, `python -c …`, `ssh -oProxyCommand=…`.
+/// * Flag synonyms: only a small set of dangerous prefixes is known; an
+///   allowlisted binary may expose others (`--pager`, `-c`, `--eval`, …).
+///
+/// Therefore:
+///
+/// * Allowlist only restricted binaries or dedicated wrapper scripts.
+/// * Prefer wrappers that pin the arguments (e.g. a script exposing exactly
+///   `systemctl --user status <unit>`), rather than raw `git`, `python`,
+///   `tar`, `find`, or shells.
+/// * Treat every allowlist entry as granting the guest that binary's full
+///   capability surface on the host.
+///
+/// False positives are expected: benign messages containing `<()`, globs,
+/// or parentheses are rejected. Affected users should route those commands
+/// through a wrapper script instead of loosening this filter.
 pub(super) fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
     for arg in args {
         if arg.contains(';')

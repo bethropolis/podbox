@@ -172,7 +172,12 @@ enabled = true
 allowlist = { git = "/usr/bin/git", systemctl = "/usr/bin/systemctl" }
 ```
 
-**Security note:** Even with an allowlist, argument injection can subvert a binary (e.g. `git --exec-path=…`). The host automatically rejects arguments containing shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``) or dangerous flag patterns (`--exec-path`, `--config`, `-o`, etc.).
+**Security note:** Commands run via `execve` directly — never through a shell — so metacharacters cannot cause shell injection. However, the argument filter is a blocklist, and **versatile allowlisted binaries can still be subverted with valid-looking flags**: `git -C /root …`, `git clone --upload-pack=…`, `find -exec …`, `tar --to-command=…`, `python -c …`, or any binary with code-execution flags. The filter also rejects benign arguments containing globs, parentheses, or redirection characters (false positives).
+
+**Guidance:** treat every allowlist entry as granting the guest that binary's full host capability surface.
+
+- Prefer restricted binaries or dedicated wrapper scripts over general-purpose tools (`git`, `python`, `tar`, `find`, shells).
+- A wrapper script pinning the arguments is the safest entry, e.g. one exposing exactly `systemctl --user status <unit>` instead of raw `systemctl`.
 
 ### `[integration.xdg_dirs]`
 
