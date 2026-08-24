@@ -111,12 +111,17 @@ fn run() -> Result<()> {
             | Command::Profile { .. }
             | Command::Serve { .. }
             | Command::Compositor { .. }
+            | Command::InternalStdinWatchdog { .. }
     ) && which::which("podman").is_err()
     {
         return Err(PodboxError::PodmanNotFound.into());
     }
 
     match &cli.command {
+        Command::InternalStdinWatchdog { parent_pid } => {
+            return commands::runtime::run_stdin_watchdog(*parent_pid);
+        }
+
         Command::Completions { shell } => {
             return commands::definition::run_completions((*shell).into());
         }
@@ -217,6 +222,8 @@ fn run() -> Result<()> {
     let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
 
     match &cli.command {
+        Command::InternalStdinWatchdog { .. } => unreachable!("handled before config resolution"),
+
         Command::Build {
             name: _,
             rebuild,

@@ -24,6 +24,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Internal stdin watchdog for interactive sessions. Not for direct use.
+    #[command(hide = true)]
+    InternalStdinWatchdog {
+        /// PID of the process to terminate when stdin hangs up.
+        parent_pid: u32,
+    },
+
     /// Build the container image from the definition.
     Build {
         /// Container name to build (overrides auto-detection).
