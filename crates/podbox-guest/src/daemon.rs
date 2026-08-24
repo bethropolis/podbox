@@ -4,31 +4,20 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
-use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 
-/// Set by SIGTERM/SIGINT handler to request clean daemon shutdown.
-static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
-
-/// Register SIGTERM/SIGINT handlers that set `SHUTDOWN_REQUESTED`.
-/// Without `SA_RESTART`, `poll()` returns `EINTR` so the event loop can check.
-fn setup_signal_handler() {
-    extern "C" fn handle_signal(_: i32) {
-        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+/// Register SIGTERM/SIGINT handlers that set `shutdown`.
+///
+/// The event loop polls the flag (and tolerates `EINTR`), so no
+/// SA_RESTART coordination is needed.
+fn setup_signal_handler(shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
+    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
+        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
     }
-    let sig_action = SigAction::new(
-        SigHandler::Handler(handle_signal),
-        SaFlags::empty(),
-        SigSet::empty(),
-    );
-    // SAFETY: signal handler only writes to an AtomicBool, which is
-    // signal-safe on Linux.
-    unsafe {
-        let _ = sigaction(Signal::SIGTERM, &sig_action);
-        let _ = sigaction(Signal::SIGINT, &sig_action);
-    }
+    Ok(())
 }
 
 use crate::error::GuestError;
@@ -106,7 +95,8 @@ fn has_event(revents: PollFlags) -> bool {
 }
 
 pub fn run() -> Result<(), GuestError> {
-    setup_signal_handler();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    setup_signal_handler(Arc::clone(&shutdown))?;
 
     let host_socket_path = socket::host_socket_path()?;
     let container_name = socket::container_name()?;
@@ -143,7 +133,7 @@ pub fn run() -> Result<(), GuestError> {
 
     // 8. Handle connections and self-heal on host disconnects/restarts
     loop {
-        if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs) {
+        if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs, Arc::clone(&shutdown)) {
             tracing::error!("guest: connection error: {e}. Reconnecting...");
         } else {
             tracing::warn!("guest: host disconnected. Retrying connection...");
@@ -351,13 +341,17 @@ const MAX_POLL_MS: i64 = 60_000;
 const IDLE_CONFIRM_MS: u64 = 1_000;
 
 #[allow(clippy::too_many_lines)]
-fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<(), GuestError> {
+fn event_loop(
+    host_stream: &mut UnixStream,
+    idle_timeout_secs: u64,
+    shutdown: Arc<AtomicBool>,
+) -> Result<(), GuestError> {
     let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
     let mut tracked: Vec<TrackedProcess> = Vec::new();
     let mut remaining_ms = idle_limit_ms;
 
     loop {
-        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+        if shutdown.load(Ordering::Relaxed) {
             tracing::info!("guest: received shutdown signal, exiting.");
             return Ok(());
         }
@@ -413,7 +407,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64) -> Result<()
                         .collect();
                 }
                 Err(nix::errno::Errno::EINTR) => {
-                    if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+                    if shutdown.load(Ordering::Relaxed) {
                         tracing::info!("guest: received shutdown signal, exiting.");
                         return Ok(());
                     }

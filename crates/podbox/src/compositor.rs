@@ -8,27 +8,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 
-/// Set by SIGTERM/SIGINT handler to request clean compositor shutdown.
-static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
-
-/// Register SIGTERM/SIGINT handlers that set `SHUTDOWN_REQUESTED`.
-fn setup_signal_handler() {
-    extern "C" fn handle_signal(_: i32) {
-        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+/// Register SIGTERM/SIGINT handlers that set `shutdown`.
+fn setup_signal_handler(shutdown: Arc<AtomicBool>) -> Result<()> {
+    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
+        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
     }
-    let sig_action = SigAction::new(
-        SigHandler::Handler(handle_signal),
-        SaFlags::empty(),
-        SigSet::empty(),
-    );
-    // SAFETY: handler only writes to an AtomicBool (signal-safe on Linux).
-    unsafe {
-        let _ = sigaction(Signal::SIGTERM, &sig_action);
-        let _ = sigaction(Signal::SIGINT, &sig_action);
-    }
+    Ok(())
 }
 
 use crate::config::Config;
@@ -79,7 +66,8 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
     let _ = std::fs::remove_file(&socket_path);
     std::fs::create_dir_all(socket_path.parent().context("socket path has no parent")?)?;
 
-    setup_signal_handler();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    setup_signal_handler(Arc::clone(&shutdown))?;
 
     let listener = UnixListener::bind(&socket_path).with_context(|| {
         format!(
@@ -96,7 +84,7 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
 
     let mut connections = 0;
     loop {
-        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) || connections >= MAX_CONNECTIONS {
+        if shutdown.load(Ordering::Relaxed) || connections >= MAX_CONNECTIONS {
             break;
         }
 

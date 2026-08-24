@@ -33,6 +33,7 @@ indexmap        = { workspace = true }
 notify-rust     = { workspace = true }
 nix             = { workspace = true }
 rustix          = { workspace = true }
+signal-hook     = { workspace = true }
 dialoguer       = { workspace = true }
 sha2            = { workspace = true }
 hex             = { workspace = true }

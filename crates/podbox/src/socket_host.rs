@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
-use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 use nix::sys::socket::{getsockopt, sockopt};
 
 use crate::config::Config;
@@ -26,23 +25,13 @@ const MAX_SESSIONS: u32 = 64;
 /// How often the host sends a keepalive `Ping` to a connected guest.
 const PING_INTERVAL: Duration = Duration::from_mins(1);
 
-static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
-
-/// Register SIGTERM/SIGINT handlers that set `SHUTDOWN_REQUESTED`.
-/// Without SA_RESTART, blocking syscalls return EINTR, letting the
-/// accept loop check the flag.
-fn setup_signal_handler() -> nix::Result<()> {
-    extern "C" fn handle_signal(_: i32) {
-        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
-    }
-    let sig_action = SigAction::new(
-        SigHandler::Handler(handle_signal),
-        SaFlags::empty(),
-        SigSet::empty(),
-    );
-    unsafe {
-        sigaction(Signal::SIGTERM, &sig_action)?;
-        sigaction(Signal::SIGINT, &sig_action)?;
+/// Register SIGTERM/SIGINT handlers that set `shutdown`.
+///
+/// The accept loop polls the flag on a 200ms tick, so no SA_RESTART /
+/// EINTR coordination is needed.
+fn setup_signal_handler(shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
+    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
+        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
     }
     Ok(())
 }
@@ -64,7 +53,8 @@ struct SharedState {
 
 /// Run the host socket server for a container.
 pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
-    let _ = setup_signal_handler();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    setup_signal_handler(Arc::clone(&shutdown))?;
 
     let config = config.clone();
     let path = socket_path.to_path_buf();
@@ -94,7 +84,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
     loop {
-        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+        if shutdown.load(Ordering::Relaxed) {
             tracing::info!("podbox: shutdown requested, draining connections...");
             drop(listener);
             for h in handles {
