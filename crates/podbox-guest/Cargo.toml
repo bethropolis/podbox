@@ -34,7 +34,8 @@ tracing-journald   = { workspace = true }
 podbox-protocol   = { workspace = true }
 
 [lints.rust]
-unsafe_code = "allow"
+# The guest tree contains no unsafe code at all.
+unsafe_code = "forbid"
 
 [lints.clippy]
 all      = { level = "warn", priority = -1 }

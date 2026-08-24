@@ -63,7 +63,16 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     let activation_fd = listen_fd();
     let was_socket_activated = activation_fd.is_some();
     let listener = match activation_fd {
-        Some(fd) => unsafe { UnixListener::from_raw_fd(fd) },
+        Some(fd) => {
+            // SAFETY: `fd` comes from systemd's `LISTEN_FDS` activation
+            // protocol: the user manager hands over ownership of a valid
+            // listening socket fd, which this process must adopt exactly
+            // once. No safe wrapper exists for externally-sourced fds.
+            #[allow(unsafe_code)]
+            unsafe {
+                UnixListener::from_raw_fd(fd)
+            }
+        }
         None => {
             let _ = std::fs::remove_file(&path);
             UnixListener::bind(&path)?
@@ -250,6 +259,11 @@ fn handle_connection(
                     Ok(None) => return Ok(()),
                     Err(_) => return Ok(()),
                 };
+                // SAFETY: `raw_fd` arrived via SCM_RIGHTS over a private
+                // Unix socket from our own CLI. The kernel duplicated the
+                // descriptor into this process on delivery, transferring
+                // its single reference — someone must adopt it or leak it.
+                #[allow(unsafe_code)]
                 let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
                 state.session_count.fetch_add(1, Ordering::SeqCst);
                 let s = Arc::clone(state);

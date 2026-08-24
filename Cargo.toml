@@ -53,7 +53,10 @@ lto       = true
 panic     = "abort"
 
 [workspace.lints.rust]
-unsafe_code = "allow"
+# unsafe is denied workspace-wide; the few remaining blocks are inherent
+# (kernel-supplied fd ownership transfers, signal-ignore setup) and each
+# carries a scoped `#[allow(unsafe_code)]` with a SAFETY justification.
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 all      = { level = "warn", priority = -1 }

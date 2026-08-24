@@ -191,8 +191,15 @@ pub fn run_stdin_watchdog(parent_pid: u32) -> Result<()> {
     // Ignore SIGHUP/SIGINT: the terminal hangup that triggers us may also be
     // delivered here; we must survive long enough to relay SIGTERM.
     let ignore = SigAction::new(SigHandler::SigIgn, SaFlags::empty(), SigSet::empty());
-    let _ = unsafe { sigaction(Signal::SIGHUP, &ignore) };
-    let _ = unsafe { sigaction(Signal::SIGINT, &ignore) };
+    // SAFETY: `SigIgn` installs no handler function — asking the kernel to
+    // ignore two signals is async-signal-safe and races nothing in this
+    // freshly exec'd single-threaded process. Neither std nor rustix offers
+    // a safe signal-disposition API.
+    #[allow(unsafe_code)]
+    unsafe {
+        let _ = sigaction(Signal::SIGHUP, &ignore);
+        let _ = sigaction(Signal::SIGINT, &ignore);
+    }
 
     let Ok(raw_pid) = i32::try_from(parent_pid) else {
         std::process::exit(1);

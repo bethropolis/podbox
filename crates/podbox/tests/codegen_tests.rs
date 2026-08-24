@@ -18,12 +18,16 @@ fn with_sandbox_home(f: impl FnOnce(&std::path::Path)) {
     let _guard = HOME_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let old_home = std::env::var_os("HOME");
-    // SAFETY: Single-threaded test helper with HOME_LOCK mutex.
+    // SAFETY: `set_var` is edition-2024 unsafe against multi-threaded env
+    // mutation; this helper serializes all HOME mutations behind HOME_LOCK
+    // and restores the prior value on exit. No library alternative exists.
+    #[allow(unsafe_code)]
     unsafe {
         std::env::set_var("HOME", tmp.path());
     }
     f(tmp.path());
-    // SAFETY: Still single-threaded under HOME_LOCK.
+    // SAFETY: Same serialization as above.
+    #[allow(unsafe_code)]
     unsafe {
         if let Some(h) = old_home {
             std::env::set_var("HOME", h);
