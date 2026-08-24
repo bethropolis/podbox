@@ -192,8 +192,8 @@ pub fn run_init(
 
     let mut cfg = Config::embedded();
     cfg.image.base = base.to_string();
-    cfg.image.name = container_name.clone();
-    cfg.container.name = container_name.clone();
+    cfg.image.name.clone_from(&container_name);
+    cfg.container.name.clone_from(&container_name);
     cfg.container.home = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("~"))
         .join("containers")
@@ -263,8 +263,8 @@ pub fn run_create(
             }
         }
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
-        cfg.container.name = container_name.clone();
-        cfg.image.name = container_name.clone();
+        cfg.container.name.clone_from(&container_name);
+        cfg.image.name.clone_from(&container_name);
         let config_dir = config::config_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
 
@@ -346,8 +346,8 @@ pub fn run_create(
         let shell_info = podbox::wizard::detect_host_shell();
         let mut cfg = Config::embedded();
         cfg.image.base = image.to_string();
-        cfg.image.name = container_name.clone();
-        cfg.container.name = container_name.clone();
+        cfg.image.name.clone_from(&container_name);
+        cfg.container.name.clone_from(&container_name);
         cfg.container.home = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("~"))
             .join("containers")

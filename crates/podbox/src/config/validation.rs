@@ -23,8 +23,7 @@ impl Config {
                 errors.push("image.image: must not be empty when set".into());
             } else if !r.contains(':') && !r.contains('/') {
                 errors.push(format!(
-                    "image.image: '{}' does not look like a valid image reference (missing ':' or '/')",
-                    r
+                    "image.image: '{r}' does not look like a valid image reference (missing ':' or '/')"
                 ));
             }
         }
@@ -46,36 +45,30 @@ impl Config {
         if let Some(ref mem) = self.container.memory {
             if !is_valid_memory(mem) {
                 errors.push(format!(
-                    "container.memory: '{}' is not a valid memory limit (e.g. '2g', '512m')",
-                    mem
+                    "container.memory: '{mem}' is not a valid memory limit (e.g. '2g', '512m')"
                 ));
             }
         }
         if let Some(ref cpus) = self.container.cpus {
             if cpus.parse::<f64>().is_err() || cpus.parse::<f64>().unwrap_or(0.0) <= 0.0 {
                 errors.push(format!(
-                    "container.cpus: '{}' is not a valid CPU count (e.g. '2.0', '0.5')",
-                    cpus
+                    "container.cpus: '{cpus}' is not a valid CPU count (e.g. '2.0', '0.5')"
                 ));
             }
         }
         for (i, mount) in self.container.mounts.extra.iter().enumerate() {
             if !mount.contains(':') {
                 errors.push(format!(
-                    "container.mounts.extra[{}]: '{}' missing ':' separator (expected host:container[:options])",
-                    i, mount
+                    "container.mounts.extra[{i}]: '{mount}' missing ':' separator (expected host:container[:options])"
                 ));
             }
         }
         for (key, val) in &self.container.env {
             if key.contains('\n') {
-                errors.push(format!("container.env: key {:?} contains newline", key));
+                errors.push(format!("container.env: key {key:?} contains newline"));
             }
             if val.contains('\n') {
-                errors.push(format!(
-                    "container.env: value for {:?} contains newline",
-                    key
-                ));
+                errors.push(format!("container.env: value for {key:?} contains newline"));
             }
         }
 
@@ -103,8 +96,7 @@ impl Config {
         for (i, port) in self.network.ports.iter().enumerate() {
             if !port.contains(':') {
                 errors.push(format!(
-                    "network.ports[{}]: '{}' is invalid (expected 'hostPort:containerPort' or 'ip:hostPort:containerPort')",
-                    i, port
+                    "network.ports[{i}]: '{port}' is invalid (expected 'hostPort:containerPort' or 'ip:hostPort:containerPort')"
                 ));
             }
         }
@@ -113,8 +105,7 @@ impl Config {
             for (alias, path) in map {
                 if !is_absolute_path(path) {
                     errors.push(format!(
-                        "integration.host_exec.allowlist.{}: path '{}' is not absolute (must start with '/')",
-                        alias, path
+                        "integration.host_exec.allowlist.{alias}: path '{path}' is not absolute (must start with '/')"
                     ));
                 }
             }
@@ -140,11 +131,10 @@ impl Config {
         for svc in &self.dbus.talk {
             if is_portal_family(svc) {
                 eprintln!(
-                    "warning: dbus.talk entry '{}' grants the container access to the full \
+                    "warning: dbus.talk entry '{svc}' grants the container access to the full \
                      xdg-desktop-portal bus surface (DynamicLauncher, Screenshot, ScreenCast, \
                      Settings, ...). Prefer relying on the built-in interface-scoped portal rules \
-                     from integration.notify / integration.xdg_open instead.",
-                    svc
+                     from integration.notify / integration.xdg_open instead."
                 );
             }
         }
@@ -154,8 +144,7 @@ impl Config {
             let (digits, suffix) = parse_duration_suffix(t);
             if digits.is_empty() || !matches!(suffix, Some('s' | 'm' | 'h')) {
                 errors.push(format!(
-                    "lifecycle.idle_timeout: '{}' is invalid (expected 'off', '30s', '5m', '1h')",
-                    t
+                    "lifecycle.idle_timeout: '{t}' is invalid (expected 'off', '30s', '5m', '1h')"
                 ));
             }
         }

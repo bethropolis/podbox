@@ -49,13 +49,13 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
         .join("applications");
     std::fs::create_dir_all(&apps_dir)?;
 
-    let host_path = apps_dir.join(format!("podbox-{}-{}.desktop", container_name, app));
+    let host_path = apps_dir.join(format!("podbox-{container_name}-{app}.desktop"));
     std::fs::write(&host_path, rewritten)?;
 
     // 4. Try to extract icon
     if let Some(icon_name) = extract_icon_name(&desktop_content) {
         if let Err(e) = copy_icon_from_container(container_name, &icon_name, container_name) {
-            eprintln!("Warning: failed to copy icon '{}': {}", icon_name, e);
+            eprintln!("Warning: failed to copy icon '{icon_name}': {e}");
         }
     }
 
@@ -65,7 +65,7 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
         .output()
         .map(|_| ())
     {
-        eprintln!("Warning: update-desktop-database failed: {}", e);
+        eprintln!("Warning: update-desktop-database failed: {e}");
     }
 
     println!(
@@ -86,7 +86,7 @@ fn find_desktop_file(container_name: &str, app: &str) -> Result<(String, String)
         }
         .into());
     }
-    let filename = format!("{}.desktop", app);
+    let filename = format!("{app}.desktop");
 
     // First: search well-known system locations.
     for dir in DESKTOP_SEARCH_PATHS {
@@ -94,7 +94,7 @@ fn find_desktop_file(container_name: &str, app: &str) -> Result<(String, String)
             // /opt is a prefix — search one level deep for share/applications.
             continue;
         }
-        let candidate = format!("{}/{}", dir, filename);
+        let candidate = format!("{dir}/{filename}");
         if let Some(content) = try_cat(container_name, &candidate)? {
             return Ok((candidate, content));
         }
@@ -103,8 +103,8 @@ fn find_desktop_file(container_name: &str, app: &str) -> Result<(String, String)
     // Second: per-user installs.
     let user_dirs = ["/root/.local/share/applications", "/home"];
     for dir in user_dirs {
-        if let Some(content) = try_cat(container_name, &format!("{}/{}", dir, filename))? {
-            return Ok((format!("{}/{}", dir, filename), content));
+        if let Some(content) = try_cat(container_name, &format!("{dir}/{filename}"))? {
+            return Ok((format!("{dir}/{filename}"), content));
         }
     }
 
@@ -208,7 +208,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
         .join("applications");
-    let prefix = format!("podbox-{}", container_name);
+    let prefix = format!("podbox-{container_name}");
 
     if let Ok(entries) = std::fs::read_dir(&apps_dir) {
         for entry in entries.flatten() {
@@ -225,7 +225,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
                 .map(|h| h.join(".local/share"))
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
-        .join(format!("icons/podbox/{}", container_name));
+        .join(format!("icons/podbox/{container_name}"));
     // Also remove legacy icons path
     let old_icons_dir = dirs::data_dir()
         .unwrap_or_else(|| {
@@ -233,7 +233,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
                 .map(|h| h.join(".local/share"))
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
-        .join(format!("icons/podmgr/{}", container_name));
+        .join(format!("icons/podmgr/{container_name}"));
     let _ = std::fs::remove_dir_all(&icons_dir);
     if old_icons_dir.exists() {
         let _ = std::fs::remove_dir_all(&old_icons_dir);
@@ -244,7 +244,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
 
     // Remove shims that reference this container
-    let marker = format!("--container \"{}\"", container_name);
+    let marker = format!("--container \"{container_name}\"");
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
             if let Ok(mut file) = std::fs::File::open(entry.path()) {
@@ -260,7 +260,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
         }
     }
 
-    println!("Unexported all apps and bins for '{}'.", container_name);
+    println!("Unexported all apps and bins for '{container_name}'.");
     Ok(())
 }
 
@@ -273,7 +273,7 @@ pub fn list_exports(container_name: &str) -> Result<()> {
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
         .join("applications");
-    let prefix = format!("podbox-{}-", container_name);
+    let prefix = format!("podbox-{container_name}-");
     let suffix = ".desktop";
 
     let mut apps: Vec<String> = Vec::new();
@@ -290,7 +290,7 @@ pub fn list_exports(container_name: &str) -> Result<()> {
     let bin_dir = dirs::home_dir()
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
-    let marker = format!("--container \"{}\"", container_name);
+    let marker = format!("--container \"{container_name}\"");
     let mut bins: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
@@ -310,7 +310,7 @@ pub fn list_exports(container_name: &str) -> Result<()> {
     bins.sort();
 
     if apps.is_empty() && bins.is_empty() {
-        println!("No exports for '{}'.", container_name);
+        println!("No exports for '{container_name}'.");
         return Ok(());
     }
 
@@ -336,7 +336,7 @@ fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> Stri
     let exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "podbox".to_string());
-    let suffix = format!("({})", container_name);
+    let suffix = format!("({container_name})");
     content
         .lines()
         .map(|line| {
@@ -349,7 +349,7 @@ fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> Stri
                 )
             } else if let Some((key, val)) = line.split_once('=') {
                 if (key == "Name" || key.starts_with("Name[")) && !val.contains(&suffix) {
-                    format!("{}={} ({})", key, val, container_name)
+                    format!("{key}={val} ({container_name})")
                 } else {
                     line.to_string()
                 }
@@ -371,8 +371,7 @@ fn copy_icon_from_container(container_name: &str, icon_name: &str, _profile: &st
     // Sanitize icon name: refuse path separators to prevent traversal
     if icon_name.contains('/') || icon_name.contains("..") {
         return Err(anyhow::anyhow!(
-            "icon name contains path separators, refusing: {}",
-            icon_name
+            "icon name contains path separators, refusing: {icon_name}"
         ));
     }
 
@@ -382,7 +381,7 @@ fn copy_icon_from_container(container_name: &str, icon_name: &str, _profile: &st
                 .map(|h| h.join(".local/share"))
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
-        .join(format!("icons/podbox/{}", container_name));
+        .join(format!("icons/podbox/{container_name}"));
     std::fs::create_dir_all(&icons_dir)?;
 
     let icon_paths: Vec<String> = vec![
@@ -407,7 +406,7 @@ fn copy_icon_from_container(container_name: &str, icon_name: &str, _profile: &st
         ];
         let output = crate::process::run_piped("podman", &args)?;
         if output.status.success() {
-            let dest = icons_dir.join(format!("{}.{}", icon_name, ext));
+            let dest = icons_dir.join(format!("{icon_name}.{ext}"));
             std::fs::write(dest, &output.stdout)?;
             break;
         }

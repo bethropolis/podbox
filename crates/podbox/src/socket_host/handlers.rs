@@ -178,8 +178,7 @@ pub(super) fn handle_host_exec(
                 stream,
                 &HostMessage::HostExecStderr {
                     data: format!(
-                        "Permission denied: '{}' is not in the host-exec allowlist\nAllowed commands: {}",
-                        cmd, allowed
+                        "Permission denied: '{cmd}' is not in the host-exec allowlist\nAllowed commands: {allowed}"
                     ),
                 },
             )?;
@@ -192,7 +191,7 @@ pub(super) fn handle_host_exec(
         write_frame(
             stream,
             &HostMessage::HostExecStderr {
-                data: format!("Security violation: {}", msg),
+                data: format!("Security violation: {msg}"),
             },
         )?;
         write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
@@ -210,7 +209,7 @@ pub(super) fn handle_host_exec(
             write_frame(
                 stream,
                 &HostMessage::HostExecStderr {
-                    data: format!("Failed to resolve executable path '{}': {e}", resolved),
+                    data: format!("Failed to resolve executable path '{resolved}': {e}"),
                 },
             )?;
             write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
@@ -262,12 +261,9 @@ pub(super) fn handle_host_exec(
         }
         Err(e) => {
             let msg = if e.kind() == std::io::ErrorKind::NotFound {
-                format!(
-                    "host-exec: '{}' not found in allowlist path or host $PATH",
-                    cmd
-                )
+                format!("host-exec: '{cmd}' not found in allowlist path or host $PATH")
             } else {
-                format!("host-exec: failed to execute '{}': {}", cmd, e)
+                format!("host-exec: failed to execute '{cmd}': {e}")
             };
             write_frame(stream, &HostMessage::HostExecStderr { data: msg })?;
             write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
@@ -319,10 +315,10 @@ pub(super) fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
             || arg.contains('\n')
             || arg.contains('\r')
         {
-            return Err(format!("argument {:?} contains shell metacharacters", arg));
+            return Err(format!("argument {arg:?} contains shell metacharacters"));
         }
         if arg.contains('<') || arg.contains('>') {
-            return Err(format!("argument {:?} contains redirection operators", arg));
+            return Err(format!("argument {arg:?} contains redirection operators"));
         }
         if arg.contains('*')
             || arg.contains('?')
@@ -332,14 +328,12 @@ pub(super) fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
             || arg.contains('}')
         {
             return Err(format!(
-                "argument {:?} contains glob or brace characters",
-                arg
+                "argument {arg:?} contains glob or brace characters"
             ));
         }
         if arg.contains('(') || arg.contains(')') || arg.contains('\\') {
             return Err(format!(
-                "argument {:?} contains subshell or escape characters",
-                arg
+                "argument {arg:?} contains subshell or escape characters"
             ));
         }
         let lower = arg.to_ascii_lowercase();
@@ -351,7 +345,7 @@ pub(super) fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
             || lower.starts_with("--remote=")
             || lower == "-o"
         {
-            return Err(format!("argument {:?} uses a restricted flag pattern", arg));
+            return Err(format!("argument {arg:?} uses a restricted flag pattern"));
         }
     }
     Ok(())
@@ -401,7 +395,7 @@ pub(super) fn validate_uri(uri: &str) -> Option<String> {
         }
         Err(url::ParseError::RelativeUrlWithoutBase) => {
             // Automatically wrap raw hostnames like "github.com"
-            Some(format!("https://{}", s))
+            Some(format!("https://{s}"))
         }
         _ => None,
     }

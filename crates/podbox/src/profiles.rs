@@ -48,7 +48,7 @@ fn user_profiles() -> Vec<Profile> {
                         .unwrap_or_default();
                     profiles.push(Profile {
                         label: name.clone(),
-                        description: format!("User-defined profile ({})", name),
+                        description: format!("User-defined profile ({name})"),
                         toml: content,
                         name,
                     });

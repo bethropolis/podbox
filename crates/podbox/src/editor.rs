@@ -89,7 +89,7 @@ pub fn open(editor: &Editor, path: &Path) -> Result<()> {
 
     if !status.success() {
         let code = status.code().unwrap_or(-1);
-        anyhow::bail!("editor exited with code {}", code);
+        anyhow::bail!("editor exited with code {code}");
     }
     Ok(())
 }

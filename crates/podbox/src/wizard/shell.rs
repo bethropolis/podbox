@@ -66,7 +66,7 @@ pub(super) fn shell_info_from_bin(bin: &str) -> ShellInfo {
         },
         other => ShellInfo {
             bin_name: other.into(),
-            full_path: format!("/usr/bin/{}", other),
+            full_path: format!("/usr/bin/{other}"),
             package_name: other.into(),
             detected: false,
         },
@@ -76,7 +76,7 @@ pub(super) fn shell_info_from_bin(bin: &str) -> ShellInfo {
 /// Apply shell defaults to a config loaded from a profile.
 pub fn apply_shell_defaults(config: &mut crate::config::Config, shell: &ShellInfo) {
     if config.container.shell.trim().is_empty() {
-        config.container.shell = shell.full_path.clone();
+        config.container.shell.clone_from(&shell.full_path);
     }
     if !config
         .image

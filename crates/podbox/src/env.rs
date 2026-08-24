@@ -50,7 +50,7 @@ pub fn resolve() -> Result<HostEnv> {
 
     let xdg_runtime_dir: PathBuf = env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", uid)));
+        .unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}")));
 
     let wayland_display = env::var("WAYLAND_DISPLAY").ok();
     let wayland_socket = wayland_display

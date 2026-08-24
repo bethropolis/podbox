@@ -331,9 +331,8 @@ name = "env"
 name = "env"
 home = "~/env"
 [integration]
-{}
-"#,
-                toml_snippet
+{toml_snippet}
+"#
             );
             let cfg: Config = toml::from_str(&full).unwrap();
             assert_eq!(cfg.integration.gpu, *expected);

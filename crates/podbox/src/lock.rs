@@ -29,7 +29,7 @@ pub fn write(path: &Path, lock: &LockFile) -> Result<()> {
         .with_context(|| format!("failed to create lock file '{}'", path.display()))?;
     let json = serde_json::to_string_pretty(lock)
         .with_context(|| format!("failed to serialize lock data for '{}'", path.display()))?;
-    writeln!(file, "{}", json)
+    writeln!(file, "{json}")
         .with_context(|| format!("failed to write lock file '{}'", path.display()))?;
     Ok(())
 }

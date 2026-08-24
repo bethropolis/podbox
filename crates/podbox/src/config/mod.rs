@@ -605,7 +605,7 @@ home = "~/env"
 memory = "1.5g"
 "#;
         let cfg = Config::parse(toml);
-        assert!(cfg.is_err(), "decimal memory should be rejected: {:?}", cfg);
+        assert!(cfg.is_err(), "decimal memory should be rejected: {cfg:?}");
     }
 
     #[test]
@@ -689,14 +689,12 @@ name = "env"
 name = "env"
 home = "~/env"
 [security]
-userns = "{}"
-"#,
-                mode
+userns = "{mode}"
+"#
             );
             assert!(
                 Config::parse(&toml).is_ok(),
-                "userns mode '{}' should be valid",
-                mode
+                "userns mode '{mode}' should be valid"
             );
         }
     }

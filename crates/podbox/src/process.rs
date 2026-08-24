@@ -23,7 +23,7 @@ pub fn exec_replace(bin: &str, args: &[OsString]) -> anyhow::Error {
     let mut cmd = Command::new(bin);
     cmd.args(args);
     let err = cmd.exec();
-    anyhow::Error::from(err).context(format!("failed to exec {}", bin))
+    anyhow::Error::from(err).context(format!("failed to exec {bin}"))
 }
 
 /// Run a command, capturing stdout and stderr.

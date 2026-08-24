@@ -79,10 +79,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
     if !rebuild {
         if let Some(lock) = crate::lock::read(&lock_path)? {
             if lock.config_checksum == config_checksum && crate::podman::image_exists(&local_tag)? {
-                println!(
-                    "Prebuilt image already present as {}. Skipping pull.",
-                    local_tag
-                );
+                println!("Prebuilt image already present as {local_tag}. Skipping pull.");
                 println!("Use --rebuild to re-pull.");
                 return Ok(());
             }
@@ -90,14 +87,14 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
     }
 
     if dry_run {
-        println!("Would pull: {}", image_ref);
+        println!("Would pull: {image_ref}");
         if has_packages {
             println!(
                 "Would install packages on top: {}",
                 config.image.packages.install.join(", ")
             );
         }
-        println!("Would tag as: {}", local_tag);
+        println!("Would tag as: {local_tag}");
         println!("Would write lock file at: {}", lock_path.display());
         return Ok(());
     }
@@ -112,15 +109,14 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
             let host_clean = crate::VERSION.trim_start_matches('v');
             if guest_clean != host_clean {
                 eprintln!(
-                    "Warning: image guest version (v{}) differs from host (v{}). \
-                     Protocol compatibility will be validated at runtime.",
-                    guest_clean, host_clean
+                    "Warning: image guest version (v{guest_clean}) differs from host (v{host_clean}). \
+                     Protocol compatibility will be validated at runtime."
                 );
             }
         }
     }
 
-    println!("Pulling {}...", image_ref);
+    println!("Pulling {image_ref}...");
     let status = std::process::Command::new("podman")
         .args(["pull", &image_ref])
         .status()?;
@@ -139,12 +135,12 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
 
         let packages = config.image.packages.install.join(" ");
         let run_line = if clean_cmd.is_empty() {
-            format!("RUN {} {}", install_cmd, packages)
+            format!("RUN {install_cmd} {packages}")
         } else {
-            format!("RUN {} {} && {}", install_cmd, packages, clean_cmd)
+            format!("RUN {install_cmd} {packages} && {clean_cmd}")
         };
 
-        let containerfile = format!("FROM {}\n{}\n", image_ref, run_line);
+        let containerfile = format!("FROM {image_ref}\n{run_line}\n");
 
         std::fs::create_dir_all(&context_dir)
             .with_context(|| format!("failed to create context dir '{}'", context_dir.display()))?;
@@ -167,13 +163,13 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
             context_dir.clone().into(),
         ];
         let status = crate::process::spawn_interactive("podman", &args)
-            .with_context(|| format!("failed to build prebuilt overlay for '{}'", image_ref))?;
+            .with_context(|| format!("failed to build prebuilt overlay for '{image_ref}'"))?;
         if !status.success() {
             return Err(PodboxError::BuildFailed("overlay build failed".into()).into());
         }
-        println!("Image {} ready with packages installed.", local_tag);
+        println!("Image {local_tag} ready with packages installed.");
     } else {
-        println!("Tagging as {}...", local_tag);
+        println!("Tagging as {local_tag}...");
         let status = std::process::Command::new("podman")
             .args(["tag", &image_ref, &local_tag])
             .status()?;
@@ -183,7 +179,7 @@ fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
             }
             .into());
         }
-        println!("Image {} ready.", local_tag);
+        println!("Image {local_tag} ready.");
     }
 
     std::fs::create_dir_all(&config.container.home).with_context(|| {
@@ -260,7 +256,7 @@ fn run_build(
     if dry_run {
         println!("=== Build context: {} ===", context_dir.display());
         println!("=== Containerfile ===");
-        println!("{}", containerfile);
+        println!("{containerfile}");
         println!();
         println!("=== Embedded podbox-guest ===");
         println!("{} bytes (embedded in podbox binary)", guest_bin.len());
@@ -304,13 +300,13 @@ fn run_build(
         context_dir.clone().into(),
     ];
 
-    println!("Building image {}...", tag);
+    println!("Building image {tag}...");
     let status = crate::process::spawn_interactive("podman", &args)
-        .with_context(|| format!("failed to execute podman build for image '{}'", tag))?;
+        .with_context(|| format!("failed to execute podman build for image '{tag}'"))?;
     if !status.success() {
         return Err(PodboxError::BuildFailed("build failed".into()).into());
     }
-    println!("Image {} built successfully.", tag);
+    println!("Image {tag} built successfully.");
 
     let digest = crate::podman::image_digest(&tag)?;
     let lock = crate::lock::LockFile {

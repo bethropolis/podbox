@@ -267,7 +267,7 @@ fn bridge_loop(
                 done.store(true, Ordering::Relaxed);
                 let _ = in_socket.shutdown(std::net::Shutdown::Both);
                 let _ = out_socket.shutdown(std::net::Shutdown::Both);
-                anyhow::bail!("Invalid Wayland message size: {}", msg_size);
+                anyhow::bail!("Invalid Wayland message size: {msg_size}");
             }
 
             if consumed + msg_size > bytes_cache.len() {

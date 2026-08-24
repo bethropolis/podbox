@@ -98,16 +98,16 @@ fn write_custom_units(
     compositor_service_content: Option<&str>,
 ) -> Result<()> {
     std::fs::create_dir_all(sdir)?;
-    std::fs::write(sdir.join(format!("{}.socket", name)), socket_content)?;
+    std::fs::write(sdir.join(format!("{name}.socket")), socket_content)?;
     std::fs::write(
-        sdir.join(format!("{}-host.service", name)),
+        sdir.join(format!("{name}-host.service")),
         host_service_content,
     )?;
     if let Some(proxy) = dbus_proxy_content {
-        std::fs::write(sdir.join(format!("{}-proxy.service", name)), proxy)?;
+        std::fs::write(sdir.join(format!("{name}-proxy.service")), proxy)?;
     }
     if let Some(comp) = compositor_service_content {
-        std::fs::write(sdir.join(format!("{}-compositor.service", name)), comp)?;
+        std::fs::write(sdir.join(format!("{name}-compositor.service")), comp)?;
     }
     write_clean_stop_dropin(name, sdir)?;
     Ok(())
@@ -120,7 +120,7 @@ fn write_custom_units(
 /// SIGTERM (and a graceful 0 exit) as a clean stop so idle shutdown settles in
 /// `inactive` instead of `failed`.
 fn write_clean_stop_dropin(name: &str, sdir: &Path) -> Result<()> {
-    let dir = sdir.join(format!("{}.service.d", name));
+    let dir = sdir.join(format!("{name}.service.d"));
     std::fs::create_dir_all(&dir)?;
     std::fs::write(
         dir.join("99-podbox-clean-stop.conf"),
@@ -326,8 +326,7 @@ fn preflight_check(config: &Config) -> Result<()> {
     // Only run port bind tests if the container is stopped
     if is_running {
         println!(
-            "  Note: container '{}' is running. Skipping port conflict checks for upgrade.",
-            name
+            "  Note: container '{name}' is running. Skipping port conflict checks for upgrade."
         );
         return Ok(());
     }
@@ -401,27 +400,27 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
     if dry_run {
         if let Some(ref bc) = build_content {
-            println!("=== {}.build ===", name);
-            println!("{}", bc);
+            println!("=== {name}.build ===");
+            println!("{bc}");
             println!();
         }
-        println!("=== {}.socket ===", name);
-        println!("{}", socket_content);
+        println!("=== {name}.socket ===");
+        println!("{socket_content}");
         println!();
-        println!("=== {}.container ===", name);
-        println!("{}", container_content);
+        println!("=== {name}.container ===");
+        println!("{container_content}");
         println!();
-        println!("=== {}-host.service ===", name);
-        println!("{}", host_service_content);
+        println!("=== {name}-host.service ===");
+        println!("{host_service_content}");
         if let Some(ref proxy) = dbus_proxy_content {
             println!();
-            println!("=== {}-proxy.service ===", name);
-            println!("{}", proxy);
+            println!("=== {name}-proxy.service ===");
+            println!("{proxy}");
         }
         if let Some(ref comp) = compositor_service_content {
             println!();
-            println!("=== {}-compositor.service ===", name);
-            println!("{}", comp);
+            println!("=== {name}-compositor.service ===");
+            println!("{comp}");
         }
         return Ok(());
     }
@@ -485,12 +484,12 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     // Auto-export apps and bins
     for app in &config.integration.export.apps {
         if let Err(e) = crate::export::export_app(name, app) {
-            eprintln!("Warning: auto-export app '{}' failed: {}", app, e);
+            eprintln!("Warning: auto-export app '{app}' failed: {e}");
         }
     }
     for bin in &config.integration.export.bins {
         if let Err(e) = crate::export::export_bin(name, bin) {
-            eprintln!("Warning: auto-export bin '{}' failed: {}", bin, e);
+            eprintln!("Warning: auto-export bin '{bin}' failed: {e}");
         }
     }
 

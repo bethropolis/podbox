@@ -35,9 +35,8 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
         Some("1") => {}
         Some(v) => {
             eprintln!(
-                "Warning: image declares podbox.schema={}, host supports 1. \
-                 Ignoring image labels.",
-                v
+                "Warning: image declares podbox.schema={v}, host supports 1. \
+                 Ignoring image labels."
             );
             return;
         }
@@ -169,7 +168,7 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
     };
     if let Some(shell) = labels.get(shell_key) {
         if config.container.shell == "fish" {
-            config.container.shell = shell.clone();
+            config.container.shell.clone_from(shell);
         }
     }
 }

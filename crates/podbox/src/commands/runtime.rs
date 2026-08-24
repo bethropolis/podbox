@@ -259,7 +259,7 @@ pub fn run_shell_enter(
         workdir.into(),
     ];
     if let Some(ref path) = read_user_path(name) {
-        exec_args.push(format!("--env=PATH={}", path).into());
+        exec_args.push(format!("--env=PATH={path}").into());
     }
     exec_args.push(name.into());
     exec_args.push(config.container.shell.as_str().into());
@@ -290,7 +290,7 @@ pub fn run_exec(
         exec_args.push("-u".into());
         exec_args.push(env.username.as_str().into());
         if let Some(ref path) = read_user_path(name) {
-            exec_args.push(format!("--env=PATH={}", path).into());
+            exec_args.push(format!("--env=PATH={path}").into());
         }
     }
     exec_args.push(name.into());
@@ -324,7 +324,7 @@ pub fn run_run(
         env.username.as_str().into(),
     ];
     if let Some(ref path) = read_user_path(name) {
-        exec_args.push(format!("--env=PATH={}", path).into());
+        exec_args.push(format!("--env=PATH={path}").into());
     }
     exec_args.push(name.into());
     exec_args.push(app.into());

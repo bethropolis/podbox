@@ -302,7 +302,7 @@ pub fn run_start(
             let mut msg = String::from("Cannot start: published host port(s) already in use:\n");
             for c in &conflicts {
                 use std::fmt::Write as _;
-                let _ = writeln!(msg, "  - {}", c);
+                let _ = writeln!(msg, "  - {c}");
             }
             msg.push_str("\nFind the process with: `ss -ltnp 'sport = :<port>'`\n");
             msg.push_str("Either stop that process or change the mapping in [network]ports.");

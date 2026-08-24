@@ -65,7 +65,7 @@ pub(super) fn prompt_custom_image() -> anyhow::Result<(crate::config::Config, St
                 .default("fedora:44".to_string())
                 .interact_text()?;
         let mut c = crate::config::Config::embedded();
-        c.image.base = base.clone();
+        c.image.base.clone_from(&base);
         c.image.packages.manager = detect_package_manager(&base);
         let name = base
             .split_once(':')
@@ -140,7 +140,7 @@ pub(super) fn prompt_name(default: &str, config_dir: &std::path::Path) -> anyhow
             {
                 return Err("Name must be alphanumeric, hyphens, or underscores");
             }
-            let config_path = config_dir.join(format!("{}.toml", input));
+            let config_path = config_dir.join(format!("{input}.toml"));
             if config_path.exists() {
                 return Err("A config with this name already exists");
             }

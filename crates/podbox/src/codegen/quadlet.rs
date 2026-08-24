@@ -27,16 +27,16 @@ pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
 /// Generate the `.socket` Quadlet file.
 pub fn generate_socket(config: &Config) -> String {
     let name = &config.container.name;
-    let host_service = format!("{}-host.service", name);
+    let host_service = format!("{name}-host.service");
     let mut lines: Vec<String> = Vec::new();
 
     lines.push("[Unit]".into());
-    lines.push(format!("Description=podbox host-guest socket -- {}", name));
+    lines.push(format!("Description=podbox host-guest socket -- {name}"));
     lines.push(String::new());
 
     lines.push("[Socket]".into());
-    lines.push(format!("ListenStream=%t/podbox/{}.sock", name));
-    lines.push(format!("Service={}", host_service));
+    lines.push(format!("ListenStream=%t/podbox/{name}.sock"));
+    lines.push(format!("Service={host_service}"));
     lines.push("SocketMode=0600".into());
     lines.push("DirectoryMode=0700".into());
     lines.push("RuntimeDirectory=podbox".into());
@@ -77,22 +77,22 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
 
 fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
     lines.push("[Unit]".into());
-    lines.push(format!("Description=podbox -- {}", name));
-    lines.push(format!("Requires={}.socket", name));
-    lines.push(format!("After={}.socket", name));
+    lines.push(format!("Description=podbox -- {name}"));
+    lines.push(format!("Requires={name}.socket"));
+    lines.push(format!("After={name}.socket"));
     for dep in &config.systemd.requires {
-        lines.push(format!("Requires={}", dep));
+        lines.push(format!("Requires={dep}"));
     }
     for dep in &config.systemd.after {
-        lines.push(format!("After={}", dep));
+        lines.push(format!("After={dep}"));
     }
     if config.use_dbus_proxy() {
-        lines.push(format!("Requires={}-proxy.service", name));
-        lines.push(format!("After={}-proxy.service", name));
+        lines.push(format!("Requires={name}-proxy.service"));
+        lines.push(format!("After={name}-proxy.service"));
     }
     if config.use_wayland_proxy() {
-        lines.push(format!("Requires={}-compositor.service", name));
-        lines.push(format!("After={}-compositor.service", name));
+        lines.push(format!("Requires={name}-compositor.service"));
+        lines.push(format!("After={name}-compositor.service"));
     }
     lines.push("StartLimitBurst=5".into());
     lines.push("StartLimitIntervalSec=30s".into());
@@ -112,7 +112,7 @@ fn emit_container_image(
             crate::config::ImageSource::Prebuilt { ref_str } => ref_str,
             _ => config.image.base.clone(),
         };
-        lines.push(format!("Image={}", ref_str));
+        lines.push(format!("Image={ref_str}"));
         lines.push(format!("Retry={}", config.image.pull_retry));
         lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
     } else {
@@ -121,9 +121,9 @@ fn emit_container_image(
             config.image.name
         ));
     }
-    lines.push(format!("ContainerName={}", name));
+    lines.push(format!("ContainerName={name}"));
     if let Some(ref mode) = config.security.userns {
-        lines.push(format!("UserNS={}", mode));
+        lines.push(format!("UserNS={mode}"));
     } else {
         lines.push("UserNS=keep-id".into());
     }
@@ -132,28 +132,28 @@ fn emit_container_image(
         lines.push("SecurityLabelDisable=true".into());
     }
     if let Some(ref seccomp) = config.security.seccomp {
-        lines.push(format!("SeccompProfile={}", seccomp));
+        lines.push(format!("SeccompProfile={seccomp}"));
     }
     if config.security.no_new_privileges {
         lines.push("NoNewPrivileges=true".into());
     }
     if let Some(ref mem) = config.container.memory {
-        lines.push(format!("Memory={}", mem));
+        lines.push(format!("Memory={mem}"));
     }
     if let Some(ref cpus) = config.container.cpus {
         if let Ok(v) = cpus.parse::<f64>() {
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let quota = (v * 100_000.0) as u64;
-            lines.push(format!("CpuQuota={}", quota));
+            lines.push(format!("CpuQuota={quota}"));
         }
     }
     if config.security.read_only_rootfs {
         lines.push("ReadOnly=true".into());
     }
     if let Some(ref profile) = config.security.apparmor {
-        lines.push(format!("AppArmor={}", profile));
+        lines.push(format!("AppArmor={profile}"));
     }
-    lines.push(format!("Environment=HOME={}", home_in_container));
+    lines.push(format!("Environment=HOME={home_in_container}"));
     lines.push(format!("Environment=HOST_USER={}", env.username));
     lines.push("Environment=HOST_UID=%U".into());
     lines.push("Environment=HOST_GID=%G".into());
@@ -165,7 +165,7 @@ fn emit_network(lines: &mut Vec<String>, config: &Config) {
     lines.push(format!("Network={}", config.network.mode));
     if config.network.mode != "host" {
         for port in &config.network.ports {
-            lines.push(format!("PublishPort={}", port));
+            lines.push(format!("PublishPort={port}"));
         }
     }
     lines.push(String::new());
@@ -263,15 +263,14 @@ fn emit_volumes(
     // Wayland
     if config.integration.wayland {
         if let Some(ref display) = env.wayland_display {
-            lines.push(format!("Environment=WAYLAND_DISPLAY={}", display));
+            lines.push(format!("Environment=WAYLAND_DISPLAY={display}"));
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
             if config.wayland.firewall {
                 lines.push(format!(
-                    "Volume=%t/podbox/{}-wayland.sock:%t/{}:ro",
-                    name, display
+                    "Volume=%t/podbox/{name}-wayland.sock:%t/{display}:ro"
                 ));
             } else {
-                lines.push(format!("Volume=%t/{}:%t/{}:ro", display, display));
+                lines.push(format!("Volume=%t/{display}:%t/{display}:ro"));
             }
             lines.push(String::new());
         }
@@ -337,8 +336,7 @@ fn emit_volumes(
     if config.integration.dbus && env.dbus_socket.is_some() {
         if config.use_dbus_proxy() {
             lines.push(format!(
-                "Volume=%t/podbox/{}-dbus.sock:/run/podbox/dbus.sock:ro",
-                name
+                "Volume=%t/podbox/{name}-dbus.sock:/run/podbox/dbus.sock:ro"
             ));
             lines.push(
                 "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podbox/dbus.sock".into(),
@@ -352,14 +350,13 @@ fn emit_volumes(
 
     // Host-guest socket
     lines.push(format!(
-        "Volume=%t/podbox/{}.sock:%t/podbox/{}.sock",
-        name, name
+        "Volume=%t/podbox/{name}.sock:%t/podbox/{name}.sock"
     ));
     lines.push(String::new());
 
     // Extra mounts
     for mount in &config.container.mounts.extra {
-        lines.push(format!("Volume={}", mount));
+        lines.push(format!("Volume={mount}"));
     }
     if !config.container.mounts.extra.is_empty() {
         lines.push(String::new());
@@ -369,9 +366,9 @@ fn emit_volumes(
 fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv) {
     // Locale environment
     if let Some(ref locale) = _env.host_locale {
-        lines.push(format!("Environment=LANG={}", locale));
-        lines.push(format!("Environment=LC_ALL={}", locale));
-        lines.push(format!("Environment=LC_CTYPE={}", locale));
+        lines.push(format!("Environment=LANG={locale}"));
+        lines.push(format!("Environment=LC_ALL={locale}"));
+        lines.push(format!("Environment=LC_CTYPE={locale}"));
         lines.push(String::new());
     }
 
@@ -381,19 +378,16 @@ fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv
             let clean = value.replace('\n', " ").replace('\r', "");
             let escaped = clean.replace('\\', "\\\\").replace('"', "\\\"");
             let env_val = if escaped.contains(' ') || escaped.is_empty() {
-                format!("\"{}\"", escaped)
+                format!("\"{escaped}\"")
             } else {
                 escaped
             };
-            lines.push(format!("Environment={}={}", key, env_val));
+            lines.push(format!("Environment={key}={env_val}"));
         } else {
-            eprintln!(
-                "Warning: ignoring invalid environment variable key '{}'",
-                key
-            );
+            eprintln!("Warning: ignoring invalid environment variable key '{key}'");
         }
     }
-    lines.push(format!("Environment=PODBOX_CONTAINER={}", name));
+    lines.push(format!("Environment=PODBOX_CONTAINER={name}"));
     lines.push(String::new());
 }
 
@@ -448,16 +442,16 @@ fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
     let cap_preset = config.security.cap_preset;
     let has_any_cap = !cap_preset.caps().is_empty() || !config.security.cap_add.is_empty();
     for cap in cap_preset.caps() {
-        lines.push(format!("PodmanArgs=--cap-add={}", cap));
+        lines.push(format!("PodmanArgs=--cap-add={cap}"));
     }
     for cap in &config.security.cap_add {
-        lines.push(format!("PodmanArgs=--cap-add={}", cap));
+        lines.push(format!("PodmanArgs=--cap-add={cap}"));
     }
     if has_any_cap {
         lines.push(String::new());
     }
     if let Some(ref cmd) = config.container.reload_cmd {
-        lines.push(format!("ReloadCmd={}", cmd));
+        lines.push(format!("ReloadCmd={cmd}"));
         lines.push(String::new());
     }
 }
@@ -493,13 +487,13 @@ pub fn generate_dbus_proxy_service(name: &str, config: &Config) -> Option<String
     args.push("--filter".into());
 
     for service in &config.dbus_effective_talk() {
-        args.push(format!("--talk={}", service));
+        args.push(format!("--talk={service}"));
     }
     for rule in config.dbus_portal_calls() {
         args.push(rule);
     }
     for service in &config.dbus.own {
-        args.push(format!("--own={}", service));
+        args.push(format!("--own={service}"));
     }
 
     let exec_start = format!("/usr/bin/xdg-dbus-proxy {}", args.join(" "));
@@ -518,8 +512,6 @@ RestartSec=1s
 [Install]
 WantedBy={name}.service
 "#,
-        name = name,
-        exec_start = exec_start,
     ))
 }
 
@@ -547,8 +539,6 @@ RestartSec=1s
 [Install]
 WantedBy={name}.service
 "#,
-        name = name,
-        podbox_bin = podbox_bin,
     ))
 }
 
@@ -571,8 +561,6 @@ RestartSec=2s
 [Install]
 WantedBy={name}.socket
 "#,
-        name = name,
-        podbox_bin = podbox_bin,
     )
 }
 

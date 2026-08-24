@@ -187,7 +187,7 @@ pub fn format_report(result: &DiffResult) -> String {
     if !result.missing.is_empty() {
         lines.push("── Declared packages NOT installed ──".to_string());
         for pkg in &result.missing {
-            lines.push(format!("  - {}", pkg));
+            lines.push(format!("  - {pkg}"));
         }
         lines.push(String::new());
     }
@@ -196,7 +196,7 @@ pub fn format_report(result: &DiffResult) -> String {
         lines.push("── Unexpected packages found ──".to_string());
         let show: Vec<&String> = result.unexpected.iter().take(30).collect();
         for pkg in &show {
-            lines.push(format!("  + {}", pkg));
+            lines.push(format!("  + {pkg}"));
         }
         if result.unexpected.len() > 30 {
             lines.push(format!("  … and {} more", result.unexpected.len() - 30));
@@ -222,7 +222,7 @@ pub fn format_report(result: &DiffResult) -> String {
 pub fn patch_toml(original: &str, install: &[String]) -> Result<String> {
     let mut doc = original
         .parse::<toml_edit::DocumentMut>()
-        .map_err(|e| anyhow::anyhow!("Failed to parse TOML for editing: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse TOML for editing: {e}"))?;
 
     let mut arr = toml_edit::Array::new();
     for pkg in install {

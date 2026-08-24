@@ -287,9 +287,9 @@ fn quadlet_no_host_home_mount() {
     let home = dirs::home_dir().unwrap();
     let home_str = home.to_string_lossy();
     // Host home alone must never appear as Volume source
-    assert!(!q.contains(&format!("{}:", home_str)));
+    assert!(!q.contains(&format!("{home_str}:")));
     // Expanded config.home path is used
-    assert!(q.contains(&format!("Volume={}/containers/myenv:/home/%u:Z", home_str)));
+    assert!(q.contains(&format!("Volume={home_str}/containers/myenv:/home/%u:Z")));
 }
 
 #[test]

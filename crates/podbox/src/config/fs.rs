@@ -101,7 +101,7 @@ pub fn read_active_context() -> Option<String> {
         let _ = std::fs::remove_file(&path);
         return None;
     }
-    let config_path = config_dir().join(format!("{}.toml", name));
+    let config_path = config_dir().join(format!("{name}.toml"));
     if config_path.exists() {
         Some(name)
     } else {

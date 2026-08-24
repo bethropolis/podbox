@@ -119,12 +119,12 @@ impl ContainerfileBuilder {
             } else {
                 format!("{} {} && {}", distro.install_cmd(), pkgs, clean)
             };
-            lines.push(format!("RUN {}", cmd));
+            lines.push(format!("RUN {cmd}"));
             lines.push(String::new());
         }
 
         for cmd in &self.run_commands {
-            lines.push(format!("RUN {}", cmd));
+            lines.push(format!("RUN {cmd}"));
         }
         if !self.run_commands.is_empty() {
             lines.push(String::new());
@@ -140,8 +140,7 @@ impl ContainerfileBuilder {
                 DistroFamily::DebianLike | DistroFamily::ArchLike => {
                     let (name, charset) = locale.split_once('.').unwrap_or((locale, "UTF-8"));
                     lines.push(format!(
-                        "RUN localedef -i {} -f {} {} || true",
-                        name, charset, locale
+                        "RUN localedef -i {name} -f {charset} {locale} || true"
                     ));
                     lines.push(String::new());
                 }
@@ -159,7 +158,7 @@ impl ContainerfileBuilder {
         }
 
         for (key, value) in &self.env_vars {
-            lines.push(format!("ENV {}={}", key, value));
+            lines.push(format!("ENV {key}={value}"));
         }
 
         lines.push(format!("ENV PODBOX_CONTAINER={}", self.container_name));

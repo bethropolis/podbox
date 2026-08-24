@@ -39,7 +39,7 @@ pub fn enable_linger() -> Result<()> {
         .context("loginctl command failed")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("Warning: enable-linger failed: {}", stderr);
+        eprintln!("Warning: enable-linger failed: {stderr}");
     } else {
         println!("Linger enabled for user.");
     }
@@ -73,11 +73,11 @@ pub fn reset_failed(name: &str) -> Result<()> {
         return Ok(());
     }
     let unit_names = [
-        format!("{}.service", name),
-        format!("{}.socket", name),
-        format!("{}-host.service", name),
-        format!("{}-proxy.service", name),
-        format!("{}-compositor.service", name),
+        format!("{name}.service"),
+        format!("{name}.socket"),
+        format!("{name}-host.service"),
+        format!("{name}-proxy.service"),
+        format!("{name}-compositor.service"),
     ];
     for unit in &unit_names {
         let mut cmd = Command::new("systemctl");
@@ -95,12 +95,12 @@ pub fn enable_now_socket(name: &str) -> Result<()> {
         return Ok(());
     }
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "enable", "--now", &format!("{}.socket", name)]);
+    cmd.args(["--user", "enable", "--now", &format!("{name}.socket")]);
     let status = cmd
         .status()
         .context("failed to spawn systemctl enable --now")?;
     if !status.success() {
-        anyhow::bail!("systemctl --user enable --now {}.socket failed", name);
+        anyhow::bail!("systemctl --user enable --now {name}.socket failed");
     }
     Ok(())
 }
@@ -110,7 +110,7 @@ pub fn stop_socket_and_host(name: &str) -> Result<()> {
     if !is_available() {
         return Ok(());
     }
-    for unit in [format!("{}.socket", name), format!("{}-host.service", name)] {
+    for unit in [format!("{name}.socket"), format!("{name}-host.service")] {
         let mut cmd = Command::new("systemctl");
         cmd.args(["--user", "stop", &unit]);
         let _ = cmd.status();
@@ -124,7 +124,7 @@ pub fn stop_compositor(name: &str) -> Result<()> {
         return Ok(());
     }
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "stop", &format!("{}-compositor.service", name)]);
+    cmd.args(["--user", "stop", &format!("{name}-compositor.service")]);
     let _ = cmd.status();
     Ok(())
 }
@@ -148,10 +148,10 @@ pub fn guest_socket_path(name: &str) -> std::path::PathBuf {
 /// then fails at create time with `statfs ...: no such file or directory`.
 fn rebind_guest_socket(name: &str) -> Result<()> {
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "restart", &format!("{}.socket", name)]);
+    cmd.args(["--user", "restart", &format!("{name}.socket")]);
     let status = cmd.status().context("failed to spawn systemctl restart")?;
     if !status.success() {
-        anyhow::bail!("systemctl --user restart {}.socket failed", name);
+        anyhow::bail!("systemctl --user restart {name}.socket failed");
     }
     Ok(())
 }
@@ -176,10 +176,10 @@ fn heal_missing_guest_socket(name: &str) -> Result<bool> {
 /// Start a service unit via `systemctl --user start`.
 pub fn start_unit(name: &str) -> Result<()> {
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "start", &format!("{}.service", name)]);
+    cmd.args(["--user", "start", &format!("{name}.service")]);
     let status = cmd.status().context("failed to spawn systemctl start")?;
     if !status.success() {
-        anyhow::bail!("systemctl start failed for '{}.service'", name);
+        anyhow::bail!("systemctl start failed for '{name}.service'");
     }
     Ok(())
 }
@@ -187,7 +187,7 @@ pub fn start_unit(name: &str) -> Result<()> {
 /// Stop a service unit via `systemctl --user stop`.
 pub fn stop_unit(name: &str) -> Result<()> {
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "stop", &format!("{}.service", name)]);
+    cmd.args(["--user", "stop", &format!("{name}.service")]);
     cmd.status()?;
     Ok(())
 }
@@ -195,7 +195,7 @@ pub fn stop_unit(name: &str) -> Result<()> {
 /// Restart a service unit via `systemctl --user restart`.
 pub fn restart_unit(name: &str) -> Result<()> {
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "restart", &format!("{}.service", name)]);
+    cmd.args(["--user", "restart", &format!("{name}.service")]);
     cmd.status()?;
     Ok(())
 }
@@ -210,7 +210,7 @@ pub fn is_unit_enabled(name: &str) -> bool {
             "--user",
             "--quiet",
             "is-enabled",
-            &format!("{}.service", name),
+            &format!("{name}.service"),
         ])
         .status()
         .map(|s| s.success())
@@ -223,7 +223,7 @@ pub fn is_unit_failed(name: &str) -> bool {
         return false;
     }
     Command::new("systemctl")
-        .args(["--user", "is-failed", &format!("{}.service", name)])
+        .args(["--user", "is-failed", &format!("{name}.service")])
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "failed")
@@ -236,7 +236,7 @@ pub fn query_unit_status(name: &str) -> Result<UnitStatus> {
     cmd.args([
         "--user",
         "show",
-        &format!("{}.service", name),
+        &format!("{name}.service"),
         "--property=LoadState,ActiveState,SubState,LoadError,NeedDaemonReload",
     ]);
     let output = cmd
@@ -283,7 +283,7 @@ pub fn journal_tail(name: &str, n: u32) -> Result<String> {
     cmd.args([
         "--user",
         "-u",
-        &format!("{}.service", name),
+        &format!("{name}.service"),
         "-n",
         &n.to_string(),
         "--no-pager",
@@ -394,16 +394,16 @@ fn extract_hint_from_journal(journal: &str) -> String {
 fn diagnostic_card(name: &str, status: &UnitStatus, journal: Option<&str>) -> String {
     let (error_msg, hint) = diagnose(status, journal);
 
-    let error_line = format!("   LoadError: {}", error_msg);
+    let error_line = format!("   LoadError: {error_msg}");
 
-    let unit_line = format!("  Unit:         {}.service", name);
+    let unit_line = format!("  Unit:         {name}.service");
     let load_line = format!("  LoadState:    {}", status.load_state);
     let active_line = format!("  ActiveState:  {}", status.active_state);
     let sub_line = format!("  SubState:     {}", status.sub_state);
     let error_label = if error_msg.is_empty() {
         String::new()
     } else {
-        format!("\n  {}", error_line)
+        format!("\n  {error_line}")
     };
     let reload_line = if status.need_daemon_reload {
         "\n  Note: systemd indicated NeedDaemonReload=yes. \
@@ -423,7 +423,7 @@ fn diagnostic_card(name: &str, status: &UnitStatus, journal: Option<&str>) -> St
             };
             let body = tail
                 .iter()
-                .map(|l| format!("    {}", l))
+                .map(|l| format!("    {l}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             format!("\n  Journal (last {} lines):\n{}", tail.len(), body)
@@ -502,8 +502,8 @@ pub fn start_unit_friendly(name: &str, timeout_secs: u64) -> Result<()> {
             let status = query_unit_status(name).unwrap_or_default();
             let journal = journal_tail(name, 10).ok();
             let card = diagnostic_card(name, &status, journal.as_deref());
-            eprintln!("{}", card);
-            anyhow::bail!("container '{}' failed to start", name);
+            eprintln!("{card}");
+            anyhow::bail!("container '{name}' failed to start");
         }
     }
 }
@@ -517,10 +517,7 @@ fn wait_for_running(name: &str, timeout_secs: u64) -> Result<()> {
             _ if Instant::now() >= deadline => {
                 let state = query_state(name)?;
                 anyhow::bail!(
-                    "container '{}' did not become ready within {}s (final state: {:?})",
-                    name,
-                    timeout_secs,
-                    state,
+                    "container '{name}' did not become ready within {timeout_secs}s (final state: {state:?})",
                 );
             }
             _ => {

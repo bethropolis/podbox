@@ -260,7 +260,7 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
         if stderr.contains("no such container") || stderr.contains("no such object") {
             // Fallback: check systemd for Quadlet-managed containers
             if let Ok(sys) = Command::new("systemctl")
-                .args(["--user", "is-active", &format!("{}.service", name)])
+                .args(["--user", "is-active", &format!("{name}.service")])
                 .output()
             {
                 let state = String::from_utf8_lossy(&sys.stdout).trim().to_string();

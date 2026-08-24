@@ -40,12 +40,12 @@ pub fn run_wizard(
     // Phase 2: Container
     println!("\n── Container ──\n");
     let name = prompts::prompt_name(&default_name, &crate::config::config_dir())?;
-    config.container.name = name.clone();
-    config.image.name = name.clone();
-    config.container.home = crate::config::expand_tilde(&format!("~/containers/{}", name));
+    config.container.name.clone_from(&name);
+    config.image.name.clone_from(&name);
+    config.container.home = crate::config::expand_tilde(&format!("~/containers/{name}"));
 
     let shell = prompts::prompt_shell(detected_shell);
-    config.container.shell = shell.full_path.clone();
+    config.container.shell.clone_from(&shell.full_path);
     if !config
         .image
         .packages
@@ -102,7 +102,7 @@ pub fn run_wizard(
     // Phase 5: Review
     summary::print_summary(&config, &name);
     let toml_str = toml::to_string_pretty(&config)
-        .map_err(|e| anyhow::anyhow!("failed to serialize config: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("failed to serialize config: {e}"))?;
     let confirmed = summary::preview_and_confirm(&toml_str);
 
     Ok(WizardResult {

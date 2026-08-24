@@ -41,7 +41,7 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
         .join(dst);
     cfg.image.name = dst.to_string();
     cfg.container.name = dst.to_string();
-    cfg.container.home = new_home.clone();
+    cfg.container.home.clone_from(&new_home);
 
     let new_content = toml::to_string_pretty(&cfg)?;
     std::fs::write(&dst_path, &new_content)?;

@@ -62,9 +62,7 @@ missing_panics_doc      = "allow"
 must_use_candidate      = "allow"
 
 # New lints in Rust 1.95 — noisy, opt out individually
-uninlined_format_args      = "allow"
 collapsible_if             = "allow"
-assigning_clones           = "allow"
 redundant_closure_for_method_calls = "allow"
 doc_markdown               = "allow"
 items_after_statements     = "allow"

@@ -2,8 +2,8 @@ use crate::config::{Config, GpuMode, ImageSource, OnStop};
 
 pub(super) fn print_summary(config: &Config, name: &str) {
     let image_type = match config.image.source() {
-        ImageSource::Prebuilt { ref_str } => format!("prebuilt ({})", ref_str),
-        ImageSource::Build { base } => format!("build from {}", base),
+        ImageSource::Prebuilt { ref_str } => format!("prebuilt ({ref_str})"),
+        ImageSource::Build { base } => format!("build from {base}"),
     };
     let lifecycle = if config.lifecycle.quadlet {
         let extras = vec![
@@ -25,7 +25,7 @@ pub(super) fn print_summary(config: &Config, name: &str) {
         if extras.is_empty() {
             "quadlet".to_string()
         } else {
-            format!("quadlet ({})", extras)
+            format!("quadlet ({extras})")
         }
     } else {
         "manual".to_string()
@@ -54,12 +54,12 @@ pub(super) fn print_summary(config: &Config, name: &str) {
     .count();
 
     println!("\n── Summary ──");
-    println!("  Name:        {}", name);
-    println!("  Image:       {}", image_type);
+    println!("  Name:        {name}");
+    println!("  Image:       {image_type}");
     println!("  Shell:       {}", config.container.shell);
     println!("  Home:        {}", config.container.home.display());
     if let Some(ref mem) = config.container.memory {
-        println!("  Memory:      {}", mem);
+        println!("  Memory:      {mem}");
     }
     if !config.container.mounts.extra.is_empty() {
         println!(
@@ -126,7 +126,7 @@ pub(super) fn print_summary(config: &Config, name: &str) {
         .collect::<Vec<_>>();
         println!("    sync:      {}", sync.join(", "));
     }
-    println!("    xdg dirs:  {} shared", xdg_count);
+    println!("    xdg dirs:  {xdg_count} shared");
     if !config.integration.export.apps.is_empty() {
         println!(
             "    exports:   apps: {}",
@@ -139,12 +139,12 @@ pub(super) fn print_summary(config: &Config, name: &str) {
             config.integration.export.bins.join(", ")
         );
     }
-    println!("  Lifecycle:   {} (on_stop: {})", lifecycle, on_stop);
+    println!("  Lifecycle:   {lifecycle} (on_stop: {on_stop})");
     println!();
 }
 
 pub(super) fn preview_and_confirm(toml: &str) -> bool {
-    println!("{}\n", toml);
+    println!("{toml}\n");
     dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt("Write to config file?")
         .default(true)
