@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 use std::io::{self, IoSlice, IoSliceMut};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Output};
@@ -102,19 +102,9 @@ pub fn wait_child_timeout(child: std::process::Child, timeout: Duration) -> anyh
 ///
 /// Returns `Err` on old kernels or when the PID does not exist.
 pub fn open_pidfd(pid: i32) -> io::Result<OwnedFd> {
-    let ret = unsafe { nix::libc::syscall(nix::libc::SYS_pidfd_open, pid, 0) };
-    if ret < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        let fd = i32::try_from(ret).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "pidfd_open returned invalid fd",
-            )
-        })?;
-        // SAFETY: fd is a non-negative fd returned by the kernel.
-        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
-    }
+    let pid = rustix::process::Pid::from_raw(pid)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid PID"))?;
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).map_err(io::Error::from)
 }
 
 /// Send a raw file descriptor over a connected Unix stream via `SCM_RIGHTS`.

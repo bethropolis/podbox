@@ -24,6 +24,7 @@ serde           = { workspace = true }
 serde_json      = { workspace = true }
 anyhow          = { workspace = true }
 nix             = { workspace = true }
+rustix          = { workspace = true }
 thiserror       = { workspace = true }
 fd-lock         = { workspace = true }
 tracing         = { workspace = true }

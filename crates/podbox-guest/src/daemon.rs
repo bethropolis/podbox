@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::os::fd::{AsFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
@@ -45,25 +45,12 @@ const EXCLUDED_COMMS: &[&str] = &[
 
 /// Open a pidfd for a given PID (Linux 5.3+).
 ///
-/// # Safety
-///
-/// The caller must ensure `pid` refers to a valid process. The kernel
-/// validates the PID and returns either a valid fd or -errno.
+/// Returns `Err` on old kernels or when the PID does not exist.
 fn open_pidfd(pid: i32) -> std::io::Result<OwnedFd> {
-    let ret = unsafe { nix::libc::syscall(nix::libc::SYS_pidfd_open, pid, 0) };
-    if ret < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        // SAFETY: ret is a non-negative fd returned by the kernel.
-        let fd = i32::try_from(ret).map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "pidfd_open returned invalid fd",
-            )
-        })?;
-        // SAFETY: fd is a non-negative fd returned by the kernel.
-        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
-    }
+    let pid = rustix::process::Pid::from_raw(pid)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid PID"))?;
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty())
+        .map_err(std::io::Error::from)
 }
 
 struct TrackedProcess {
