@@ -1,19 +1,21 @@
-use std::ffi::CString;
-use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
-use nix::unistd::{ForkResult, Gid, Uid, execv, execvp, fork, setgid, setuid};
+use nix::unistd::{Gid, Uid, setgid, setuid};
 
-/// Fork a daemon process, then exec the user command.
+/// Spawn a detached daemon process, then exec the user command.
 ///
 /// At the start, if running as root and host user info is available,
 /// a matching system user is created and privileges are dropped.
 ///
-/// Parent: execs the user shell/command (replaces this process) or
-///         loops with a sleep if in background mode (no TTY, no cmd).
-/// Child:  redirects stdio to /dev/null, drops privileges, then
-///         execs `podbox-guest --daemon`.
+/// This process: spawns `podbox-guest --daemon` in the background (as
+/// root, before dropping privileges — the daemon needs root to install
+/// interceptors under /run/podbox/bin), then execs the user shell or
+/// command (replacing this process), or loops with a sleep in background
+/// mode (no TTY, no cmd). The spawned daemon survives the exec and is
+/// reparented when this process eventually exits.
 #[allow(clippy::similar_names)]
 pub fn run(cmd: &[String]) -> ! {
     let host_user = std::env::var("HOST_USER").ok();
@@ -37,88 +39,70 @@ pub fn run(cmd: &[String]) -> ! {
         None
     };
 
-    match unsafe { fork() } {
-        Ok(ForkResult::Child) => {
-            // Child: become the daemon
-            let dev_null_r =
-                std::fs::File::open("/dev/null").unwrap_or_else(|_| std::process::exit(1));
-            let dev_null_w = std::fs::OpenOptions::new()
-                .write(true)
-                .open("/dev/null")
-                .unwrap_or_else(|_| std::process::exit(1));
+    // Spawn the daemon detached: fresh fork+exec via std, null stdio.
+    // Must happen before the privilege drop below — the daemon runs as
+    // root by design (interceptor installation under /run/podbox/bin).
+    let self_exe = std::env::current_exe().unwrap_or_else(|_| "/usr/local/bin/podbox-guest".into());
+    if let Err(e) = Command::new(&self_exe)
+        .arg("--daemon")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        eprintln!(
+            "podbox-guest: failed to spawn daemon {}: {e}",
+            self_exe.display()
+        );
+        std::process::exit(1);
+    }
 
-            let mut stdin = unsafe { OwnedFd::from_raw_fd(0) };
-            let mut stdout = unsafe { OwnedFd::from_raw_fd(1) };
-            let mut stderr = unsafe { OwnedFd::from_raw_fd(2) };
-            let _ = nix::unistd::dup2(&dev_null_r, &mut stdin);
-            let _ = nix::unistd::dup2(&dev_null_w, &mut stdout);
-            let _ = nix::unistd::dup2(&dev_null_w, &mut stderr);
+    if let Some((uid, gid)) = drop.as_ref().map(|(u, g, _)| (*u, *g)) {
+        let _ = setgid(Gid::from_raw(gid));
+        let _ = setuid(Uid::from_raw(uid));
+    }
 
-            let program = CString::new("/usr/local/bin/podbox-guest").unwrap();
-            let arg = CString::new("--daemon").unwrap();
-            match execv(&program, &[&program, &arg]) {
-                Ok(_) => unreachable!(),
-                Err(e) => {
-                    eprintln!(
-                        "podbox-guest: failed to execute daemon /usr/local/bin/podbox-guest: {e}"
-                    );
-                    std::process::exit(1)
-                }
-            }
+    let is_tty = nix::unistd::isatty(std::io::stdin()).unwrap_or(false);
+
+    // Environment for the exec'd shell/command. Applied via the spawned
+    // process instead of process-global `env::set_var`, which is unsafe
+    // and unnecessary here — nothing reads the environment after this
+    // point in this process.
+    let user_env: Option<(String, String, String)> = drop
+        .as_ref()
+        .map(|(_, _, user)| (format!("/home/{user}"), user.clone(), user.clone()));
+
+    let exec_shell_cmd = |program: &str, args: &[String], arg0: Option<String>| -> ! {
+        let mut c = Command::new(program);
+        c.args(args);
+        if let Some(a0) = arg0 {
+            let _ = c.arg0(a0);
         }
-        Ok(ForkResult::Parent { .. }) => {
-            if let Some((uid, gid, ref user)) = drop {
-                // SAFETY: Single-threaded child after fork(2) — no other threads exist.
-                unsafe {
-                    std::env::set_var("HOME", format!("/home/{user}"));
-                    std::env::set_var("USER", user);
-                    std::env::set_var("LOGNAME", user);
-                }
-                let _ = setgid(Gid::from_raw(gid));
-                let _ = setuid(Uid::from_raw(uid));
-            }
-
-            let is_tty = nix::unistd::isatty(std::io::stdin()).unwrap_or(false);
-
-            if is_tty && !cmd.is_empty() {
-                // Interactive: exec the requested command
-                let args: Vec<CString> = cmd
-                    .iter()
-                    .map(|s| {
-                        CString::new(s.as_bytes()).unwrap_or_else(|_| {
-                            eprintln!("podbox-guest: command argument contains null byte");
-                            std::process::exit(1)
-                        })
-                    })
-                    .collect();
-                let args_refs: Vec<&CString> = args.iter().collect();
-                match execvp(args_refs[0], &args_refs) {
-                    Ok(_) => unreachable!(),
-                    Err(e) => {
-                        eprintln!("podbox-guest: failed to execute command: {e}");
-                        std::process::exit(1);
-                    }
-                }
-            } else if is_tty {
-                // Interactive with no explicit CMD: start a login shell
-                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/usr/bin/fish".into());
-                let program = CString::new(shell.as_bytes()).unwrap();
-                let arg0 = CString::new(format!("-{shell}")).unwrap();
-                match execv(&program, &[&arg0]) {
-                    Ok(_) => unreachable!(),
-                    Err(e) => {
-                        eprintln!("podbox-guest: failed to execute shell {shell}: {e}");
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                // Background (e.g. systemd): keep PID 1 alive
-                loop {
-                    std::thread::sleep(std::time::Duration::from_hours(1));
-                }
-            }
+        if let Some((ref home, ref user, ref logname)) = user_env {
+            c.env("HOME", home)
+                .env("USER", user)
+                .env("LOGNAME", logname);
         }
-        Err(_) => std::process::exit(1),
+        // `exec` replaces this process on success and never returns;
+        // the return value is the error that prevented it.
+        let e: std::io::Error = c.exec();
+        eprintln!("podbox-guest: failed to execute command: {e}");
+        std::process::exit(1);
+    };
+
+    if is_tty && !cmd.is_empty() {
+        // Interactive: exec the requested command
+        exec_shell_cmd(&cmd[0], &cmd[1..], None);
+    } else if is_tty {
+        // Interactive with no explicit CMD: start a login shell
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/usr/bin/fish".into());
+        let arg0 = format!("-{shell}");
+        exec_shell_cmd(&shell, &[], Some(arg0));
+    } else {
+        // Background (e.g. systemd): keep PID 1 alive
+        loop {
+            std::thread::sleep(std::time::Duration::from_hours(1));
+        }
     }
 }
 
