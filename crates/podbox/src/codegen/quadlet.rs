@@ -41,6 +41,10 @@ pub fn generate_socket(config: &Config) -> String {
     lines.push("DirectoryMode=0700".into());
     lines.push("RuntimeDirectory=podbox".into());
     lines.push("RuntimeDirectoryMode=0700".into());
+    // Keep %t/podbox alive even when no socket unit is active. Without this,
+    // systemd removes the directory when the last requesting unit stops, and
+    // a later recreation can orphan sibling containers' listening sockets.
+    lines.push("RuntimeDirectoryPreserve=yes".into());
     lines.push(String::new());
 
     lines.push("[Install]".into());

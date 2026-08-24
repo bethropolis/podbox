@@ -79,6 +79,10 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
             UnixListener::bind(&path)?
         }
     };
+    // Non-blocking + periodic tick so SIGTERM/SIGINT ends the accept loop
+    // promptly instead of blocking in accept(2) until systemd's
+    // TimeoutStopSec SIGKILL.
+    listener.set_nonblocking(true)?;
 
     let state = Arc::new(SharedState {
         session_count: AtomicU32::new(0),
@@ -101,6 +105,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
 
         match listener.accept() {
             Ok((mut stream, _)) => {
+                stream.set_nonblocking(false)?;
                 handles.retain_mut(|h| !h.is_finished());
 
                 if handles.len() >= MAX_CONCURRENT {
@@ -119,6 +124,9 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                     }
                 });
                 handles.push(handle);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(200));
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(e) => {

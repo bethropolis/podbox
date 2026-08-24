@@ -5,7 +5,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
@@ -87,6 +87,10 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
             socket_path.display()
         )
     })?;
+    // Non-blocking + periodic tick so SIGTERM/SIGINT ends the accept loop
+    // promptly instead of blocking in accept(2) until systemd's
+    // TimeoutStopSec SIGKILL (90s stall on every container stop).
+    listener.set_nonblocking(true)?;
 
     let blocked = config.wayland.blocked_interfaces.clone();
 
@@ -98,6 +102,10 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
 
         let stream = match listener.accept() {
             Ok((s, _)) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(e) => {
                 tracing::error!("compositor: accept failed: {e}");
@@ -105,6 +113,8 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
             }
         };
         connections += 1;
+
+        stream.set_nonblocking(false)?;
 
         let host_conn = match UnixStream::connect(&host_socket) {
             Ok(s) => s,

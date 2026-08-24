@@ -12,6 +12,7 @@ SocketMode=0600
 DirectoryMode=0700
 RuntimeDirectory=podbox
 RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 
 [Install]
 WantedBy=sockets.target

@@ -77,6 +77,7 @@ pub fn reset_failed(name: &str) -> Result<()> {
         format!("{}.socket", name),
         format!("{}-host.service", name),
         format!("{}-proxy.service", name),
+        format!("{}-compositor.service", name),
     ];
     for unit in &unit_names {
         let mut cmd = Command::new("systemctl");
@@ -95,7 +96,12 @@ pub fn enable_now_socket(name: &str) -> Result<()> {
     }
     let mut cmd = Command::new("systemctl");
     cmd.args(["--user", "enable", "--now", &format!("{}.socket", name)]);
-    let _ = cmd.status();
+    let status = cmd
+        .status()
+        .context("failed to spawn systemctl enable --now")?;
+    if !status.success() {
+        anyhow::bail!("systemctl --user enable --now {}.socket failed", name);
+    }
     Ok(())
 }
 
@@ -121,6 +127,50 @@ pub fn stop_compositor(name: &str) -> Result<()> {
     cmd.args(["--user", "stop", &format!("{}-compositor.service", name)]);
     let _ = cmd.status();
     Ok(())
+}
+
+/// Path of the guest-facing socket for a container (`%t/podbox/<name>.sock`).
+pub fn guest_socket_path(name: &str) -> std::path::PathBuf {
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+        let uid = nix::unistd::getuid().as_raw();
+        format!("/run/user/{uid}")
+    });
+    std::path::PathBuf::from(runtime)
+        .join("podbox")
+        .join(format!("{name}.sock"))
+}
+
+/// Restart the container's socket unit so systemd rebinds a fresh socket file.
+///
+/// The `.socket` unit can outlive its filesystem entry: an external unlink or
+/// a RuntimeDirectory recreation leaves the unit "active (listening)" on an
+/// orphaned fd while the path is gone. A container bind-mounting that path
+/// then fails at create time with `statfs ...: no such file or directory`.
+fn rebind_guest_socket(name: &str) -> Result<()> {
+    let mut cmd = Command::new("systemctl");
+    cmd.args(["--user", "restart", &format!("{}.socket", name)]);
+    let status = cmd.status().context("failed to spawn systemctl restart")?;
+    if !status.success() {
+        anyhow::bail!("systemctl --user restart {}.socket failed", name);
+    }
+    Ok(())
+}
+
+/// Rebind the guest socket if its filesystem entry went missing.
+///
+/// Returns `true` when a heal was performed (socket was missing and the
+/// restart succeeded).
+fn heal_missing_guest_socket(name: &str) -> Result<bool> {
+    if guest_socket_path(name).exists() {
+        return Ok(false);
+    }
+    eprintln!(
+        "Warning: {} is missing but {}.socket is active — restarting the socket unit to rebind it.",
+        guest_socket_path(name).display(),
+        name
+    );
+    rebind_guest_socket(name)?;
+    Ok(true)
 }
 
 /// Start a service unit via `systemctl --user start`.
@@ -424,11 +474,26 @@ pub fn start_unit_friendly(name: &str, timeout_secs: u64) -> Result<()> {
     // user having to run `systemctl --user reset-failed` manually.
     reset_failed(name)?;
 
-    // Try to start
-    let start_result = (|| -> Result<()> {
+    // Self-heal: if the guest socket file vanished while its unit stayed
+    // active, rebind it before starting — otherwise podman fails with
+    // `statfs .../podbox/<name>.sock: no such file or directory`.
+    let _ = heal_missing_guest_socket(name);
+
+    let attempt = || -> Result<()> {
         start_unit(name)?;
         wait_for_running(name, timeout_secs)
-    })();
+    };
+
+    let mut start_result = attempt();
+
+    if start_result.is_err() {
+        // One retry: a socket that went missing mid-start gets rebound first.
+        if let Ok(true) = heal_missing_guest_socket(name) {
+            eprintln!("Retrying start after socket rebind...");
+            reset_failed(name)?;
+            start_result = attempt();
+        }
+    }
 
     match start_result {
         Ok(()) => Ok(()),

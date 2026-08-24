@@ -387,6 +387,7 @@ fn quadlet_socket_file_has_listen_stream() {
     let q = quadlet::generate_socket(&config);
     assert!(q.contains("ListenStream=%t/podbox/myenv.sock"));
     assert!(q.contains("SocketMode=0600"));
+    assert!(q.contains("RuntimeDirectoryPreserve=yes"));
 }
 
 #[test]
