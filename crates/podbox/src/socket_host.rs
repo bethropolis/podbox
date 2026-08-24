@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Arc;
@@ -397,23 +397,16 @@ fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
 /// Block until `fd` (a pidfd) becomes readable, then decrement the session
 /// counter.
 fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
-    let mut pfd = nix::libc::pollfd {
-        fd: fd.as_raw_fd(),
-        events: nix::libc::POLLIN,
-        revents: 0,
-    };
+    let mut fds = [nix::poll::PollFd::new(
+        fd.as_fd(),
+        nix::poll::PollFlags::POLLIN,
+    )];
 
     loop {
-        let ret = unsafe { nix::libc::poll(&raw mut pfd, 1, -1) };
-        if ret < 0 {
-            let errno = unsafe { *nix::libc::__errno_location() };
-            if errno == nix::libc::EINTR {
-                continue;
-            }
-            break;
-        }
-        if pfd.revents & (nix::libc::POLLIN | nix::libc::POLLHUP | nix::libc::POLLERR) != 0 {
-            break;
+        match nix::poll::poll(&mut fds, nix::poll::PollTimeout::NONE) {
+            Ok(_) => break,
+            Err(nix::errno::Errno::EINTR) => {}
+            Err(_) => break,
         }
     }
 

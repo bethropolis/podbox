@@ -203,10 +203,9 @@ pub fn run_stdin_watchdog(parent_pid: u32) -> Result<()> {
         std::process::exit(1);
     };
 
-    // SAFETY: fd 0 is open — `isatty(0)` succeeded in the spawning parent.
-    let stdin = unsafe { std::os::fd::BorrowedFd::borrow_raw(0) };
+    let stdin = std::io::stdin();
     let mut fds = [
-        PollFd::new(stdin, PollFlags::POLLHUP | PollFlags::POLLERR),
+        nix::poll::PollFd::new(stdin.as_fd(), PollFlags::POLLHUP | PollFlags::POLLERR),
         PollFd::new(parent_fd.as_fd(), PollFlags::POLLIN),
     ];
 
