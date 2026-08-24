@@ -158,7 +158,7 @@ fn spawn_stdin_watchdog() {
     use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, kill, sigaction};
     use nix::unistd::{ForkResult, Pid, fork};
 
-    if !nix::unistd::isatty(std::io::stdin()).unwrap_or(false) {
+    if !distros::is_tty() {
         return;
     }
 

@@ -223,11 +223,11 @@ fn podman_quadlet_install_application(
         "--replace".into(),
         "--application".into(),
         name.into(),
-        tmp.into(),
+        tmp.clone().into(),
     ];
 
     let output = crate::process::run_piped("podman", &args)?;
-    let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("podbox-install-{name}")));
+    let _ = std::fs::remove_dir_all(&tmp);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("podman quadlet install --application failed: {stderr}");

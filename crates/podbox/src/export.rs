@@ -342,7 +342,7 @@ fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> Stri
         .map(|line| {
             if let Some(original) = line.strip_prefix("Exec=") {
                 format!(
-                    "                    Exec={} --container \"{}\" exec -- {}",
+                    "Exec={} --container \"{}\" exec -- {}",
                     exe,
                     container_name.replace('"', "\\\""),
                     original
@@ -462,6 +462,28 @@ mod tests {
             err.contains("foo`whoami`") || err.contains("invalid"),
             "error should mention the name: {err}"
         );
+    }
+
+    #[test]
+    fn rewrite_desktop_file_exec_has_no_leading_whitespace() {
+        let input = "[Desktop Entry]\nName=Firefox\nExec=/usr/bin/firefox %u\nIcon=firefox\n";
+        let out = rewrite_desktop_file(input, "box", "firefox");
+        let exec = out
+            .lines()
+            .find(|l| l.starts_with("Exec="))
+            .expect("rewritten Exec= line");
+        assert!(
+            exec.starts_with("Exec="),
+            "Exec key must start at column 0, got: {exec:?}"
+        );
+        assert!(exec.contains("--container \"box\" exec -- /usr/bin/firefox %u"));
+    }
+
+    #[test]
+    fn rewrite_desktop_file_appends_container_to_name() {
+        let input = "[Desktop Entry]\nName=Firefox\nExec=/usr/bin/firefox\n";
+        let out = rewrite_desktop_file(input, "box", "firefox");
+        assert!(out.contains("Name=Firefox (box)"));
     }
 
     #[test]
