@@ -29,9 +29,9 @@ const PING_INTERVAL: Duration = Duration::from_mins(1);
 ///
 /// The accept loop polls the flag on a 200ms tick, so no SA_RESTART /
 /// EINTR coordination is needed.
-fn setup_signal_handler(shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
+fn setup_signal_handler(shutdown: &Arc<AtomicBool>) -> std::io::Result<()> {
     for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
+        signal_hook::flag::register(sig, Arc::clone(shutdown))?;
     }
     Ok(())
 }
@@ -54,7 +54,7 @@ struct SharedState {
 /// Run the host socket server for a container.
 pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
     let shutdown = Arc::new(AtomicBool::new(false));
-    setup_signal_handler(Arc::clone(&shutdown))?;
+    setup_signal_handler(&shutdown)?;
 
     let config = config.clone();
     let path = socket_path.to_path_buf();

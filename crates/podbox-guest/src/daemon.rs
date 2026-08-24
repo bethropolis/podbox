@@ -12,10 +12,10 @@ use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 /// Register SIGTERM/SIGINT handlers that set `shutdown`.
 ///
 /// The event loop polls the flag (and tolerates `EINTR`), so no
-/// SA_RESTART coordination is needed.
-fn setup_signal_handler(shutdown: Arc<AtomicBool>) -> std::io::Result<()> {
+/// `SA_RESTART` coordination is needed.
+fn setup_signal_handler(shutdown: &Arc<AtomicBool>) -> std::io::Result<()> {
     for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
+        signal_hook::flag::register(sig, Arc::clone(shutdown))?;
     }
     Ok(())
 }
@@ -96,7 +96,7 @@ fn has_event(revents: PollFlags) -> bool {
 
 pub fn run() -> Result<(), GuestError> {
     let shutdown = Arc::new(AtomicBool::new(false));
-    setup_signal_handler(Arc::clone(&shutdown))?;
+    setup_signal_handler(&shutdown)?;
 
     let host_socket_path = socket::host_socket_path()?;
     let container_name = socket::container_name()?;
@@ -133,7 +133,7 @@ pub fn run() -> Result<(), GuestError> {
 
     // 8. Handle connections and self-heal on host disconnects/restarts
     loop {
-        if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs, Arc::clone(&shutdown)) {
+        if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs, &shutdown) {
             tracing::error!("guest: connection error: {e}. Reconnecting...");
         } else {
             tracing::warn!("guest: host disconnected. Retrying connection...");
@@ -344,7 +344,7 @@ const IDLE_CONFIRM_MS: u64 = 1_000;
 fn event_loop(
     host_stream: &mut UnixStream,
     idle_timeout_secs: u64,
-    shutdown: Arc<AtomicBool>,
+    shutdown: &AtomicBool,
 ) -> Result<(), GuestError> {
     let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
     let mut tracked: Vec<TrackedProcess> = Vec::new();
