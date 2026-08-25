@@ -11,7 +11,7 @@ use podbox::error::PodboxError;
 
 mod commands;
 
-mod ui;
+use podbox::ui;
 
 /// Commands that need image label defaults applied to the config.
 /// These generate Quadlet files or build the image — the rest can skip
@@ -142,6 +142,7 @@ fn run() -> Result<()> {
     let mut cli = Cli::parse();
 
     ui::set_quiet(cli.quiet);
+    ui::set_verbose(cli.verbose);
     init_tracing(cli.verbose);
 
     // `exec` / `run` accept an optional leading container name (podman-style).

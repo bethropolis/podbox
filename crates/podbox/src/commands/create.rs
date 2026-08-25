@@ -38,14 +38,14 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
     } else if dry_run {
         println!("podman start {container_name}");
     } else {
-        crate::ui::step("Starting container...");
+        podbox::ui::step("Starting container...");
         if systemd::is_available() {
             systemd::start_unit(container_name)?;
         } else {
             let args = podbox::process::args(&["start", container_name]);
             podbox::process::spawn_interactive("podman", &args)?;
         }
-        crate::ui::ok(&format!("Container '{container_name}' is running"));
+        podbox::ui::ok(&format!("Container '{container_name}' is running"));
         println!("Run `podbox enter` to enter.");
     }
 

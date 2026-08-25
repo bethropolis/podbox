@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::io::{self, IoSlice, IoSliceMut};
+use std::io::{self, BufRead, IoSlice, IoSliceMut, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -41,6 +41,69 @@ pub fn run_piped(bin: &str, args: &[OsString]) -> anyhow::Result<Output> {
 pub fn spawn_interactive(bin: &str, args: &[OsString]) -> anyhow::Result<ExitStatus> {
     let status = Command::new(bin).args(args).status()?;
     Ok(status)
+}
+
+/// Run a command while teeing stdout+stderr into a log file.
+///
+/// Every child line is appended to `log` as produced. When `mirror` is true
+/// (verbose mode) lines are also echoed to our stdout so long operations
+/// stream live; otherwise output is captured silently and the caller shows a
+/// tail from the log on failure.
+pub fn run_with_log(
+    bin: &str,
+    args: &[OsString],
+    log: &mut std::fs::File,
+    mirror: bool,
+) -> anyhow::Result<ExitStatus> {
+    let mut child = Command::new(bin)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| anyhow::Error::new(e).context(format!("failed to execute {bin}")))?;
+
+    let mut out = child.stdout.take().expect("stdout piped");
+    let mut err = child.stderr.take().expect("stderr piped");
+    let mut log_out = log.try_clone()?;
+    let mut log_err = log.try_clone()?;
+
+    let t_out = std::thread::spawn(move || tee_stream(&mut out, &mut log_out, false, mirror));
+    let t_err = std::thread::spawn(move || tee_stream(&mut err, &mut log_err, true, mirror));
+
+    let status = child.wait()?;
+    let _ = t_out.join();
+    let _ = t_err.join();
+    let _ = log.flush();
+    Ok(status)
+}
+
+/// Copy one child pipe into the log until EOF; optionally mirror to stderr.
+fn tee_stream<R: io::Read, W: io::Write>(
+    src: &mut R,
+    dst: &mut W,
+    to_stderr: bool,
+    mirror: bool,
+) {
+    let mut reader = io::BufReader::new(src);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {
+                if dst.write_all(line.as_bytes()).is_err() {
+                    break;
+                }
+                if mirror {
+                    let _ = if to_stderr {
+                        io::stderr().write_all(line.as_bytes())
+                    } else {
+                        io::stdout().write_all(line.as_bytes())
+                    };
+                }
+            }
+        }
+    }
 }
 
 /// Run a command with a timeout, capturing stdout and stderr.

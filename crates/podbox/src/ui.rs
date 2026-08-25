@@ -10,11 +10,12 @@
 //! no global logger. Verbosity beyond progress lines goes through `tracing`.
 
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use owo_colors::{OwoColorize, Stream};
 
 static QUIET: AtomicBool = AtomicBool::new(false);
+static VERBOSE: AtomicU8 = AtomicU8::new(0);
 
 /// Enable/disable quiet mode (wired to the global `--quiet` flag).
 pub fn set_quiet(quiet: bool) {
@@ -23,6 +24,18 @@ pub fn set_quiet(quiet: bool) {
 
 pub fn is_quiet() -> bool {
     QUIET.load(Ordering::Relaxed)
+}
+
+/// Store the `-v` count (0 = info, 1 = debug, 2+ = trace).
+pub fn set_verbose(count: u8) {
+    VERBOSE.store(count, Ordering::Relaxed);
+}
+
+/// True when any `--verbose` level is active. Long-running child processes
+/// (podman build/pull) stream their output to the terminal in this mode
+/// instead of being captured to the build log.
+pub fn is_verbose() -> bool {
+    VERBOSE.load(Ordering::Relaxed) > 0
 }
 
 fn write_stderr(line: &str) {
