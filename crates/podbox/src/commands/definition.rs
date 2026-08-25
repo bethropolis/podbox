@@ -3,24 +3,34 @@ use owo_colors::{OwoColorize, Stream};
 
 use podbox::cli::OutputFormat;
 use podbox::config;
+use podbox::error::PodboxError;
 
-/// Print the path to the definition file.
+/// Print the definition file that would be used for the given container.
+///
+/// Scriptable contract: the resolved path on stdout, nothing else. Missing
+/// named configs exit non-zero (code 2). With no name and no local
+/// definition, podbox falls back to its embedded default — there is no path
+/// to print, so stdout stays empty and the command succeeds.
 pub fn run_find_definition(name: Option<&str>) -> Result<()> {
     match name {
         Some(n) => {
             let path = config::config_dir().join(format!("{n}.toml"));
             if path.exists() {
                 println!("{}", path.display());
+                Ok(())
             } else {
-                println!("(no config found for '{n}')");
+                Err(PodboxError::DefinitionNotFound { path }.into())
             }
         }
         None => match config::find_definition() {
-            Some(path) => println!("{}", path.display()),
-            None => println!("(embedded default)"),
+            Some(path) => {
+                println!("{}", path.display());
+                Ok(())
+            }
+            // Resolved via embedded default; no on-disk path to report.
+            None => Ok(()),
         },
     }
-    Ok(())
 }
 
 /// Generate shell completions.

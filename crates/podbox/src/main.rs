@@ -11,6 +11,8 @@ use podbox::error::PodboxError;
 
 mod commands;
 
+mod ui;
+
 /// Commands that need image label defaults applied to the config.
 /// These generate Quadlet files or build the image — the rest can skip
 /// the ~100ms `podman inspect` fork.
@@ -84,10 +86,16 @@ fn promote_leading_container_name(command: &mut Command, explicit_container: &mu
     }
 }
 
-fn init_tracing() {
+fn init_tracing(verbosity: u8) {
     use tracing_subscriber::prelude::*;
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        let level = match verbosity {
+            0 => "info",
+            1 => "debug",
+            _ => "trace",
+        };
+        tracing_subscriber::EnvFilter::new(level)
+    });
     if let Ok(layer) = tracing_journald::layer() {
         let _ = tracing_subscriber::registry()
             .with(env_filter)
@@ -102,10 +110,9 @@ fn init_tracing() {
 }
 
 fn main() -> ExitCode {
-    init_tracing();
     let result = run();
     if let Err(e) = result {
-        eprintln!("Error: {e:#}");
+        ui::error(&format!("{e:#}"));
         exit_code_for_error(&e)
     } else {
         ExitCode::SUCCESS
@@ -133,6 +140,9 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
 
 fn run() -> Result<()> {
     let mut cli = Cli::parse();
+
+    ui::set_quiet(cli.quiet);
+    init_tracing(cli.verbose);
 
     // `exec` / `run` accept an optional leading container name (podman-style).
     // Must run before config resolution so the promoted name wins over
@@ -443,10 +453,10 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
                 if e.downcast_ref::<PodboxError>()
                     .is_some_and(|pe| matches!(pe, PodboxError::DefinitionNotFound { .. })) =>
             {
-                eprintln!(
-                    "Warning: config file not found at '{}', using embedded default.",
+                ui::warn(&format!(
+                    "config file not found at '{}', using embedded default.",
                     path.display()
-                );
+                ));
                 Config::embedded()
             }
             Err(e) => return Err(e),
@@ -463,12 +473,18 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
         })?
     } else {
         let config_list = config::list_configs();
+        let tty = podbox::codegen::distros::is_tty();
 
-        // No configs at all — welcome the user and offer the wizard
-        if config_list.is_empty()
-            && config::find_definition().is_none()
-            && podbox::codegen::distros::is_tty()
-        {
+        // No configs at all — welcome the user and offer the wizard (TTY only).
+        if config_list.is_empty() && config::find_definition().is_none() {
+            if !tty {
+                anyhow::bail!(
+                    "No container configs found.\n\n\
+                     Hint: Run `podbox init -i` to create one interactively, or\n\
+                           `podbox create <profile>` for a one-shot setup, or\n\
+                           point at a file with `--config <PATH>`."
+                );
+            }
             eprintln!("Welcome to podbox! It looks like you don't have any containers set up yet.");
             let launch =
                 dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
@@ -482,23 +498,38 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
             }
         }
 
-        if config_list.len() > 1 && podbox::codegen::distros::is_tty() {
-            let items: Vec<String> = config_list
-                .iter()
-                .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                .collect();
-            let selection =
-                dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                    .with_prompt("Multiple containers found")
-                    .items(&items)
-                    .default(0)
-                    .interact()
-                    .map_err(|e| anyhow::anyhow!("selection failed: {e}"))?;
-            Config::load(&config_list[selection])?
-        } else if config_list.len() == 1 {
-            Config::load(&config_list[0])?
-        } else {
-            match config::find_definition() {
+        // Multiple configs without an explicit name: prompt on a TTY, fail
+        // with a hint otherwise so scripts never hang or guess.
+        match config_list.len().cmp(&1) {
+            std::cmp::Ordering::Greater => {
+                if tty {
+                    let items: Vec<String> = config_list
+                        .iter()
+                        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+                        .collect();
+                    let selection =
+                        dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                            .with_prompt("Multiple containers found")
+                            .items(&items)
+                            .default(0)
+                            .interact()
+                            .map_err(|e| anyhow::anyhow!("selection failed: {e}"))?;
+                    Config::load(&config_list[selection])?
+                } else {
+                    let names: Vec<String> = config_list
+                        .iter()
+                        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+                        .collect();
+                    anyhow::bail!(
+                        "Multiple container configs found ({}).\n\n\
+                         Hint: Pass `-C <NAME>`, set $PODBOX_CONTAINER, or pin one with\n\
+                               `podbox use <NAME>` for non-interactive use.",
+                        names.join(", ")
+                    );
+                }
+            }
+            std::cmp::Ordering::Equal => Config::load(&config_list[0])?,
+            std::cmp::Ordering::Less => match config::find_definition() {
                 Some(path) => Config::load(&path)?,
                 None => {
                     anyhow::bail!(
@@ -506,7 +537,7 @@ fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, Str
                          or specify a config with `--config <PATH>` / `-C <NAME>`."
                     );
                 }
-            }
+            },
         }
     };
 

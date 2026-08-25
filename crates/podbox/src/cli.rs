@@ -25,6 +25,14 @@ pub struct Cli {
     #[arg(long, short = 'C', global = true)]
     pub container: Option<String>,
 
+    /// Suppress progress output; errors and data are still printed.
+    #[arg(long, global = true)]
+    pub quiet: bool,
+
+    /// Increase log verbosity (repeatable: -v debug, -vv trace).
+    #[arg(long, short = 'v', action = clap::ArgAction::Count, global = true)]
+    pub verbose: u8,
+
     #[command(subcommand)]
     pub command: Command,
 }
