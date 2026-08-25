@@ -34,7 +34,7 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
 
     if no_start {
         println!("Container created but not started (--no-start).");
-        println!("Run `podbox shell {container_name}` to start and enter it.");
+        println!("Run `podbox enter {container_name}` to start and enter it.");
     } else if dry_run {
         println!("podman start {container_name}");
     } else {
@@ -46,7 +46,7 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
             podbox::process::spawn_interactive("podman", &args)?;
         }
         println!("Container '{container_name}' is running!");
-        println!("Run `podbox shell` to enter.");
+        println!("Run `podbox enter` to enter.");
     }
 
     if !dry_run {

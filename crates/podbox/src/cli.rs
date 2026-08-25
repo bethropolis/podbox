@@ -5,6 +5,13 @@ use std::path::PathBuf;
 #[command(name = "podbox")]
 #[command(version = env!("PODBOX_VERSION"))]
 #[command(about = "Podman-native container environment manager")]
+#[command(
+    after_help = "Common workflow:\n  \
+        podbox create <profile>   Create and start a prebuilt environment\n  \
+        podbox enter              Open a shell in the active container\n  \
+        podbox list               Show managed containers\n  \
+        podbox doctor             Diagnose host and container issues"
+)]
 pub struct Cli {
     /// Path to the definition TOML file.
     #[arg(long, short)]
@@ -32,6 +39,7 @@ pub enum Command {
     },
 
     /// Build the container image from the definition.
+    #[command(display_order = 31)]
     Build {
         /// Container name to build (overrides auto-detection).
         name: Option<String>,
@@ -47,12 +55,14 @@ pub enum Command {
     },
 
     /// Install Quadlet systemd files and enable the container.
+    #[command(display_order = 32)]
     Enable {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
     },
 
     /// Disable and remove Quadlet systemd files.
+    #[command(display_order = 33)]
     Disable {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -62,6 +72,7 @@ pub enum Command {
     },
 
     /// Start the container.
+    #[command(display_order = 23)]
     Start {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -74,21 +85,14 @@ pub enum Command {
     },
 
     /// Stop the container.
+    #[command(display_order = 24)]
     Stop {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
     },
 
-    /// Open an interactive shell in the container.
-    Shell {
-        /// Container name (overrides auto-detection / active context).
-        name: Option<String>,
-        /// Open config in editor before entering shell.
-        #[arg(long)]
-        edit: bool,
-    },
-
     /// Execute a command interactively in the container.
+    #[command(display_order = 21)]
     Exec {
         /// Run as root inside the container (omit -u flag).
         #[arg(long)]
@@ -99,6 +103,7 @@ pub enum Command {
     },
 
     /// Run a GUI application in the container (detached).
+    #[command(display_order = 22)]
     Run {
         /// Application to run.
         app: String,
@@ -108,6 +113,7 @@ pub enum Command {
     },
 
     /// Show container status.
+    #[command(display_order = 26)]
     Status {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -117,6 +123,7 @@ pub enum Command {
     },
 
     /// Show container logs.
+    #[command(display_order = 40)]
     Logs {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -132,12 +139,14 @@ pub enum Command {
     },
 
     /// Export a .desktop app or binary shim to the host.
+    #[command(display_order = 53)]
     Export {
         #[command(subcommand)]
         export_cmd: ExportCommand,
     },
 
     /// Show resource usage for the container (wraps podman stats).
+    #[command(display_order = 42)]
     Stats {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -150,6 +159,7 @@ pub enum Command {
     },
 
     /// Remove the container.
+    #[command(visible_alias = "rm", display_order = 60)]
     Remove {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -168,6 +178,7 @@ pub enum Command {
     },
 
     /// Inspect container configuration, generated Quadlet, or computed environment.
+    #[command(display_order = 41)]
     Inspect {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -186,24 +197,31 @@ pub enum Command {
     },
 
     /// Run the host socket server (socket-activated by systemd).
+    #[command(hide = true)]
     Serve {
         /// Container name to serve.
         name: String,
     },
 
     /// Run the Wayland firewall proxy (systemd companion service).
+    #[command(hide = true)]
     Compositor {
         /// Container name to proxy.
         name: String,
     },
 
-    /// Enter a container by name (shortcut for --container <name> shell).
+    /// Open an interactive shell in the container.
+    #[command(visible_alias = "shell", display_order = 20)]
     Enter {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Open config in editor before entering shell.
+        #[arg(long)]
+        edit: bool,
     },
 
     /// Create and start a container from a profile or image in one step.
+    #[command(display_order = 10)]
     Create {
         /// Profile name (fedora, cachy) or full image reference.
         image: String,
@@ -222,6 +240,7 @@ pub enum Command {
     },
 
     /// Open the container config in your preferred editor.
+    #[command(display_order = 30)]
     Edit {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -231,6 +250,7 @@ pub enum Command {
     },
 
     /// List all managed containers.
+    #[command(visible_alias = "ls", display_order = 25)]
     List {
         /// Output format (text or json).
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -238,6 +258,7 @@ pub enum Command {
     },
 
     /// Clone an existing container config to a new name.
+    #[command(display_order = 50)]
     Clone {
         /// Source container name.
         src: String,
@@ -249,6 +270,7 @@ pub enum Command {
     },
 
     /// Initialize a new container config.
+    #[command(display_order = 11)]
     Init {
         /// Base image reference (e.g. "fedora:44") for a non-prebuilt container.
         /// If omitted, defaults to "fedora:44".
@@ -265,6 +287,7 @@ pub enum Command {
     },
 
     /// Pull the latest image and restart the container.
+    #[command(display_order = 34)]
     Update {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -274,18 +297,21 @@ pub enum Command {
     },
 
     /// Pull a prebuilt image without building.
+    #[command(display_order = 35)]
     Pull {
         /// Distro shorthand or full image reference.
         image: Option<String>,
     },
 
     /// Manage container profiles.
+    #[command(display_order = 12)]
     Profile {
         #[command(subcommand)]
         profile_cmd: ProfileCommand,
     },
 
     /// Run diagnostic checks.
+    #[command(display_order = 43)]
     Doctor {
         /// Auto-fix common issues (e.g. corrupted Wayland socket ownership).
         #[arg(long)]
@@ -296,12 +322,14 @@ pub enum Command {
     },
 
     /// Generate shell completions.
+    #[command(display_order = 80)]
     Completions {
         /// Shell to generate completions for.
         shell: Shell,
     },
 
     /// Compare declared packages against the running container.
+    #[command(display_order = 36)]
     Diff {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
@@ -314,12 +342,14 @@ pub enum Command {
     },
 
     /// Snapshot the current container state as a tagged image.
+    #[command(display_order = 51)]
     Snapshot {
         #[command(subcommand)]
         snapshot_cmd: SnapshotCommand,
     },
 
     /// Restore a container from a snapshot.
+    #[command(display_order = 52)]
     Restore {
         /// Tag of the snapshot to restore.
         tag: String,
@@ -328,6 +358,7 @@ pub enum Command {
     },
 
     /// Set or show active context.
+    #[command(display_order = 70)]
     Use {
         /// Container name to set as active (omit to show current context).
         name: Option<String>,
@@ -337,13 +368,14 @@ pub enum Command {
     },
 
     /// Find the definition file that would be used.
+    #[command(display_order = 44)]
     FindDefinition {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
     },
 
     /// Translate a path between host and container.
-    #[command(group(
+    #[command(display_order = 81, group(
         clap::ArgGroup::new("direction")
             .args(["to_container", "to_host"])
             .required(true)

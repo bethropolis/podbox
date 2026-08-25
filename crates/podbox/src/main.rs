@@ -29,8 +29,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Disable { name, .. }
         | Command::Start { name, .. }
         | Command::Stop { name }
-        | Command::Shell { name, edit: _ }
-        | Command::Enter { name }
+        | Command::Enter { name, .. }
         | Command::Status { name, .. }
         | Command::Remove { name, .. }
         | Command::Logs { name, .. }
@@ -50,6 +49,38 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::FindDefinition { name }
         | Command::Edit { name, .. } => name.clone(),
         _ => None,
+    }
+}
+
+/// True when `<config_dir>/<name>.toml` exists, i.e. `name` is a managed
+/// container. Used to disambiguate the optional leading container name on
+/// `exec` / `run`.
+fn is_known_config(name: &str) -> bool {
+    !name.is_empty()
+        && podbox::config::config_dir()
+            .join(format!("{name}.toml"))
+            .is_file()
+}
+
+/// Promote an optional leading container name on `exec` / `run`, matching
+/// `podman exec [CONTAINER] COMMAND`. The name is only taken when it refers to
+/// a known config AND more arguments follow (`podbox exec fedora ls`), so a
+/// bare `podbox exec fedora` still runs the `fedora` binary in the resolved
+/// container. An explicit `-C` always wins.
+fn promote_leading_container_name(command: &mut Command, explicit_container: &mut Option<String>) {
+    if explicit_container.is_some() {
+        return;
+    }
+    match command {
+        Command::Exec { args, .. } if args.len() > 1 && is_known_config(&args[0]) => {
+            *explicit_container = Some(args.remove(0));
+        }
+        Command::Run { app, app_args } if !app_args.is_empty() && is_known_config(app) => {
+            let name = std::mem::take(app);
+            *app = app_args.remove(0);
+            *explicit_container = Some(name);
+        }
+        _ => {}
     }
 }
 
@@ -101,7 +132,12 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
 }
 
 fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    // `exec` / `run` accept an optional leading container name (podman-style).
+    // Must run before config resolution so the promoted name wins over
+    // PODBOX_CONTAINER / active context, but never overrides an explicit -C.
+    promote_leading_container_name(&mut cli.command, &mut cli.container);
 
     // Exit early if podman is not installed — clean error instead of a cryptic
     // spawn failure deep in the stack.
@@ -263,16 +299,12 @@ fn run() -> Result<()> {
             commands::lifecycle::run_stop(&config, &name, cli.dry_run)?;
         }
 
-        Command::Shell { name: _, edit } => {
+        Command::Enter { name: _, edit } => {
             if *edit {
                 let config_path = resolve_config_path(cli.container.as_deref())?;
                 let ed = editor::resolve()?;
                 editor::open(&ed, &config_path)?;
             }
-            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run, &xdg)?;
-        }
-
-        Command::Enter { name: _ } => {
             commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run, &xdg)?;
         }
 
