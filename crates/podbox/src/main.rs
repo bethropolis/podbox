@@ -49,6 +49,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Restore { name, .. }
         | Command::Inspect { name, .. }
         | Command::FindDefinition { name }
+        | Command::Recover { name, .. }
         | Command::Edit { name, .. } => name.clone(),
         _ => None,
     }
@@ -429,6 +430,19 @@ fn run() -> Result<()> {
 
         Command::Doctor { fix, output } => {
             commands::runtime::run_doctor(&config, &env, *fix, *output)?;
+        }
+
+        Command::Recover { name: _, yes } => {
+            commands::recover::run_recover(
+                &config,
+                &env,
+                &xdg,
+                &name,
+                commands::recover::RecoverOpts {
+                    yes: *yes,
+                    dry_run: cli.dry_run,
+                },
+            )?;
         }
 
         Command::TranslatePath {

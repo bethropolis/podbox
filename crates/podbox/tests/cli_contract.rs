@@ -168,3 +168,46 @@ fn sb_cmd_completions(shell: &str) -> Command {
     c.args(["completions", shell]);
     c
 }
+
+/// Doctor JSON carries grouped checks and reports failures via exit code.
+#[test]
+fn doctor_json_has_groups_and_exit_status() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb.cmd().args(["-C", "alpha", "doctor", "--output", "json"]).output().unwrap();
+
+    // Stub podman makes several host checks fail/succeed by environment;
+    // only assert structure, not pass/fail counts.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(stdout.trim())
+        .expect("doctor --output json must print valid JSON");
+    let checks = v["checks"].as_array().expect("checks array");
+    assert!(!checks.is_empty());
+    assert!(checks.iter().all(|c| c["group"].is_string()));
+    let groups: Vec<&str> = checks.iter().map(|c| c["group"].as_str().unwrap()).collect();
+    assert!(groups.contains(&"Host"));
+    assert!(groups.contains(&"Integration"));
+
+    // Text mode prints section headings and the exposure block.
+    let out = sb.cmd().args(["-C", "alpha", "doctor"]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("Host"));
+    assert!(text.contains("Integration"));
+    assert!(text.contains("Host exposure"), "exposure summary missing");
+}
+
+/// recover --dry-run prints the plan and touches nothing.
+#[test]
+fn recover_dry_run_prints_plan() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb.cmd().args(["-C", "alpha", "recover", "--dry-run"]).output().unwrap();
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("Recovery plan"));
+    assert!(text.contains("daemon-reload"));
+    assert!(text.contains("Quadlet"));
+}

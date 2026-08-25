@@ -382,6 +382,16 @@ pub enum Command {
         name: Option<String>,
     },
 
+    /// Guided repair for a container that won't start.
+    #[command(display_order = 45)]
+    Recover {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+        /// Run every step without prompting.
+        #[arg(long)]
+        yes: bool,
+    },
+
     /// Translate a path between host and container.
     #[command(display_order = 81, group(
         clap::ArgGroup::new("direction")

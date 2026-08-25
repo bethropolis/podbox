@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
+use owo_colors::{OwoColorize, Stream};
 use serde::Serialize;
 
 use podbox::cli::OutputFormat;
@@ -450,12 +451,96 @@ pub fn run_logs(
 
 #[derive(Serialize)]
 struct DoctorEntry {
+    group: &'static str,
     name: String,
     status: String,
     message: String,
 }
 
+/// Report section for a doctor check. Host = machine/system prerequisites,
+/// Container = this definition's lifecycle artifacts, Integration = the
+/// host↔container bridges (Wayland, D-Bus, clipboard, exports).
+fn group_for(check_name: &str) -> &'static str {
+    match check_name {
+        "podman" | "/etc/subuid" | "/etc/subgid" | "loginctl linger"
+        | "embedded guest binary" => "Host",
+        "Quadlet files" | "orphaned snapshot" => "Container",
+        _ => "Integration",
+    }
+}
+
+/// Plain-language summary of what this container can reach on the host.
+/// Printed after the checks so exposure can be audited at a glance.
+fn print_exposure_summary(config: &Config) {
+    let on = |b: bool| if b { "enabled" } else { "off" }.to_string();
+    println!("\n{}", "Host exposure".if_supports_color(Stream::Stdout, |s| s.bold()));
+    let line = |k: &str, v: String| println!("  {k:<22} {v}");
+
+    line("Home directory", format!(
+        "{} (persistent container storage)",
+        config.container.home.display()
+    ));
+    line("Network", if config.network.mode == "host" {
+        "host mode - container shares the host's network stack".to_string()
+    } else {
+        format!("{} ({})", config.network.mode,
+            if config.network.ports.is_empty() { "no published ports".to_string() }
+            else { format!("published ports: {}", config.network.ports.join(", ")) })
+    });
+    line("Wayland (GUI)", on(config.integration.wayland));
+    line("Audio (PipeWire)", on(config.integration.audio));
+    line("GPU", format!("{:?}", config.integration.gpu));
+    line("D-Bus", if config.integration.dbus {
+        format!("proxied; talk list: {}", {
+            let talk = config.dbus_effective_talk();
+            if talk.is_empty() { "none".to_string() } else { talk.join(", ") }
+        })
+    } else {
+        "off".to_string()
+    });
+    line("Clipboard", on(config.integration.clipboard));
+    line("Notifications", on(config.integration.notify));
+    line("URL opening (xdg-open)", on(config.integration.xdg_open));
+    line("SSH agent socket", on(config.integration.ssh_agent));
+    line("GPG agent socket", on(config.integration.gpg_agent));
+    line("Host exec", match (&config.integration.host_exec.enabled, &config.integration.host_exec.allowlist) {
+        (true, Some(list)) => format!("ENABLED - allowlisted commands: {}", list.keys().cloned().collect::<Vec<_>>().join(", ")),
+        (true, None) => "ENABLED - no allowlist?".to_string(),
+        (false, _) => "off".to_string(),
+    });
+    line("Extra mounts", if config.container.mounts.extra.is_empty() {
+        "none".to_string()
+    } else {
+        config.container.mounts.extra.join(", ")
+    });
+}
+
 /// Run diagnostics on the container and host environment.
+/// Ask before applying a destructive-ish `--fix` action. Only prompts on a
+/// real TTY; scripts must stay non-interactive.
+fn confirm_fix(action: &str) -> bool {
+    if !podbox::codegen::distros::is_tty() {
+        return false;
+    }
+    dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+        .with_prompt(format!("Fix: {action}"))
+        .default(false)
+        .interact()
+        .unwrap_or(false)
+}
+
+/// Enable lingering for `user` so autostart units run at boot.
+fn enable_linger(user: &str) -> Result<()> {
+    let status = std::process::Command::new("loginctl")
+        .args(["enable-linger", user])
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run loginctl: {e}"))?;
+    if !status.success() {
+        anyhow::bail!("loginctl enable-linger failed");
+    }
+    Ok(())
+}
+
 pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputFormat) -> Result<()> {
     let mut entries: Vec<DoctorEntry> = Vec::new();
     let mut passes = 0u32;
@@ -464,6 +549,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     macro_rules! check {
         ($name:expr, $status:expr, $msg:expr $(,)?) => {{
             entries.push(DoctorEntry {
+                group: group_for($name),
                 name: $name.to_string(),
                 status: $status.to_string(),
                 message: $msg.to_string(),
@@ -633,7 +719,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                     "loginctl",
                     &[
                         "show-user".into(),
-                        username.into(),
+                        username.clone().into(),
                         "--property=Linger".into(),
                     ],
                 )
@@ -641,8 +727,21 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 let out = String::from_utf8_lossy(&output.stdout);
                 if out.contains("yes") {
                     check!("loginctl linger", "pass", "enabled");
+                } else if fix {
+                    if confirm_fix(&format!("Enable linger for '{username}' (autostart is on)")) {
+                        match enable_linger(&username) {
+                            Ok(()) => check!("loginctl linger", "pass", "enabled via --fix"),
+                            Err(e) => check!("loginctl linger", "fail", format!("fix failed: {e}")),
+                        }
+                    } else {
+                        check!("loginctl linger", "warn", "not enabled (declined)");
+                    }
                 } else {
-                    check!("loginctl linger", "warn", "not enabled");
+                    check!(
+                        "loginctl linger",
+                        "warn",
+                        format!("not enabled - autostart won't survive reboot; run `loginctl enable-linger {username}` or `podbox doctor --fix`")
+                    );
                 }
             }
         }
@@ -681,11 +780,29 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                 .join(format!("{name}.toml"))
                                 .exists()
                         {
-                            check!(
-                                "stale socket",
-                                "warn",
-                                format!("{} (no config)", path.display())
-                            );
+                            if fix
+                                && confirm_fix(&format!(
+                                    "Remove stale socket {}",
+                                    path.display()
+                                ))
+                            {
+                                match std::fs::remove_file(&path) {
+                                    Ok(()) => {
+                                        check!("stale socket", "pass", "removed via --fix")
+                                    }
+                                    Err(e) => check!(
+                                        "stale socket",
+                                        "fail",
+                                        format!("could not remove {}: {e}", path.display())
+                                    ),
+                                }
+                            } else {
+                                check!(
+                                    "stale socket",
+                                    "warn",
+                                    format!("{} (no config)", path.display())
+                                );
+                            }
                         }
                     }
                 }
@@ -741,14 +858,25 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                     .join(format!("{name}.toml"))
                                     .exists()
                                 {
-                                    check!(
-                                        "dead export",
-                                        "warn",
-                                        format!(
-                                            "{} (container '{name}' missing)",
-                                            entry.path().display()
-                                        )
-                                    );
+                                    if fix && confirm_fix(&format!(
+                                        "Remove dead export {}",
+                                        entry.path().display()
+                                    )) {
+                                        match std::fs::remove_file(entry.path()) {
+                                            Ok(()) => check!("dead export", "pass", "removed via --fix"),
+                                            Err(e) => check!("dead export", "fail",
+                                                format!("could not remove {}: {e}", entry.path().display())),
+                                        }
+                                    } else {
+                                        check!(
+                                            "dead export",
+                                            "warn",
+                                            format!(
+                                                "{} (container '{name}' missing)",
+                                                entry.path().display()
+                                            )
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -775,11 +903,22 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                 .join(format!("{name}.toml"))
                                 .exists()
                             {
-                                check!(
-                                    "dead export",
-                                    "warn",
-                                    format!("{} (container '{name}' missing)", path.display())
-                                );
+                                if fix && confirm_fix(&format!(
+                                    "Remove dead shim {}",
+                                    path.display()
+                                )) {
+                                    match std::fs::remove_file(&path) {
+                                        Ok(()) => check!("dead export", "pass", "removed via --fix"),
+                                        Err(e) => check!("dead export", "fail",
+                                            format!("could not remove {}: {e}", path.display())),
+                                    }
+                                } else {
+                                    check!(
+                                        "dead export",
+                                        "warn",
+                                        format!("{} (container '{name}' missing)", path.display())
+                                    );
+                                }
                             }
                         }
                     }
@@ -801,16 +940,28 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         OutputFormat::Text => {
-            for entry in &entries {
-                let tag = match entry.status.as_str() {
-                    "pass" => "PASS",
-                    "warn" => "WARN",
-                    "fail" => "FAIL",
-                    _ => &entry.status,
-                };
-                println!("[{tag}] {}: {}", entry.name, entry.message);
+            // Grouped sections in stable order.
+            for group in ["Host", "Container", "Integration"] {
+                let section: Vec<_> = entries.iter().filter(|e| e.group == group).collect();
+                if section.is_empty() {
+                    continue;
+                }
+                println!(
+                    "{}",
+                    group.if_supports_color(Stream::Stdout, |s| s.bold())
+                );
+                for entry in &section {
+                    let tag = match entry.status.as_str() {
+                        "pass" => "PASS".if_supports_color(Stream::Stdout, |s| s.green()).to_string(),
+                        "warn" => "WARN".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string(),
+                        "fail" => "FAIL".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+                        _ => entry.status.clone(),
+                    };
+                    println!("  [{tag}] {}: {}", entry.name, entry.message);
+                }
             }
             println!("\n{passes} / {} checks passed", entries.len());
+            print_exposure_summary(config);
         }
     }
 

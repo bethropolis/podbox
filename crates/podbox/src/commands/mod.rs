@@ -12,6 +12,7 @@ pub mod export;
 pub mod inspect;
 pub mod lifecycle;
 pub mod pull;
+pub mod recover;
 pub mod runtime;
 pub mod serve;
 pub mod stats;

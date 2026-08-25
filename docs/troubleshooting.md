@@ -6,6 +6,27 @@ description: Common podbox issues — container startup, D-Bus proxy, Wayland, i
 
 Running `podbox doctor` first is recommended — it checks the most common issues automatically and explains what to fix.
 
+### Quick recovery: `podbox recover`
+
+If a container won't start, run:
+
+```bash
+podbox recover [NAME]        # guided, idempotent steps; --yes skips prompts
+```
+
+It walks four safe steps — systemd daemon-reload + reset-failed, Quadlet
+reinstall, image rebuild (only when missing), then stop/start — confirming
+each on a TTY. It **never** deletes your container home or config; only
+`podbox remove --all` does that.
+
+`podbox doctor` output is grouped into **Host / Container / Integration** and
+ends with a plain-language **Host exposure** summary (network mode, D-Bus talk
+list, clipboard, agents, host-exec allowlist, extra mounts) so you can audit
+what a container can reach. `--fix` offers to repair Wayland socket ownership,
+enable linger when autostart is on, remove stale sockets, and delete dead
+exported launchers/shims — each confirmed interactively. `doctor` exits
+non-zero when any check fails, so it can gate scripts.
+
 ---
 
 ### Container won't start
