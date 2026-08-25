@@ -259,12 +259,7 @@ fn handle_connection(
                     Ok(None) => return Ok(()),
                     Err(_) => return Ok(()),
                 };
-                // SAFETY: `raw_fd` arrived via SCM_RIGHTS over a private
-                // Unix socket from our own CLI. The kernel duplicated the
-                // descriptor into this process on delivery, transferring
-                // its single reference — someone must adopt it or leak it.
-                #[allow(unsafe_code)]
-                let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+                let fd = process::adopt_scm_fd(raw_fd);
                 state.session_count.fetch_add(1, Ordering::SeqCst);
                 let s = Arc::clone(state);
                 std::thread::spawn(move || monitor_pidfd(fd, s));

@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 use std::io::{self, IoSlice, IoSliceMut};
-use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Output};
@@ -121,6 +121,23 @@ pub fn send_fd(stream: &UnixStream, fd: RawFd) -> io::Result<()> {
             Err(nix::errno::Errno::EINTR) => {}
             Err(e) => return Err(io::Error::from(e)),
         }
+    }
+}
+
+/// Adopt a raw descriptor received via `SCM_RIGHTS` into an owned handle.
+///
+/// The kernel duplicates ancillary-data descriptors into the receiving
+/// process on delivery, transferring their single reference — whoever
+/// calls this must adopt them (here) or close them (leak). This is the
+/// single audit point for that ownership transfer in this crate.
+pub fn adopt_scm_fd(raw: RawFd) -> OwnedFd {
+    // SAFETY: `raw` arrived via SCM_RIGHTS over a Unix socket; the kernel
+    // duplicated it into this process on delivery and we now hold exactly
+    // one reference to a valid open descriptor. No safe wrapper exists for
+    // adopting externally-sourced fds.
+    #[allow(unsafe_code)]
+    unsafe {
+        OwnedFd::from_raw_fd(raw)
     }
 }
 

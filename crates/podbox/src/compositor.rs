@@ -1,6 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 use std::io::{IoSlice, IoSliceMut};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -224,13 +224,7 @@ fn bridge_loop(
                 for cmsg in cmsgs {
                     if let ControlMessageOwned::ScmRights(fds) = cmsg {
                         for fd in fds {
-                            // SAFETY: fds received via SCM_RIGHTS are duplicated
-                            // into this process by the kernel on delivery,
-                            // transferring their reference — someone must
-                            // adopt them or leak them. No safe wrapper exists.
-                            #[allow(unsafe_code)]
-                            let owned = unsafe { OwnedFd::from_raw_fd(fd) };
-                            read_fds.push(owned);
+                            read_fds.push(crate::process::adopt_scm_fd(fd));
                         }
                     }
                 }
