@@ -41,7 +41,7 @@ fn extract_positional_name(cmd: &Command) -> Option<String> {
             snapshot_cmd: podbox::cli::SnapshotCommand::Create { name, .. },
         }
         | Command::Snapshot {
-            snapshot_cmd: podbox::cli::SnapshotCommand::List { name },
+            snapshot_cmd: podbox::cli::SnapshotCommand::List { name, .. },
         }
         | Command::Snapshot {
             snapshot_cmd: podbox::cli::SnapshotCommand::Prune { name, .. },
@@ -158,6 +158,7 @@ fn run() -> Result<()> {
             | Command::Profile { .. }
             | Command::Serve { .. }
             | Command::Compositor { .. }
+            | Command::CompleteNames
             | Command::InternalStdinWatchdog { .. }
     ) && which::which("podman").is_err()
     {
@@ -171,6 +172,10 @@ fn run() -> Result<()> {
 
         Command::Completions { shell } => {
             return commands::definition::run_completions((*shell).into());
+        }
+
+        Command::CompleteNames => {
+            return commands::definition::run_complete_names();
         }
 
         Command::Init {
@@ -269,7 +274,9 @@ fn run() -> Result<()> {
     let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
 
     match &cli.command {
-        Command::InternalStdinWatchdog { .. } => unreachable!("handled before config resolution"),
+        Command::InternalStdinWatchdog { .. } | Command::CompleteNames => {
+            unreachable!("handled before config resolution")
+        }
 
         Command::Build {
             name: _,
@@ -620,7 +627,7 @@ fn run_snapshot_command(
 ) -> Result<()> {
     let name = match cmd {
         podbox::cli::SnapshotCommand::Create { name: n, .. }
-        | podbox::cli::SnapshotCommand::List { name: n }
+        | podbox::cli::SnapshotCommand::List { name: n, .. }
         | podbox::cli::SnapshotCommand::Prune { name: n, .. } => {
             n.as_deref().unwrap_or(resolved_name)
         }
@@ -629,8 +636,8 @@ fn run_snapshot_command(
         podbox::cli::SnapshotCommand::Create { tag, .. } => {
             commands::lifecycle::run_snapshot(config, name, tag.as_deref())?;
         }
-        podbox::cli::SnapshotCommand::List { .. } => {
-            commands::lifecycle::run_snapshot_list(name)?;
+        podbox::cli::SnapshotCommand::List { output, .. } => {
+            commands::lifecycle::run_snapshot_list(name, *output)?;
         }
         podbox::cli::SnapshotCommand::Prune { keep, .. } => {
             commands::lifecycle::run_snapshot_prune(name, *keep, dry_run)?;

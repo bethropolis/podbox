@@ -128,3 +128,43 @@ fn non_tty_explicit_container_flag_resolves() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// Hidden helper lists config stems — one per line, never fails.
+#[test]
+fn complete_names_lists_configs_and_never_fails() {
+    let sb = Sandbox::new(&["alpha", "beta"]);
+    let out = sb.cmd().arg("__complete-names").output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("alpha"));
+    assert!(stdout.contains("beta"));
+
+    // Empty config dir: empty output, still success.
+    let empty = Sandbox::new(&[]);
+    let out = empty.cmd().arg("__complete-names").output().unwrap();
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty());
+}
+
+/// Generated scripts embed the dynamic-name glue.
+#[test]
+fn completions_include_dynamic_name_glue() {
+    for (shell, marker) in [
+        ("bash", "__podbox_wrap"),
+        ("fish", "__podbox_names"),
+        ("zsh", "__complete-names"),
+    ] {
+        let out = sb_cmd_completions(shell).output().unwrap();
+        assert!(out.status.success(), "{shell}");
+        assert!(
+            String::from_utf8_lossy(&out.stdout).contains(marker),
+            "{shell} script should reference {marker}"
+        );
+    }
+}
+
+fn sb_cmd_completions(shell: &str) -> Command {
+    let mut c = Sandbox::new(&[]).cmd();
+    c.args(["completions", shell]);
+    c
+}

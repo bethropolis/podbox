@@ -75,8 +75,19 @@ fn list_snapshots(name: &str) -> Result<Vec<SnapshotMeta>> {
 }
 
 /// List all snapshots for a container.
-pub fn run_snapshot_list(name: &str) -> Result<()> {
+pub fn run_snapshot_list(name: &str, output: podbox::cli::OutputFormat) -> Result<()> {
     let snapshots = list_snapshots(name)?;
+    if let podbox::cli::OutputFormat::Json = output {
+        let entries: Vec<serde_json::Value> = snapshots
+            .iter()
+            .map(|s| serde_json::json!({ "tag": s.tag, "created": s.created, "image": s.image }))
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "snapshots": entries }))?
+        );
+        return Ok(());
+    }
     if snapshots.is_empty() {
         println!("No snapshots for '{name}'.");
         return Ok(());

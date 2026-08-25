@@ -399,6 +399,10 @@ pub enum Command {
         /// Path to translate.
         path: String,
     },
+
+    /// Print known container names, one per line (shell completion helper).
+    #[command(hide = true, name = "__complete-names")]
+    CompleteNames,
 }
 
 #[derive(Subcommand)]
@@ -450,6 +454,9 @@ pub enum SnapshotCommand {
     List {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
     /// Prune old snapshots, keeping the newest N.
     Prune {

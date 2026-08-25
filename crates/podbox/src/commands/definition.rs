@@ -38,7 +38,75 @@ pub fn run_completions(shell: clap_complete::shells::Shell) -> Result<()> {
     let mut cmd = <podbox::cli::Cli as clap::CommandFactory>::command();
     let name = cmd.get_name().to_string();
     clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+    print_name_completion_glue(shell);
     Ok(())
+}
+
+/// Print known container names (config stems), one per line.
+///
+/// Feeds dynamic container-name completion from the static scripts. Never
+/// fails and prints nothing when no configs exist — completion must not
+/// error just because the config dir is missing.
+pub fn run_complete_names() -> Result<()> {
+    for p in config::list_configs() {
+        if let Some(stem) = p.file_stem() {
+            println!("{}", stem.to_string_lossy());
+        }
+    }
+    Ok(())
+}
+
+/// Shell snippets appended after the static script so NAME / `-C` arguments
+/// complete dynamically via `podbox __complete-names`.
+fn print_name_completion_glue(shell: clap_complete::shells::Shell) {
+    let glue = match shell {
+        clap_complete::shells::Shell::Bash => Some(r#"
+# --- podbox dynamic container-name completion ---
+__podbox_names() { command podbox __complete-names 2>/dev/null; }
+__podbox_add_names() {
+    local cur_="${COMP_WORDS[COMP_CWORD]}" n_
+    for n_ in $(__podbox_names); do
+        case "$n_" in "$cur_"*) COMPREPLY+=("$n_");; esac
+    done
+}
+__podbox_wrap() {
+    COMPREPLY=()
+    _podbox "$@"
+    local prev_="${COMP_WORDS[COMP_CWORD-1]}"
+    if [ "${#COMPREPLY[@]}" -eq 0 ] && [ "$COMP_CWORD" -ge 2 ]; then
+        case "$prev_" in
+            -C|--container) __podbox_add_names; return ;;
+        esac
+        case "${COMP_WORDS[1]}" in
+            build|enable|disable|start|stop|enter|exec|run|status|logs|inspect|stats|diff|remove|rm|edit|update|find-definition|clone|snapshot|restore)
+                [ "$COMP_CWORD" -eq 2 ] && __podbox_add_names ;;
+        esac
+    fi
+}
+complete -o default -F __podbox_wrap podbox 2>/dev/null || true
+"#),
+        // zsh: no automatic glue yet — wrapping the generated `_podbox`
+        // reliably requires either a full custom widget or upstream support.
+        // The helper below still works for manual hooks; see docs/cli.md.
+        clap_complete::shells::Shell::Zsh => Some(r#"
+# --- podbox container-name helper ---
+# Dynamic positional/flag completion is provided for bash and fish.
+# For zsh you can wire names manually, e.g.:
+#   __podbox_names() { command podbox __complete-names 2>/dev/null; }
+"#),
+        clap_complete::shells::Shell::Fish => Some(r#"
+# --- podbox dynamic container-name completion ---
+function __podbox_names
+    command podbox __complete-names 2>/dev/null
+end
+complete -c podbox -l container -o C -xa '(__podbox_names)'
+complete -c podbox -n '__fish_seen_subcommand_from enter shell exec run start stop status logs inspect stats diff remove rm edit build enable disable update find-definition clone snapshot restore' -xa '(__podbox_names)'
+"#),
+        _ => None,
+    };
+    if let Some(g) = glue {
+        println!("{g}");
+    }
 }
 
 /// List all podbox-managed containers with status, autostart, and active context.

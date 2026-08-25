@@ -355,18 +355,21 @@ fn quadlet_installed(name: &str) -> bool {
 pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) -> Result<()> {
     if matches!(output, podbox::cli::OutputFormat::Json) {
         let state = query_state(name)?;
-        let status = match state {
-            ContainerState::Running => "running",
-            ContainerState::Stopped if podbox::systemd::is_unit_failed(name) => "failed",
-            ContainerState::Stopped => "stopped",
-            ContainerState::Missing if quadlet_installed(name) => "not built",
-            ContainerState::Missing => "not installed",
+        // Canonical vocabulary shared with `podbox list --output json`:
+        // running | stopped | failed | unbuilt. The Quadlet distinction is
+        // preserved as a separate boolean rather than a second status word.
+        let (status, installed) = match state {
+            ContainerState::Running => ("running", true),
+            ContainerState::Stopped if podbox::systemd::is_unit_failed(name) => ("failed", true),
+            ContainerState::Stopped => ("stopped", true),
+            ContainerState::Missing => ("unbuilt", quadlet_installed(name)),
         };
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "name": name,
                 "status": status,
+                "installed": installed,
             }))?
         );
         return Ok(());
@@ -379,14 +382,11 @@ pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) 
     let state = query_state(name)?;
     match state {
         ContainerState::Running => println!("{name} [running]"),
-        ContainerState::Stopped => println!("{name} [stopped]"),
-        ContainerState::Missing => {
-            if quadlet_installed(name) {
-                println!("{name} [not built]");
-            } else {
-                println!("{name} [not installed]");
-            }
+        ContainerState::Stopped if podbox::systemd::is_unit_failed(name) => {
+            println!("{name} [failed]");
         }
+        ContainerState::Stopped => println!("{name} [stopped]"),
+        ContainerState::Missing => println!("{name} [unbuilt]"),
     }
     Ok(())
 }
