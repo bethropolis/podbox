@@ -9,6 +9,7 @@ pub mod create;
 pub mod definition;
 pub mod diff;
 pub mod export;
+pub mod history;
 pub mod inspect;
 pub mod lifecycle;
 pub mod pull;

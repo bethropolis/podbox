@@ -51,6 +51,11 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
 
     if !dry_run {
         let _ = config::write_active_context(container_name);
+        let _ = podbox::history::record(
+            container_name,
+            "create",
+            &format!("image {}", cfg.image.name),
+        );
     }
 
     Ok(())

@@ -34,12 +34,52 @@ pub fn run_find_definition(name: Option<&str>) -> Result<()> {
 }
 
 /// Generate shell completions.
-pub fn run_completions(shell: clap_complete::shells::Shell) -> Result<()> {
+pub fn run_completions(shell: clap_complete::shells::Shell, abbrs: bool) -> Result<()> {
     let mut cmd = <podbox::cli::Cli as clap::CommandFactory>::command();
     let name = cmd.get_name().to_string();
     clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
     print_name_completion_glue(shell);
+    print_fish_abbrevs(shell, abbrs);
     Ok(())
+}
+
+/// Fish `abbr` definitions emitted by `podbox completions fish --abbrs`.
+///
+/// Each entry is a short token expanding to a full command line as it is
+/// typed. Tokens follow the `pb` + verb-letter convention (PLAN E4) and are
+/// prefix-unique, so no two abbreviations collide. Because fish expands whole
+/// tokens, a single letter can stand for otherwise-ambiguous verbs:
+/// `pbs` (start) vs `pbv` (status) vs `pbt` (stop).
+const FISH_ABBREVS: &[(&str, &str)] = &[
+    ("pb", "podbox"),
+    ("pbb", "podbox build"),
+    ("pbc", "podbox create"),
+    ("pbd", "podbox doctor"),
+    ("pbe", "podbox enter"),
+    ("pbl", "podbox list"),
+    ("pbr", "podbox recover"),
+    ("pbs", "podbox start"),
+    ("pbt", "podbox stop"),
+    ("pbu", "podbox update"),
+    ("pbv", "podbox status"),
+    ("pbx", "podbox exec --"),
+];
+
+/// Append opt-in fish abbreviations after the static + dynamic glue. Only
+/// fish honors `--abbrs`; other shells (or fish without the flag) print
+/// nothing extra, so a piped default completion stream stays unchanged.
+fn print_fish_abbrevs(shell: clap_complete::shells::Shell, abbrs: bool) {
+    if !abbrs {
+        return;
+    }
+    if !matches!(shell, clap_complete::shells::Shell::Fish) {
+        return;
+    }
+    println!("# --- podbox daily-driver abbreviations (opt-in) ---");
+    println!("# Source this output manually, e.g. `source (podbox completions fish --abbrs | psub)`.");
+    for (token, expanded) in FISH_ABBREVS {
+        println!("abbr {token} '{expanded}'");
+    }
 }
 
 /// Print known container names (config stems), one per line.

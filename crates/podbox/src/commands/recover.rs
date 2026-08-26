@@ -88,5 +88,6 @@ pub fn run_recover(
     }
 
     ui::ok("Recovery complete. If problems persist: podbox doctor / podbox logs");
+    let _ = podbox::history::record(name, "recover", "");
     Ok(())
 }

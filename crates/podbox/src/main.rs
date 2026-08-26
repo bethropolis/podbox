@@ -160,6 +160,7 @@ fn run() -> Result<()> {
             | Command::Serve { .. }
             | Command::Compositor { .. }
             | Command::CompleteNames
+            | Command::History { .. }
             | Command::InternalStdinWatchdog { .. }
     ) && which::which("podman").is_err()
     {
@@ -171,12 +172,16 @@ fn run() -> Result<()> {
             return commands::runtime::run_stdin_watchdog(*parent_pid);
         }
 
-        Command::Completions { shell } => {
-            return commands::definition::run_completions((*shell).into());
+        Command::Completions { shell, abbrs } => {
+            return commands::definition::run_completions((*shell).into(), *abbrs);
         }
 
         Command::CompleteNames => {
             return commands::definition::run_complete_names();
+        }
+
+        Command::History { name, limit, output } => {
+            return commands::history::run_history(name.clone(), *limit, *output);
         }
 
         Command::Init {
@@ -454,6 +459,7 @@ fn run() -> Result<()> {
         }
 
         Command::FindDefinition { .. }
+        | Command::History { .. }
         | Command::Completions { .. }
         | Command::Profile { .. }
         | Command::Init { .. }

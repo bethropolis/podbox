@@ -18,6 +18,7 @@ pub mod env;
 pub mod error;
 pub mod export;
 pub mod guest;
+pub mod history;
 pub mod labels;
 pub mod lock;
 pub mod podman;

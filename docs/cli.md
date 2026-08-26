@@ -9,7 +9,7 @@ Groups, name resolution, exit codes, JSON output, and shell completion.
 | Get started | `create`, `init`, `profile` |
 | Day to day | `enter` (alias `shell`), `exec`, `run`, `start`, `stop`, `list` (alias `ls`), `status` |
 | Change | `edit`, `build`, `enable`, `disable`, `update`, `pull`, `diff` |
-| Inspect | `logs`, `inspect`, `stats`, `doctor`, `find-definition` |
+| Inspect | `logs`, `inspect`, `stats`, `doctor`, `history`, `find-definition` |
 | Copy / backup | `clone`, `snapshot`, `restore`, `export` |
 | Remove | `remove` (alias `rm`) |
 | Context | `use` |
@@ -52,11 +52,26 @@ Read commands accept `--output json` and print nothing else on stdout:
 - `list`: `{"containers": [{"name","status","autostart","active"}]}`
 - `status`: `{"name","status","installed"}`
 - `snapshot list`: `{"snapshots": [{"tag","created","image"}]}`
+- `history`: `{"history": [{"timestamp","name","action","detail"}]}`
 
 `status` vocabulary is shared with `list`:
 `running | stopped | failed | unbuilt`. The extra boolean `installed` reports
 whether Quadlet files exist for an unbuilt container (formerly expressed as
 "not built" vs "not installed").
+
+## History
+
+Lifecycle commands append to `~/.local/state/podbox/history.log` on success;
+recording is best-effort and never fails the command.
+
+```bash
+podbox history              # newest first, all containers (default 25)
+podbox history myenv        # one container
+podbox history --limit 0    # no limit; --output json for scripting
+```
+
+Actions recorded: `create`, `build`, `enable`, `disable`, `start`, `stop`,
+`update`, `remove`, `recover`.
 
 ## Shell completion
 
@@ -70,3 +85,28 @@ The generated scripts include dynamic container-name completion (fed by
 `podbox __complete-names`, which prints config stems) for **bash** and
 **fish**: names complete after name-taking subcommands and as `-C/--container`
 values. Missing configs yield no candidates — completion never errors.
+
+### Fish daily-driver abbreviations
+
+`podbox completions fish --abbrs` appends opt-in `abbr` shorthand to the
+completion stream. This is **only** fish and **only** when the flag is given,
+so a piped default script is unchanged:
+
+```fish
+podbox completions fish --abbrs | source
+```
+
+`abbr` definitions expand a short token on typing (they are loaded in your
+session, not the completion script). Supported tokens expand `pb*` to the
+full command:
+
+| Token | Expands to | | Token | Expands to |
+|-------|------------|--|-------|------------|
+| `pb`  | `podbox`   | | `pbs` | `podbox start` |
+| `pbb` | `podbox build` | | `pbt` | `podbox stop` |
+| `pbc` | `podbox create` | | `pbu` | `podbox update` |
+| `pbd` | `podbox doctor` | | `pbv` | `podbox status` |
+| `pbe` | `podbox enter` | | `pbx` | `podbox exec --` |
+| `pbl` | `podbox list` | | `pbr` | `podbox recover` |
+
+`--abbrs` is ignored for `bash` and `zsh`.

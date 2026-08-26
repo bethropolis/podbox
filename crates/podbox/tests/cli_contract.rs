@@ -62,6 +62,7 @@ impl Sandbox {
         let mut c = Command::cargo_bin("podbox").unwrap();
         c.env("XDG_CONFIG_HOME", &self.dir)
             .env("XDG_DATA_HOME", self.dir.join("data"))
+            .env("XDG_STATE_HOME", self.dir.join("state"))
             .env_remove("PODBOX_CONTAINER")
             .env("PATH", self.path_env());
         c
@@ -163,10 +164,115 @@ fn completions_include_dynamic_name_glue() {
     }
 }
 
+/// Fish `--abbrs` emits daily-driver `abbr` shorthand; other shells (or fish
+/// without the flag) print the default stream unchanged.
+#[test]
+fn fish_abbrs_are_opt_in_and_fish_only() {
+    let out = sb_cmd_completions("fish").args(["--abbrs"]).output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    // Every curated abbreviation is present as an `abbr` line.
+    for token in
+        ["pb", "pbb", "pbc", "pbd", "pbe", "pbl", "pbr", "pbs", "pbt", "pbu", "pbv", "pbx"]
+    {
+        assert!(
+            stdout.lines().any(|l| l.starts_with(&format!("abbr {token} "))),
+            "missing `abbr {token}` definition"
+        );
+    }
+
+    // Default fish output carries no `abbr` lines — scripts that pipe the
+    // default stream must see the same script as before this feature.
+    let default = sb_cmd_completions("fish").output().unwrap();
+    let default_stdout = String::from_utf8_lossy(&default.stdout);
+    assert!(
+        !default_stdout.contains("abbr "),
+        "default fish output must not contain abbreviations"
+    );
+
+    // `--abbrs` is ignored for non-fish shells.
+    let bash = sb_cmd_completions("bash").args(["--abbrs"]).output().unwrap();
+    assert!(bash.status.success());
+    let bash_stdout = String::from_utf8_lossy(&bash.stdout);
+    assert!(
+        !bash_stdout.contains("abbr "),
+        "abbreviations must be fish-only"
+    );
+}
+
 fn sb_cmd_completions(shell: &str) -> Command {
     let mut c = Sandbox::new(&[]).cmd();
     c.args(["completions", shell]);
     c
+}
+
+/// Seed a history log into the sandbox state dir and return the sandbox.
+fn sb_with_history_log() -> Sandbox {
+    let sb = Sandbox::new(&[]);
+    let dir = sb.dir.join("state").join("podbox");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("history.log"),
+        "2026-08-26T01:00:00Z\talpha\tbuild\t\n\
+         2026-08-26T02:00:00Z\tbeta\tstart\t\n\
+         2026-08-26T03:00:00Z\talpha\tstop\t\n",
+    )
+    .unwrap();
+    sb
+}
+
+/// `history` prints newest-first entries from the state log.
+#[test]
+fn history_prints_entries_newest_first() {
+    let sb = sb_with_history_log();
+    let out = sb.cmd().arg("history").output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stop = stdout.find("stop").expect("stop entry present");
+    let build = stdout.find("build").expect("build entry present");
+    assert!(stop < build, "newest entry must print first");
+}
+
+/// NAME filter and `--limit` narrow the output.
+#[test]
+fn history_filters_by_name_and_limit() {
+    let sb = sb_with_history_log();
+
+    let out = sb.cmd().args(["history", "alpha"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("alpha"));
+    assert!(!stdout.contains("beta"), "other containers filtered out");
+
+    let out = sb.cmd().args(["history", "--limit", "1"]).output().unwrap();
+    let rows = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .skip(2) // header + rule
+        .count();
+    assert_eq!(rows, 1, "limit caps printed entries");
+}
+
+/// JSON output is a machine-readable object on stdout only.
+#[test]
+fn history_json_output_parses() {
+    let sb = sb_with_history_log();
+    let out = sb.cmd().args(["history", "--output", "json"]).output().unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("valid json");
+    let events = v["history"].as_array().expect("history array");
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0]["action"], "stop");
+    assert_eq!(events[0]["name"], "alpha");
+}
+
+/// No log at all: empty success — reading history must never fail.
+#[test]
+fn history_without_log_is_empty_success() {
+    let sb = Sandbox::new(&[]);
+    let out = sb.cmd().arg("history").output().unwrap();
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty());
 }
 
 /// Doctor JSON carries grouped checks and reports failures via exit code.

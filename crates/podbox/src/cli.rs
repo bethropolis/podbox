@@ -334,6 +334,9 @@ pub enum Command {
     Completions {
         /// Shell to generate completions for.
         shell: Shell,
+        /// Also print daily-driver `abbr` shorthand (fish only).
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        abbrs: bool,
     },
 
     /// Compare declared packages against the running container.
@@ -390,6 +393,19 @@ pub enum Command {
         /// Run every step without prompting.
         #[arg(long)]
         yes: bool,
+    },
+
+    /// Show the recent lifecycle action history.
+    #[command(display_order = 46)]
+    History {
+        /// Container name filter (leave empty for all containers).
+        name: Option<String>,
+        /// Maximum number of entries to show (0 = no limit).
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Translate a path between host and container.

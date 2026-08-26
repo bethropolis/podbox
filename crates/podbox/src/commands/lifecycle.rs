@@ -233,8 +233,11 @@ pub fn run_build(
     no_diff: bool,
 ) -> Result<()> {
     podbox::build::run(config, env, xdg, dry_run, rebuild)?;
-    if !dry_run && config.lifecycle.quadlet {
-        println!("\nRun `podbox enable` to install Quadlet files.");
+    if !dry_run {
+        let _ = podbox::history::record(&config.container.name, "build", "");
+        if config.lifecycle.quadlet {
+            println!("\nRun `podbox enable` to install Quadlet files.");
+        }
     }
     // Post-build drift check (best-effort).
     if !dry_run && !no_diff {
@@ -265,6 +268,7 @@ pub fn run_enable(
 ) -> Result<()> {
     podbox::quadlet_install::install(config, env, xdg, dry_run)?;
     if !dry_run {
+        let _ = podbox::history::record(&config.container.name, "enable", "");
         println!("\nRun `podbox shell` to start and enter the container.");
     }
     Ok(())
@@ -272,7 +276,9 @@ pub fn run_enable(
 
 /// Remove Quadlet files (disable systemd container lifecycle).
 pub fn run_disable(name: &str) -> Result<()> {
-    podbox::quadlet_install::uninstall(name)
+    podbox::quadlet_install::uninstall(name)?;
+    let _ = podbox::history::record(name, "disable", "");
+    Ok(())
 }
 
 /// Start the container, auto-healing missing images and Quadlet files.
@@ -324,6 +330,7 @@ pub fn run_start(
     println!("Starting container...");
     crate::commands::ensure_running(name, false, timeout_secs)?;
     println!("Container '{name}' is running!");
+    let _ = podbox::history::record(name, "start", "");
     Ok(())
 }
 
@@ -342,11 +349,13 @@ pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
         return Ok(());
     }
     if config.lifecycle.quadlet && systemd::is_available() {
-        systemd::stop_unit(name)
+        systemd::stop_unit(name)?;
     } else {
         let args = podbox::process::args(&["stop", name]);
-        podbox::process::spawn_interactive("podman", &args).map(|_| ())
+        podbox::process::spawn_interactive("podman", &args)?;
     }
+    let _ = podbox::history::record(name, "stop", "");
+    Ok(())
 }
 
 /// Update a container: pull latest image, rebuild, and restart.
@@ -390,6 +399,7 @@ pub fn run_update(
     }
 
     println!("Update complete.");
+    let _ = podbox::history::record(name, "update", "");
     Ok(())
 }
 
@@ -465,6 +475,7 @@ pub fn run_remove(
     }
 
     println!("Container '{name}' removed.");
+    let _ = podbox::history::record(name, "remove", "container removed");
 
     // 4. Optionally remove the home directory
     if all {
