@@ -153,7 +153,7 @@ fn completions_include_dynamic_name_glue() {
     for (shell, marker) in [
         ("bash", "__podbox_wrap"),
         ("fish", "__podbox_names"),
-        ("zsh", "__complete-names"),
+        ("zsh", "__podbox_wrap"),
     ] {
         let out = sb_cmd_completions(shell).output().unwrap();
         assert!(out.status.success(), "{shell}");

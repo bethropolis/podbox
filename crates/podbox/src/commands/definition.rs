@@ -125,14 +125,41 @@ __podbox_wrap() {
 }
 complete -o default -F __podbox_wrap podbox 2>/dev/null || true
 "#),
-        // zsh: no automatic glue yet — wrapping the generated `_podbox`
-        // reliably requires either a full custom widget or upstream support.
-        // The helper below still works for manual hooks; see docs/cli.md.
+        // zsh: re-register a wrapper after the generated body. The tail of the
+        // file executes when zsh sources it, so `compdef` here wins over the
+        // `#compdef podbox` header. We decide by context first (deterministic
+        // across zsh versions) and delegate everything else to `_podbox`.
         clap_complete::shells::Shell::Zsh => Some(r#"
-# --- podbox container-name helper ---
-# Dynamic positional/flag completion is provided for bash and fish.
-# For zsh you can wire names manually, e.g.:
-#   __podbox_names() { command podbox __complete-names 2>/dev/null; }
+# --- podbox dynamic container-name completion ---
+__podbox_names() { command podbox __complete-names 2>/dev/null }
+
+# Verbs whose first positional argument is a container name.
+__podbox_name_verbs="build enable disable start stop enter shell status logs inspect stats diff remove rm edit update find-definition clone snapshot restore recover"
+
+__podbox_wants_names() {
+    # After -C/--container anywhere on the line.
+    if [[ "${words[CURRENT-1]}" == -C || "${words[CURRENT-1]}" == --container ]]; then
+        return 0
+    fi
+    # First positional slot of a name-taking verb: podbox <verb> <TAB>
+    if (( CURRENT == 3 )) && [[ " $__podbox_name_verbs " == *" ${words[2]} "* ]]; then
+        return 0
+    fi
+    return 1
+}
+
+__podbox_wrap() {
+    if __podbox_wants_names; then
+        local -a names
+        names=( $(__podbox_names) )
+        # Missing configs yield no candidates — never fabricate, never error.
+        (( ${#names[@]} )) || return 1
+        _describe -t podbox-containers 'container' names
+        return 0
+    fi
+    _podbox "$@"
+}
+compdef __podbox_wrap podbox 2>/dev/null || true
 "#),
         clap_complete::shells::Shell::Fish => Some(r#"
 # --- podbox dynamic container-name completion ---

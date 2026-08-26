@@ -82,8 +82,8 @@ podbox completions fish > ~/.config/fish/completions/podbox.fish
 ```
 
 The generated scripts include dynamic container-name completion (fed by
-`podbox __complete-names`, which prints config stems) for **bash** and
-**fish**: names complete after name-taking subcommands and as `-C/--container`
+`podbox __complete-names`, which prints config stems) for **bash**, **zsh**,
+and **fish**: names complete after name-taking subcommands and as `-C/--container`
 values. Missing configs yield no candidates — completion never errors.
 
 ### Fish daily-driver abbreviations
