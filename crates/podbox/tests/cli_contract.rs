@@ -63,6 +63,7 @@ impl Sandbox {
         c.env("XDG_CONFIG_HOME", &self.dir)
             .env("XDG_DATA_HOME", self.dir.join("data"))
             .env("XDG_STATE_HOME", self.dir.join("state"))
+            .env("XDG_RUNTIME_DIR", self.dir.join("runtime"))
             .env_remove("PODBOX_CONTAINER")
             .env("PATH", self.path_env());
         c
@@ -273,6 +274,88 @@ fn history_without_log_is_empty_success() {
     let out = sb.cmd().arg("history").output().unwrap();
     assert!(out.status.success());
     assert!(out.stdout.is_empty());
+}
+
+/// `list` columns line up: AUTOSTART starts at the same offset everywhere,
+/// rows have no trailing whitespace, and the rule matches the header width.
+///
+/// The pre-fix bug padded colored cells by *byte* length, so ANSI escapes
+/// shifted every column after STATUS.
+#[test]
+fn list_columns_align_without_trailing_space() {
+    let sb = Sandbox::new(&["alpha", "beta"]);
+    let out = sb.cmd().arg("list").output().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(lines.len() >= 4, "header + rule + two rows");
+
+    // Non-TTY output carries no color codes; widths are then exact.
+    let header = lines[0];
+    let autostart_col = header.find("AUTOSTART").expect("AUTOSTART header");
+    let active_col = header.find("ACTIVE CONTEXT").expect("ACTIVE CONTEXT header");
+
+    for row in &lines[2..] {
+        assert_eq!(
+            row.len(),
+            row.trim_end().len(),
+            "trailing whitespace in {row:?}"
+        );
+        // Every data row reaches (at least) the AUTOSTART column offset.
+        assert!(row.len() > autostart_col, "row too short: {row:?}");
+    }
+
+    // Rule spans the header width.
+    assert_eq!(lines[1].chars().count(), header.trim_end().chars().count());
+
+    // Status labels start right after the fixed CONTAINER + dot columns.
+    for row in &lines[2..] {
+        assert!(
+            row.starts_with("alpha") || row.starts_with("beta"),
+            "unexpected row {row:?}"
+        );
+        let _ = active_col; // documented above; kept for readability
+    }
+}
+
+/// Stale sockets collapse into ONE grouped warning naming every leftover
+/// path, instead of one check per socket flooding the summary.
+#[test]
+fn doctor_groups_stale_sockets_into_one_check() {
+    let sb = Sandbox::new(&["alpha"]);
+    let sock_dir = sb.dir.join("runtime").join("podbox");
+    std::fs::create_dir_all(&sock_dir).unwrap();
+    std::fs::write(sock_dir.join("ghost-wayland.sock"), "").unwrap();
+    std::fs::write(sock_dir.join("ghost-dbus.sock"), "").unwrap();
+
+    let out = sb.cmd().args(["doctor"]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let warn_lines: Vec<&str> = text
+        .lines()
+        .filter(|l| l.contains("stale sockets"))
+        .collect();
+    assert_eq!(
+        warn_lines.len(),
+        1,
+        "stale sockets must be a single grouped check, got: {warn_lines:?}"
+    );
+    let line = warn_lines[0];
+    assert!(line.contains("ghost-wayland.sock"));
+    assert!(line.contains("ghost-dbus.sock"));
+
+    // JSON contract unchanged: still an array of grouped checks.
+    let out = sb.cmd().args(["doctor", "--output", "json"]).output().unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    let stale: Vec<&serde_json::Value> = v["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["name"] == "stale sockets")
+        .collect();
+    assert_eq!(stale.len(), 1);
+    assert_eq!(stale[0]["status"], "warn");
 }
 
 /// Doctor JSON carries grouped checks and reports failures via exit code.

@@ -767,45 +767,60 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         }
     }
 
-    // ── Stale sockets ──
+    // ── Stale sockets (one grouped check; per-socket lines would flood the
+    // summary and inflate the pass/fail ratio) ──
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         let sock_dir = Path::new(&runtime_dir).join("podbox");
+        let mut stale: Vec<std::path::PathBuf> = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&sock_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().is_some_and(|e| e == "sock") {
-                    if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                        if !name.is_empty()
-                            && !podbox::config::config_dir()
-                                .join(format!("{name}.toml"))
-                                .exists()
-                        {
-                            if fix
-                                && confirm_fix(&format!(
-                                    "Remove stale socket {}",
-                                    path.display()
-                                ))
-                            {
-                                match std::fs::remove_file(&path) {
-                                    Ok(()) => {
-                                        check!("stale socket", "pass", "removed via --fix")
-                                    }
-                                    Err(e) => check!(
-                                        "stale socket",
-                                        "fail",
-                                        format!("could not remove {}: {e}", path.display())
-                                    ),
-                                }
-                            } else {
-                                check!(
-                                    "stale socket",
-                                    "warn",
-                                    format!("{} (no config)", path.display())
-                                );
-                            }
-                        }
+                if path.extension().is_some_and(|e| e == "sock")
+                    && let Some(name) = path.file_stem().and_then(|s| s.to_str())
+                    && !name.is_empty()
+                    && !podbox::config::config_dir()
+                        .join(format!("{name}.toml"))
+                        .exists()
+                {
+                    stale.push(path);
+                }
+            }
+        }
+        if !stale.is_empty() {
+            if fix && confirm_fix(&format!("Remove {} stale socket(s)", stale.len())) {
+                let mut removed = 0usize;
+                let mut errors: Vec<String> = Vec::new();
+                for path in &stale {
+                    match std::fs::remove_file(path) {
+                        Ok(()) => removed += 1,
+                        Err(e) => errors.push(format!("could not remove {}: {e}", path.display())),
                     }
                 }
+                if errors.is_empty() {
+                    check!("stale sockets", "pass", format!("removed {removed} via --fix"));
+                } else {
+                    check!(
+                        "stale sockets",
+                        "fail",
+                        format!(
+                            "removed {removed}, {} failed: {}",
+                            errors.len(),
+                            errors.join("; ")
+                        )
+                    );
+                }
+            } else {
+                let listed: Vec<String> =
+                    stale.iter().map(|p| p.display().to_string()).collect();
+                check!(
+                    "stale sockets",
+                    "warn",
+                    format!(
+                        "{} with no config (run `podbox doctor --fix` to remove): {}",
+                        stale.len(),
+                        listed.join("; ")
+                    )
+                );
             }
         }
     }
@@ -839,7 +854,8 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         }
     }
 
-    // ── Dead export shims (desktop files) ──
+    // ── Dead export shims (desktop files + bin shims, one grouped check) ──
+    let mut dead: Vec<(std::path::PathBuf, String)> = Vec::new();
     if let Some(apps_dir) = dirs::data_dir().map(|d| d.join("applications")) {
         if let Ok(entries) = std::fs::read_dir(&apps_dir) {
             for entry in entries.flatten() {
@@ -853,31 +869,12 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                             let rest = exec_line.strip_prefix("Exec=").unwrap_or("");
                             let args = shell_words::split(rest).unwrap_or_default();
                             let pos = args.iter().position(|a| a == "-C" || a == "--container");
-                            if let Some(name) = pos.and_then(|p| args.get(p + 1)) {
-                                if !podbox::config::config_dir()
+                            if let Some(name) = pos.and_then(|p| args.get(p + 1))
+                                && !podbox::config::config_dir()
                                     .join(format!("{name}.toml"))
                                     .exists()
-                                {
-                                    if fix && confirm_fix(&format!(
-                                        "Remove dead export {}",
-                                        entry.path().display()
-                                    )) {
-                                        match std::fs::remove_file(entry.path()) {
-                                            Ok(()) => check!("dead export", "pass", "removed via --fix"),
-                                            Err(e) => check!("dead export", "fail",
-                                                format!("could not remove {}: {e}", entry.path().display())),
-                                        }
-                                    } else {
-                                        check!(
-                                            "dead export",
-                                            "warn",
-                                            format!(
-                                                "{} (container '{name}' missing)",
-                                                entry.path().display()
-                                            )
-                                        );
-                                    }
-                                }
+                            {
+                                dead.push((entry.path(), name.clone()));
                             }
                         }
                     }
@@ -886,7 +883,6 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         }
     }
 
-    // ── Dead export shims (bin shims) ──
     if let Some(bin_dir) = dirs::home_dir().map(|h| h.join(".local/bin")) {
         if let Ok(entries) = std::fs::read_dir(&bin_dir) {
             for entry in entries.flatten() {
@@ -898,32 +894,56 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                     if content.contains("--container") || content.contains("-C ") {
                         let args = shell_words::split(&content).unwrap_or_default();
                         let pos = args.iter().position(|a| a == "-C" || a == "--container");
-                        if let Some(name) = pos.and_then(|p| args.get(p + 1)) {
-                            if !podbox::config::config_dir()
+                        if let Some(name) = pos.and_then(|p| args.get(p + 1))
+                            && !podbox::config::config_dir()
                                 .join(format!("{name}.toml"))
                                 .exists()
-                            {
-                                if fix && confirm_fix(&format!(
-                                    "Remove dead shim {}",
-                                    path.display()
-                                )) {
-                                    match std::fs::remove_file(&path) {
-                                        Ok(()) => check!("dead export", "pass", "removed via --fix"),
-                                        Err(e) => check!("dead export", "fail",
-                                            format!("could not remove {}: {e}", path.display())),
-                                    }
-                                } else {
-                                    check!(
-                                        "dead export",
-                                        "warn",
-                                        format!("{} (container '{name}' missing)", path.display())
-                                    );
-                                }
-                            }
+                        {
+                            dead.push((path, name.clone()));
                         }
                     }
                 }
             }
+        }
+    }
+
+    if !dead.is_empty() {
+        let listed: Vec<String> = dead
+            .iter()
+            .map(|(p, name)| format!("{} (container '{name}' missing)", p.display()))
+            .collect();
+        if fix && confirm_fix(&format!("Remove {} dead export(s)", dead.len())) {
+            let mut removed = 0usize;
+            let mut errors: Vec<String> = Vec::new();
+            for (path, _) in &dead {
+                match std::fs::remove_file(path) {
+                    Ok(()) => removed += 1,
+                    Err(e) => errors.push(format!("could not remove {}: {e}", path.display())),
+                }
+            }
+            if errors.is_empty() {
+                check!("dead exports", "pass", format!("removed {removed} via --fix"));
+            } else {
+                check!(
+                    "dead exports",
+                    "fail",
+                    format!(
+                        "removed {removed}, {} failed: {}",
+                        errors.len(),
+                        errors.join("; ")
+                    )
+                );
+            }
+        } else {
+            check!(
+                "dead exports",
+                "warn",
+                format!(
+                    "{} pointing at missing containers (run `podbox doctor --fix` to remove): {}",
+                    dead.len(),
+                    listed.join("; ")
+                )
+            );
         }
     }
 

@@ -223,13 +223,13 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
     }
 
     println!(
-        "{:<20} {:<24} {:<10} {}",
+        "{:<20} {:<17} {:<10} {}",
         "CONTAINER".if_supports_color(Stream::Stdout, |s| s.bold()),
         "STATUS".if_supports_color(Stream::Stdout, |s| s.bold()),
         "AUTOSTART".if_supports_color(Stream::Stdout, |s| s.bold()),
         "ACTIVE CONTEXT".if_supports_color(Stream::Stdout, |s| s.bold()),
     );
-    println!("{}", "─".repeat(75));
+    println!("{}", "─".repeat(64));
 
     for config_path in configs {
         let name = config_path
@@ -238,31 +238,49 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
             .to_string_lossy()
             .to_string();
 
-        let status = format_status(&name);
-        let autostart = format_autostart(&config_path);
-        let active = format_active(&name, &active_ctx);
+        // Colored cells are padded around their *plain* text (see
+        // [`pad_around`]) so ANSI escapes never skew the column widths.
+        let (dot, label) = status_parts(&name);
+        let (auto_plain, auto_cell) = autostart_parts(&config_path);
+        let (active_plain, active_cell) = active_parts(&name, &active_ctx);
 
-        println!("{name:<20} {status:<24} {autostart:<10} {active}");
+        let mut row = format!(
+            "{name:<20} {dot} {label:<15} {}",
+            pad_around(&auto_plain, &auto_cell, 10),
+        );
+        if !active_plain.is_empty() {
+            row.push(' ');
+            row.push_str(&active_cell);
+        }
+        println!("{}", row.trim_end());
     }
 
     Ok(())
 }
 
-/// Format the container status with owo-colors styling.
-fn format_status(name: &str) -> String {
-    let (dot, label) = match podbox::podman::query_state(name) {
+/// Pad a cell whose rendered form contains ANSI escapes: `plain` supplies the
+/// visible text for width math, `rendered` is what actually prints.
+fn pad_around(plain: &str, rendered: &str, width: usize) -> String {
+    let mut s = String::from(rendered);
+    let visible = plain.chars().count();
+    if visible < width {
+        s.extend(std::iter::repeat_n(' ', width - visible));
+    }
+    s
+}
+
+/// Status cell split into a pre-colored dot and a plain label so the label
+/// can be width-padded safely.
+fn status_parts(name: &str) -> (String, &'static str) {
+    match podbox::podman::query_state(name) {
         Ok(podbox::podman::ContainerState::Running) => (
-            "●"
-                .if_supports_color(Stream::Stdout, |s| s.green())
-                .to_string(),
+            "●".if_supports_color(Stream::Stdout, |s| s.green()).to_string(),
             "running",
         ),
         Ok(podbox::podman::ContainerState::Stopped) => {
             if podbox::systemd::is_unit_failed(name) {
                 (
-                    "⚠"
-                        .if_supports_color(Stream::Stdout, |s| s.red())
-                        .to_string(),
+                    "⚠".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
                     "failed",
                 )
             } else {
@@ -275,46 +293,41 @@ fn format_status(name: &str) -> String {
             }
         }
         Ok(podbox::podman::ContainerState::Missing) => (
-            "○"
-                .if_supports_color(Stream::Stdout, |s| s.yellow())
-                .to_string(),
+            "○".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string(),
             "unbuilt",
         ),
         Err(_) => (
-            "?".if_supports_color(Stream::Stdout, |s| s.red())
-                .to_string(),
+            "?".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
             "unknown",
         ),
-    };
-    format!("{dot} {label}")
-}
-
-/// Format the autostart column, reading from the TOML config.
-fn format_autostart(config_path: &std::path::Path) -> String {
-    let autostart = match config::Config::load(config_path) {
-        Ok(cfg) => cfg.lifecycle.autostart,
-        Err(_) => {
-            return "err"
-                .if_supports_color(Stream::Stdout, |s| s.red())
-                .to_string();
-        }
-    };
-    if autostart {
-        "yes"
-            .if_supports_color(Stream::Stdout, |s| s.green())
-            .to_string()
-    } else {
-        "no".to_string()
     }
 }
 
-/// Format the active-context marker.
-fn format_active(name: &str, active_ctx: &Option<String>) -> String {
+/// Autostart cell as (plain text, rendered form).
+fn autostart_parts(config_path: &std::path::Path) -> (String, String) {
+    match config::Config::load(config_path) {
+        Ok(cfg) if cfg.lifecycle.autostart => (
+            "yes".into(),
+            "yes".if_supports_color(Stream::Stdout, |s| s.green()).to_string(),
+        ),
+        Ok(_) => ("no".into(), "no".into()),
+        Err(_) => (
+            "err".into(),
+            "err".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+        ),
+    }
+}
+
+/// Active-context marker as (plain text, rendered form).
+fn active_parts(name: &str, active_ctx: &Option<String>) -> (String, String) {
     if active_ctx.as_deref() == Some(name) {
-        "★ active"
-            .if_supports_color(Stream::Stdout, |s| s.yellow())
-            .to_string()
+        (
+            "★ active".into(),
+            "★ active"
+                .if_supports_color(Stream::Stdout, |s| s.yellow())
+                .to_string(),
+        )
     } else {
-        String::new()
+        (String::new(), String::new())
     }
 }
