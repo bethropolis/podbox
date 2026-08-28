@@ -4,7 +4,7 @@ resolver = "3"
 
 [workspace.package]
 edition      = "2024"
-version = "0.6.8"
+version = "0.7.0"
 license      = "MIT"
 rust-version = "1.95"
 repository   = "https://github.com/bethropolis/podbox"
@@ -38,7 +38,7 @@ fd-lock              = "4.0.4"
 tracing              = "0.1.44"
 tracing-subscriber   = { version = "0.3.23", features = ["env-filter", "fmt", "registry"] }
 tracing-journald     = "0.3.2"
-podbox-protocol      = { path = "crates/podbox-protocol", version = "0.6" }
+podbox-protocol      = { path = "crates/podbox-protocol", version = "0.7" }
 
 # Testing
 assert_cmd = "2.0"
