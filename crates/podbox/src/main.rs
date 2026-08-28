@@ -370,7 +370,7 @@ fn run() -> Result<()> {
             commands::pull::run_pull(&config, image, cli.dry_run)?;
         }
 
-        Command::Doctor { fix, output } => {
+        Command::Doctor { name: _, fix, output } => {
             commands::runtime::run_doctor(&config, &env, *fix, *output)?;
         }
 

@@ -40,22 +40,20 @@ fn group_for(check_name: &str) -> &'static str {
 
 /// Plain-language summary of what this container can reach on the host.
 /// Printed after the checks so exposure can be audited at a glance.
+/// Container-specific rows (home, network, mounts) are at the bottom.
 fn print_exposure_summary(config: &Config) {
     let on = |b: bool| if b { "enabled" } else { "off" }.to_string();
-    println!("\n{}", "Host exposure".if_supports_color(Stream::Stdout, |s| s.bold()));
+    let active = podbox::config::read_active_context();
+    let is_active = active.as_deref() == Some(config.container.name.as_str());
+    let title = if is_active {
+        format!("Host exposure — container '{}' (active)", config.container.name)
+    } else {
+        format!("Host exposure — container '{}'", config.container.name)
+    };
+    println!("\n{}", title.if_supports_color(Stream::Stdout, |s| s.bold()));
     let line = |k: &str, v: String| println!("  {k:<22} {v}");
 
-    line("Home directory", format!(
-        "{} (persistent container storage)",
-        config.container.home.display()
-    ));
-    line("Network", if config.network.mode == "host" {
-        "host mode - container shares the host's network stack".to_string()
-    } else {
-        format!("{} ({})", config.network.mode,
-            if config.network.ports.is_empty() { "no published ports".to_string() }
-            else { format!("published ports: {}", config.network.ports.join(", ")) })
-    });
+    // Integration / host-level first
     line("Wayland (GUI)", on(config.integration.wayland));
     line("Audio (PipeWire)", on(config.integration.audio));
     line("GPU", format!("{:?}", config.integration.gpu));
@@ -104,6 +102,18 @@ fn print_exposure_summary(config: &Config) {
             line("Host exec", "off".to_string());
         }
     }
+    // Container-specific at the bottom
+    line("Home directory", format!(
+        "{} (persistent container storage)",
+        config.container.home.display()
+    ));
+    line("Network", if config.network.mode == "host" {
+        "host mode - container shares the host's network stack".to_string()
+    } else {
+        format!("{} ({})", config.network.mode,
+            if config.network.ports.is_empty() { "no published ports".to_string() }
+            else { format!("published ports: {}", config.network.ports.join(", ")) })
+    });
     line("Extra mounts", if config.container.mounts.extra.is_empty() {
         "none".to_string()
     } else {
@@ -633,8 +643,19 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         OutputFormat::Text => {
-            // Grouped sections in stable order.
-            for group in ["Host", "Container", "Integration"] {
+            // Header: which container this run is for, with active hint on default run.
+            let active = podbox::config::read_active_context();
+            let is_active = active.as_deref() == Some(config.container.name.as_str());
+            if is_active {
+                println!(
+                    "Doctor — container '{}' (active context)\n",
+                    config.container.name
+                );
+            } else {
+                println!("Doctor — container '{}'\n", config.container.name);
+            }
+            // Grouped sections in stable order; container-specific at the bottom.
+            for group in ["Host", "Integration", "Container"] {
                 let section: Vec<_> = entries.iter().filter(|e| e.group == group).collect();
                 if section.is_empty() {
                     continue;

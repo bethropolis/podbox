@@ -292,6 +292,8 @@ pub enum Command {
     /// Run diagnostic checks.
     #[command(display_order = 43)]
     Doctor {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
         /// Auto-fix common issues (e.g. corrupted Wayland socket ownership).
         #[arg(long)]
         fix: bool,

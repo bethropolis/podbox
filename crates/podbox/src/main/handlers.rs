@@ -53,7 +53,8 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Inspect { name, .. }
         | Command::FindDefinition { name }
         | Command::Recover { name, .. }
-        | Command::Edit { name, .. } => name.clone(),
+        | Command::Edit { name, .. }
+        | Command::Doctor { name, .. } => name.clone(),
         _ => None,
     }
 }
