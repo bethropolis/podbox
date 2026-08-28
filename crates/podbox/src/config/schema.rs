@@ -36,6 +36,8 @@ use super::types::{
 pub struct Config {
     #[serde(default)]
     pub schema_version: SchemaVersion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
     pub image: ImageConfig,
     pub container: ContainerConfig,
     #[serde(default)]
@@ -141,6 +143,22 @@ impl Config {
         Ok(config)
     }
 
+    /// Parse with `extends` resolution anchored at `path`.
+    ///
+    /// Relative / sibling / profile extends are resolved; the merged TOML is
+    /// deserialized as a single `Config`. Source-less `parse` keeps its old
+    /// behaviour for tests/embedded.
+    pub fn parse_with_source(path: &std::path::Path, content: &str) -> Result<Config> {
+        let merged = crate::config::extends::resolve_extends_chain(path, content)?;
+        let mut config: Config = merged
+            .try_into()
+            .with_context(|| "failed to parse merged definition file".to_string())?;
+        config.run_migrations();
+        config.apply_defaults();
+        config.validate()?;
+        Ok(config)
+    }
+
     pub fn load(path: &std::path::Path) -> Result<Config> {
         if !path.exists() {
             return Err(PodboxError::DefinitionNotFound {
@@ -150,7 +168,7 @@ impl Config {
         }
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read definition file '{}'", path.display()))?;
-        Self::parse(&content)
+        Self::parse_with_source(path, &content)
     }
 
     pub fn embedded() -> Config {

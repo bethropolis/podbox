@@ -6,7 +6,9 @@
 pub mod schema;
 pub mod defaults;
 pub mod enums;
+pub mod extends;
 pub mod fs;
+pub mod merge;
 pub mod types;
 pub mod validation;
 
@@ -18,7 +20,8 @@ pub use fs::{
     list_configs, read_active_context, write_active_context,
 };
 pub use types::{
-    ContainerConfig, DbusConfig, ExportConfig, HostExecConfig, HostExecEntry, ImageConfig,
-    IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig,
-    SecurityConfig, SystemdConfig, WaylandConfig, XdgDirConfig,
+    ContainerConfig, DbusConfig, ExportConfig, HardwareConfig, HostExecConfig, HostExecEntry,
+    ImageConfig, IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig,
+    RunConfig, SecretEntry, SecretSource, SecretType, SecurityConfig, SystemdConfig,
+    WaylandConfig, XdgDirConfig,
 };

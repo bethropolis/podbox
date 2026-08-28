@@ -38,6 +38,49 @@ fn group_for(check_name: &str) -> &'static str {
     }
 }
 
+fn is_user_in_group(username: &str, group: &str) -> bool {
+    // Cheap check via /etc/group; covers most setups without NSS.
+    if let Ok(content) = std::fs::read_to_string("/etc/group") {
+        for line in content.lines() {
+            let mut parts = line.split(':');
+            let gname = parts.next().unwrap_or("");
+            if gname != group {
+                continue;
+            }
+            // format: name:passwd:GID:user_list
+            let _passwd = parts.next();
+            let _gid = parts.next();
+            let members = parts.next().unwrap_or("");
+            if members.split(',').any(|m| m.trim() == username) {
+                return true;
+            }
+            // Primary group membership isn't listed in /etc/group user_list.
+            // Fall through to nix getgrouplist for completeness.
+            break;
+        }
+    }
+    // Fallback via nix getgrouplist if available
+    #[cfg(unix)]
+    {
+        use nix::unistd::{Group, User};
+        if let Ok(Some(user)) = User::from_name(username) {
+            if let Ok(groups) = nix::unistd::getgrouplist(
+                std::ffi::CString::new(username).unwrap().as_c_str(),
+                user.gid,
+            ) {
+                for gid in groups {
+                    if let Ok(Some(grp)) = Group::from_gid(gid) {
+                        if grp.name == group {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Plain-language summary of what this container can reach on the host.
 /// Printed after the checks so exposure can be audited at a glance.
 /// Container-specific rows (home, network, mounts) are at the bottom.
@@ -100,6 +143,61 @@ fn print_exposure_summary(config: &Config) {
         }
         (false, _) => {
             line("Host exec", "off".to_string());
+        }
+    }
+    // Hardware presets
+    {
+        let hw = &config.integration.hardware;
+        let enabled: Vec<&str> = [
+            hw.joystick.then_some("joystick"),
+            hw.webcam.then_some("webcam"),
+            hw.yubikey.then_some("yubikey"),
+            hw.serial.then_some("serial"),
+            hw.kvm.then_some("kvm"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if enabled.is_empty() {
+            line("Hardware presets", "none".to_string());
+        } else {
+            line("Hardware presets", enabled.join(", "));
+        }
+    }
+    // Secrets
+    if config.security.secrets.is_empty() {
+        line("Secrets", "none".to_string());
+    } else {
+        line("Secrets", format!("{} declared", config.security.secrets.len()));
+        for secret in &config.security.secrets {
+            match secret {
+                podbox::config::SecretEntry::Simple(name) => {
+                    println!("    • {name} (env → {name}, podman)");
+                }
+                podbox::config::SecretEntry::Detailed {
+                    name,
+                    secret_type,
+                    target,
+                    mode,
+                    source,
+                } => {
+                    let src = match source {
+                        podbox::config::SecretSource::Podman => "podman",
+                        podbox::config::SecretSource::Systemd => "systemd",
+                    };
+                    let tgt = target.as_deref().unwrap_or(name);
+                    let extra = match secret_type {
+                        podbox::config::SecretType::Mount => {
+                            format!(", mode {}", mode.as_deref().unwrap_or("0400"))
+                        }
+                        _ => String::new(),
+                    };
+                    println!(
+                        "    • {} ({:?} → {}{}, {})",
+                        name, secret_type, tgt, extra, src
+                    );
+                }
+            }
         }
     }
     // Container-specific at the bottom
@@ -434,6 +532,107 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                         );
                     }
                 }
+            }
+        }
+    }
+
+    // ── hardware presets: group / device checks ──
+    {
+        let hw = &config.integration.hardware;
+        if hw.joystick {
+            if is_user_in_group(&env.username, "input") {
+                check!("hardware: joystick", "pass", "user in 'input' group");
+            } else {
+                check!(
+                    "hardware: joystick",
+                    "warn",
+                    "user not in 'input' group — joystick (/dev/input) will be denied"
+                );
+            }
+        }
+        if hw.webcam {
+            if is_user_in_group(&env.username, "video") {
+                check!("hardware: webcam", "pass", "user in 'video' group");
+            } else {
+                check!(
+                    "hardware: webcam",
+                    "warn",
+                    "user not in 'video' group — /dev/video* will be denied"
+                );
+            }
+        }
+        if hw.serial {
+            if is_user_in_group(&env.username, "dialout")
+                || is_user_in_group(&env.username, "uucp")
+            {
+                check!("hardware: serial", "pass", "user in 'dialout'/'uucp'");
+            } else {
+                check!(
+                    "hardware: serial",
+                    "warn",
+                    "user not in 'dialout' or 'uucp' — /dev/ttyUSB* will be denied"
+                );
+            }
+        }
+        if hw.kvm {
+            let p = Path::new("/dev/kvm");
+            if p.exists() {
+                // Check read/write via metadata permissions or try open
+                match std::fs::File::open(p) {
+                    Ok(_) => check!("hardware: kvm", "pass", "/dev/kvm accessible"),
+                    Err(e) => check!(
+                        "hardware: kvm",
+                        "warn",
+                        format!("/dev/kvm exists but not accessible: {e}")
+                    ),
+                }
+            } else {
+                check!(
+                    "hardware: kvm",
+                    "warn",
+                    "/dev/kvm not found — hardware virtualization unavailable"
+                );
+            }
+        }
+        if hw.yubikey {
+            // yubikey uses pcscd socket + hidraw; no group check, just note
+            check!(
+                "hardware: yubikey",
+                "pass",
+                "yubikey preset enabled (pcscd + hidraw)"
+            );
+        }
+    }
+
+    // ── secrets: verify podman secrets exist ──
+    if !config.security.secrets.is_empty() {
+        let output = std::process::Command::new("podman")
+            .args(["secret", "ls", "--format", "{{.Name}}"])
+            .output();
+        let available: std::collections::HashSet<String> = match output {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            _ => std::collections::HashSet::new(),
+        };
+        for secret in &config.security.secrets {
+            let (name, source) = match secret {
+                podbox::config::SecretEntry::Simple(n) => (n.as_str(), podbox::config::SecretSource::Podman),
+                podbox::config::SecretEntry::Detailed { name, source, .. } => (name.as_str(), *source),
+            };
+            let label = format!("secret: {name}");
+            if source == podbox::config::SecretSource::Systemd {
+                check!(&label, "pass", "systemd credential passthrough");
+            } else if available.contains(name) {
+                check!(&label, "pass", "found in podman secret store");
+            } else {
+                check!(
+                    &label,
+                    "fail",
+                    format!("missing — create with `podman secret create {name} -`")
+                );
             }
         }
     }

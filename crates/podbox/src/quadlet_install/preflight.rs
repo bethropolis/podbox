@@ -85,6 +85,9 @@ pub(crate) fn preflight_check(config: &Config) -> Result<()> {
         );
     }
 
+    // Check declared secrets exist in podman store
+    check_declared_secrets(config)?;
+
     // Check admin cap_preset
     if config.security.cap_preset == crate::config::CapPreset::Admin {
         if crate::codegen::distros::is_tty() {
@@ -110,5 +113,55 @@ pub(crate) fn preflight_check(config: &Config) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+pub(crate) fn check_declared_secrets(config: &Config) -> Result<()> {
+    use std::collections::HashSet;
+
+    use crate::config::{SecretEntry, SecretSource};
+
+    if config.security.secrets.is_empty() {
+        return Ok(());
+    }
+
+    let output = std::process::Command::new("podman")
+        .args(["secret", "ls", "--format", "{{.Name}}"])
+        .output();
+
+    let available: HashSet<String> = match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
+        Ok(o) => {
+            // podman secret ls failed — treat as empty and warn
+            eprintln!(
+                "Warning: `podman secret ls` failed ({}): {}",
+                o.status,
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+            HashSet::new()
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to run `podman secret ls`: {e}");
+            HashSet::new()
+        }
+    };
+
+    for secret in &config.security.secrets {
+        let (name, source) = match secret {
+            SecretEntry::Simple(n) => (n.as_str(), SecretSource::Podman),
+            SecretEntry::Detailed { name, source, .. } => (name.as_str(), *source),
+        };
+        if source == SecretSource::Podman && !available.contains(name) {
+            anyhow::bail!(
+                "Required secret '{name}' not found in Podman secret store.\n\
+                 Create it with: `podman secret create {name} -`"
+            );
+        }
+    }
     Ok(())
 }
