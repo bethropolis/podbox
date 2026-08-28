@@ -4,18 +4,17 @@ use podbox::config::{self, Config};
 
 /// Clone an existing container config to a new name.
 pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result<()> {
-    let config_dir = config::config_dir();
-    let src_path = config_dir.join(format!("{src}.toml"));
-    let dst_path = config_dir.join(format!("{dst}.toml"));
-
-    if !src_path.exists() {
-        anyhow::bail!(
-            "Source config '{}' not found at {}",
+    let src_path = config::find_config_path(src).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Source config '{}' not found at {}/{{profiles/,}}{}.toml",
             src,
-            src_path.display()
-        );
-    }
-    if dst_path.exists() {
+            config::config_dir().display(),
+            src
+        )
+    })?;
+    let dst_path = config::profiles_dir().join(format!("{dst}.toml"));
+
+    if config::find_config_path(dst).is_some() {
         anyhow::bail!(
             "Destination config '{}' already exists at {}",
             dst,
@@ -44,6 +43,9 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     cfg.container.home.clone_from(&new_home);
 
     let new_content = toml::to_string_pretty(&cfg)?;
+    if let Some(parent) = dst_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     std::fs::write(&dst_path, &new_content)?;
     println!("Created config: {}", dst_path.display());
 

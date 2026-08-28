@@ -99,6 +99,7 @@ fn run() -> Result<()> {
             | Command::CompleteNames
             | Command::History { .. }
             | Command::InternalStdinWatchdog { .. }
+            | Command::Migrate { .. }
     ) && which::which("podman").is_err()
     {
         return Err(PodboxError::PodmanNotFound.into());
@@ -171,6 +172,13 @@ fn run() -> Result<()> {
 
         Command::Use { name, clear } => {
             return commands::context::run_use(name.clone(), *clear, cli.dry_run);
+        }
+
+        Command::Migrate { force } => {
+            return commands::migrate::run_migrate(commands::migrate::MigrateOpts {
+                dry_run: cli.dry_run,
+                force: *force,
+            });
         }
 
         Command::Edit { name, rebuild } => {
@@ -356,8 +364,14 @@ fn run() -> Result<()> {
         }
 
         Command::Compositor { name: comp_name } => {
-            let config_dir = podbox::config::config_dir();
-            let config_path = config_dir.join(format!("{comp_name}.toml"));
+            let config_path = podbox::config::find_config_path(comp_name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no config found for container '{}' at '{}/{{profiles/,}}{}.toml'",
+                    comp_name,
+                    podbox::config::config_dir().display(),
+                    comp_name
+                )
+            })?;
             let config = podbox::config::Config::load(&config_path)?;
             podbox::compositor::run_compositor(&config, comp_name)?;
         }
@@ -404,6 +418,7 @@ fn run() -> Result<()> {
         | Command::Clone { .. }
         | Command::List { .. }
         | Command::Use { .. }
+        | Command::Migrate { .. }
         | Command::Edit { .. } => unreachable!(),
     }
 

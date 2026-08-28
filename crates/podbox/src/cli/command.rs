@@ -399,6 +399,14 @@ pub enum Command {
         path: String,
     },
 
+    /// Migrate legacy config files from ~/.config/podbox/ to ~/.config/podbox/profiles/
+    #[command(display_order = 75)]
+    Migrate {
+        /// Overwrite files in target profiles/ directory if they exist.
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Print known container names, one per line (shell completion helper).
     #[command(hide = true, name = "__complete-names")]
     CompleteNames,

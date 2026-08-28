@@ -37,9 +37,9 @@ pub fn run_init(
             println!("{toml}");
             return Ok(());
         }
-        let config_dir = config::config_dir();
+        let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{}.toml", result.name));
-        if config_path.exists() && !dry_run {
+        if config::find_config_path(&result.name).is_some() && !dry_run {
             anyhow::bail!(
                 "Config already exists at '{}'. Remove it first.",
                 config_path.display()
@@ -67,12 +67,14 @@ pub fn run_init(
         let profile_content = read_profile_content(p)?;
         let mut cfg = Config::parse(&profile_content)?;
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
-        let toml_str = toml::to_string_pretty(&cfg)?;
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
-        let config_dir = config::config_dir();
+        cfg.container.name.clone_from(&container_name);
+        cfg.image.name.clone_from(&container_name);
+        let toml_str = toml::to_string_pretty(&cfg)?;
+        let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
 
-        if config_path.exists() && !dry_run {
+        if config::find_config_path(&container_name).is_some() && !dry_run {
             anyhow::bail!(
                 "Config already exists at '{}'. Remove it first or use a different name.",
                 config_path.display()
@@ -126,10 +128,10 @@ pub fn run_init(
     podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
     cfg.validate()?;
     let toml_str = toml::to_string_pretty(&cfg)?;
-    let config_dir = config::config_dir();
+    let config_dir = config::profiles_dir();
     let config_path = config_dir.join(format!("{container_name}.toml"));
 
-    if config_path.exists() && !dry_run {
+    if config::find_config_path(&container_name).is_some() && !dry_run {
         let alt = format!("{container_name}-alt");
         anyhow::bail!(
             "Config already exists at '{}'.\n\

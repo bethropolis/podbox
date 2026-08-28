@@ -129,10 +129,10 @@ pub fn run_create(
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
         cfg.container.name.clone_from(&container_name);
         cfg.image.name.clone_from(&container_name);
-        let config_dir = config::config_dir();
+        let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
 
-        if config_path.exists() && !dry_run {
+        if config::find_config_path(&container_name).is_some() && !dry_run {
             eprintln!(
                 "Config already exists at '{}'. Reusing existing config.",
                 config_path.display()
@@ -165,18 +165,23 @@ pub fn run_create(
         );
     }
 
-    let config_dir = config::config_dir();
-    let existing = match name {
-        Some(n) => config_dir.join(format!("{n}.toml")),
-        None => config_dir.join(format!("{image}.toml")),
+    let existing_name = match name {
+        Some(n) => Some(n.to_string()),
+        None => Some(image.to_string()),
     };
-    if existing.exists() {
-        let stem = existing.file_stem().unwrap_or_default().to_string_lossy();
+    if let Some(ref check) = existing_name
+        && config::find_config_path(check).is_some()
+    {
+        let existing_path = config::find_config_path(check).unwrap();
+        let stem = existing_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
         anyhow::bail!(
             "Config '{}' already exists at {}.\n\
              Use `podbox build -C {}` to build, or `podbox start -C {}` to start.",
             stem,
-            existing.display(),
+            existing_path.display(),
             stem,
             stem
         );
@@ -228,9 +233,9 @@ pub fn run_create(
         }
         cfg.validate()?;
 
-        let config_dir = config::config_dir();
+        let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
-        if config_path.exists() {
+        if config::find_config_path(&container_name).is_some() {
             eprintln!(
                 "Config already exists at '{}'. Reusing existing config.",
                 config_path.display()

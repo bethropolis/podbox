@@ -13,8 +13,14 @@ pub fn run_serve(cli_config_path: Option<&PathBuf>, serve_name: &str, dry_run: b
     let serve_config = if let Some(path) = cli_config_path {
         Config::load(path)?
     } else {
-        let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{serve_name}.toml"));
+        let config_path = config::find_config_path(serve_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no config found for container '{}' at '{}/{{profiles/,}}{}.toml'",
+                serve_name,
+                config::config_dir().display(),
+                serve_name
+            )
+        })?;
         Config::load(&config_path)?
     };
     let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {

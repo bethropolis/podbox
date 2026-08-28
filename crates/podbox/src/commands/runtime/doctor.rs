@@ -32,7 +32,7 @@ struct DoctorEntry {
 fn group_for(check_name: &str) -> &'static str {
     match check_name {
         "podman" | "/etc/subuid" | "/etc/subgid" | "loginctl linger"
-        | "embedded guest binary" => "Host",
+        | "embedded guest binary" | "config layout" => "Host",
         "Quadlet files" | "orphaned snapshot" => "Container",
         _ => "Integration",
     }
@@ -637,6 +637,45 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         }
     }
 
+    // ── config layout: legacy root configs ──
+    {
+        let legacy = podbox::config::find_legacy_root_configs();
+        if !legacy.is_empty() {
+            let names = legacy
+                .iter()
+                .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if fix && confirm_fix("Migrate legacy configs from root to profiles/ directory?") {
+                match crate::commands::migrate::run_migrate(crate::commands::migrate::MigrateOpts {
+                    dry_run: false,
+                    force: false,
+                }) {
+                    Ok(()) => check!(
+                        "config layout",
+                        "pass",
+                        "migrated legacy configs to profiles/ directory"
+                    ),
+                    Err(e) => check!(
+                        "config layout",
+                        "fail",
+                        format!("migration failed: {e}")
+                    ),
+                }
+            } else {
+                check!(
+                    "config layout",
+                    "warn",
+                    format!(
+                        "legacy configs found in root ({names}). Run `podbox migrate` (legacy path removed in next version)"
+                    )
+                );
+            }
+        } else {
+            check!("config layout", "pass", "using canonical ~/.config/podbox/profiles/");
+        }
+    }
+
     // ── wl-copy / wl-paste / xdg-dbus-proxy ──
     for &(bin, desc) in &[
         ("wl-copy", "clipboard copy from container"),
@@ -660,9 +699,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 if path.extension().is_some_and(|e| e == "sock")
                     && let Some(name) = path.file_stem().and_then(|s| s.to_str())
                     && !name.is_empty()
-                    && !podbox::config::config_dir()
-                        .join(format!("{name}.toml"))
-                        .exists()
+                    && podbox::config::find_config_path(name).is_none()
                 {
                     stale.push(path);
                 }
@@ -752,9 +789,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                             let args = shell_words::split(rest).unwrap_or_default();
                             let pos = args.iter().position(|a| a == "-C" || a == "--container");
                             if let Some(name) = pos.and_then(|p| args.get(p + 1))
-                                && !podbox::config::config_dir()
-                                    .join(format!("{name}.toml"))
-                                    .exists()
+                                && podbox::config::find_config_path(name).is_none()
                             {
                                 dead.push((entry.path(), name.clone()));
                             }
@@ -777,9 +812,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                         let args = shell_words::split(&content).unwrap_or_default();
                         let pos = args.iter().position(|a| a == "-C" || a == "--container");
                         if let Some(name) = pos.and_then(|p| args.get(p + 1))
-                            && !podbox::config::config_dir()
-                                .join(format!("{name}.toml"))
-                                .exists()
+                            && podbox::config::find_config_path(name).is_none()
                         {
                             dead.push((path, name.clone()));
                         }

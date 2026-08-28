@@ -59,14 +59,11 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
     }
 }
 
-/// True when `<config_dir>/<name>.toml` exists, i.e. `name` is a managed
-/// container. Used to disambiguate the optional leading container name on
-/// `exec` / `run`.
+/// True when a config for `name` exists (canonical or legacy), i.e. `name`
+/// is a managed container. Used to disambiguate the optional leading
+/// container name on `exec` / `run`.
 fn is_known_config(name: &str) -> bool {
-    !name.is_empty()
-        && podbox::config::config_dir()
-            .join(format!("{name}.toml"))
-            .is_file()
+    !name.is_empty() && podbox::config::find_config_path(name).is_some()
 }
 
 /// Promote an optional leading container name on `exec` / `run`, matching
@@ -111,13 +108,20 @@ pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(
             Err(e) => return Err(e),
         }
     } else if let Some(ref container_name) = target_name {
-        let config_dir = config::config_dir();
-        let config_path = config_dir.join(format!("{container_name}.toml"));
+        let config_path = config::find_config_path(container_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no config found for container '{}' at '{}/{{profiles/,}}/{}.toml'\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
+                container_name,
+                config::config_dir().display(),
+                container_name,
+                config::config_dir().display()
+            )
+        })?;
         Config::load(&config_path).map_err(|e| {
             anyhow::anyhow!(
                 "{}\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
                 e,
-                config_dir.display()
+                config::config_dir().display()
             )
         })?
     } else {
@@ -207,15 +211,15 @@ pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(
 /// Resolve the config file path for the given container name (or auto-detect).
 pub(crate) fn resolve_config_path(container: Option<&str>) -> Result<PathBuf> {
     if let Some(name) = container {
-        let path = config::config_dir().join(format!("{name}.toml"));
-        if !path.exists() {
-            anyhow::bail!(
-                "no config found for container '{}' at '{}'",
-                name,
-                path.display()
-            );
+        if let Some(path) = config::find_config_path(name) {
+            return Ok(path);
         }
-        return Ok(path);
+        anyhow::bail!(
+            "no config found for container '{}' at '{}/{{profiles/,}}/{}.toml'",
+            name,
+            config::config_dir().display(),
+            name
+        );
     }
 
     let configs = config::list_configs();

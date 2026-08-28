@@ -211,10 +211,9 @@ pub fn run_remove(
             println!("systemctl --user reset-failed {name}.service");
         }
         if remove_config {
-            println!(
-                "rm {}.toml",
-                podbox::config::config_dir().join(name).display()
-            );
+            let p = podbox::config::find_config_path(name)
+                .unwrap_or_else(|| podbox::config::profiles_dir().join(format!("{name}.toml")));
+            println!("rm {}", p.display());
         }
         if all {
             println!("rm -rf {}", config.container.home.display());
@@ -258,8 +257,7 @@ pub fn run_remove(
 
     // 3. Optionally delete the TOML definition
     if remove_config {
-        let config_path = podbox::config::config_dir().join(format!("{name}.toml"));
-        if config_path.exists() {
+        if let Some(config_path) = podbox::config::find_config_path(name) {
             std::fs::remove_file(&config_path)?;
             println!("Config '{}' removed.", config_path.display());
         }
@@ -303,15 +301,13 @@ pub fn run_remove(
 /// Find orphaned Quadlet files that have no matching TOML config.
 ///
 /// A container is stale only when its `.container` Quadlet file exists on
-/// disk but the corresponding `~/.config/podbox/<name>.toml` has been
-/// deleted.  Stopped or failed containers with a config are never stale.
+/// disk but the corresponding `~/.config/podbox/{profiles/,}<name>.toml` has
+/// been deleted. Stopped or failed containers with a config are never stale.
 fn find_stale_containers() -> Vec<String> {
-    let config_dir = podbox::config::config_dir();
     let mut stale = Vec::new();
 
     for name in podbox::quadlet_install::list_installed_names() {
-        let config_path = config_dir.join(format!("{name}.toml"));
-        if !config_path.exists() {
+        if podbox::config::find_config_path(&name).is_none() {
             stale.push(name);
         }
     }

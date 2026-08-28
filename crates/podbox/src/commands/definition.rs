@@ -12,11 +12,11 @@ use podbox::error::PodboxError;
 pub fn run_find_definition(name: Option<&str>) -> Result<()> {
     match name {
         Some(n) => {
-            let path = config::config_dir().join(format!("{n}.toml"));
-            if path.exists() {
+            if let Some(path) = config::find_config_path(n) {
                 println!("{}", path.display());
                 Ok(())
             } else {
+                let path = config::config_dir().join(format!("{n}.toml"));
                 Err(PodboxError::DefinitionNotFound { path }.into())
             }
         }

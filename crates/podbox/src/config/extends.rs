@@ -3,7 +3,8 @@
 //! Resolves `extends = "<target>"` where target is:
 //! - `profile:<name>` → bundled or user-defined profile TOML
 //! - `./` / `../` / absolute path → filesystem TOML relative to current file
-//! - bare name (`fedora`) → `~/.config/podbox/<name>.toml`
+//! - bare name (`fedora`) → `~/.config/podbox/profiles/<name>.toml` (canonical)
+//!   with fallback to `~/.config/podbox/<name>.toml` (legacy)
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -126,8 +127,15 @@ fn resolve_extends_target(
         return Ok((source, content, next_dir));
     }
 
-    // 3. bare sibling name → config_dir()
-    let sibling_path = crate::config::config_dir().join(format!("{target}.toml"));
+    // 3. bare sibling name → profiles/<name>.toml (canonical) or legacy root
+    let sibling_path = crate::config::find_config_path(target).ok_or_else(|| {
+        anyhow::anyhow!(
+            "failed to read sibling extends '{}' — no config found at '{}/{{profiles/,}}/{}.toml'",
+            target,
+            crate::config::config_dir().display(),
+            target
+        )
+    })?;
     let content = std::fs::read_to_string(&sibling_path).with_context(|| {
         format!(
             "failed to read sibling extends '{}' at '{}'",

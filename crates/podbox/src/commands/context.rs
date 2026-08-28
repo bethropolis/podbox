@@ -16,10 +16,14 @@ pub fn run_use(name: Option<String>, clear: bool, dry_run: bool) -> Result<()> {
 
     match name {
         Some(n) => {
-            let config_path = config::config_dir().join(format!("{n}.toml"));
-            if !config_path.exists() {
-                anyhow::bail!("Config '{}' not found at {}", n, config_path.display());
-            }
+            config::find_config_path(&n).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Config '{}' not found at {}/{{profiles/,}}{}.toml",
+                    n,
+                    config::config_dir().display(),
+                    n
+                )
+            })?;
             if dry_run {
                 println!("Would set active context to '{n}'.");
                 return Ok(());

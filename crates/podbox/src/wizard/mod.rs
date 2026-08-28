@@ -39,7 +39,7 @@ pub fn run_wizard(
 
     // Phase 2: Container
     println!("\n── Container ──\n");
-    let name = prompts::prompt_name(&default_name, &crate::config::config_dir())?;
+    let name = prompts::prompt_name(&default_name)?;
     config.container.name.clone_from(&name);
     config.image.name.clone_from(&name);
     config.container.home = crate::config::expand_tilde(&format!("~/containers/{name}"));

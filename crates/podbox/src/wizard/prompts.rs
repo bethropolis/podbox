@@ -129,7 +129,7 @@ pub(super) fn detect_package_manager(image: &str) -> crate::config::PackageManag
     crate::codegen::distros::detect_package_manager(image)
 }
 
-pub(super) fn prompt_name(default: &str, config_dir: &std::path::Path) -> anyhow::Result<String> {
+pub(super) fn prompt_name(default: &str) -> anyhow::Result<String> {
     let name: String = dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt("Container name")
         .default(default.to_string())
@@ -143,8 +143,7 @@ pub(super) fn prompt_name(default: &str, config_dir: &std::path::Path) -> anyhow
             {
                 return Err("Name must be alphanumeric, hyphens, or underscores");
             }
-            let config_path = config_dir.join(format!("{input}.toml"));
-            if config_path.exists() {
+            if crate::config::find_config_path(input).is_some() {
                 return Err("A config with this name already exists");
             }
             Ok(())
