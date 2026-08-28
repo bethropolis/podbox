@@ -1,20 +1,23 @@
-use std::collections::HashSet;
-use std::os::fd::{AsFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::fd::FromRawFd;
+use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
-use nix::sys::socket::{getsockopt, sockopt};
-
 use crate::config::Config;
 use crate::config::validation::parse_idle_timeout_secs;
-use crate::process;
-use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
-use crate::systemd;
 
+mod conn;
 mod handlers;
+mod monitor;
+
+use conn::handle_connection;
+use monitor::{listen_fd, setup_signal_handler};
+
+/// Maximum consecutive failed negotiations (bad hello, unauthenticated
+/// privileged message, malformed frame) before the connection is dropped.
+const MAX_NEGOTIATION_FAILURES: u32 = 5;
 
 /// Max number of concurrent host threads handling guest connections.
 const MAX_CONCURRENT: usize = 4;
@@ -25,30 +28,19 @@ const MAX_SESSIONS: u32 = 64;
 /// How often the host sends a keepalive `Ping` to a connected guest.
 const PING_INTERVAL: Duration = Duration::from_mins(1);
 
-/// Register SIGTERM/SIGINT handlers that set `shutdown`.
-///
-/// The accept loop polls the flag on a 200ms tick, so no SA_RESTART /
-/// EINTR coordination is needed.
-fn setup_signal_handler(shutdown: &Arc<AtomicBool>) -> std::io::Result<()> {
-    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-        signal_hook::flag::register(sig, Arc::clone(shutdown))?;
-    }
-    Ok(())
-}
-
 /// Shared mutable state between all connections and PID monitor threads.
-struct SharedState {
+pub(crate) struct SharedState {
     /// Number of active terminal sessions tracked via pidfd.
-    session_count: AtomicU32,
+    pub(crate) session_count: AtomicU32,
     /// Container name, for `systemctl stop` on idle timeout.
-    container_name: String,
+    pub(crate) container_name: String,
     /// Idle timeout in seconds (0 = disabled).
-    idle_timeout_secs: u64,
+    pub(crate) idle_timeout_secs: u64,
     /// Whether this process was launched via systemd socket activation
     /// (`LISTEN_PID`/`LISTEN_FDS` set). If true, the process may
     /// self-terminate on idle timeout — systemd will re-spawn it via
     /// socket activation on the next connection.
-    was_socket_activated: bool,
+    pub(crate) was_socket_activated: bool,
 }
 
 /// Run the host socket server for a container.
@@ -138,286 +130,10 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     Ok(())
 }
 
-fn listen_fd() -> Option<RawFd> {
-    let pid = std::env::var("LISTEN_PID").ok()?.parse::<u32>().ok()?;
-    if pid != std::process::id() {
-        return None;
-    }
-    let fds = std::env::var("LISTEN_FDS").ok()?.parse::<u32>().ok()?;
-    if fds == 0 {
-        return None;
-    }
-    Some(3)
-}
-
-fn handle_connection(
-    stream: &mut UnixStream,
-    config: &Config,
-    state: &Arc<SharedState>,
-) -> anyhow::Result<()> {
-    stream.set_read_timeout(Some(PING_INTERVAL))?;
-    let mut last_ping = std::time::Instant::now();
-    // Capabilities accepted for this connection during `Hello`. Privileged
-    // messages are rejected until this is populated, and each is further
-    // gated on the specific capability the admin enabled.
-    let mut negotiated: Option<HashSet<String>> = None;
-    // Consecutive failed negotiations. The connection is dropped (fail-closed)
-    // once this reaches `MAX_NEGOTIATION_FAILURES`.
-    let mut failures: u32 = 0;
-
-    loop {
-        let msg_bytes = match read_frame(stream) {
-            Ok(Some(b)) => b,
-            Ok(None) => return Ok(()),
-            Err(e)
-                if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                if last_ping.elapsed() >= PING_INTERVAL {
-                    if write_frame(stream, &HostMessage::Ping).is_err() {
-                        return Ok(());
-                    }
-                    last_ping = std::time::Instant::now();
-                }
-                continue;
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        last_ping = std::time::Instant::now();
-        let msg: GuestMessage = match serde_json::from_slice(&msg_bytes) {
-            Ok(m) => m,
-            Err(e) => {
-                tracing::warn!("malformed frame from peer: {e}");
-                if note_failure(stream, &mut failures, "malformed frame") {
-                    return Ok(());
-                }
-                continue;
-            }
-        };
-
-        match msg {
-            GuestMessage::Hello {
-                protocol_version,
-                guest_version,
-                container,
-                capabilities,
-            } => {
-                let outcome = handlers::handle_hello(
-                    stream,
-                    &config.integration,
-                    state.idle_timeout_secs,
-                    protocol_version,
-                    guest_version,
-                    container,
-                    capabilities,
-                )?;
-                let handlers::HelloOutcome::Accepted(accepted) = outcome else {
-                    // Failed negotiation: no capabilities granted, daemon stream
-                    // stays unclaimed. Drop after repeated failures.
-                    if note_failure(stream, &mut failures, "hello rejected") {
-                        return Ok(());
-                    }
-                    continue;
-                };
-                negotiated = Some(accepted.into_iter().collect());
-
-                // Idle shutdown is driven entirely by the guest's own idle
-                // timer (which respects idle_timeout). The host must NOT
-                // probe the daemon immediately on hello: a container that was
-                // just started is, by definition, not yet idle, and stopping
-                // it at hello races `podman enter`, which is trying to spawn
-                // a session into it. An immediate check would kill the box
-                // before the user's shell can start.
-            }
-            GuestMessage::RegisterSession => {
-                // host-CLI-only: the peer must be inside the host user
-                // namespace (i.e. running on the host, not in the container).
-                if !peer_is_in_host_userns(stream) {
-                    tracing::warn!("rejecting RegisterSession from foreign user namespace");
-                    let _ = write_frame(
-                        stream,
-                        &HostMessage::Error {
-                            reason: "register_session is host-only".into(),
-                        },
-                    );
-                    return Ok(());
-                }
-                if state.session_count.load(Ordering::SeqCst) >= MAX_SESSIONS {
-                    tracing::warn!("rejecting RegisterSession: session cap reached");
-                    let _ = write_frame(
-                        stream,
-                        &HostMessage::Error {
-                            reason: "session limit reached".into(),
-                        },
-                    );
-                    return Ok(());
-                }
-                // Receive the pidfd via SCM_RIGHTS
-                let raw_fd = match process::recv_fd(stream) {
-                    Ok(Some(fd)) => fd,
-                    Ok(None) => return Ok(()),
-                    Err(_) => return Ok(()),
-                };
-                let fd = process::adopt_scm_fd(raw_fd);
-                state.session_count.fetch_add(1, Ordering::SeqCst);
-                let s = Arc::clone(state);
-                std::thread::spawn(move || monitor_pidfd(fd, s));
-                // Return immediately — the CLI closes the connection after
-                // sending RegisterSession + pidfd.
-                return Ok(());
-            }
-            GuestMessage::Busy => {
-                if negotiated.is_none() {
-                    if note_failure(stream, &mut failures, "hello required") {
-                        return Ok(());
-                    }
-                }
-            }
-            GuestMessage::IdleTimeout => {
-                if negotiated.is_none() {
-                    if note_failure(stream, &mut failures, "hello required") {
-                        return Ok(());
-                    }
-                    continue;
-                }
-                if state.idle_timeout_secs > 0 {
-                    let name = &state.container_name;
-                    tracing::info!("container '{}' idle — stopping", name);
-                    let _ = systemd::stop_unit(name);
-                    // If socket-activated, self-terminate so the host
-                    // service doesn't sit resident forever.  systemd
-                    // re-spawns it via socket activation on the next
-                    // connection.  Non-systemd (manual bind) must stay
-                    // alive — it has no re-launch mechanism.
-                    if state.was_socket_activated {
-                        std::process::exit(0);
-                    }
-                }
-            }
-            GuestMessage::Notify {
-                summary,
-                body,
-                urgency: _,
-                actions,
-                app_name: _,
-            } => {
-                if !has_cap(&negotiated, crate::protocol::CAP_NOTIFY) {
-                    if note_failure(stream, &mut failures, "capability 'notify' not accepted") {
-                        return Ok(());
-                    }
-                    continue;
-                }
-                handlers::handle_notify(stream, summary, body, actions)?
-            }
-            GuestMessage::XdgOpen { uri } => {
-                if !has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN) {
-                    if note_failure(stream, &mut failures, "capability 'xdg_open' not accepted") {
-                        return Ok(());
-                    }
-                    continue;
-                }
-                handlers::handle_xdg_open(uri)?
-            }
-            GuestMessage::ClipboardSet { text } => {
-                if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
-                    if note_failure(stream, &mut failures, "capability 'clipboard' not accepted") {
-                        return Ok(());
-                    }
-                    continue;
-                }
-                handlers::handle_clipboard_set(text)?
-            }
-            GuestMessage::ClipboardGet => {
-                if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
-                    if note_failure(stream, &mut failures, "capability 'clipboard' not accepted") {
-                        return Ok(());
-                    }
-                    continue;
-                }
-                handlers::handle_clipboard_get(stream)?
-            }
-            GuestMessage::HostExec { cmd, args } => {
-                if !has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC) {
-                    if note_failure(stream, &mut failures, "capability 'host_exec' not accepted") {
-                        return Ok(());
-                    }
-                    continue;
-                }
-                handlers::handle_host_exec(stream, &config.integration, cmd, args)?
-            }
-        }
-    }
-}
-
-/// Maximum consecutive failed negotiations (bad hello, unauthenticated
-/// privileged message, malformed frame) before the connection is dropped.
-const MAX_NEGOTIATION_FAILURES: u32 = 5;
-
-/// Count a failed negotiation and reply with a typed `Error` frame. Returns
-/// true once the connection should be dropped (fail-closed after
-/// `MAX_NEGOTIATION_FAILURES` failures).
-fn note_failure(stream: &mut UnixStream, failures: &mut u32, reason: &str) -> bool {
-    *failures = failures.saturating_add(1);
-    let _ = write_frame(
-        stream,
-        &HostMessage::Error {
-            reason: reason.to_string(),
-        },
-    );
-    *failures >= MAX_NEGOTIATION_FAILURES
-}
-
-/// True if `negotiated` contains the given capability.
-fn has_cap(negotiated: &Option<HashSet<String>>, cap: &str) -> bool {
-    negotiated
-        .as_ref()
-        .is_some_and(|caps| caps.iter().any(|c| c == cap))
-}
-
-/// Whether the peer of `stream` lives in the host user namespace.
-///
-/// Compares `SO_PEERCRED`'s pid against `/proc/self/ns/user`. The host CLI
-/// runs in the host userns; anything inside the container runs in the
-/// container's private userns (rootless podman), so the inode differs.
-fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
-    let creds = match getsockopt(stream, sockopt::PeerCredentials) {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    let self_ns = std::fs::read_link("/proc/self/ns/user").ok();
-    let peer_ns = std::fs::read_link(format!("/proc/{}/ns/user", creds.pid())).ok();
-    match (self_ns, peer_ns) {
-        (Some(a), Some(b)) => a == b,
-        _ => false,
-    }
-}
-
-/// Block until `fd` (a pidfd) becomes readable, then decrement the session
-/// counter.
-fn monitor_pidfd(fd: OwnedFd, state: Arc<SharedState>) {
-    let mut fds = [nix::poll::PollFd::new(
-        fd.as_fd(),
-        nix::poll::PollFlags::POLLIN,
-    )];
-
-    loop {
-        match nix::poll::poll(&mut fds, nix::poll::PollTimeout::NONE) {
-            Ok(_) => break,
-            Err(nix::errno::Errno::EINTR) => {}
-            Err(_) => break,
-        }
-    }
-
-    let _ = state.session_count.fetch_sub(1, Ordering::SeqCst);
-    // Idle shutdown is driven entirely by the guest's own idle timer, so
-    // there is no host-side work to do here.
-}
-
 #[cfg(test)]
 mod tests {
+    use super::conn::{has_cap, note_failure};
     use super::handlers::{validate_host_exec_args, validate_uri};
-    use super::{has_cap, note_failure};
     use std::collections::HashSet;
 
     // ── validate_uri tests ──

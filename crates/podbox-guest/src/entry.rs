@@ -1,3 +1,5 @@
+//! Guest sandbox entrypoint: the single `run()` flow plus `setup_user`.
+//! One cohesive concern (documented exemption, per the modularization guide 1/8).
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::Path;

@@ -1,3 +1,7 @@
+//! Guest-side daemon lifecycle: signal handling, interceptor install, pidfd
+//! process tracking, and the poll event loop. One orchestration flow whose
+//! helpers are tightly coupled to it (documented exemption, per the
+//! modularization guide 1/8).
 use std::collections::HashSet;
 use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::UnixStream;

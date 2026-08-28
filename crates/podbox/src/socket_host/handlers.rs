@@ -1,3 +1,7 @@
+//! Per-message protocol handlers for the host socket server (`hello`,
+//! `host-exec`, `notify`, `xdg-open`, `clipboard`). Single cohesive concern;
+//! stays above ~300 LOC because the message-dispatch contract is one unit
+//! (documented exemption, per the modularization guide 1/8).
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;

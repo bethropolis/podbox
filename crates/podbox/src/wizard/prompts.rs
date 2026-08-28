@@ -1,3 +1,6 @@
+//! The interactive wizard's prompt family: ~18 small, single-purpose prompt
+//! helpers. Splitting tiny helpers into sub-files would add module seams
+//! without cohesion gain (documented exemption, per the modularization guide 1/8).
 use crate::config::{GpuMode, OnStop, XdgDirConfig, XdgDirValue};
 use crate::profiles;
 
