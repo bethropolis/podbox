@@ -72,11 +72,38 @@ fn print_exposure_summary(config: &Config) {
     line("URL opening (xdg-open)", on(config.integration.xdg_open));
     line("SSH agent socket", on(config.integration.ssh_agent));
     line("GPG agent socket", on(config.integration.gpg_agent));
-    line("Host exec", match (&config.integration.host_exec.enabled, &config.integration.host_exec.allowlist) {
-        (true, Some(list)) => format!("ENABLED - allowlisted commands: {}", list.keys().cloned().collect::<Vec<_>>().join(", ")),
-        (true, None) => "ENABLED - no allowlist?".to_string(),
-        (false, _) => "off".to_string(),
-    });
+    match (&config.integration.host_exec.enabled, &config.integration.host_exec.allowlist) {
+        (true, Some(list)) if !list.is_empty() => {
+            line("Host exec", "ENABLED".to_string());
+            let mut entries: Vec<_> = list.iter().collect();
+            entries.sort_by_key(|(k, _)| *k);
+            for (alias, entry) in entries {
+                let shim = if entry.shim_enabled() { "yes" } else { "no" };
+                let filter = if entry.filter_enabled() {
+                    "ON (sanitized)"
+                } else {
+                    "OFF (unfiltered)"
+                };
+                // Keep alignment pleasant without over-formatting: bullet line
+                println!(
+                    "    • {:<12} → {:<28} [shim: {}, filter: {}]",
+                    alias,
+                    entry.path(),
+                    shim,
+                    filter
+                );
+            }
+        }
+        (true, Some(_)) => {
+            line("Host exec", "ENABLED - allowlist empty".to_string());
+        }
+        (true, None) => {
+            line("Host exec", "ENABLED - no allowlist?".to_string());
+        }
+        (false, _) => {
+            line("Host exec", "off".to_string());
+        }
+    }
     line("Extra mounts", if config.container.mounts.extra.is_empty() {
         "none".to_string()
     } else {
@@ -321,6 +348,83 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
             check!("Quadlet files", "pass", "installed");
         } else {
             check!("Quadlet files", "warn", "not found");
+        }
+    }
+
+    // ── host-exec allowlist paths: existence + executable ──
+    if config.integration.host_exec.enabled {
+        if let Some(map) = &config.integration.host_exec.allowlist {
+            let mut sorted: Vec<_> = map.iter().collect();
+            sorted.sort_by_key(|(k, _)| *k);
+            for (alias, entry) in sorted {
+                let path = entry.path();
+                let p = Path::new(path);
+                let check_name = format!("host-exec: {alias}");
+                match std::fs::metadata(p) {
+                    Ok(meta) => {
+                        if !meta.is_file() {
+                            check!(
+                                &check_name,
+                                "fail",
+                                format!("'{alias}' → {path} is not a regular file")
+                            );
+                        } else {
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                let mode = meta.permissions().mode();
+                                if mode & 0o111 == 0 {
+                                    check!(
+                                        &check_name,
+                                        "warn",
+                                        format!("'{alias}' → {path} is not executable (mode {mode:o})")
+                                    );
+                                } else {
+                                    let filter = if entry.filter_enabled() {
+                                        "filter: ON (sanitized)"
+                                    } else {
+                                        "filter: OFF (unfiltered)"
+                                    };
+                                    let shim = if entry.shim_enabled() { "shim: yes" } else { "shim: no" };
+                                    check!(
+                                        &check_name,
+                                        "pass",
+                                        format!("'{alias}' → {path} [{shim}, {filter}]")
+                                    );
+                                }
+                            }
+                            #[cfg(not(unix))]
+                            {
+                                let filter = if entry.filter_enabled() {
+                                    "filter: ON (sanitized)"
+                                } else {
+                                    "filter: OFF (unfiltered)"
+                                };
+                                let shim = if entry.shim_enabled() { "shim: yes" } else { "shim: no" };
+                                check!(
+                                    &check_name,
+                                    "pass",
+                                    format!("'{alias}' → {path} [{shim}, {filter}]")
+                                );
+                            }
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        check!(
+                            &check_name,
+                            "fail",
+                            format!("'{alias}' → {path} not found: {e}")
+                        );
+                    }
+                    Err(e) => {
+                        check!(
+                            &check_name,
+                            "warn",
+                            format!("'{alias}' → {path} could not be checked: {e}")
+                        );
+                    }
+                }
+            }
         }
     }
 
