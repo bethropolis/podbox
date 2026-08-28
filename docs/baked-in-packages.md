@@ -42,8 +42,8 @@ At build time, `podbox build` reads the host's `$SHELL` and adds the matching pa
 | Family | Detected by | Manager | Install cmd | Clean cmd |
 |---|---|---|---|---|
 | Debian | `debian`, `ubuntu`, `mint`, `kali`, `pop`, `elementary` | `apt` | `apt-get update && apt-get install -y --no-install-recommends` | `rm -rf /var/lib/apt/lists/*` |
-| Fedora | `fedora`, `rhel`, `centos`, `rocky`, `alma`, `nobara`, `cachy` | `dnf` | `dnf install -y` | `dnf clean all` |
-| Arch | `arch`, `manjaro`, `endeavouros`, `garuda` | `pacman` | `pacman -Syu --noconfirm` | `pacman -Scc --noconfirm` |
+| Fedora | `fedora`, `rhel`, `centos`, `rocky`, `alma`, `nobara` | `dnf` | `dnf install -y` | `dnf clean all` |
+| Arch | `arch`, `cachy`, `manjaro`, `endeavouros`, `garuda` | `pacman` | `pacman -Syu --noconfirm` | `pacman -Scc --noconfirm` |
 | Alpine | `alpine` | `apk` | `apk add --no-cache` | _(none)_ |
 | Unknown | everything else | `dnf` | `dnf install -y` | `dnf clean all` |
 
