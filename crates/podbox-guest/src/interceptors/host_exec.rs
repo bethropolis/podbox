@@ -6,10 +6,13 @@ pub fn run(args: &[String]) {
         eprintln!("host-exec: usage: host-exec <command> [args...]");
         std::process::exit(1);
     }
+    run_as_command(&args[1], &args[2..]);
+}
 
+pub fn run_as_command(cmd: &str, args: &[String]) {
     let msg = GuestMessage::HostExec {
-        cmd: args[1].clone(),
-        args: args[2..].to_vec(),
+        cmd: cmd.to_string(),
+        args: args.to_vec(),
     };
 
     let path = host_socket_path().unwrap_or_else(|e| {
@@ -29,7 +32,7 @@ pub fn run(args: &[String]) {
         .iter()
         .map(|&s| s.to_string())
         .collect();
-    let (accepted, _idle_timeout) = handshake(&mut stream, &container, &caps).unwrap_or_else(
+    let (accepted, _idle_timeout, _) = handshake(&mut stream, &container, &caps).unwrap_or_else(
         |e| {
             eprintln!("host-exec: negotiation failed: {e}");
             std::process::exit(1);

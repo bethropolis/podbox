@@ -72,6 +72,7 @@ fn spawn_server(
                             accepted,
                             rejected,
                             idle_timeout_secs: 0,
+                            host_exec_shims: vec![],
                         },
                     );
                 }
@@ -199,6 +200,7 @@ fn hello_handshake() {
             accepted,
             rejected,
             idle_timeout_secs,
+            ..
         } => {
             assert_eq!(accepted, vec!["notify", "xdg_open"]);
             assert!(rejected.is_empty());
@@ -263,6 +265,7 @@ fn capability_negotiation_rejects_unknown() {
             accepted,
             rejected,
             idle_timeout_secs: _,
+            ..
         } => {
             assert!(accepted.is_empty());
             assert_eq!(rejected.len(), 2);

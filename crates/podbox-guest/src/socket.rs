@@ -50,12 +50,12 @@ pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
 
 /// Perform the hello handshake.
 ///
-/// Returns (`accepted_capabilities`, `idle_timeout_secs`).
+/// Returns (`accepted_capabilities`, `idle_timeout_secs`, `host_exec_shims`).
 pub fn handshake(
     host_stream: &mut UnixStream,
     container_name: &str,
     capabilities: &[String],
-) -> Result<(Vec<String>, u64), GuestError> {
+) -> Result<(Vec<String>, u64, Vec<String>), GuestError> {
     let hello = GuestMessage::Hello {
         protocol_version: crate::protocol::PROTOCOL_VERSION,
         guest_version: crate::VERSION.into(),
@@ -75,8 +75,9 @@ pub fn handshake(
         HostMessage::HelloAck {
             accepted,
             idle_timeout_secs,
+            host_exec_shims,
             ..
-        } => Ok((accepted, idle_timeout_secs)),
+        } => Ok((accepted, idle_timeout_secs, host_exec_shims)),
         _ => Err(GuestError::HandshakeFailed(
             "unexpected response from host".into(),
         )),

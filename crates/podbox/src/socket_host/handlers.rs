@@ -62,10 +62,16 @@ pub(super) fn handle_hello(
             rejected.push(cap);
         }
     }
+    let host_exec_shims = if config.host_exec.enabled {
+        config.host_exec.guest_shims()
+    } else {
+        Vec::new()
+    };
     let response = HostMessage::HelloAck {
         accepted: accepted.clone(),
         rejected,
         idle_timeout_secs,
+        host_exec_shims,
     };
     write_frame(stream, &response)?;
     Ok(HelloOutcome::Accepted(accepted))
@@ -169,8 +175,8 @@ pub(super) fn handle_host_exec(
         return Ok(());
     }
 
-    let resolved = match config.host_exec.resolve(&cmd) {
-        Some(p) => p,
+    let entry = match config.host_exec.resolve(&cmd) {
+        Some(e) => e,
         None => {
             let allowed = config
                 .host_exec
@@ -191,16 +197,23 @@ pub(super) fn handle_host_exec(
         }
     };
 
-    if let Err(msg) = validate_host_exec_args(&args) {
-        write_frame(
-            stream,
-            &HostMessage::HostExecStderr {
-                data: format!("Security violation: {msg}"),
-            },
-        )?;
-        write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-        return Ok(());
+    // Conditional argument filtering: when `filter = false` the blocklist is
+    // bypassed for this command (execution still uses execve, not a shell).
+    if entry.filter_enabled() {
+        if let Err(msg) = validate_host_exec_args(&args) {
+            write_frame(
+                stream,
+                &HostMessage::HostExecStderr {
+                    data: format!("Security violation: {msg}"),
+                },
+            )?;
+            write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+            return Ok(());
+        }
+    } else {
+        tracing::debug!("host-exec: security argument filter bypassed for '{cmd}' (filter = false)");
     }
+    let resolved = entry.path();
 
     // Canonicalize the resolved path to mitigate TOCTOU symlink swaps.
     // If the path resolves outside expected system directories (e.g.

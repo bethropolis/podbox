@@ -72,6 +72,9 @@ pub enum HostMessage {
         rejected: Vec<String>,
         #[serde(default)]
         idle_timeout_secs: u64,
+        /// List of command names for which the guest daemon should create PATH shims.
+        #[serde(default)]
+        host_exec_shims: Vec<String>,
     },
     ClipboardData {
         text: String,
@@ -206,6 +209,43 @@ mod tests {
             GuestMessage::ClipboardSet { text } => {
                 assert_eq!(text, "clipboard content");
             }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn hello_ack_with_shims_round_trips() {
+        let msg = HostMessage::HelloAck {
+            accepted: vec!["host_exec".into()],
+            rejected: vec![],
+            idle_timeout_secs: 10,
+            host_exec_shims: vec!["git".into(), "code".into()],
+        };
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &msg).unwrap();
+        let payload = read_frame(&mut &buf[..]).unwrap().unwrap();
+        let decoded: HostMessage = serde_json::from_slice(&payload).unwrap();
+        match decoded {
+            HostMessage::HelloAck {
+                accepted,
+                host_exec_shims,
+                ..
+            } => {
+                assert_eq!(accepted, vec!["host_exec"]);
+                assert_eq!(host_exec_shims, vec!["git", "code"]);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn hello_ack_backward_compat_missing_shims() {
+        let json = r#"{"type":"hello_ack","accepted":[],"rejected":[],"idle_timeout_secs":0}"#;
+        let msg: HostMessage = serde_json::from_slice(json.as_bytes()).unwrap();
+        match msg {
+            HostMessage::HelloAck {
+                host_exec_shims, ..
+            } => assert!(host_exec_shims.is_empty()),
             _ => panic!("wrong message type"),
         }
     }

@@ -18,7 +18,7 @@ pub use fs::{
     list_configs, read_active_context, write_active_context,
 };
 pub use types::{
-    ContainerConfig, DbusConfig, ExportConfig, HostExecConfig, ImageConfig, IntegrationConfig,
-    LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
-    SystemdConfig, WaylandConfig, XdgDirConfig,
+    ContainerConfig, DbusConfig, ExportConfig, HostExecConfig, HostExecEntry, ImageConfig,
+    IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig,
+    SecurityConfig, SystemdConfig, WaylandConfig, XdgDirConfig,
 };

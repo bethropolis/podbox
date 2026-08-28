@@ -69,9 +69,9 @@ fn main() {
             interceptors::clipboard::run(&args);
             Ok(())
         }
-        _ => {
-            eprintln!("Unknown invocation: argv[0] = {argv0}");
-            std::process::exit(1);
+        custom_cmd => {
+            interceptors::host_exec::run_as_command(custom_cmd, &args[1..]);
+            Ok(())
         }
     };
 

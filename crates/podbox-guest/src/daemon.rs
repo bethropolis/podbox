@@ -118,7 +118,7 @@ pub fn run() -> Result<(), GuestError> {
         .iter()
         .map(|&s| s.to_string())
         .collect();
-    let (accepted, idle_timeout_secs) =
+    let (accepted, idle_timeout_secs, host_exec_shims) =
         socket::handshake(&mut host_stream, &container_name, &all_caps)?;
     let accepted_set: HashSet<String> = accepted.iter().cloned().collect();
     tracing::info!("guest: accepted capabilities: {accepted:?}");
@@ -127,7 +127,7 @@ pub fn run() -> Result<(), GuestError> {
     check_version_drift(&accepted_set, &mut host_stream, &container_name);
 
     // 5. Install interceptor symlinks for accepted capabilities
-    install_interceptors(&accepted_set, &bin_dir)?;
+    install_interceptors(&accepted_set, &bin_dir, &host_exec_shims)?;
 
     // 6. Write PATH injection
     write_path_injection(&bin_dir)?;
@@ -146,9 +146,13 @@ pub fn run() -> Result<(), GuestError> {
         std::thread::sleep(std::time::Duration::from_secs(3));
         if let Ok(stream) = socket::connect_to_host(&host_socket_path) {
             host_stream = stream;
-            if let Ok((_caps, _)) = socket::handshake(&mut host_stream, &container_name, &all_caps)
+            if let Ok((caps, _, shims)) =
+                socket::handshake(&mut host_stream, &container_name, &all_caps)
             {
                 tracing::info!("guest: re-established connection and handshook successfully.");
+                let caps_set: HashSet<String> = caps.iter().cloned().collect();
+                let _ = install_interceptors(&caps_set, &bin_dir, &shims);
+                let _ = write_path_injection(&bin_dir);
             }
         }
     }
@@ -157,6 +161,7 @@ pub fn run() -> Result<(), GuestError> {
 fn install_interceptors(
     accepted: &HashSet<String>,
     bin_dir: &std::path::Path,
+    host_exec_shims: &[String],
 ) -> std::io::Result<()> {
     let self_path = std::env::current_exe()?;
     let self_path_str = self_path.to_string_lossy();
@@ -173,6 +178,33 @@ fn install_interceptors(
             let link = bin_dir.join(name);
             let _ = std::fs::remove_file(&link);
             std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
+        }
+    }
+
+    // Custom host-exec shims (e.g. `git` -> podbox-guest shim)
+    if accepted.contains(crate::protocol::CAP_HOST_EXEC) {
+        for shim in host_exec_shims {
+            if shim == "podbox-guest"
+                || shim == "podmgr-guest"
+                || shim.contains('/')
+                || shim.contains("..")
+                || shim.contains('\0')
+                || shim.is_empty()
+            {
+                tracing::warn!("skipping invalid host-exec shim name: {shim:?}");
+                continue;
+            }
+            // Guard against overwriting core interceptors
+            if matches!(
+                shim.as_str(),
+                "notify-send" | "xdg-open" | "podbox-clipboard" | "podmgr-clipboard" | "host-exec"
+            ) {
+                continue;
+            }
+            let link = bin_dir.join(shim);
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
+            tracing::info!("installed host-exec shim: /run/podbox/bin/{shim}");
         }
     }
 

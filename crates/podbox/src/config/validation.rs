@@ -102,10 +102,34 @@ impl Config {
         }
 
         if let Some(ref map) = self.integration.host_exec.allowlist {
-            for (alias, path) in map {
+            for (alias, entry) in map {
+                let path = entry.path();
                 if !is_absolute_path(path) {
                     errors.push(format!(
                         "integration.host_exec.allowlist.{alias}: path '{path}' is not absolute (must start with '/')"
+                    ));
+                }
+                if alias.is_empty()
+                    || alias.contains('/')
+                    || alias.contains("..")
+                    || alias.contains('\0')
+                {
+                    errors.push(format!(
+                        "integration.host_exec.allowlist: alias '{alias}' is invalid (must not contain '/' or '..')"
+                    ));
+                }
+                const RESERVED: &[&str] = &[
+                    "podbox-guest",
+                    "podmgr-guest",
+                    "host-exec",
+                    "notify-send",
+                    "xdg-open",
+                    "podbox-clipboard",
+                    "podmgr-clipboard",
+                ];
+                if RESERVED.contains(&alias.as_str()) {
+                    errors.push(format!(
+                        "integration.host_exec.allowlist: alias '{alias}' is reserved"
                     ));
                 }
             }

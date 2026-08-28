@@ -109,23 +109,77 @@ where
     Ok(expand_tilde(&path))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum HostExecEntry {
+    /// Simple path string (defaults: `filter = true`, `shim = true`).
+    Simple(String),
+    /// Detailed configuration table.
+    Detailed {
+        path: String,
+        #[serde(default = "default_true")]
+        filter: bool,
+        #[serde(default = "default_true")]
+        shim: bool,
+    },
+}
+
+impl HostExecEntry {
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Simple(p) => p.as_str(),
+            Self::Detailed { path, .. } => path.as_str(),
+        }
+    }
+
+    pub fn filter_enabled(&self) -> bool {
+        match self {
+            Self::Simple(_) => true,
+            Self::Detailed { filter, .. } => *filter,
+        }
+    }
+
+    pub fn shim_enabled(&self) -> bool {
+        match self {
+            Self::Simple(_) => true,
+            Self::Detailed { shim, .. } => *shim,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HostExecConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allowlist: Option<std::collections::HashMap<String, String>>,
+    pub allowlist: Option<std::collections::HashMap<String, HostExecEntry>>,
 }
 
 impl HostExecConfig {
-    pub fn resolve<'a>(&'a self, cmd: &'a str) -> Option<&'a str> {
+    pub fn resolve(&self, cmd: &str) -> Option<&HostExecEntry> {
         if !self.enabled {
             return None;
         }
         match &self.allowlist {
-            Some(map) => map.get(cmd).map(|s| s.as_str()),
-            None => Some(cmd),
+            Some(map) => map.get(cmd),
+            None => None,
         }
+    }
+
+    /// List of alias names that should have PATH shims generated in the guest.
+    pub fn guest_shims(&self) -> Vec<String> {
+        if !self.enabled {
+            return Vec::new();
+        }
+        self.allowlist
+            .as_ref()
+            .map(|map| {
+                map.iter()
+                    .filter(|(_, entry)| entry.shim_enabled())
+                    .map(|(alias, _)| alias.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
