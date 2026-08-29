@@ -222,12 +222,12 @@ fn run_build(
 
     let mut log = open_log(
         name,
-        &format!(
-            "podman build -t {tag} {}",
-            context_dir.display()
-        ),
+        &format!("podman build -t {tag} {}", context_dir.display()),
     )?;
-    ui::step(&format!("Building image {tag} (log: {})", build_log_path(name).display()));
+    ui::step(&format!(
+        "Building image {tag} (log: {})",
+        build_log_path(name).display()
+    ));
     let start = Instant::now();
     run_podman_logged(&args, name, "podman build", &mut log)?;
     ui::ok(&format!(

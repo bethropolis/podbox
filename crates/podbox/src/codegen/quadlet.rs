@@ -480,7 +480,7 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
         emitted = true;
         match secret {
             SecretEntry::Simple(name) => {
-                lines.push(format!("Secret={},type=env,target={}", name, name));
+                lines.push(format!("Secret={name},type=env,target={name}"));
             }
             SecretEntry::Detailed {
                 name,

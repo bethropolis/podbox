@@ -23,17 +23,14 @@ impl Sandbox {
     fn new(configs: &[&str]) -> Self {
         static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "podbox-test-{}-{n}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("podbox-test-{}-{n}", std::process::id()));
         let cfg = dir.join("podbox");
         std::fs::create_dir_all(&cfg).unwrap();
         for name in configs {
             // Copy a valid fixture so commands that fully parse the config
             // (not just stat it) succeed.
-            let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/full.toml");
+            let fixture =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/full.toml");
             std::fs::copy(&fixture, cfg.join(format!("{name}.toml"))).unwrap();
         }
 
@@ -80,7 +77,11 @@ impl Drop for Sandbox {
 #[test]
 fn find_definition_missing_exits_two() {
     let sb = Sandbox::new(&[]);
-    let out = sb.cmd().args(["find-definition", "nosuch"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["find-definition", "nosuch"])
+        .output()
+        .unwrap();
 
     assert_eq!(out.status.code(), Some(2));
     assert!(
@@ -93,7 +94,11 @@ fn find_definition_missing_exits_two() {
 #[test]
 fn find_definition_prints_path() {
     let sb = Sandbox::new(&["myenv"]);
-    let out = sb.cmd().args(["find-definition", "myenv"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["find-definition", "myenv"])
+        .output()
+        .unwrap();
 
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -122,7 +127,11 @@ fn non_tty_multiple_configs_errors_with_hint() {
 #[test]
 fn non_tty_explicit_container_flag_resolves() {
     let sb = Sandbox::new(&["alpha", "beta"]);
-    let out = sb.cmd().args(["-C", "alpha", "enter", "--dry-run"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "enter", "--dry-run"])
+        .output()
+        .unwrap();
 
     assert!(
         out.status.success(),
@@ -169,16 +178,25 @@ fn completions_include_dynamic_name_glue() {
 /// without the flag) print the default stream unchanged.
 #[test]
 fn fish_abbrs_are_opt_in_and_fish_only() {
-    let out = sb_cmd_completions("fish").args(["--abbrs"]).output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = sb_cmd_completions("fish")
+        .args(["--abbrs"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
 
     // Every curated abbreviation is present as an `abbr` line.
-    for token in
-        ["pb", "pbb", "pbc", "pbd", "pbe", "pbl", "pbr", "pbs", "pbt", "pbu", "pbv", "pbx"]
-    {
+    for token in [
+        "pb", "pbb", "pbc", "pbd", "pbe", "pbl", "pbr", "pbs", "pbt", "pbu", "pbv", "pbx",
+    ] {
         assert!(
-            stdout.lines().any(|l| l.starts_with(&format!("abbr {token} "))),
+            stdout
+                .lines()
+                .any(|l| l.starts_with(&format!("abbr {token} "))),
             "missing `abbr {token}` definition"
         );
     }
@@ -193,7 +211,10 @@ fn fish_abbrs_are_opt_in_and_fish_only() {
     );
 
     // `--abbrs` is ignored for non-fish shells.
-    let bash = sb_cmd_completions("bash").args(["--abbrs"]).output().unwrap();
+    let bash = sb_cmd_completions("bash")
+        .args(["--abbrs"])
+        .output()
+        .unwrap();
     assert!(bash.status.success());
     let bash_stdout = String::from_utf8_lossy(&bash.stdout);
     assert!(
@@ -228,7 +249,11 @@ fn sb_with_history_log() -> Sandbox {
 fn history_prints_entries_newest_first() {
     let sb = sb_with_history_log();
     let out = sb.cmd().arg("history").output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stop = stdout.find("stop").expect("stop entry present");
     let build = stdout.find("build").expect("build entry present");
@@ -257,7 +282,11 @@ fn history_filters_by_name_and_limit() {
 #[test]
 fn history_json_output_parses() {
     let sb = sb_with_history_log();
-    let out = sb.cmd().args(["history", "--output", "json"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["history", "--output", "json"])
+        .output()
+        .unwrap();
     assert!(out.status.success());
     let v: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("valid json");
@@ -285,7 +314,11 @@ fn history_without_log_is_empty_success() {
 fn list_columns_align_without_trailing_space() {
     let sb = Sandbox::new(&["alpha", "beta"]);
     let out = sb.cmd().arg("list").output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
@@ -294,7 +327,9 @@ fn list_columns_align_without_trailing_space() {
     // Non-TTY output carries no color codes; widths are then exact.
     let header = lines[0];
     let autostart_col = header.find("AUTOSTART").expect("AUTOSTART header");
-    let active_col = header.find("ACTIVE CONTEXT").expect("ACTIVE CONTEXT header");
+    let active_col = header
+        .find("ACTIVE CONTEXT")
+        .expect("ACTIVE CONTEXT header");
 
     for row in &lines[2..] {
         assert_eq!(
@@ -345,7 +380,11 @@ fn doctor_groups_stale_sockets_into_one_check() {
     assert!(line.contains("ghost-dbus.sock"));
 
     // JSON contract unchanged: still an array of grouped checks.
-    let out = sb.cmd().args(["doctor", "--output", "json"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["doctor", "--output", "json"])
+        .output()
+        .unwrap();
     let v: serde_json::Value =
         serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
     let stale: Vec<&serde_json::Value> = v["checks"]
@@ -362,17 +401,24 @@ fn doctor_groups_stale_sockets_into_one_check() {
 #[test]
 fn doctor_json_has_groups_and_exit_status() {
     let sb = Sandbox::new(&["alpha"]);
-    let out = sb.cmd().args(["-C", "alpha", "doctor", "--output", "json"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "doctor", "--output", "json"])
+        .output()
+        .unwrap();
 
     // Stub podman makes several host checks fail/succeed by environment;
     // only assert structure, not pass/fail counts.
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let v: serde_json::Value = serde_json::from_str(stdout.trim())
-        .expect("doctor --output json must print valid JSON");
+    let v: serde_json::Value =
+        serde_json::from_str(stdout.trim()).expect("doctor --output json must print valid JSON");
     let checks = v["checks"].as_array().expect("checks array");
     assert!(!checks.is_empty());
     assert!(checks.iter().all(|c| c["group"].is_string()));
-    let groups: Vec<&str> = checks.iter().map(|c| c["group"].as_str().unwrap()).collect();
+    let groups: Vec<&str> = checks
+        .iter()
+        .map(|c| c["group"].as_str().unwrap())
+        .collect();
     assert!(groups.contains(&"Host"));
     assert!(groups.contains(&"Integration"));
 
@@ -388,7 +434,11 @@ fn doctor_json_has_groups_and_exit_status() {
 #[test]
 fn recover_dry_run_prints_plan() {
     let sb = Sandbox::new(&["alpha"]);
-    let out = sb.cmd().args(["-C", "alpha", "recover", "--dry-run"]).output().unwrap();
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "recover", "--dry-run"])
+        .output()
+        .unwrap();
 
     assert!(
         out.status.success(),

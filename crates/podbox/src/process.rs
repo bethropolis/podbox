@@ -78,12 +78,7 @@ pub fn run_with_log(
 }
 
 /// Copy one child pipe into the log until EOF; optionally mirror to stderr.
-fn tee_stream<R: io::Read, W: io::Write>(
-    src: &mut R,
-    dst: &mut W,
-    to_stderr: bool,
-    mirror: bool,
-) {
+fn tee_stream<R: io::Read, W: io::Write>(src: &mut R, dst: &mut W, to_stderr: bool, mirror: bool) {
     let mut reader = io::BufReader::new(src);
     let mut line = String::new();
     loop {

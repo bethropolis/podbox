@@ -31,8 +31,12 @@ struct DoctorEntry {
 /// host↔container bridges (Wayland, D-Bus, clipboard, exports).
 fn group_for(check_name: &str) -> &'static str {
     match check_name {
-        "podman" | "/etc/subuid" | "/etc/subgid" | "loginctl linger"
-        | "embedded guest binary" | "config layout" => "Host",
+        "podman"
+        | "/etc/subuid"
+        | "/etc/subgid"
+        | "loginctl linger"
+        | "embedded guest binary"
+        | "config layout" => "Host",
         "Quadlet files" | "orphaned snapshot" => "Container",
         _ => "Integration",
     }
@@ -89,31 +93,47 @@ fn print_exposure_summary(config: &Config) {
     let active = podbox::config::read_active_context();
     let is_active = active.as_deref() == Some(config.container.name.as_str());
     let title = if is_active {
-        format!("Host exposure — container '{}' (active)", config.container.name)
+        format!(
+            "Host exposure — container '{}' (active)",
+            config.container.name
+        )
     } else {
         format!("Host exposure — container '{}'", config.container.name)
     };
-    println!("\n{}", title.if_supports_color(Stream::Stdout, |s| s.bold()));
+    println!(
+        "\n{}",
+        title.if_supports_color(Stream::Stdout, |s| s.bold())
+    );
     let line = |k: &str, v: String| println!("  {k:<22} {v}");
 
     // Integration / host-level first
     line("Wayland (GUI)", on(config.integration.wayland));
     line("Audio (PipeWire)", on(config.integration.audio));
     line("GPU", format!("{:?}", config.integration.gpu));
-    line("D-Bus", if config.integration.dbus {
-        format!("proxied; talk list: {}", {
-            let talk = config.dbus_effective_talk();
-            if talk.is_empty() { "none".to_string() } else { talk.join(", ") }
-        })
-    } else {
-        "off".to_string()
-    });
+    line(
+        "D-Bus",
+        if config.integration.dbus {
+            format!("proxied; talk list: {}", {
+                let talk = config.dbus_effective_talk();
+                if talk.is_empty() {
+                    "none".to_string()
+                } else {
+                    talk.join(", ")
+                }
+            })
+        } else {
+            "off".to_string()
+        },
+    );
     line("Clipboard", on(config.integration.clipboard));
     line("Notifications", on(config.integration.notify));
     line("URL opening (xdg-open)", on(config.integration.xdg_open));
     line("SSH agent socket", on(config.integration.ssh_agent));
     line("GPG agent socket", on(config.integration.gpg_agent));
-    match (&config.integration.host_exec.enabled, &config.integration.host_exec.allowlist) {
+    match (
+        &config.integration.host_exec.enabled,
+        &config.integration.host_exec.allowlist,
+    ) {
         (true, Some(list)) if !list.is_empty() => {
             line("Host exec", "ENABLED".to_string());
             let mut entries: Vec<_> = list.iter().collect();
@@ -168,7 +188,10 @@ fn print_exposure_summary(config: &Config) {
     if config.security.secrets.is_empty() {
         line("Secrets", "none".to_string());
     } else {
-        line("Secrets", format!("{} declared", config.security.secrets.len()));
+        line(
+            "Secrets",
+            format!("{} declared", config.security.secrets.len()),
+        );
         for secret in &config.security.secrets {
             match secret {
                 podbox::config::SecretEntry::Simple(name) => {
@@ -192,31 +215,43 @@ fn print_exposure_summary(config: &Config) {
                         }
                         _ => String::new(),
                     };
-                    println!(
-                        "    • {} ({:?} → {}{}, {})",
-                        name, secret_type, tgt, extra, src
-                    );
+                    println!("    • {name} ({secret_type:?} → {tgt}{extra}, {src})");
                 }
             }
         }
     }
     // Container-specific at the bottom
-    line("Home directory", format!(
-        "{} (persistent container storage)",
-        config.container.home.display()
-    ));
-    line("Network", if config.network.mode == "host" {
-        "host mode - container shares the host's network stack".to_string()
-    } else {
-        format!("{} ({})", config.network.mode,
-            if config.network.ports.is_empty() { "no published ports".to_string() }
-            else { format!("published ports: {}", config.network.ports.join(", ")) })
-    });
-    line("Extra mounts", if config.container.mounts.extra.is_empty() {
-        "none".to_string()
-    } else {
-        config.container.mounts.extra.join(", ")
-    });
+    line(
+        "Home directory",
+        format!(
+            "{} (persistent container storage)",
+            config.container.home.display()
+        ),
+    );
+    line(
+        "Network",
+        if config.network.mode == "host" {
+            "host mode - container shares the host's network stack".to_string()
+        } else {
+            format!(
+                "{} ({})",
+                config.network.mode,
+                if config.network.ports.is_empty() {
+                    "no published ports".to_string()
+                } else {
+                    format!("published ports: {}", config.network.ports.join(", "))
+                }
+            )
+        },
+    );
+    line(
+        "Extra mounts",
+        if config.container.mounts.extra.is_empty() {
+            "none".to_string()
+        } else {
+            config.container.mounts.extra.join(", ")
+        },
+    );
 }
 
 /// Run diagnostics on the container and host environment.
@@ -444,7 +479,9 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                     check!(
                         "loginctl linger",
                         "warn",
-                        format!("not enabled - autostart won't survive reboot; run `loginctl enable-linger {username}` or `podbox doctor --fix`")
+                        format!(
+                            "not enabled - autostart won't survive reboot; run `loginctl enable-linger {username}` or `podbox doctor --fix`"
+                        )
                     );
                 }
             }
@@ -485,7 +522,9 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                     check!(
                                         &check_name,
                                         "warn",
-                                        format!("'{alias}' → {path} is not executable (mode {mode:o})")
+                                        format!(
+                                            "'{alias}' → {path} is not executable (mode {mode:o})"
+                                        )
                                     );
                                 } else {
                                     let filter = if entry.filter_enabled() {
@@ -493,7 +532,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                     } else {
                                         "filter: OFF (unfiltered)"
                                     };
-                                    let shim = if entry.shim_enabled() { "shim: yes" } else { "shim: no" };
+                                    let shim = if entry.shim_enabled() {
+                                        "shim: yes"
+                                    } else {
+                                        "shim: no"
+                                    };
                                     check!(
                                         &check_name,
                                         "pass",
@@ -508,7 +551,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                                 } else {
                                     "filter: OFF (unfiltered)"
                                 };
-                                let shim = if entry.shim_enabled() { "shim: yes" } else { "shim: no" };
+                                let shim = if entry.shim_enabled() {
+                                    "shim: yes"
+                                } else {
+                                    "shim: no"
+                                };
                                 check!(
                                     &check_name,
                                     "pass",
@@ -562,8 +609,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
             }
         }
         if hw.serial {
-            if is_user_in_group(&env.username, "dialout")
-                || is_user_in_group(&env.username, "uucp")
+            if is_user_in_group(&env.username, "dialout") || is_user_in_group(&env.username, "uucp")
             {
                 check!("hardware: serial", "pass", "user in 'dialout'/'uucp'");
             } else {
@@ -619,8 +665,12 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         };
         for secret in &config.security.secrets {
             let (name, source) = match secret {
-                podbox::config::SecretEntry::Simple(n) => (n.as_str(), podbox::config::SecretSource::Podman),
-                podbox::config::SecretEntry::Detailed { name, source, .. } => (name.as_str(), *source),
+                podbox::config::SecretEntry::Simple(n) => {
+                    (n.as_str(), podbox::config::SecretSource::Podman)
+                }
+                podbox::config::SecretEntry::Detailed { name, source, .. } => {
+                    (name.as_str(), *source)
+                }
             };
             let label = format!("secret: {name}");
             if source == podbox::config::SecretSource::Systemd {
@@ -656,11 +706,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                         "pass",
                         "migrated legacy configs to profiles/ directory"
                     ),
-                    Err(e) => check!(
-                        "config layout",
-                        "fail",
-                        format!("migration failed: {e}")
-                    ),
+                    Err(e) => check!("config layout", "fail", format!("migration failed: {e}")),
                 }
             } else {
                 check!(
@@ -672,7 +718,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 );
             }
         } else {
-            check!("config layout", "pass", "using canonical ~/.config/podbox/profiles/");
+            check!(
+                "config layout",
+                "pass",
+                "using canonical ~/.config/podbox/profiles/"
+            );
         }
     }
 
@@ -716,7 +766,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                     }
                 }
                 if errors.is_empty() {
-                    check!("stale sockets", "pass", format!("removed {removed} via --fix"));
+                    check!(
+                        "stale sockets",
+                        "pass",
+                        format!("removed {removed} via --fix")
+                    );
                 } else {
                     check!(
                         "stale sockets",
@@ -729,8 +783,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                     );
                 }
             } else {
-                let listed: Vec<String> =
-                    stale.iter().map(|p| p.display().to_string()).collect();
+                let listed: Vec<String> = stale.iter().map(|p| p.display().to_string()).collect();
                 check!(
                     "stale sockets",
                     "warn",
@@ -837,7 +890,11 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 }
             }
             if errors.is_empty() {
-                check!("dead exports", "pass", format!("removed {removed} via --fix"));
+                check!(
+                    "dead exports",
+                    "pass",
+                    format!("removed {removed} via --fix")
+                );
             } else {
                 check!(
                     "dead exports",
@@ -892,15 +949,18 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 if section.is_empty() {
                     continue;
                 }
-                println!(
-                    "{}",
-                    group.if_supports_color(Stream::Stdout, |s| s.bold())
-                );
+                println!("{}", group.if_supports_color(Stream::Stdout, |s| s.bold()));
                 for entry in &section {
                     let tag = match entry.status.as_str() {
-                        "pass" => "PASS".if_supports_color(Stream::Stdout, |s| s.green()).to_string(),
-                        "warn" => "WARN".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string(),
-                        "fail" => "FAIL".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+                        "pass" => "PASS"
+                            .if_supports_color(Stream::Stdout, |s| s.green())
+                            .to_string(),
+                        "warn" => "WARN"
+                            .if_supports_color(Stream::Stdout, |s| s.yellow())
+                            .to_string(),
+                        "fail" => "FAIL"
+                            .if_supports_color(Stream::Stdout, |s| s.red())
+                            .to_string(),
                         _ => entry.status.clone(),
                     };
                     println!("  [{tag}] {}: {}", entry.name, entry.message);

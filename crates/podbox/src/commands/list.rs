@@ -108,13 +108,17 @@ fn pad_around(plain: &str, rendered: &str, width: usize) -> String {
 fn status_parts(name: &str) -> (String, &'static str) {
     match podbox::podman::query_state(name) {
         Ok(podbox::podman::ContainerState::Running) => (
-            "●".if_supports_color(Stream::Stdout, |s| s.green()).to_string(),
+            "●"
+                .if_supports_color(Stream::Stdout, |s| s.green())
+                .to_string(),
             "running",
         ),
         Ok(podbox::podman::ContainerState::Stopped) => {
             if podbox::systemd::is_unit_failed(name) {
                 (
-                    "⚠".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+                    "⚠"
+                        .if_supports_color(Stream::Stdout, |s| s.red())
+                        .to_string(),
                     "failed",
                 )
             } else {
@@ -127,11 +131,14 @@ fn status_parts(name: &str) -> (String, &'static str) {
             }
         }
         Ok(podbox::podman::ContainerState::Missing) => (
-            "○".if_supports_color(Stream::Stdout, |s| s.yellow()).to_string(),
+            "○"
+                .if_supports_color(Stream::Stdout, |s| s.yellow())
+                .to_string(),
             "unbuilt",
         ),
         Err(_) => (
-            "?".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+            "?".if_supports_color(Stream::Stdout, |s| s.red())
+                .to_string(),
             "unknown",
         ),
     }
@@ -142,12 +149,16 @@ fn autostart_parts(config_path: &std::path::Path) -> (String, String) {
     match config::Config::load(config_path) {
         Ok(cfg) if cfg.lifecycle.autostart => (
             "yes".into(),
-            "yes".if_supports_color(Stream::Stdout, |s| s.green()).to_string(),
+            "yes"
+                .if_supports_color(Stream::Stdout, |s| s.green())
+                .to_string(),
         ),
         Ok(_) => ("no".into(), "no".into()),
         Err(_) => (
             "err".into(),
-            "err".if_supports_color(Stream::Stdout, |s| s.red()).to_string(),
+            "err"
+                .if_supports_color(Stream::Stdout, |s| s.red())
+                .to_string(),
         ),
     }
 }

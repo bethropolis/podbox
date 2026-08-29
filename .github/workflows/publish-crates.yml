@@ -60,11 +60,8 @@ jobs:
             exit 1
           fi
 
-      - name: Dry-run package all crates
-        run: |
-          for c in podbox-protocol podbox-cli podbox-guest; do
-            cargo publish -p "$c" --dry-run
-          done
+      - name: Dry-run podbox-protocol
+        run: cargo publish -p podbox-protocol --dry-run
 
       - name: Publish podbox-protocol (skip if already on crates.io)
         env:
@@ -77,11 +74,27 @@ jobs:
             exit 0
           fi
           cargo publish -p podbox-protocol
+          echo "Waiting for crates.io index to update..."
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -A "podbox-ci" "https://crates.io/api/v1/crates/podbox-protocol/$VER")
+            if [ "$CODE" = "200" ]; then
+              echo "podbox-protocol $VER now on crates.io"
+              break
+            fi
+            echo "  not yet ($CODE), retry $i/30..."
+            sleep 10
+          done
+
+      - name: Dry-run podbox-cli
+        run: cargo publish -p podbox-cli --dry-run
 
       - name: Publish podbox-cli
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish -p podbox-cli
+
+      - name: Dry-run podbox-guest
+        run: cargo publish -p podbox-guest --dry-run
 
       - name: Publish podbox-guest
         env:

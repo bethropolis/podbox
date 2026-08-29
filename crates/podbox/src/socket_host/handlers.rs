@@ -211,7 +211,9 @@ pub(super) fn handle_host_exec(
             return Ok(());
         }
     } else {
-        tracing::debug!("host-exec: security argument filter bypassed for '{cmd}' (filter = false)");
+        tracing::debug!(
+            "host-exec: security argument filter bypassed for '{cmd}' (filter = false)"
+        );
     }
     let resolved = entry.path();
 

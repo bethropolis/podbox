@@ -55,7 +55,10 @@ fn record_to(path: &Path, name: &str, action: &str, detail: &str) -> io::Result<
     } else {
         format!("{}\t{}\t{}\t{}\n", timestamp(), name, action, detail)
     };
-    let mut f = fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
     f.write_all(line.as_bytes())
 }
 

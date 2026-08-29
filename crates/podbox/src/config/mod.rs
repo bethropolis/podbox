@@ -3,16 +3,15 @@
 //! Slim re-export hub; the [`Config`] type itself lives in the [`schema`]
 //! module.
 
-pub mod schema;
 pub mod defaults;
 pub mod enums;
 pub mod extends;
 pub mod fs;
 pub mod merge;
+pub mod schema;
 pub mod types;
 pub mod validation;
 
-pub use schema::{Config, SchemaVersion};
 pub use defaults::EMBEDDED_DEFAULT;
 pub use enums::{CapPreset, GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 pub use fs::{
@@ -20,9 +19,10 @@ pub use fs::{
     find_definition, find_legacy_root_configs, list_configs, profiles_dir, read_active_context,
     write_active_context,
 };
+pub use schema::{Config, SchemaVersion};
 pub use types::{
     ContainerConfig, DbusConfig, ExportConfig, HardwareConfig, HostExecConfig, HostExecEntry,
     ImageConfig, IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig,
-    RunConfig, SecretEntry, SecretSource, SecretType, SecurityConfig, SystemdConfig,
-    WaylandConfig, XdgDirConfig,
+    RunConfig, SecretEntry, SecretSource, SecretType, SecurityConfig, SystemdConfig, WaylandConfig,
+    XdgDirConfig,
 };

@@ -5,13 +5,11 @@ use std::path::PathBuf;
 #[command(name = "podbox")]
 #[command(version = env!("PODBOX_VERSION"))]
 #[command(about = "Podman-native container environment manager")]
-#[command(
-    after_help = "Common workflow:\n  \
+#[command(after_help = "Common workflow:\n  \
         podbox create <profile>   Create and start a prebuilt environment\n  \
         podbox enter              Open a shell in the active container\n  \
         podbox list               Show managed containers\n  \
-        podbox doctor             Diagnose host and container issues"
-)]
+        podbox doctor             Diagnose host and container issues")]
 pub struct Cli {
     /// Path to the definition TOML file.
     #[arg(long, short)]

@@ -367,4 +367,3 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
 
     Ok(())
 }
-

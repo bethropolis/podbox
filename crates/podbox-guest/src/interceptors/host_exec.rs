@@ -32,16 +32,12 @@ pub fn run_as_command(cmd: &str, args: &[String]) {
         .iter()
         .map(|&s| s.to_string())
         .collect();
-    let (accepted, _idle_timeout, _) = handshake(&mut stream, &container, &caps).unwrap_or_else(
-        |e| {
+    let (accepted, _idle_timeout, _) =
+        handshake(&mut stream, &container, &caps).unwrap_or_else(|e| {
             eprintln!("host-exec: negotiation failed: {e}");
             std::process::exit(1);
-        },
-    );
-    if !accepted
-        .iter()
-        .any(|c| c == crate::protocol::CAP_HOST_EXEC)
-    {
+        });
+    if !accepted.iter().any(|c| c == crate::protocol::CAP_HOST_EXEC) {
         eprintln!("host-exec: capability 'host_exec' not accepted by host");
         std::process::exit(1);
     }

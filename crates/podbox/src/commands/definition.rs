@@ -74,7 +74,9 @@ fn print_fish_abbrevs(shell: clap_complete::shells::Shell, abbrs: bool) {
         return;
     }
     println!("# --- podbox daily-driver abbreviations (opt-in) ---");
-    println!("# Source this output manually, e.g. `source (podbox completions fish --abbrs | psub)`.");
+    println!(
+        "# Source this output manually, e.g. `source (podbox completions fish --abbrs | psub)`."
+    );
     for (token, expanded) in FISH_ABBREVS {
         println!("abbr {token} '{expanded}'");
     }
@@ -98,7 +100,8 @@ pub fn run_complete_names() -> Result<()> {
 /// complete dynamically via `podbox __complete-names`.
 fn print_name_completion_glue(shell: clap_complete::shells::Shell) {
     let glue = match shell {
-        clap_complete::shells::Shell::Bash => Some(r#"
+        clap_complete::shells::Shell::Bash => Some(
+            r#"
 # --- podbox dynamic container-name completion ---
 __podbox_names() { command podbox __complete-names 2>/dev/null; }
 __podbox_add_names() {
@@ -122,12 +125,14 @@ __podbox_wrap() {
     fi
 }
 complete -o default -F __podbox_wrap podbox 2>/dev/null || true
-"#),
+"#,
+        ),
         // zsh: re-register a wrapper after the generated body. The tail of the
         // file executes when zsh sources it, so `compdef` here wins over the
         // `#compdef podbox` header. We decide by context first (deterministic
         // across zsh versions) and delegate everything else to `_podbox`.
-        clap_complete::shells::Shell::Zsh => Some(r#"
+        clap_complete::shells::Shell::Zsh => Some(
+            r#"
 # --- podbox dynamic container-name completion ---
 __podbox_names() { command podbox __complete-names 2>/dev/null }
 
@@ -158,15 +163,18 @@ __podbox_wrap() {
     _podbox "$@"
 }
 compdef __podbox_wrap podbox 2>/dev/null || true
-"#),
-        clap_complete::shells::Shell::Fish => Some(r#"
+"#,
+        ),
+        clap_complete::shells::Shell::Fish => Some(
+            r#"
 # --- podbox dynamic container-name completion ---
 function __podbox_names
     command podbox __complete-names 2>/dev/null
 end
 complete -c podbox -l container -o C -xa '(__podbox_names)'
 complete -c podbox -n '__fish_seen_subcommand_from enter shell exec run start stop status logs inspect stats diff remove rm edit build enable disable update find-definition clone snapshot restore' -xa '(__podbox_names)'
-"#),
+"#,
+        ),
         _ => None,
     };
     if let Some(g) = glue {
@@ -174,4 +182,3 @@ complete -c podbox -n '__fish_seen_subcommand_from enter shell exec run start st
     }
 }
 pub use super::list::run_list;
-

@@ -229,18 +229,20 @@ systemctl = { path = "/usr/bin/systemctl", shim = false }
     shims.sort();
     assert_eq!(shims, vec!["code", "flatpak", "git"]);
     assert!(!shims.contains(&"systemctl".to_string()));
-    assert!(!cfg
-        .integration
-        .host_exec
-        .resolve("git")
-        .unwrap()
-        .filter_enabled());
-    assert!(cfg
-        .integration
-        .host_exec
-        .resolve("flatpak")
-        .unwrap()
-        .filter_enabled());
+    assert!(
+        !cfg.integration
+            .host_exec
+            .resolve("git")
+            .unwrap()
+            .filter_enabled()
+    );
+    assert!(
+        cfg.integration
+            .host_exec
+            .resolve("flatpak")
+            .unwrap()
+            .filter_enabled()
+    );
 }
 
 #[test]
