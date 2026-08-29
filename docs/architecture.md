@@ -185,36 +185,55 @@ podbox/
 │   ├── podbox/                   # host CLI binary
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   │       ├── main.rs           # entry point, dispatch
-│   │       ├── lib.rs            # module declarations
-│   │       ├── cli.rs            # clap CLI definition
-│   │       ├── build.rs          # Containerfile generation + build orchestration
-│   │       ├── cli.rs            # clap CLI definition
-│   │       ├── compositor.rs     # Wayland firewall proxy
-│   │       ├── config/           # TOML parsing, types, validation, defaults
-│   │       │   ├── mod.rs
-│   │       │   ├── types.rs      # all config structs
-│   │       │   ├── enums.rs      # PackageManager, GpuMode, OnStop, XdgDirValue
-│   │       │   ├── fs.rs         # config discovery, active context
-│   │       │   ├── defaults.rs   # embedded default + helper functions
-│   │       │   └── validation.rs # config validation
+│   │       ├── main.rs            # entry point (dispatch only; handlers split out)
+│   │       ├── lib.rs             # module declarations, re-exports public surface
+│   │       ├── main/              # dispatch-handler impls
+│   │       │   └── handlers.rs    # command dispatch, config resolution, exit-code mapping
+│   │       ├── cli.rs             # clap CLI definition + arg parsing
+│   │       ├── cli/               # command-tree split
+│   │       │   └── command.rs     # Command enum + clap subcommand wiring
+│   │       ├── build.rs           # Containerfile generation + build orchestration
+│   │       ├── build/             # build helpers
+│   │       │   └── prebuilt.rs    # prebuilt image path resolution + pull/tag logic
+│   │       ├── compositor.rs      # Wayland firewall proxy
+│   │       ├── compositor/        # compositor concerns
+│   │       │   └── firewall.rs    # Wayland message filtering + state
+│   │       ├── config/             # TOML parsing, types, validation, defaults
+│   │       │   ├── mod.rs           # slim hub, re-exports Config
+│   │       │   ├── types.rs         # all config structs
+│   │       │   ├── enums.rs         # PackageManager, GpuMode, OnStop, XdgDirValue
+│   │       │   ├── fs.rs            # config discovery, active context
+│   │       │   ├── defaults.rs      # embedded default + helper functions
+│   │       │   ├── schema.rs        # Config serde schema
+│   │       │   ├── extends.rs       # declarative `extends` inheritance
+│   │       │   ├── merge.rs         # layered config merge (extends + presets)
+│   │       │   └── validation.rs    # config validation
 │   │       ├── codegen/          # pure string generators
 │   │       │   ├── mod.rs
 │   │       │   ├── quadlet.rs    # .container, .build, .socket, .service gen
 │   │       │   ├── containerfile.rs# Containerfile generation
 │   │       │   └── distros.rs    # distro family detection, base packages
-│   │       ├── commands/         # command implementations
+│   │       ├── commands/           # command implementations
 │   │       │   ├── mod.rs
 │   │       │   ├── clone.rs
 │   │       │   ├── context.rs
-│   │       │   ├── create.rs
-│   │       │   ├── definition.rs
-│   │       │   ├── diff.rs
-│   │       │   ├── export.rs
+│   │       │   ├── create.rs        # image build + container creation
+│   │       │   ├── create_init.rs   # interactive init scaffolding flow
+│   │       │   ├── definition.rs    # definition TOML loading/transclusion
+│   │       │   ├── diff.rs          # definition diff command
+│   │       │   ├── export.rs        # host-side export command
+│   │       │   ├── history.rs       # build history command
 │   │       │   ├── inspect.rs
-│   │       │   ├── lifecycle.rs  # build, enable, disable, start, stop, remove
+│   │       │   ├── lifecycle.rs     # build, enable, disable, start, stop, remove
+│   │       │   │   └── lifecycle/   # lifecycle submodules
+│   │       │   │       └── snapshot.rs  # snapshot/restore cluster
+│   │       │   ├── list.rs          # environment table rendering
+│   │       │   ├── migrate.rs       # config-dir → profiles migration
 │   │       │   ├── pull.rs
-│   │       │   ├── runtime.rs    # shell, enter, exec, run, status, logs
+│   │       │   ├── recover.rs       # recover a missing/removed env
+│   │       │   ├── runtime.rs       # shell, enter, exec, run, status, logs
+│   │       │   │   └── runtime/     # runtime submodules
+│   │       │   │       └── doctor.rs  # podbox doctor diagnostics
 │   │       │   ├── serve.rs
 │   │       │   ├── stats.rs
 │   │       │   └── translate.rs
@@ -222,39 +241,59 @@ podbox/
 │   │       ├── editor.rs         # editor resolution
 │   │       ├── env.rs            # host env resolution (GPU, audio, locale)
 │   │       ├── error.rs          # error types
-│   │       ├── export.rs         # .desktop + bin shim export
-│   │       ├── guest.rs          # guest binary installation
-│   │       ├── labels.rs         # image label defaults
-│   │       ├── lock.rs           # build lock file
-│   │       ├── podman.rs         # version detection + subcommand wrappers
-│   │       ├── process.rs        # exec_replace, run_piped, spawn
-│   │       ├── profiles.rs       # named config templates (bundled + custom)
-│   │       ├── profiles/         # built-in profile TOMLs
+│   │       ├── export.rs           # .desktop + bin shim export (mod-hub)
+│   │       ├── export/             # export submodules
+│   │       │   └── desktop.rs      # .desktop discovery + host-rewrite
+│   │       ├── guest.rs            # guest binary installation
+│   │       ├── history.rs          # build history storage/query
+│   │       ├── labels.rs           # image label defaults
+│   │       ├── lock.rs             # build lock file
+│   │       ├── ports.rs            # port publishing helpers
+│   │       ├── podman.rs           # version detection + subcommand wrappers
+│   │       ├── process.rs          # exec_replace, run_piped, spawn
+│   │       ├── profiles.rs         # named config templates (bundled + custom)
+│   │       ├── profiles/           # built-in profile TOMLs
 │   │       │   ├── cachy.toml
 │   │       │   ├── dev.toml
 │   │       │   └── fedora.toml
-│   │       ├── protocol.rs       # host-side protocol handler
-│   │       ├── quadlet_install.rs# Quadlet file installation
-│   │       ├── socket_host/      # host-side socket handler
-│   │       │   ├── handlers.rs
-│   │       ├── systemd.rs        # systemctl wrappers
-│   │       ├── wizard/           # interactive setup wizard
+│   │       ├── protocol.rs         # host-side protocol handler
+│   │       ├── quadlet_install.rs  # Quadlet file installation (mod-hub)
+│   │       ├── quadlet_install/    # quadlet_install submodules
+│   │       │   ├── paths.rs        # install/purge paths + user-unit dir
+│   │       │   ├── units.rs        # write/remove generated .container/.build
+│   │       │   └── preflight.rs    # capability-preset + readiness checks
+│   │       ├── socket_host.rs      # host-side socket handler (mod-hub)
+│   │       ├── socket_host/        # socket_host submodules
+│   │       │   ├── conn.rs         # framing + read/write loop
+│   │       │   ├── handlers.rs     # message dispatch (hello/host-exec/notify/…)
+│   │       │   └── monitor.rs      # session monitor for the host socket server
+│   │       ├── systemd.rs          # systemctl wrappers (mod-hub)
+│   │       ├── systemd/            # systemd submodules
+│   │       │   ├── units.rs        # unit control + start/stop helpers
+│   │       │   └── status.rs       # query_unit_status, journal_tail, diagnostic card
+│   │       ├── ui.rs               # UI helpers (quiet/verbose output, cards)
+│   │       ├── wizard/             # interactive setup wizard
 │   │       │   ├── mod.rs
 │   │       │   ├── prompts.rs
 │   │       │   ├── shell.rs
 │   │       │   └── summary.rs
-│   │       └── xdg.rs            # XDG dir resolution
+│   │       └── xdg.rs              # XDG dir resolution
 │   │
 │   ├── podbox-guest/             # static musl sidecar
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs           # argv[0] dispatch
 │   │       ├── lib.rs            # module declarations
-│   │       ├── entry.rs          # fork + exec
-│   │       ├── daemon.rs         # event loop (poll + pidfd)
+│   │       ├── entry.rs          # setup_user + run() (single cohesive flow)
+│   │       ├── daemon.rs         # signal/interceptors/pidfd/poll loop (single cohesive flow)
 │   │       ├── socket.rs         # socket I/O
 │   │       ├── protocol.rs       # message types + framing (re-exports)
-│   │       ├── interceptors/     # notify, xdg_open, clipboard, host_exec
+│   │       ├── interceptors/     # host-action interceptors
+│   │       │   ├── mod.rs
+│   │       │   ├── notify.rs
+│   │       │   ├── xdg_open.rs
+│   │       │   ├── clipboard.rs
+│   │       │   └── host_exec.rs  # host-exec allowlist + per-command shims
 │   │       └── error.rs
 │   │
 │   └── podbox-protocol/          # shared wire-format types
@@ -271,8 +310,12 @@ podbox/
 
 - **Pure codegen:** All `codegen::*` functions are pure — data in, string out.
   No I/O, no env reads, no filesystem access.
-- **Boundary separation:** I/O lives only in `commands/`, `build.rs`,
-  `quadlet_install.rs`, `socket_host.rs`, `export.rs`.
+- **Boundary separation:** I/O is confined to the thin mod-hub modules (and their
+  submodule dirs): `commands/`, `build/`, `quadlet_install/`, `socket_host/`,
+  `export/`, `systemd/`. Pure codegen stays in `codegen/`.
+- **Visibility tightening (post-modularization):** submodule internals are
+  `pub(crate)`; the parent mod-hub re-exports the public items so the public
+  CLI/lib surface is unchanged.
 - **musl static:** `podbox-guest` must stay statically linkable. No tokio,
   no openssl, no crate that links against glibc. Uses `poll()` + pidfds.
 - **exec_replace for TTY:** `podbox shell` and `podbox exec` use
