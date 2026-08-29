@@ -30,7 +30,7 @@ pub(crate) fn needs_image_labels(cmd: &Command) -> bool {
 pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
     match cmd {
         Command::Build { name, .. }
-        | Command::Enable { name }
+        | Command::Enable { name, .. }
         | Command::Disable { name, .. }
         | Command::Start { name, .. }
         | Command::Stop { name }

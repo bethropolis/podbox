@@ -38,6 +38,9 @@ pub enum Command {
     Enable {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
+        /// Skip confirmation when reinstalling Quadlet on a running container.
+        #[arg(long)]
+        yes: bool,
     },
 
     /// Disable and remove Quadlet systemd files.

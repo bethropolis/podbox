@@ -247,8 +247,8 @@ fn run() -> Result<()> {
             commands::lifecycle::run_build(&config, &env, &xdg, cli.dry_run, *rebuild, *no_diff)?;
         }
 
-        Command::Enable { name: _ } => {
-            commands::lifecycle::run_enable(&config, &env, &xdg, cli.dry_run)?;
+        Command::Enable { name: _, yes } => {
+            commands::lifecycle::run_enable(&config, &env, &xdg, cli.dry_run, *yes)?;
         }
 
         Command::Disable { name: _, .. } => {

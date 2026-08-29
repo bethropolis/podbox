@@ -27,7 +27,10 @@ pub fn run_build(
     if !dry_run {
         let _ = podbox::history::record(&config.container.name, "build", "");
         if config.lifecycle.quadlet {
-            println!("\nRun `podbox enable` to install Quadlet files.");
+            println!(
+                "\nRun `podbox enable {}` to install Quadlet files.",
+                config.container.name
+            );
         }
     }
     // Post-build drift check (best-effort).
@@ -56,7 +59,43 @@ pub fn run_enable(
     env: &HostEnv,
     xdg: &ResolvedXdgDirs,
     dry_run: bool,
+    yes: bool,
 ) -> Result<()> {
+    // Guard: reinstalling Quadlet on a running container restarts its systemd unit.
+    if !dry_run {
+        let name = &config.container.name;
+        let is_running = podbox::podman::query_state(name)
+            .map(|s| s == podbox::podman::ContainerState::Running)
+            .unwrap_or(false);
+        if is_running {
+            if !yes {
+                if podbox::codegen::distros::is_tty() {
+                    let prompt = format!(
+                        "Container '{name}' is running — reinstalling Quadlet will reload systemd and may restart it. Continue?"
+                    );
+                    let confirmed =
+                        dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                            .with_prompt(prompt)
+                            .default(false)
+                            .interact_opt()?
+                            .unwrap_or(false);
+                    if !confirmed {
+                        anyhow::bail!(
+                            "Aborted. Container '{name}' is still running. Rerun with --yes or stop it first: `podbox enable {name} --yes`"
+                        );
+                    }
+                } else {
+                    anyhow::bail!(
+                        "Container '{name}' is running — refusing to reinstall Quadlet without --yes (non-interactive). Use `podbox enable {name} --yes` or `podbox stop {name}` first."
+                    );
+                }
+            }
+            podbox::ui::warn(&format!(
+                "Reinstalling Quadlet for running container '{name}' — systemd will reload and may restart it..."
+            ));
+        }
+    }
+
     podbox::quadlet_install::install(config, env, xdg, dry_run)?;
     if !dry_run {
         let _ = podbox::history::record(&config.container.name, "enable", "");
