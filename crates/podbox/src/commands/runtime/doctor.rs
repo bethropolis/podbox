@@ -715,7 +715,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                     "config layout",
                     "warn",
                     format!(
-                        "legacy configs found in root ({names}). Run `podbox migrate` (legacy path removed in next version)"
+                        "legacy configs found in root ({names}). Run `podbox migrate` (legacy path removed in v0.8)"
                     )
                 );
             }
