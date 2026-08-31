@@ -632,6 +632,37 @@ memory = "2g"
     }
 
     #[test]
+    fn test_memory_bare_digits_rejected() {
+        let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+memory = "2"
+"#;
+        let cfg = Config::parse(toml);
+        assert!(
+            cfg.is_err(),
+            "bare memory without unit should be rejected: {cfg:?}"
+        );
+        let err = format!("{cfg:?}");
+        assert!(err.contains("container.memory"));
+    }
+
+    #[test]
+    fn test_memory_bare_digits_helper() {
+        use crate::config::validation::{is_bare_memory_digits, is_valid_memory};
+        assert!(is_bare_memory_digits("2"));
+        assert!(is_bare_memory_digits("  512  "));
+        assert!(!is_bare_memory_digits("2g"));
+        assert!(!is_valid_memory("2"));
+        assert!(is_valid_memory("2G"));
+        assert!(is_valid_memory("512m"));
+    }
+
+    #[test]
     fn test_cpus_parses_valid() {
         let toml = r#"
 [image]

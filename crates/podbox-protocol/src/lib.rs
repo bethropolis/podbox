@@ -55,6 +55,11 @@ pub enum GuestMessage {
     Busy,
     /// Sent by the guest daemon when no user processes remain.
     IdleTimeout,
+    /// Guest reply to host `GetInfo`.
+    Info {
+        guest_version: String,
+        protocol_version: u32,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -102,6 +107,8 @@ pub enum HostMessage {
     Error {
         reason: String,
     },
+    /// Host → guest version/info query (doctor).
+    GetInfo,
 }
 
 /// Write a length-prefixed JSON frame.

@@ -74,12 +74,17 @@ pub fn run(cmd: &[String]) -> ! {
         .as_ref()
         .map(|(_, _, user)| (format!("/home/{user}"), user.clone(), user.clone()));
 
+    // Expose guest version for host doctor (file); env for shell is set per-Command below.
+    let _ = std::fs::create_dir_all("/run/podbox");
+    let _ = std::fs::write("/run/podbox/guest-version", crate::VERSION);
+
     let exec_shell_cmd = |program: &str, args: &[String], arg0: Option<String>| -> ! {
         let mut c = Command::new(program);
         c.args(args);
         if let Some(a0) = arg0 {
             let _ = c.arg0(a0);
         }
+        c.env("PODBOX_GUEST_VERSION", crate::VERSION);
         if let Some((ref home, ref user, ref logname)) = user_env {
             c.env("HOME", home)
                 .env("USER", user)

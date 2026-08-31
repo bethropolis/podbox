@@ -226,7 +226,7 @@ pub fn parse_idle_timeout_secs(s: &str) -> u64 {
     }
 }
 
-fn is_valid_memory(s: &str) -> bool {
+pub fn is_valid_memory(s: &str) -> bool {
     let s = s.trim();
     if s.is_empty() {
         return false;
@@ -236,9 +236,13 @@ fn is_valid_memory(s: &str) -> bool {
     if digits.is_empty() {
         return false;
     }
-    suffix.is_empty()
-        || matches!(
-            suffix.as_str(),
-            "k" | "K" | "m" | "M" | "g" | "G" | "t" | "T"
-        )
+    matches!(
+        suffix.as_str(),
+        "k" | "K" | "m" | "M" | "g" | "G" | "t" | "T"
+    )
+}
+
+pub fn is_bare_memory_digits(s: &str) -> bool {
+    let t = s.trim();
+    !t.is_empty() && t.chars().all(|c| c.is_ascii_digit())
 }

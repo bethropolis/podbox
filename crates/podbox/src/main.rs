@@ -223,6 +223,32 @@ fn run() -> Result<()> {
         return commands::lifecycle::run_remove_stale(cli.dry_run, *force);
     }
 
+    // Doctor needs special handling: bare `memory = "2"` now fails validation,
+    // so `resolve_config` would bail before `run_doctor` can offer --fix.
+    if let Command::Doctor { fix, output, .. } = &cli.command {
+        let target_for_doctor = target_name.clone();
+        match resolve_config(&cli, target_for_doctor.clone()) {
+            Ok((config, _)) => {
+                let env = podbox::env::resolve()?;
+                return commands::runtime::run_doctor(&config, &env, *fix, *output);
+            }
+            Err(err) => {
+                let err_str = format!("{err:#}");
+                if err_str.contains("container.memory") && *fix {
+                    if commands::runtime::try_fix_bare_memory_for_target(
+                        target_for_doctor.as_deref(),
+                        *fix,
+                    )? {
+                        let (config2, _) = resolve_config(&cli, target_for_doctor)?;
+                        let env2 = podbox::env::resolve()?;
+                        return commands::runtime::run_doctor(&config2, &env2, *fix, *output);
+                    }
+                }
+                return Err(err);
+            }
+        }
+    }
+
     let (config, name) = resolve_config(&cli, target_name)?;
 
     let env = podbox::env::resolve()?;

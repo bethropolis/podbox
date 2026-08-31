@@ -216,6 +216,16 @@ pub(crate) fn handle_connection(
                 }
                 handlers::handle_host_exec(stream, &config.integration, cmd, args)?
             }
+            GuestMessage::Info {
+                guest_version,
+                protocol_version,
+            } => {
+                tracing::info!(
+                    "guest info: version {}, protocol {}",
+                    guest_version,
+                    protocol_version
+                );
+            }
         }
     }
 }

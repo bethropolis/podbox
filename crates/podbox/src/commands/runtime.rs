@@ -13,10 +13,11 @@ use podbox::podman::{ContainerState, query_state};
 use podbox::protocol::{GuestMessage, write_frame};
 use podbox::xdg::ResolvedXdgDirs;
 
-mod doctor;
+pub mod doctor;
 
 use doctor::is_systemd_managed;
 pub use doctor::run_doctor;
+pub use doctor::try_fix_bare_memory_for_target;
 
 /// Try to register a terminal session with the host's `socket_host`.
 ///

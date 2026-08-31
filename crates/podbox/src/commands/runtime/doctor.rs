@@ -37,7 +37,9 @@ fn group_for(check_name: &str) -> &'static str {
         | "loginctl linger"
         | "embedded guest binary"
         | "config layout" => "Host",
-        "Quadlet files" | "orphaned snapshot" => "Container",
+        "Quadlet files" | "orphaned snapshot" | "memory" | "guest version" | "protocol" => {
+            "Container"
+        }
         _ => "Integration",
     }
 }
@@ -726,6 +728,199 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         }
     }
 
+    // ── container memory: bare number without unit (e.g. "2" → "2G") ──
+    {
+        if let Some(ref mem) = config.container.memory {
+            let t = mem.trim();
+            if podbox::config::validation::is_bare_memory_digits(t) {
+                let suggested = format!("{t}G");
+                if let Some(path) = podbox::config::find_config_path(&config.container.name) {
+                    let path_str = path.display().to_string();
+                    if fix
+                        && confirm_fix(&format!(
+                            "Rewrite memory '{t}' → '{suggested}' in {path_str}?"
+                        ))
+                    {
+                        match rewrite_memory_raw(&path, &suggested) {
+                            Ok(()) => check!(
+                                "memory",
+                                "pass",
+                                format!("fixed '{t}' → '{suggested}' via --fix")
+                            ),
+                            Err(e) => check!("memory", "fail", format!("fix failed: {e}")),
+                        }
+                    } else {
+                        check!(
+                            "memory",
+                            "warn",
+                            format!(
+                                "memory = \"{t}\" has no unit; suggested \"{suggested}\" — run `podbox doctor --fix` to rewrite"
+                            )
+                        );
+                    }
+                } else {
+                    check!(
+                        "memory",
+                        "warn",
+                        format!(
+                            "memory = \"{t}\" has no unit; suggested \"{suggested}\" — no config file found to rewrite"
+                        )
+                    );
+                }
+            } else if !podbox::config::validation::is_valid_memory(t) {
+                check!(
+                    "memory",
+                    "fail",
+                    format!("memory = \"{t}\" invalid (e.g. 2g, 512m)")
+                );
+            } else {
+                check!("memory", "pass", t.to_string());
+            }
+        } else {
+            check!("memory", "pass", "unlimited");
+        }
+    }
+
+    // ── guest version / protocol (dual-purpose PODBOX_GUEST_VERSION) ──
+    {
+        let host_ver = podbox::VERSION.to_string();
+        let host_proto = podbox::protocol::PROTOCOL_VERSION.to_string();
+        let name = &config.container.name;
+        // Try running container file first, then image labels.
+        let mut guest_ver: Option<String> = None;
+        let mut guest_proto: Option<String> = None;
+
+        // 1) If container is running, try podman exec cat /run/podbox/guest-version
+        let is_running = podbox::podman::query_state(name)
+            .is_ok_and(|s| s == podbox::podman::ContainerState::Running);
+        if is_running {
+            if let Ok(output) = std::process::Command::new("podman")
+                .args(["exec", name, "cat", "/run/podbox/guest-version"])
+                .output()
+            {
+                if output.status.success() {
+                    let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !v.is_empty() {
+                        guest_ver = Some(v);
+                    }
+                }
+            }
+            // Try env as well
+            if guest_ver.is_none() {
+                if let Ok(output) = std::process::Command::new("podman")
+                    .args(["exec", name, "printenv", "PODBOX_GUEST_VERSION"])
+                    .output()
+                {
+                    if output.status.success() {
+                        let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if !v.is_empty() {
+                            guest_ver = Some(v);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2) Fallback to image labels (works even when not running)
+        if guest_ver.is_none() || guest_proto.is_none() {
+            let local_tag = format!("localhost/podbox-{name}:latest");
+            if let Ok(labels) = podbox::labels::fetch(&local_tag) {
+                if guest_ver.is_none() {
+                    if let Some(v) = labels
+                        .get("podbox.guest_version")
+                        .or_else(|| labels.get("podmgr.guest_version"))
+                    {
+                        guest_ver = Some(v.clone());
+                    }
+                }
+                if guest_proto.is_none() {
+                    if let Some(v) = labels
+                        .get("podbox.protocol_version")
+                        .or_else(|| labels.get("podmgr.protocol_version"))
+                    {
+                        guest_proto = Some(v.clone());
+                    }
+                }
+            }
+        }
+
+        match (guest_ver, guest_proto) {
+            (Some(gv), Some(gp)) => {
+                if gv == host_ver {
+                    check!("guest version", "pass", gv);
+                } else {
+                    check!(
+                        "guest version",
+                        "warn",
+                        format!(
+                            "guest {gv} vs host {host_ver} — run `podbox build --rebuild {name}`"
+                        )
+                    );
+                }
+                if gp == host_proto {
+                    check!("protocol", "pass", format!("v{gp}"));
+                } else {
+                    check!(
+                        "protocol",
+                        "warn",
+                        format!("guest protocol v{gp} vs host v{host_proto} — rebuild")
+                    );
+                }
+            }
+            (Some(gv), None) => {
+                if gv == host_ver {
+                    check!("guest version", "pass", gv);
+                } else {
+                    check!(
+                        "guest version",
+                        "warn",
+                        format!(
+                            "guest {gv} vs host {host_ver} — run `podbox build --rebuild {name}`"
+                        )
+                    );
+                }
+                check!(
+                    "protocol",
+                    "warn",
+                    "unknown guest protocol — rebuild".to_string()
+                );
+            }
+            (None, Some(gp)) => {
+                check!(
+                    "guest version",
+                    "warn",
+                    "unknown guest version — rebuild".to_string()
+                );
+                if gp == host_proto {
+                    check!("protocol", "pass", format!("v{gp}"));
+                } else {
+                    check!(
+                        "protocol",
+                        "warn",
+                        format!("guest protocol v{gp} vs host v{host_proto} — rebuild")
+                    );
+                }
+            }
+            (None, None) => {
+                if is_running {
+                    check!(
+                        "guest version",
+                        "warn",
+                        "guest not reporting version (old image) — rebuild".to_string()
+                    );
+                    check!("protocol", "warn", "unknown — rebuild".to_string());
+                } else {
+                    check!(
+                        "guest version",
+                        "warn",
+                        "container not running — cannot query guest version (rebuild to ensure match)".to_string()
+                    );
+                    check!("protocol", "warn", "container not running".to_string());
+                }
+            }
+        }
+    }
+
     // ── wl-copy / wl-paste / xdg-dbus-proxy ──
     for &(bin, desc) in &[
         ("wl-copy", "clipboard copy from container"),
@@ -975,6 +1170,105 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
         Err(anyhow::anyhow!("{failures} check(s) failed"))
     } else {
         Ok(())
+    }
+}
+
+fn rewrite_memory_raw(path: &Path, suggested: &str) -> Result<()> {
+    let content = std::fs::read_to_string(path)?;
+    let mut value: toml::Value = content.parse()?;
+    if let Some(tbl) = value.get_mut("container").and_then(|c| c.as_table_mut()) {
+        tbl.insert("memory".into(), toml::Value::String(suggested.to_string()));
+    } else {
+        anyhow::bail!("container table not found in {}", path.display());
+    }
+    let out = toml::to_string_pretty(&value)?;
+    std::fs::write(path, out)?;
+    Ok(())
+}
+
+/// Attempt to fix a bare `memory = "2"` directly from the raw TOML file,
+/// bypassing `Config::load` validation. Used when `podbox doctor --fix` is
+/// invoked on an otherwise-invalid config. Returns true if a fix was applied.
+pub fn try_fix_bare_memory_for_target(target_name: Option<&str>, fix: bool) -> Result<bool> {
+    if !fix {
+        return Ok(false);
+    }
+    let name = match target_name {
+        Some(n) => n.to_string(),
+        None => match podbox::config::read_active_context() {
+            Some(n) => n,
+            None => return Ok(false),
+        },
+    };
+    let path = match podbox::config::find_config_path(&name) {
+        Some(p) => p,
+        None => return Ok(false),
+    };
+    let content = std::fs::read_to_string(&path)?;
+    let value: toml::Value = match content.parse() {
+        Ok(v) => v,
+        Err(_) => return Ok(false),
+    };
+    let mem = match value
+        .get("container")
+        .and_then(|c| c.get("memory"))
+        .and_then(|m| m.as_str())
+    {
+        Some(m) => m.trim().to_string(),
+        None => return Ok(false),
+    };
+    if !podbox::config::validation::is_bare_memory_digits(&mem) {
+        return Ok(false);
+    }
+    let suggested = format!("{mem}G");
+    if !confirm_fix(&format!(
+        "Rewrite memory '{mem}' → '{suggested}' in {}?",
+        path.display()
+    )) {
+        return Ok(false);
+    }
+    rewrite_memory_raw(&path, &suggested)?;
+    println!("Fixed memory '{mem}' → '{suggested}' in {}", path.display());
+    Ok(true)
+}
+
+#[allow(dead_code)]
+fn query_guest_info_via_socket(name: &str) -> anyhow::Result<(String, u32)> {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("/run/user/1000"));
+    let sock_path = runtime_dir.join("podbox").join(format!("{name}.sock"));
+    if !sock_path.exists() {
+        anyhow::bail!("socket not found");
+    }
+    let mut stream = std::os::unix::net::UnixStream::connect(&sock_path)?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(2)))?;
+    // Handshake as a pseudo-guest
+    let hello = podbox::protocol::GuestMessage::Hello {
+        protocol_version: podbox::protocol::PROTOCOL_VERSION,
+        guest_version: podbox::VERSION.to_string(),
+        container: name.to_string(),
+        capabilities: vec![],
+    };
+    podbox::protocol::write_frame(&mut stream, &hello)?;
+    let Some(bytes) = podbox::protocol::read_frame(&mut stream)? else {
+        anyhow::bail!("no hello ack");
+    };
+    let _ack: podbox::protocol::HostMessage = serde_json::from_slice(&bytes)?;
+    // Now query
+    let get = podbox::protocol::HostMessage::GetInfo;
+    podbox::protocol::write_frame(&mut stream, &get)?;
+    let Some(bytes2) = podbox::protocol::read_frame(&mut stream)? else {
+        anyhow::bail!("no info reply");
+    };
+    let msg: podbox::protocol::GuestMessage = serde_json::from_slice(&bytes2)?;
+    match msg {
+        podbox::protocol::GuestMessage::Info {
+            guest_version,
+            protocol_version,
+        } => Ok((guest_version, protocol_version)),
+        other => anyhow::bail!("unexpected reply: {other:?}"),
     }
 }
 

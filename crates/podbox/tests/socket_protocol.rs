@@ -153,6 +153,7 @@ fn spawn_server(
                 GuestMessage::RegisterSession => {}
                 GuestMessage::Busy => {}
                 GuestMessage::IdleTimeout => {}
+                GuestMessage::Info { .. } => {}
             }
         }
     })

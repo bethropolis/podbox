@@ -106,8 +106,9 @@ pub fn run() -> Result<(), GuestError> {
     let container_name = socket::container_name()?;
     let bin_dir = PathBuf::from("/run/podbox/bin");
 
-    // 1. Create /run/podbox/bin/
+    // 1. Create /run/podbox/bin/ and expose guest version for fastfetch/host
     std::fs::create_dir_all(&bin_dir)?;
+    let _ = std::fs::write("/run/podbox/guest-version", crate::VERSION);
 
     // 2. Connect to host socket with retry
     tracing::info!("guest: connecting to host socket...");
@@ -475,6 +476,15 @@ fn event_loop(
                     | HostMessage::NotifyActionResult { .. }
                     | HostMessage::Error { .. },
                 )) => {}
+                Ok(Some(HostMessage::GetInfo)) => {
+                    let _ = write_frame(
+                        host_stream,
+                        &GuestMessage::Info {
+                            guest_version: crate::VERSION.to_string(),
+                            protocol_version: crate::protocol::PROTOCOL_VERSION,
+                        },
+                    );
+                }
                 Ok(Some(HostMessage::CheckIdle)) => {
                     let mut active = scan_user_processes();
                     if active.is_empty() {
