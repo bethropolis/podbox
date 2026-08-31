@@ -4,18 +4,19 @@ use crate::error::PodboxError;
 
 pub fn generate(config: &Config, _guest_binary_name: &str) -> Result<String, PodboxError> {
     if config.image.source().is_prebuilt() {
-        return Ok(generate_prebuilt(config));
+        return generate_prebuilt(config);
     }
     generate_custom(config)
 }
 
-fn generate_prebuilt(config: &Config) -> String {
+fn generate_prebuilt(config: &Config) -> Result<String, PodboxError> {
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
-    builder
+    let builder = builder
         .add_user_packages(config.image.packages.install.clone())
         .add_run_commands(config.image.run.commands.clone())
-        .set_shell(&config.container.shell)
-        .build()
+        .add_guest_binary()?
+        .set_shell(&config.container.shell);
+    Ok(builder.build())
 }
 
 fn generate_custom(config: &Config) -> Result<String, PodboxError> {
