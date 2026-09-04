@@ -1,5 +1,6 @@
 //! Prebuilt-image path: pull (or re-tag) a published image, optionally
-//! layer packages on top, and record the lock file.
+//! layer packages on top plus the host's embedded guest binary, and record
+//! the lock file.
 //!
 //! Extracted verbatim from `build.rs`.
 
@@ -57,6 +58,9 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
                 "Would install packages on top: {}",
                 config.image.packages.install.join(", ")
             );
+            if crate::guest::PODBOX_GUEST.is_some() {
+                println!("Would layer host guest binary on top (version match)");
+            }
         }
         println!("Would tag as: {local_tag}");
         println!("Would write lock file at: {}", lock_path.display());
@@ -92,7 +96,12 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
     }
 
     if has_packages {
-        // Layer the config's packages on top of the prebuilt image.
+        // Layer the config's packages on top of the prebuilt image, plus the
+        // host's embedded guest binary so `/run/podbox/guest-version` matches
+        // the host. The COPY is content-hashed, so it only busts podman cache
+        // when the guest actually changes; the heavy registry base layers stay
+        // cached. Builds without an embedded guest (published-crate installs)
+        // skip the layer and keep the registry-baked guest.
         let distro = resolve_prebuilt_distro(config);
         let install_cmd = distro.install_cmd();
         let clean_cmd = distro.clean_cmd();
@@ -104,10 +113,21 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
             format!("RUN {install_cmd} {packages} && {clean_cmd}")
         };
 
-        let containerfile = format!("FROM {image_ref}\n{run_line}\n");
-
         std::fs::create_dir_all(&context_dir)
             .with_context(|| format!("failed to create context dir '{}'", context_dir.display()))?;
+
+        let mut containerfile = format!("FROM {image_ref}\n{run_line}\n");
+        if let Some(guest_bin) = crate::guest::PODBOX_GUEST {
+            std::fs::write(context_dir.join("podbox-guest"), guest_bin).with_context(|| {
+                format!(
+                    "failed to write guest binary to '{}'",
+                    context_dir.join("podbox-guest").display()
+                )
+            })?;
+            containerfile.push_str(
+                "COPY podbox-guest /usr/local/bin/podbox-guest\nRUN chmod +x /usr/local/bin/podbox-guest\n",
+            );
+        }
 
         let containerfile_path = context_dir.join("Containerfile");
         std::fs::write(&containerfile_path, &containerfile).with_context(|| {

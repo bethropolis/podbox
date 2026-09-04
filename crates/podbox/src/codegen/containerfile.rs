@@ -4,19 +4,22 @@ use crate::error::PodboxError;
 
 pub fn generate(config: &Config, _guest_binary_name: &str) -> Result<String, PodboxError> {
     if config.image.source().is_prebuilt() {
-        return generate_prebuilt(config);
+        // Prebuilt registry images already embed a guest binary; the local
+        // overlay path (`build::prebuilt`) layers the host guest on top when
+        // one is embedded in this binary. Keep this minimal so pulls stay
+        // cache-friendly.
+        return Ok(generate_prebuilt(config));
     }
     generate_custom(config)
 }
 
-fn generate_prebuilt(config: &Config) -> Result<String, PodboxError> {
+fn generate_prebuilt(config: &Config) -> String {
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
-    let builder = builder
+    builder
         .add_user_packages(config.image.packages.install.clone())
         .add_run_commands(config.image.run.commands.clone())
-        .add_guest_binary()?
-        .set_shell(&config.container.shell);
-    Ok(builder.build())
+        .set_shell(&config.container.shell)
+        .build()
 }
 
 fn generate_custom(config: &Config) -> Result<String, PodboxError> {
