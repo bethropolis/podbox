@@ -1,3 +1,7 @@
+---
+description: podbox CLI reference — every command grouped by workflow, container name resolution, exit codes, JSON output, and shell completion.
+---
+
 # CLI reference
 
 Groups, name resolution, exit codes, JSON output, and shell completion.

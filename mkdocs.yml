@@ -1,6 +1,6 @@
 site_name: podbox
 site_url: https://bethropolis.github.io/podbox/
-site_description: Podman-native container tool with Wayland passthrough, systemd Quadlet management, and declarative TOML config. No daemon, no home mounting.
+site_description: podbox is a declarative, Podman-native container environment manager for Linux — write one TOML file, get an OCI image plus systemd Quadlet units with Wayland/GPU passthrough. A distrobox alternative with config-as-code and no daemon.
 site_author: bethropolis
 repo_url: https://github.com/bethropolis/podbox
 repo_name: bethropolis/podbox
@@ -26,9 +26,16 @@ theme:
     - search.share
     - content.code.copy
 
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bethropolis/podbox
+      name: GitHub repository
+
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - CLI Reference: cli.md
   - Configuration: config.md
   - Baked-in Base Packages: baked-in-packages.md
   - Architecture: architecture.md
