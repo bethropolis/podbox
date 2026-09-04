@@ -1,6 +1,11 @@
-use std::path::{Path, PathBuf};
+//! `.container` Quadlet section emitters.
+//!
+//! Extracted verbatim from `quadlet.rs`; see `super` for the unit entry
+//! points.
 
-use crate::config::{Config, GpuMode};
+use std::path::PathBuf;
+
+use crate::config::Config;
 use crate::env::HostEnv;
 use crate::xdg::ResolvedXdgDirs;
 
@@ -8,76 +13,7 @@ fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
 }
 
-/// Generate the `.build` Quadlet file.
-pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
-    let mut lines: Vec<String> = Vec::new();
-
-    lines.push("[Build]".into());
-    lines.push(format!(
-        "ImageTag=localhost/podbox-{}:latest",
-        config.image.name
-    ));
-    lines.push(format!("File={}", containerfile_path.to_string_lossy()));
-    lines.push(format!("Retry={}", config.image.pull_retry));
-    lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
-
-    lines.join("\n")
-}
-
-/// Generate the `.socket` Quadlet file.
-pub fn generate_socket(config: &Config) -> String {
-    let name = &config.container.name;
-    let host_service = format!("{name}-host.service");
-    let mut lines: Vec<String> = Vec::new();
-
-    lines.push("[Unit]".into());
-    lines.push(format!("Description=podbox host-guest socket -- {name}"));
-    lines.push(String::new());
-
-    lines.push("[Socket]".into());
-    lines.push(format!("ListenStream=%t/podbox/{name}.sock"));
-    lines.push(format!("Service={host_service}"));
-    lines.push("SocketMode=0600".into());
-    lines.push("DirectoryMode=0700".into());
-    lines.push("RuntimeDirectory=podbox".into());
-    lines.push("RuntimeDirectoryMode=0700".into());
-    // Keep %t/podbox alive even when no socket unit is active. Without this,
-    // systemd removes the directory when the last requesting unit stops, and
-    // a later recreation can orphan sibling containers' listening sockets.
-    lines.push("RuntimeDirectoryPreserve=yes".into());
-    lines.push(String::new());
-
-    lines.push("[Install]".into());
-    lines.push("WantedBy=sockets.target".into());
-
-    lines.join("\n")
-}
-
-/// Generate the `.container` Quadlet file.
-///
-/// Pure function: all paths via HostEnv and ResolvedXdgDirs.
-pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs) -> String {
-    let name = &config.container.name;
-    let home_in_container = "/home/%u";
-    let mut lines: Vec<String> = Vec::new();
-
-    emit_unit(&mut lines, config, name);
-    emit_container_image(&mut lines, config, name, home_in_container, env);
-    emit_network(&mut lines, config);
-    emit_volumes(&mut lines, config, xdg, env, name, home_in_container);
-    emit_env(&mut lines, config, name, env);
-    emit_gpu(&mut lines, config, env);
-    emit_hardware_devices(&mut lines, config);
-    emit_secrets(&mut lines, config);
-    emit_auto_update(&mut lines, config);
-    emit_podman_args(&mut lines, config);
-    emit_service_section(&mut lines, config);
-    emit_install_section(&mut lines, config);
-
-    lines.join("\n")
-}
-
-fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
+pub(super) fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
     lines.push("[Unit]".into());
     lines.push(format!("Description=podbox -- {name}"));
     lines.push(format!("Requires={name}.socket"));
@@ -101,7 +37,7 @@ fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
     lines.push(String::new());
 }
 
-fn emit_container_image(
+pub(super) fn emit_container_image(
     lines: &mut Vec<String>,
     config: &Config,
     name: &str,
@@ -163,7 +99,7 @@ fn emit_container_image(
     lines.push(String::new());
 }
 
-fn emit_network(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_network(lines: &mut Vec<String>, config: &Config) {
     lines.push(format!("Network={}", config.network.mode));
     if config.network.mode != "host" {
         for port in &config.network.ports {
@@ -173,7 +109,7 @@ fn emit_network(lines: &mut Vec<String>, config: &Config) {
     lines.push(String::new());
 }
 
-fn emit_volumes(
+pub(super) fn emit_volumes(
     lines: &mut Vec<String>,
     config: &Config,
     xdg: &ResolvedXdgDirs,
@@ -365,7 +301,7 @@ fn emit_volumes(
     }
 }
 
-fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv) {
+pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv) {
     // Locale environment
     if let Some(ref locale) = _env.host_locale {
         lines.push(format!("Environment=LANG={locale}"));
@@ -393,141 +329,7 @@ fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv
     lines.push(String::new());
 }
 
-fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) {
-    match config.integration.gpu {
-        GpuMode::Enabled => {
-            lines.push("AddDevice=/dev/dri".into());
-            lines.push(String::new());
-        }
-        GpuMode::Nvidia => {
-            lines.push("AddDevice=/dev/dri".into());
-            lines.push("AddDevice=-/dev/nvidiactl".into());
-            lines.push("AddDevice=-/dev/nvidia0".into());
-            if env.gpu_has_nvidia_uvm {
-                lines.push("AddDevice=-/dev/nvidia-uvm".into());
-            }
-            lines.push(String::new());
-        }
-        GpuMode::Auto => {
-            if env.gpu_has_dri {
-                lines.push("AddDevice=/dev/dri".into());
-            }
-            if env.gpu_has_nvidia {
-                lines.push("AddDevice=-/dev/nvidiactl".into());
-                lines.push("AddDevice=-/dev/nvidia0".into());
-                if env.gpu_has_nvidia_uvm {
-                    lines.push("AddDevice=-/dev/nvidia-uvm".into());
-                }
-            }
-            if env.gpu_has_dri || env.gpu_has_nvidia {
-                lines.push(String::new());
-            }
-        }
-        GpuMode::Disabled => {}
-    }
-}
-
-pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
-    let hw = &config.integration.hardware;
-
-    let mut emitted = false;
-
-    if hw.kvm {
-        lines.push("AddDevice=-/dev/kvm".into());
-        emitted = true;
-    }
-
-    if hw.joystick {
-        lines.push("AddDevice=-/dev/uinput".into());
-        lines.push("AddDevice=-/dev/input".into());
-        emitted = true;
-    }
-
-    if hw.webcam {
-        for i in 0..16 {
-            lines.push(format!("AddDevice=-/dev/video{i}"));
-            lines.push(format!("AddDevice=-/dev/media{i}"));
-        }
-        emitted = true;
-    }
-
-    if hw.serial {
-        for i in 0..8 {
-            lines.push(format!("AddDevice=-/dev/ttyUSB{i}"));
-            lines.push(format!("AddDevice=-/dev/ttyACM{i}"));
-        }
-        emitted = true;
-    }
-
-    if hw.yubikey {
-        lines.push("Volume=-%t/pcscd/pcscd.comm:/run/pcscd/pcscd.comm:ro".into());
-        for i in 0..16 {
-            lines.push(format!("AddDevice=-/dev/hidraw{i}"));
-        }
-        emitted = true;
-    }
-
-    if emitted {
-        lines.push(String::new());
-    }
-}
-
-pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
-    use crate::config::{SecretEntry, SecretSource, SecretType};
-
-    let mut emitted = false;
-    for secret in &config.security.secrets {
-        emitted = true;
-        match secret {
-            SecretEntry::Simple(name) => {
-                lines.push(format!("Secret={name},type=env,target={name}"));
-            }
-            SecretEntry::Detailed {
-                name,
-                secret_type,
-                target,
-                mode,
-                source,
-            } => match source {
-                SecretSource::Podman => {
-                    let mut opts = vec![name.clone()];
-                    match secret_type {
-                        SecretType::Env => {
-                            opts.push("type=env".into());
-                            if let Some(t) = target {
-                                opts.push(format!("target={t}"));
-                            }
-                        }
-                        SecretType::Mount => {
-                            opts.push("type=mount".into());
-                            if let Some(t) = target {
-                                opts.push(format!("target={t}"));
-                            }
-                            if let Some(m) = mode {
-                                opts.push(format!("mode={m}"));
-                            }
-                            opts.push("uid=%U".into());
-                            opts.push("gid=%G".into());
-                        }
-                    }
-                    lines.push(format!("Secret={}", opts.join(",")));
-                }
-                SecretSource::Systemd => {
-                    lines.push(format!(
-                        "Environment={}=%d/{}",
-                        target.as_deref().unwrap_or(name),
-                        name
-                    ));
-                }
-            },
-        }
-    }
-    if emitted {
-        lines.push(String::new());
-    }
-}
-
-fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
     if config.lifecycle.auto_update {
         if config.image.source().is_prebuilt() {
             lines.push("AutoUpdate=registry".into());
@@ -538,7 +340,7 @@ fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
     }
 }
 
-fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
     lines.push("PodmanArgs=--init".into());
     lines.push("PodmanArgs=--workdir=/home/%u".into());
     let cap_preset = config.security.cap_preset;
@@ -558,7 +360,7 @@ fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
     }
 }
 
-fn emit_service_section(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_service_section(lines: &mut Vec<String>, config: &Config) {
     lines.push("[Service]".into());
     lines.push("Restart=on-failure".into());
     lines.push("RestartSec=2s".into());
@@ -568,105 +370,14 @@ fn emit_service_section(lines: &mut Vec<String>, config: &Config) {
     lines.push(String::new());
 }
 
-fn emit_install_section(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_install_section(lines: &mut Vec<String>, config: &Config) {
     lines.push("[Install]".into());
     if config.lifecycle.autostart {
         lines.push("WantedBy=default.target".into());
     }
 }
 
-/// Generate the companion D-Bus proxy `.service` unit.
-pub fn generate_dbus_proxy_service(name: &str, config: &Config) -> Option<String> {
-    if !config.use_dbus_proxy() {
-        return None;
-    }
-
-    let mut args = vec![
-        "unix:path=%t/bus".to_string(),
-        format!("%t/podbox/{}-dbus.sock", name),
-    ];
-
-    args.push("--filter".into());
-
-    for service in &config.dbus_effective_talk() {
-        args.push(format!("--talk={service}"));
-    }
-    for rule in config.dbus_portal_calls() {
-        args.push(rule);
-    }
-    for service in &config.dbus.own {
-        args.push(format!("--own={service}"));
-    }
-
-    let exec_start = format!("/usr/bin/xdg-dbus-proxy {}", args.join(" "));
-
-    Some(format!(
-        r#"[Unit]
-Description=D-Bus Proxy for podbox container {name}
-PartOf={name}.service
-
-[Service]
-Type=simple
-ExecStart={exec_start}
-Restart=on-failure
-RestartSec=1s
-
-[Install]
-WantedBy={name}.service
-"#,
-    ))
-}
-
-/// Generate the companion Wayland firewall `.service` unit.
-/// Returns `None` when the Wayland proxy is disabled in config.
-pub fn generate_compositor_service(name: &str, config: &Config) -> Option<String> {
-    if !config.use_wayland_proxy() {
-        return None;
-    }
-    let podbox_bin = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "/usr/local/bin/podbox".into());
-
-    Some(format!(
-        r#"[Unit]
-Description=Wayland Firewall Proxy for podbox container {name}
-PartOf={name}.service
-
-[Service]
-Type=simple
-ExecStart={podbox_bin} compositor {name}
-Restart=on-failure
-RestartSec=1s
-
-[Install]
-WantedBy={name}.service
-"#,
-    ))
-}
-
-/// Generate the companion host socket server `.service` unit.
-pub fn generate_host_service(name: &str) -> String {
-    let podbox_bin = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "/usr/local/bin/podbox".into());
-
-    format!(
-        r#"[Unit]
-Description=podbox host socket server -- {name}
-
-[Service]
-Type=simple
-ExecStart={podbox_bin} serve {name}
-Restart=on-failure
-RestartSec=2s
-
-[Install]
-WantedBy={name}.socket
-"#,
-    )
-}
-
-fn emit_xdg_dir(
+pub(super) fn emit_xdg_dir(
     lines: &mut Vec<String>,
     dir_name: &str,
     xdg_dir: &Option<crate::xdg::ResolvedXdgDir>,
