@@ -1,0 +1,174 @@
+//! Quadlet `.container` unit: core directives
+//! Split out of the former monolithic `codegen_tests.rs`.
+
+mod common;
+
+use common::*;
+
+use podbox::codegen::quadlet;
+use std::path::PathBuf;
+
+#[test]
+fn quadlet_container_has_userns_custom() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("UserNS=nomap"));
+}
+#[test]
+fn quadlet_container_userns_defaults_to_keep_id() {
+    let config = load_config("minimal.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("UserNS=keep-id"));
+}
+#[test]
+fn quadlet_container_has_read_only_rootfs() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("ReadOnly=true"));
+}
+#[test]
+fn quadlet_container_has_cpu_quota() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("CpuQuota="));
+    // full.toml has cpus = "4.0" → 400000
+    assert!(q.contains("CpuQuota=400000"));
+}
+#[test]
+fn quadlet_container_has_security_label_disable() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("SecurityLabelDisable=true"));
+}
+#[test]
+fn quadlet_container_has_init() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("PodmanArgs=--init"));
+}
+#[test]
+fn quadlet_container_has_network_host() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Network=host"));
+    // host mode should not emit PublishPort
+    assert!(!q.contains("PublishPort"));
+}
+#[test]
+fn quadlet_no_host_home_mount() {
+    let _guard = HOME_LOCK.lock().unwrap();
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    let home = dirs::home_dir().unwrap();
+    let home_str = home.to_string_lossy();
+    // Host home alone must never appear as Volume source
+    assert!(!q.contains(&format!("{home_str}:")));
+    // Expanded config.home path is used
+    assert!(q.contains(&format!("Volume={home_str}/containers/myenv:/home/%u:Z")));
+}
+#[test]
+fn quadlet_has_host_guest_socket_volume() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=%t/podbox/myenv.sock:%t/podbox/myenv.sock"));
+}
+#[test]
+fn quadlet_has_extra_env() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Environment=EDITOR=nvim"));
+    assert!(q.contains("Environment=TERM=xterm-256color"));
+}
+#[test]
+fn quadlet_has_extra_mounts() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=~/Work:/home/user/Work:z"));
+}
+#[test]
+fn quadlet_socket_file_has_listen_stream() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_socket(&config);
+    assert!(q.contains("ListenStream=%t/podbox/myenv.sock"));
+    assert!(q.contains("SocketMode=0600"));
+    assert!(q.contains("RuntimeDirectoryPreserve=yes"));
+}
+#[test]
+fn quadlet_build_file_has_image_tag() {
+    let config = load_config("full.toml");
+    let cf_path = PathBuf::from("/home/user/.local/share/podbox/myenv/Containerfile");
+    let q = quadlet::generate_build(&config, &cf_path);
+    assert!(q.contains("ImageTag=localhost/podbox-myenv:latest"));
+    assert!(q.contains("File=/home/user/.local/share/podbox/myenv/Containerfile"));
+}
+#[test]
+fn quadlet_uses_literal_percent_t() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("%t"));
+    // %t must NOT be substituted
+    assert!(!q.contains("/run/user/1000"));
+}
+#[test]
+fn quadlet_no_literal_percent_h() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    // All home paths use expanded config values, not %h
+    assert!(!q.contains("%h"));
+}
+#[test]
+fn quadlet_auto_update_present_for_prebuilt() {
+    let config = load_config("prebuilt.toml");
+    let mut config = config.clone();
+    config.lifecycle.auto_update = true;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("AutoUpdate=registry"));
+}
+#[test]
+fn quadlet_auto_update_present_for_build() {
+    let config = load_config("full.toml");
+    let mut config = config.clone();
+    config.lifecycle.auto_update = true;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("AutoUpdate=local"));
+}
+#[test]
+fn quadlet_auto_update_absent_when_disabled() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("AutoUpdate"));
+}
+#[test]
+fn quadlet_systemd_dependencies() {
+    let config = load_config("full.toml");
+    let mut config = config.clone();
+    config.systemd.requires = vec!["db-container.service".into()];
+    config.systemd.after = vec!["db-container.service".into()];
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Requires=db-container.service"));
+    assert!(q.contains("After=db-container.service"));
+}
+#[test]
+fn quadlet_systemd_dependencies_absent_by_default() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    let requires_lines: Vec<&str> = q.lines().filter(|l| l.starts_with("Requires=")).collect();
+    // Socket + D-Bus proxy service (portal preset) + compositor service (wayland default)
+    assert_eq!(requires_lines.len(), 3);
+    assert!(requires_lines.iter().any(|l| l.ends_with(".socket")));
+    assert!(requires_lines.iter().any(|l| l.ends_with("-proxy.service")));
+    assert!(
+        requires_lines
+            .iter()
+            .any(|l| l.ends_with("-compositor.service"))
+    );
+}
+#[test]
+fn quadlet_container_has_restart_rate_limiting() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Restart=on-failure"));
+    assert!(q.contains("RestartSec=2s"));
+    assert!(q.contains("StartLimitBurst=5"));
+    assert!(q.contains("StartLimitIntervalSec=30s"));
+}
