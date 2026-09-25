@@ -70,8 +70,7 @@ fn embed_guest_from_workspace(dest: &Path) {
     let musl_available = Command::new("rustup")
         .args(["target", "list", "--installed"])
         .output()
-        .ok()
-        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains(musl_target));
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(musl_target));
 
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let (guest_path, target_label) = if musl_available {

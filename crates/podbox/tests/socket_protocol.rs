@@ -263,10 +263,7 @@ fn capability_negotiation_rejects_unknown() {
     let response: HostMessage = serde_json::from_slice(&bytes).unwrap();
     match response {
         HostMessage::HelloAck {
-            accepted,
-            rejected,
-            idle_timeout_secs: _,
-            ..
+            accepted, rejected, ..
         } => {
             assert!(accepted.is_empty());
             assert_eq!(rejected.len(), 2);

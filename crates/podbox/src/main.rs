@@ -277,7 +277,7 @@ fn run() -> Result<()> {
             commands::lifecycle::run_enable(&config, &env, &xdg, cli.dry_run, *yes)?;
         }
 
-        Command::Disable { name: _, .. } => {
+        Command::Disable { .. } => {
             commands::lifecycle::run_disable(&name)?;
         }
 
