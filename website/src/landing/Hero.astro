@@ -1,0 +1,88 @@
+---
+import { PodboxLogo } from '../design/components/PodboxLogo';
+import { GithubIcon } from '../design/components/GithubIcon';
+import { ArrowRight } from 'lucide-react';
+import InstallTabs from './InstallTabs.astro';
+import { VERSION } from './data';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="relative max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-18 pb-16">
+  {/* Top Hero Pill Logo + terminal prompt tag */}
+  <div class="flex flex-wrap items-center gap-3 mb-6">
+    <PodboxLogo className="w-9 h-9 shrink-0" />
+    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--accent-mauve)]">
+      <span class="text-[var(--accent-green)] font-bold">$</span>
+      <span>podbox --version</span>
+      <span class="text-[var(--text-muted)]">→</span>
+      <span class="text-[var(--text-primary)] font-semibold">{VERSION} (podman-native)</span>
+    </div>
+  </div>
+
+  {/* Real Tagline with Blinking Cursor */}
+  <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text-primary)] leading-[1.15] mb-6">
+    Define once. Run anywhere.
+    <br />
+    <span class="text-[var(--accent-mauve)]">No host daemon</span><span class="cursor-blink text-[var(--accent-blue)] ml-1 font-normal">_</span>
+  </h1>
+
+  {/* Authentic Description */}
+  <p class="text-base sm:text-lg text-[var(--text-subtext)] leading-relaxed max-w-3xl mb-8">
+    podbox is a declarative container environment manager for Linux. You write a TOML file,
+    podbox turns it into an OCI image and a set of systemd Quadlet units, and from then on systemd
+    owns the lifecycle: autostart, restart, socket activation, all of it.
+    No background service of podbox&apos;s own running on your machine.
+  </p>
+
+  {/* Badges Row from README */}
+  <div class="flex flex-wrap items-center gap-2.5 mb-10 select-none">
+    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+      <span class="text-[var(--text-muted)]">Version:</span>
+      <span class="text-[var(--accent-blue)] font-bold">v{VERSION}</span>
+    </div>
+    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+      <span class="w-2 h-2 rounded-full bg-[var(--accent-green)] inline-block"></span>
+      <span class="text-[var(--text-muted)]">CI:</span>
+      <span class="text-[var(--accent-green)] font-bold">passing</span>
+    </div>
+    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+      <span class="text-[var(--text-muted)]">License:</span>
+      <span class="text-[var(--accent-mauve)] font-bold">MIT</span>
+    </div>
+    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+      <span class="text-[var(--text-muted)]">Platform:</span>
+      <span class="text-[var(--accent-peach)] font-bold">Linux (rootless)</span>
+    </div>
+  </div>
+
+  {/* CTAs */}
+  <div class="flex flex-wrap items-center gap-3 mb-12">
+    <a
+      href={`${base}docs/getting-started/`}
+      class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--accent-mauve)] text-[#11111b] font-bold text-xs sm:text-sm hover:brightness-110 transition-all cursor-pointer shadow-xs"
+    >
+      <span>Get Started</span>
+      <ArrowRight className="w-4 h-4" />
+    </a>
+
+    <a
+      href={`${base}docs/`}
+      class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
+    >
+      <span>Read Documentation</span>
+    </a>
+
+    <a
+      href="https://github.com/bethropolis/podbox"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="flex items-center gap-2 px-4 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text-subtext)] hover:text-[var(--text-primary)] transition-colors"
+    >
+      <GithubIcon className="w-4 h-4" />
+      <span>GitHub</span>
+    </a>
+  </div>
+
+  <InstallTabs />
+</section>

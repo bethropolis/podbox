@@ -1,0 +1,55 @@
+---
+import { TerminalCodeBlock } from '../design/components/TerminalCodeBlock';
+import { ChevronRight } from 'lucide-react';
+import { installTabs, installCommands } from './data';
+
+const base = import.meta.env.BASE_URL;
+---
+
+{/* Tabbed Quick Start Terminal Window (CSS-only tabs, zero JS) */}
+<div class="install-tabs rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden shadow-lg">
+  {/* Terminal bar with install method tabs */}
+  <div class="flex flex-wrap items-center justify-between px-3 py-2 bg-[var(--bg-crust)] border-b border-[var(--border)] gap-2">
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1.5 mr-2" aria-hidden="true">
+        <span class="w-2.5 h-2.5 rounded-full bg-[#f38ba8]/90 inline-block"></span>
+        <span class="w-2.5 h-2.5 rounded-full bg-[#f9e2af]/90 inline-block"></span>
+        <span class="w-2.5 h-2.5 rounded-full bg-[#a6e3a1]/90 inline-block"></span>
+      </div>
+      <span class="text-xs text-[var(--text-subtext)] font-semibold">quick-start.sh</span>
+    </div>
+
+    {/* Install tabs */}
+    <div role="tablist" aria-label="Installation options" class="flex items-center gap-1 overflow-x-auto text-[11px]">
+      {installTabs.map((tab, i) => (
+        <>
+          <input type="radio" name="install-tab" id={`install-tab-${tab.id}`} checked={i === 0} />
+          <label
+            for={`install-tab-${tab.id}`}
+            role="tab"
+            class={`install-tab-label px-2.5 py-1 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap`}
+          >
+            {tab.label}
+          </label>
+        </>
+      ))}
+    </div>
+  </div>
+
+  {/* Code panels */}
+  {installTabs.map((tab) => (
+    <div id={`install-panel-${tab.id}`} role="tabpanel" class="install-panel p-1">
+      <TerminalCodeBlock code={installCommands[tab.id]} language="bash" showLineNumbers />
+    </div>
+  ))}
+  <div class="px-4 py-2 bg-[var(--bg-crust)]/60 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+    <span>* Installs podbox binary and systemd Quadlet generator generators</span>
+    <a
+      href={`${base}docs/getting-started/`}
+      class="text-[var(--accent-blue)] hover:underline flex items-center gap-1 cursor-pointer"
+    >
+      <span>Read the Getting Started guide</span>
+      <ChevronRight className="w-3 h-3" />
+    </a>
+  </div>
+</div>

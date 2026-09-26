@@ -1,0 +1,67 @@
+---
+import { PodboxLogo } from '../design/components/PodboxLogo';
+import { GithubIcon } from '../design/components/GithubIcon';
+import { Package } from 'lucide-react';
+import { VERSION } from './data';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<footer class="w-full bg-[var(--bg-crust)] border-t border-[var(--border)] py-12 px-4 sm:px-6">
+  <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+    <div class="space-y-2">
+      <div class="flex items-center gap-2">
+        <PodboxLogo className="w-5 h-5" />
+        <span class="font-bold text-sm tracking-tight text-[var(--text-primary)]">
+          podbox
+        </span>
+        <span class="text-xs text-[var(--text-muted)]">v{VERSION}</span>
+      </div>
+      <p class="text-xs text-[var(--text-subtext)]">
+        Define once. Run anywhere. No host daemon.
+      </p>
+      <p class="text-[11px] text-[var(--text-muted)]">
+        Open source under the MIT License. Built for Linux & Podman.
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-6 text-xs text-[var(--text-subtext)]">
+      <a
+        href={`${base}docs/`}
+        class="hover:text-[var(--text-primary)] cursor-pointer"
+      >
+        Documentation
+      </a>
+      <a
+        href={`${base}docs/getting-started/`}
+        class="hover:text-[var(--text-primary)] cursor-pointer"
+      >
+        Getting Started
+      </a>
+      <a
+        href={`${base}docs/config/`}
+        class="hover:text-[var(--text-primary)] cursor-pointer"
+      >
+        Config Reference
+      </a>
+      <a
+        href="https://github.com/bethropolis/podbox"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="hover:text-[var(--text-primary)] flex items-center gap-1"
+      >
+        <GithubIcon className="w-3.5 h-3.5" />
+        <span>GitHub</span>
+      </a>
+      <a
+        href="https://crates.io/crates/podbox-cli"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="hover:text-[var(--text-primary)] flex items-center gap-1"
+      >
+        <Package className="w-3.5 h-3.5" />
+        <span>crates.io</span>
+      </a>
+    </div>
+  </div>
+</footer>
