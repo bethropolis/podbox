@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft,
   ChevronDown,
@@ -14,18 +14,20 @@ import {
   RotateCcw,
   Sparkles,
   Terminal,
+  Upload,
 } from 'lucide-react';
-import { PodboxLogo } from '../../components/PodboxLogo';
 import { withBase } from '../../base';
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
 import { presetPatch, defaultPatch } from './presets';
+import { StudioImport } from './StudioImport';
 
 interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu'>; toml: string; quadlet: string; }
 
 export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
   const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu } = st;
   const { handleDownloadToml, handleDownloadQuadlet, handleCopyConfig } = useOutputActions(st, toml, quadlet);
+  const [showImport, setShowImport] = useState(false);
   const onPreset = (p: 'rust' | 'arch-gui' | 'fullstack' | 'minimal') => st.applyPatch(presetPatch(p));
   const onReset = () => st.applyPatch(defaultPatch());
   return (
@@ -42,7 +44,6 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
           <ArrowLeft className="w-4 h-4" />
         </a>
       )}
-      <PodboxLogo className="w-8 h-8 shrink-0" />
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
@@ -60,12 +61,6 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
 
     {/* Right: Actions (Presets, Export, Reset, Fullscreen) */}
     <div className="flex flex-wrap items-center gap-2">
-      {/* Status indicator */}
-      <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-[11px] font-mono text-[var(--accent-green)]">
-        <span className="w-2 h-2 rounded-full bg-[var(--accent-green)] animate-pulse" />
-        <span>Synthesizer Active</span>
-      </div>
-
       {/* Reset button */}
       <button
         onClick={onReset}
@@ -75,6 +70,17 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
       >
         <RotateCcw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         <span className="hidden sm:inline">Reset</span>
+      </button>
+
+      {/* Import button */}
+      <button
+        onClick={() => setShowImport(true)}
+        type="button"
+        className="px-2.5 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50 transition-colors cursor-pointer flex items-center gap-1.5"
+        title="Import an existing podbox.toml"
+      >
+        <Upload className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+        <span className="hidden sm:inline">Import</span>
       </button>
 
       {/* Export Dropdown */}
@@ -164,6 +170,8 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
       </button>
     </div>
   </div>
+
+  {showImport && <StudioImport st={st} onClose={() => setShowImport(false)} />}
 
   {/* ------------------------------------------------------------------ */}
   {/* Presets Bar                                                        */}

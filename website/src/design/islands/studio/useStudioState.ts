@@ -22,29 +22,21 @@ const [imagePrebuiltRef, setImagePrebuiltRef] = useState('');
 const [pullRetry, setPullRetry] = useState(3);
 const [pullRetryDelay, setPullRetryDelay] = useState('5s');
 const [packagesInstallList, setPackagesInstallList] = useState<string[]>([
-  'neovim',
-  'ripgrep',
   'git',
-  'fish',
 ]);
-const [packagesRemoveList, setPackagesRemoveList] = useState<string[]>(['vim-minimal']);
+const [packagesRemoveList, setPackagesRemoveList] = useState<string[]>([]);
 const [packageManager, setPackageManager] = useState<string>('auto');
 const [runCommands, setRunCommands] = useState('dnf clean all');
 
 // [container]
 const [containerName, setContainerName] = useState('dev-box');
 const [containerHome, setContainerHome] = useState('~/containers/dev-box');
-const [containerShell, setContainerShell] = useState('fish');
+const [containerShell, setContainerShell] = useState('bash');
 const [containerMemory, setContainerMemory] = useState('4G');
 const [containerCpus, setContainerCpus] = useState('2.0');
 const [containerReloadCmd, setContainerReloadCmd] = useState('');
-const [extraMounts, setExtraMounts] = useState<MountItem[]>([
-  { host: '~/Projects', guest: '/home/user/Projects', mode: 'z' },
-]);
-const [envVars, setEnvVars] = useState<EnvVarItem[]>([
-  { key: 'EDITOR', value: 'nvim' },
-  { key: 'TERM', value: 'xterm-256color' },
-]);
+const [extraMounts, setExtraMounts] = useState<MountItem[]>([]);
+const [envVars, setEnvVars] = useState<EnvVarItem[]>([]);
 
 // [security]
 const [apparmor, setApparmor] = useState('');
@@ -54,44 +46,42 @@ const [noNewPrivileges, setNoNewPrivileges] = useState(true);
 const [readOnlyRootfs, setReadOnlyRootfs] = useState(false);
 const [usernsMode, setUsernsMode] = useState<string>('keep-id');
 const [capPreset, setCapPreset] = useState<string>('default');
-const [extraCapAddList, setExtraCapAddList] = useState<string[]>(['SYS_PTRACE']);
+const [extraCapAddList, setExtraCapAddList] = useState<string[]>([]);
 
 // [network]
 const [netMode, setNetMode] = useState<string>('private');
-const [portMappingsList, setPortMappingsList] = useState<string[]>(['8080:80']);
+const [portMappingsList, setPortMappingsList] = useState<string[]>([]);
 
 // [integration]
 const [intWayland, setIntWayland] = useState(true);
 const [intAudio, setIntAudio] = useState(true);
 const [intGpu, setIntGpu] = useState<string>('auto');
-const [intDbus, setIntDbus] = useState(true);
-const [intNotify, setIntNotify] = useState(true);
-const [intXdgOpen, setIntXdgOpen] = useState(true);
-const [intClipboard, setIntClipboard] = useState(true);
-const [intSyncFonts, setIntSyncFonts] = useState(true);
-const [intSyncIcons, setIntSyncIcons] = useState(true);
-const [intSyncThemes, setIntSyncThemes] = useState(true);
+const [intDbus, setIntDbus] = useState(false);
+const [intNotify, setIntNotify] = useState(false);
+const [intXdgOpen, setIntXdgOpen] = useState(false);
+const [intClipboard, setIntClipboard] = useState(false);
+const [intSyncFonts, setIntSyncFonts] = useState(false);
+const [intSyncIcons, setIntSyncIcons] = useState(false);
+const [intSyncThemes, setIntSyncThemes] = useState(false);
 const [intSshAgent, setIntSshAgent] = useState(false);
 const [intGpgAgent, setIntGpgAgent] = useState(false);
 
 // [integration.host_exec]
 const [hostExecEnabled, setHostExecEnabled] = useState(false);
-const [hostExecList, setHostExecList] = useState<HostExecItem[]>([
-  { alias: 'git', path: '/usr/bin/git' },
-]);
+const [hostExecList, setHostExecList] = useState<HostExecItem[]>([]);
 
 // [integration.xdg_dirs]
 const [xdgDocuments, setXdgDocuments] = useState(false);
-const [xdgDownloads, setXdgDownloads] = useState(true);
+const [xdgDownloads, setXdgDownloads] = useState(false);
 const [xdgPictures, setXdgPictures] = useState(false);
 const [xdgMusic, setXdgMusic] = useState(false);
 const [xdgVideos, setXdgVideos] = useState(false);
 const [xdgDesktop, setXdgDesktop] = useState(false);
-const [xdgProjects, setXdgProjects] = useState(true);
+const [xdgProjects, setXdgProjects] = useState(false);
 
 // [integration.export]
-const [exportAppsList, setExportAppsList] = useState<string[]>(['gedit', 'nautilus']);
-const [exportBinsList, setExportBinsList] = useState<string[]>(['rg', 'cargo']);
+const [exportAppsList, setExportAppsList] = useState<string[]>([]);
+const [exportBinsList, setExportBinsList] = useState<string[]>([]);
 
 // [lifecycle]
 const [lifeQuadlet, setLifeQuadlet] = useState(true);
@@ -106,15 +96,12 @@ const [sysAfter, setSysAfter] = useState('network-online.target');
 
 // [dbus]
 const [dbusPreset, setDbusPreset] = useState<string>('portal');
-const [dbusTalkList, setDbusTalkList] = useState<string[]>(['org.freedesktop.Notifications']);
+const [dbusTalkList, setDbusTalkList] = useState<string[]>([]);
 const [dbusOwnList, setDbusOwnList] = useState<string[]>([]);
 
 // [wayland]
-const [waylandFirewall, setWaylandFirewall] = useState(true);
-const [waylandBlockedList, setWaylandBlockedList] = useState<string[]>([
-  'zwlr_screencopy_manager_v1',
-  'ext_image_copy_capture_v1',
-]);
+const [waylandFirewall, setWaylandFirewall] = useState(false);
+const [waylandBlockedList, setWaylandBlockedList] = useState<string[]>([]);
 
 
 // Keyboard shortcut for Esc when fullscreen and body scroll lock

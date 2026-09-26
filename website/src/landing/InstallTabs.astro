@@ -1,51 +1,50 @@
 ---
 import { TerminalCodeBlock } from '../design/components/TerminalCodeBlock';
 import { ChevronRight } from 'lucide-react';
-import { installTabs, installCommands } from './data';
+import { installTabs, installCommands, firstRunCommand, cargoNote } from './data';
 
 const base = import.meta.env.BASE_URL;
 ---
 
-{/* Tabbed Quick Start Terminal Window (CSS-only tabs, zero JS) */}
-<div class="install-tabs rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden shadow-lg">
-  {/* Terminal bar with install method tabs */}
-  <div class="flex flex-wrap items-center justify-between px-3 py-2 bg-[var(--bg-crust)] border-b border-[var(--border)] gap-2">
-    <div class="flex items-center gap-2">
-      <div class="flex items-center gap-1.5 mr-2" aria-hidden="true">
-        <span class="w-2.5 h-2.5 rounded-full bg-[#f38ba8]/90 inline-block"></span>
-        <span class="w-2.5 h-2.5 rounded-full bg-[#f9e2af]/90 inline-block"></span>
-        <span class="w-2.5 h-2.5 rounded-full bg-[#a6e3a1]/90 inline-block"></span>
-      </div>
-      <span class="text-xs text-[var(--text-subtext)] font-semibold">quick-start.sh</span>
-    </div>
-
-    {/* Install tabs */}
-    <div role="tablist" aria-label="Installation options" class="flex items-center gap-1 overflow-x-auto text-[11px]">
-      {installTabs.map((tab, i) => (
-        <>
-          <input type="radio" name="install-tab" id={`install-tab-${tab.id}`} checked={i === 0} />
-          <label
-            for={`install-tab-${tab.id}`}
-            role="tab"
-            class={`install-tab-label px-2.5 py-1 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap`}
-          >
-            {tab.label}
-          </label>
-        </>
-      ))}
-    </div>
+{/* Install method tabs + code blocks (CSS-only tabs, zero JS).
+    No outer terminal window: each TerminalCodeBlock brings its own
+    chrome, so the tabs and footer render as plain rows. */}
+<div class="install-tabs">
+  {/* Install tabs */}
+  <div role="tablist" aria-label="Installation options" class="flex flex-wrap items-center gap-1.5 mb-3 text-[11px]">
+    {installTabs.map((tab, i) => (
+      <>
+        <input type="radio" name="install-tab" id={`install-tab-${tab.id}`} checked={i === 0} />
+        <label
+          for={`install-tab-${tab.id}`}
+          role="tab"
+          class={`install-tab-label px-2.5 py-1 rounded-[2px] border border-[var(--border)] transition-colors cursor-pointer whitespace-nowrap`}
+        >
+          {tab.label}
+        </label>
+      </>
+    ))}
   </div>
 
-  {/* Code panels */}
+  {/* Code panels: install method only */}
   {installTabs.map((tab) => (
-    <div id={`install-panel-${tab.id}`} role="tabpanel" class="install-panel p-1">
+    <div id={`install-panel-${tab.id}`} role="tabpanel" class="install-panel">
       <TerminalCodeBlock code={installCommands[tab.id]} language="bash" showLineNumbers />
+      {tab.id === 'cargo' && (
+        <p class="py-2 text-[11px] leading-relaxed text-[var(--text-muted)]">{cargoNote}</p>
+      )}
     </div>
   ))}
-  <div class="px-4 py-2 bg-[var(--bg-crust)]/60 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-    <span>* Installs podbox binary and systemd Quadlet generator generators</span>
+
+  {/* First run: shared, always visible */}
+  <div class="mt-3">
+    <TerminalCodeBlock code={firstRunCommand} language="bash" filename="first run" showLineNumbers />
+  </div>
+
+  <div class="mt-3 text-[11px] text-[var(--text-muted)] flex flex-wrap items-center justify-between gap-2">
+    <span>* That&apos;s a prebuilt environment with no config file needed</span>
     <a
-      href={`${base}docs/getting-started/`}
+      href={`${base}/docs/getting-started/`}
       class="text-[var(--accent-blue)] hover:underline flex items-center gap-1 cursor-pointer"
     >
       <span>Read the Getting Started guide</span>

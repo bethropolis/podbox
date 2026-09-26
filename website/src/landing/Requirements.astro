@@ -1,0 +1,53 @@
+---
+import { TerminalCodeBlock } from '../design/components/TerminalCodeBlock';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
+  <div class="mb-8 text-xs text-[var(--accent-green)] uppercase tracking-wider font-bold">
+    setup // requirements
+  </div>
+
+  <div class="grid gap-12 lg:grid-cols-2 lg:gap-16">
+  <div>
+    <h2 class="text-xl font-bold tracking-tight text-[var(--text-primary)]">
+      What you&apos;ll need
+    </h2>
+    <ul class="mt-6 space-y-2 text-sm leading-7 text-[var(--text-subtext)]">
+      <li class="flex gap-2">
+        <span class="shrink-0 font-bold text-[var(--accent-green)]">required</span><span>Podman ≥ 5.5
+        (5.6+ for SSH agent passthrough)</span>
+      </li>
+      <li class="flex gap-2">
+        <span class="shrink-0 font-bold text-[var(--accent-green)]">required</span><span>A systemd user session</span>
+      </li>
+      <li class="flex gap-2">
+        <span class="shrink-0 font-bold text-[var(--accent-green)]">required</span><span>Linux with a Wayland
+        compositor (X11 apps work via Xwayland)</span>
+      </li>
+      <li class="flex gap-2">
+        <span class="shrink-0 font-bold text-[var(--accent-peach)]">optional</span>
+        <span><code class="text-[var(--accent-peach)]">xdg-dbus-proxy</code>, for filtered D-Bus access</span>
+      </li>
+    </ul>
+  </div>
+
+  <div>
+    <h2 class="text-xl font-bold tracking-tight text-[var(--text-primary)]">
+      Something not working?
+    </h2>
+    <p class="mt-6 text-sm leading-relaxed text-[var(--text-subtext)]">
+      Run <code class="text-[var(--accent-peach)]">podbox doctor</code> first — it catches most
+      common setup issues on its own. If that doesn&apos;t sort it out, the{" "}
+      <a href={`${base}/docs/troubleshooting/`} class="text-[var(--accent-mauve)] font-bold underline cursor-pointer">
+        troubleshooting guide
+      </a>{" "}
+      covers specific problems in more depth.
+    </p>
+    <div class="mt-4">
+      <TerminalCodeBlock code={`podbox doctor`} language="bash" filename="bash" />
+    </div>
+  </div>
+  </div>
+</section>

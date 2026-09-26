@@ -13,7 +13,7 @@ interface Props {
 const { title, description, currentPath, isDocsPage = false } = Astro.props;
 const base = import.meta.env.BASE_URL;
 const canonical = `https://bethropolis.github.io/podbox${currentPath === '/' ? '/' : currentPath + '/'}`;
-const ogImage = `${base}og-image.png`;
+const ogImage = `${base}/og-image.png`;
 ---
 
 <!doctype html>
@@ -22,8 +22,8 @@ const ogImage = `${base}og-image.png`;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1e1e2e" />
-    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
-    <link rel="apple-touch-icon" href={`${base}podbox-logo.png`} />
+    <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${base}/podbox-logo.png`} />
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta

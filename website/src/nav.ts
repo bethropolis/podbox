@@ -22,5 +22,5 @@ export const docsNav: NavEntry[] = [
 
 export function docsHref(slug: string): string {
   const base = import.meta.env.BASE_URL;
-  return slug === 'index' ? `${base}docs/` : `${base}docs/${slug}/`;
+  return slug === 'index' ? `${base}/docs/` : `${base}/docs/${slug}/`;
 }

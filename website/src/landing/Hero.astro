@@ -1,23 +1,45 @@
 ---
-import { PodboxLogo } from '../design/components/PodboxLogo';
 import { GithubIcon } from '../design/components/GithubIcon';
 import { ArrowRight } from 'lucide-react';
 import InstallTabs from './InstallTabs.astro';
 import { VERSION } from './data';
 
 const base = import.meta.env.BASE_URL;
+
+// CI status is resolved once at build time and baked into the static HTML.
+// If the request fails (rate limit, offline), fall back to "passing".
+let ciStatus = 'passing';
+let ciColor = 'var(--accent-green)';
+try {
+  const res = await fetch(
+    'https://api.github.com/repos/bethropolis/podbox/actions/workflows/ci.yml/runs?per_page=1',
+    { signal: AbortSignal.timeout(5000), headers: { Accept: 'application/vnd.github+json' } },
+  );
+  if (res.ok) {
+    const run = ((await res.json()) as any)?.workflow_runs?.[0];
+    if (run?.conclusion === 'success') {
+      ciStatus = 'passing';
+      ciColor = 'var(--accent-green)';
+    } else if (run?.conclusion && run.conclusion !== 'success') {
+      ciStatus = 'failing';
+      ciColor = 'var(--accent-red)';
+    } else {
+      ciStatus = 'running';
+      ciColor = 'var(--accent-peach)';
+    }
+  }
+} catch {
+  // keep fallback
+}
 ---
 
 <section class="relative max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-18 pb-16">
-  {/* Top Hero Pill Logo + terminal prompt tag */}
-  <div class="flex flex-wrap items-center gap-3 mb-6">
-    <PodboxLogo className="w-9 h-9 shrink-0" />
-    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--accent-mauve)]">
-      <span class="text-[var(--accent-green)] font-bold">$</span>
-      <span>podbox --version</span>
-      <span class="text-[var(--text-muted)]">→</span>
-      <span class="text-[var(--text-primary)] font-semibold">{VERSION} (podman-native)</span>
-    </div>
+  {/* Subtle version tag */}
+  <div class="inline-flex items-center gap-2 px-2.5 py-1 mb-6 rounded-[2px] border border-[var(--border)]/60 font-mono text-[11px] text-[var(--text-muted)] select-none">
+    <span class="text-[var(--accent-green)]">$</span>
+    <span>podbox --version</span>
+    <span class="opacity-50">→</span>
+    <span class="text-[var(--text-subtext)]">v{VERSION}</span>
   </div>
 
   {/* Real Tagline with Blinking Cursor */}
@@ -41,11 +63,16 @@ const base = import.meta.env.BASE_URL;
       <span class="text-[var(--text-muted)]">Version:</span>
       <span class="text-[var(--accent-blue)] font-bold">v{VERSION}</span>
     </div>
-    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
-      <span class="w-2 h-2 rounded-full bg-[var(--accent-green)] inline-block"></span>
+    <a
+      href="https://github.com/bethropolis/podbox/actions/workflows/ci.yml"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs hover:bg-[var(--bg-surface0)] transition-colors"
+    >
+      <span class="w-2 h-2 rounded-full inline-block" style={`background: ${ciColor}`}></span>
       <span class="text-[var(--text-muted)]">CI:</span>
-      <span class="text-[var(--accent-green)] font-bold">passing</span>
-    </div>
+      <span class="font-bold" style={`color: ${ciColor}`}>{ciStatus}</span>
+    </a>
     <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
       <span class="text-[var(--text-muted)]">License:</span>
       <span class="text-[var(--accent-mauve)] font-bold">MIT</span>
@@ -59,7 +86,7 @@ const base = import.meta.env.BASE_URL;
   {/* CTAs */}
   <div class="flex flex-wrap items-center gap-3 mb-12">
     <a
-      href={`${base}docs/getting-started/`}
+      href={`${base}/docs/getting-started/`}
       class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--accent-mauve)] text-[#11111b] font-bold text-xs sm:text-sm hover:brightness-110 transition-all cursor-pointer shadow-xs"
     >
       <span>Get Started</span>
@@ -67,7 +94,7 @@ const base = import.meta.env.BASE_URL;
     </a>
 
     <a
-      href={`${base}docs/`}
+      href={`${base}/docs/`}
       class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
     >
       <span>Read Documentation</span>

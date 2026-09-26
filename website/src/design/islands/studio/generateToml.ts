@@ -70,8 +70,8 @@ export function generateStudioToml(s: StudioValues): string {
       s.extraCapAddList.length > 0;
     if (hasSecurity) {
       t += `\n[security]\n`;
-      if (s.apparmor) t += `s.apparmor = "${s.apparmor}"\n`;
-      if (s.seccomp !== 'default') t += `s.seccomp = "${s.seccomp}"\n`;
+      if (s.apparmor) t += `apparmor = "${s.apparmor}"\n`;
+      if (s.seccomp !== 'default') t += `seccomp = "${s.seccomp}"\n`;
       if (!s.secLabelDisable) t += `security_label_disable = false\n`;
       if (!s.noNewPrivileges) t += `no_new_privileges = false\n`;
       if (s.readOnlyRootfs) t += `read_only_rootfs = true\n`;

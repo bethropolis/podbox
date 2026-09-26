@@ -40,7 +40,7 @@ const sidebarItems = docsNav.map((n) => ({
 const currentIndex = docsNav.findIndex((n) => n.slug === slug);
 const prevNav = currentIndex > 0 ? docsNav[currentIndex - 1] : null;
 const nextNav = currentIndex < docsNav.length - 1 ? docsNav[currentIndex + 1] : null;
-const navHref = (s: string) => (s === 'index' ? `${base}docs/` : `${base}docs/${s}/`);
+const navHref = (s: string) => (s === 'index' ? `${base}/docs/` : `${base}/docs/${s}/`);
 ---
 
 <SiteLayout title={`${title} — podbox Documentation`} description={description} currentPath={currentPath} isDocsPage>
@@ -53,11 +53,11 @@ const navHref = (s: string) => (s === 'index' ? `${base}docs/` : `${base}docs/${
       {/* Breadcrumb & GitHub Edit Bar */}
       <div class="flex items-center justify-between gap-4 pb-4 mb-6 border-b border-[var(--border)] text-xs text-[var(--text-muted)] select-none">
         <div class="flex items-center gap-1.5 truncate">
-          <a href={`${base}`} class="hover:text-[var(--text-primary)] cursor-pointer">
+          <a href={`${base}/`} class="hover:text-[var(--text-primary)] cursor-pointer">
             podbox
           </a>
           <span>/</span>
-          <a href={`${base}docs/`} class="hover:text-[var(--text-primary)] cursor-pointer">
+          <a href={`${base}/docs/`} class="hover:text-[var(--text-primary)] cursor-pointer">
             docs
           </a>
           <span>/</span>

@@ -6,6 +6,7 @@ import { ConfigPlayground } from '../design/components/ConfigPlayground';
 import Hero from '../landing/Hero.astro';
 import FeatureGrid from '../landing/FeatureGrid.astro';
 import DayToDay from '../landing/DayToDay.astro';
+import Requirements from '../landing/Requirements.astro';
 import Footer from '../landing/Footer.astro';
 
 const base = import.meta.env.BASE_URL;
@@ -64,7 +65,7 @@ const base = import.meta.env.BASE_URL;
         </h2>
         <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-3xl leading-relaxed">
           Quickly test parameters, custom images, and isolation toggles below.
-          Watch each option compile directly into both declarative <code class="text-[var(--accent-mauve)]">podbox.toml</code> and systemd Quadlet <code class="text-[var(--accent-peach)]">.container</code> units in real time, or jump into the dedicated <a href={`${base}studio/`} class="text-[var(--accent-mauve)] font-bold underline cursor-pointer">podbox Studio</a> for full-spectrum customization.
+          Watch each option compile directly into both declarative <code class="text-[var(--accent-mauve)]">podbox.toml</code> and systemd Quadlet <code class="text-[var(--accent-peach)]">.container</code> units in real time, or jump into the dedicated <a href={`${base}/studio/`} class="text-[var(--accent-mauve)] font-bold underline cursor-pointer">podbox Studio</a> for full-spectrum customization.
         </p>
       </div>
 
@@ -73,6 +74,9 @@ const base = import.meta.env.BASE_URL;
 
     {/* DAY TO DAY USAGE */}
     <DayToDay />
+
+    {/* REQUIREMENTS & TROUBLESHOOTING */}
+    <Requirements />
 
     {/* FOOTER */}
     <Footer />

@@ -94,7 +94,7 @@ export function NavbarDrawer({ currentPath, isDark, onToggleTheme, onClose, onOp
                   </div>
                   {link.isStudio && (
                     <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-bold">
-                      Workbench
+                      Try
                     </span>
                   )}
                 </a>

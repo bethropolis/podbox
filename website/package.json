@@ -10,7 +10,8 @@
     "prebuild": "bun scripts/sync-content.ts",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "dev:fresh": "rm -rf node_modules/.vite && bun run dev"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",
@@ -23,6 +24,7 @@
     "marked": "^18.0.14",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "smol-toml": "^1.9.0",
     "tailwindcss": "^4.3.3"
   },
   "allowScripts": {

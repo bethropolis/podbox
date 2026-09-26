@@ -123,7 +123,7 @@ export function Navbar({ currentPath, isDocsPage = false }: NavbarProps) {
                   <span>{link.label}</span>
                   {link.isStudio && (
                     <span className="text-[9px] font-mono uppercase px-1 py-0.2 rounded-[2px] bg-[var(--accent-mauve)]/20 text-[var(--accent-mauve)] font-bold">
-                      PRO
+                      TRY
                     </span>
                   )}
                 </a>
