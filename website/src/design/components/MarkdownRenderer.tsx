@@ -1,7 +1,7 @@
 import React from 'react';
 import { marked, type Token } from 'marked';
 import { stripFrontmatter } from '../base';
-import { slugify } from './markdown/links';
+import { createSlugger, plainHeadingText } from './markdown/links';
 import { renderToken, type AdmonitionToken } from './markdown/blocks';
 
 interface MarkdownRendererProps {
@@ -53,7 +53,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   // fires under marked 18).
   const tokens = React.useMemo(() => {
     const rawTokens = marked.lexer(processedContent);
-    const slugCounts = new Map<string, number>();
+    const slugger = createSlugger();
 
     const grouped: Token[] = [];
     let i = 0;
@@ -87,13 +87,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         }
       }
       if (token.type === 'heading') {
-        let plainText = token.text
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-          .replace(/`([^`]+)`/g, '$1');
-        const baseSlug = slugify(plainText);
-        const count = slugCounts.get(baseSlug) || 0;
-        slugCounts.set(baseSlug, count + 1);
-        const headingId = count === 0 ? baseSlug : `${baseSlug}-${count}`;
+        const headingId = slugger(plainHeadingText(token.text));
         grouped.push(Object.assign(token, { headingId }));
         i++;
         continue;

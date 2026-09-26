@@ -84,6 +84,8 @@ export function DocsSidebar({ items, currentPath }: DocsSidebarProps) {
           </span>
           <button
             onClick={() => setIsOpenMobile(false)}
+            type="button"
+            aria-label="Close documentation menu"
             className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-[2px]"
           >
             <X className="w-5 h-5" />
@@ -97,6 +99,7 @@ export function DocsSidebar({ items, currentPath }: DocsSidebarProps) {
             <input
               type="text"
               value={filter}
+              aria-label="Filter documentation topics"
               onChange={e => setFilter(e.target.value)}
               placeholder="Filter topics..."
               className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)]"
@@ -141,20 +144,12 @@ export function DocsSidebar({ items, currentPath }: DocsSidebarProps) {
         </nav>
 
         {/* Sidebar Footer info */}
-        <div className="p-3 border-t border-[var(--border)] bg-[var(--bg-crust)]/50 text-[11px] text-[var(--text-muted)] space-y-2">
-          <div className="flex items-center justify-between">
-            <span>Runtime</span>
-            <span className="text-[var(--accent-green)] font-bold">Podman Native</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Daemon</span>
-            <span className="text-[var(--text-subtext)]">systemd user units</span>
-          </div>
+        <div className="p-3 border-t border-[var(--border)] bg-[var(--bg-crust)]/50 text-[11px] text-[var(--text-muted)]">
           <a
             href="https://github.com/bethropolis/podbox"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between pt-1 text-[var(--accent-blue)] hover:underline"
+            className="flex items-center justify-between text-[var(--accent-blue)] hover:underline"
           >
             <span>GitHub Repository</span>
             <ExternalLink className="w-3 h-3" />

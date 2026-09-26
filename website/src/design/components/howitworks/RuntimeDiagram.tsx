@@ -2,9 +2,9 @@ import React from 'react';
 import { RuntimeGuestNodes } from './RuntimeGuestNodes';
 import { RuntimeHostNodes } from './RuntimeHostNodes';
 
-interface RuntimeDiagramProps { selectedNode: string; onSelect: (id: string) => void; activePacket: string | null; }
+interface RuntimeDiagramProps { selectedNode: string; onSelect: (id: string) => void; }
 
-export function RuntimeDiagram({ selectedNode, onSelect, activePacket }: RuntimeDiagramProps) {
+export function RuntimeDiagram({ selectedNode, onSelect }: RuntimeDiagramProps) {
   return (
 <svg
   viewBox="0 0 850 440"
@@ -31,7 +31,7 @@ export function RuntimeDiagram({ selectedNode, onSelect, activePacket }: Runtime
       <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--text-muted)" />
     </marker>
   </defs>
-      <RuntimeGuestNodes selectedNode={selectedNode} onSelect={onSelect} activePacket={activePacket} />
+      <RuntimeGuestNodes selectedNode={selectedNode} onSelect={onSelect} />
       <RuntimeHostNodes selectedNode={selectedNode} onSelect={onSelect} />
     </svg>
   );

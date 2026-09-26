@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Box,
   Boxes,
@@ -23,8 +23,29 @@ const categories = [
 ];
 
 export function CategoryTabs({ st }: { st: Pick<StudioState, 'activeCategory' | 'setActiveCategory'> }) {
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  // Translate vertical wheel into horizontal scroll while hovering the
+  // strip. Native listener (non-passive) so preventDefault actually
+  // applies; at either edge the event propagates and the page scrolls.
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0) return;
+      const next = el.scrollLeft + e.deltaY;
+      if (next < 0 || next > max) return;
+      e.preventDefault();
+      el.scrollLeft = next;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   return (
-<div className="shrink-0 bg-[var(--bg-crust)] border-b border-[var(--border)] px-2.5 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-none">
+<div ref={stripRef} className="shrink-0 bg-[var(--bg-crust)] border-b border-[var(--border)] px-2.5 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-none">
   {categories.map((cat) => {
     const Icon = cat.icon;
     const isActive = st.activeCategory === cat.id;

@@ -1,5 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { MountItem, EnvVarItem, HostExecItem } from './types';
+
+// Bump the suffix when the value shape changes; older payloads are then
+// ignored instead of half-applying stale keys.
+const STORAGE_KEY = 'podbox-studio-v1';
+
+function loadSaved(): Record<string, any> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 export function useStudioState() {
 const [isFullscreen, setIsFullscreen] = useState(false);
@@ -135,7 +150,54 @@ const handleContainerNameChange = (val: string) => {
     for (const [k, v] of Object.entries(patch)) setters[k]?.(v as never);
   };
   const values = { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, containerName, containerHome, containerShell, containerMemory, containerCpus, containerReloadCmd, extraMounts, envVars, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, portMappingsList, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList };
-  return { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, containerName, containerHome, containerShell, containerMemory, containerCpus, containerReloadCmd, extraMounts, envVars, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, portMappingsList, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList, setIsFullscreen, setActiveCategory, setActiveView, setCopied, setShowExportMenu, setActivePreset, setImageType, setSelectedPresetDistro, setCustomImageBase, setImageName, setImagePrebuiltRef, setPullRetry, setPullRetryDelay, setPackagesInstallList, setPackagesRemoveList, setPackageManager, setRunCommands, setContainerName, setContainerHome, setContainerShell, setContainerMemory, setContainerCpus, setContainerReloadCmd, setExtraMounts, setEnvVars, setApparmor, setSeccomp, setSecLabelDisable, setNoNewPrivileges, setReadOnlyRootfs, setUsernsMode, setCapPreset, setExtraCapAddList, setNetMode, setPortMappingsList, setIntWayland, setIntAudio, setIntGpu, setIntDbus, setIntNotify, setIntXdgOpen, setIntClipboard, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntSshAgent, setIntGpgAgent, setHostExecEnabled, setHostExecList, setXdgDocuments, setXdgDownloads, setXdgPictures, setXdgMusic, setXdgVideos, setXdgDesktop, setXdgProjects, setExportAppsList, setExportBinsList, setLifeQuadlet, setLifeAutostart, setLifeOnStop, setLifeAutoUpdate, setLifeIdleTimeout, setSysRequires, setSysAfter, setDbusPreset, setDbusTalkList, setDbusOwnList, setWaylandFirewall, setWaylandBlockedList, handleContainerNameChange, applyPatch, values, setters };
+  // Persist only configuration, never view state (a reload should not
+  // re-open the fullscreen editor or a dropdown).
+  const UI_ONLY = new Set(['isFullscreen', 'activeCategory', 'activeView', 'copied', 'showExportMenu']);
+  const persistable = Object.fromEntries(
+    Object.entries(values).filter(([k]) => !UI_ONLY.has(k))
+  ) as Record<string, any>;
+
+  const restoredRef = useRef(false);
+  const [hasRestoredSession, setHasRestoredSession] = useState(false);
+  const lastSaved = useRef('');
+
+  // Restore once on mount. Declared before the save effect so the
+  // restored values land before anything can be written back.
+  useEffect(() => {
+    const saved = loadSaved();
+    if (Object.keys(saved).length > 0) {
+      applyPatch(saved);
+      setHasRestoredSession(true);
+    }
+    restoredRef.current = true;
+  }, []);
+
+  // Debounced write: the studio re-renders on every keystroke, so write
+  // at most every 400ms and skip when the payload is unchanged.
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const json = JSON.stringify(persistable);
+        if (json === lastSaved.current) return;
+        lastSaved.current = json;
+        localStorage.setItem(STORAGE_KEY, json);
+      } catch {
+        // Private mode or quota exceeded: session just won't persist.
+      }
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [persistable]);
+
+  const clearSavedSession = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    lastSaved.current = '';
+    setHasRestoredSession(false);
+  };
+
+  return { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, containerName, containerHome, containerShell, containerMemory, containerCpus, containerReloadCmd, extraMounts, envVars, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, portMappingsList, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList, setIsFullscreen, setActiveCategory, setActiveView, setCopied, setShowExportMenu, setActivePreset, setImageType, setSelectedPresetDistro, setCustomImageBase, setImageName, setImagePrebuiltRef, setPullRetry, setPullRetryDelay, setPackagesInstallList, setPackagesRemoveList, setPackageManager, setRunCommands, setContainerName, setContainerHome, setContainerShell, setContainerMemory, setContainerCpus, setContainerReloadCmd, setExtraMounts, setEnvVars, setApparmor, setSeccomp, setSecLabelDisable, setNoNewPrivileges, setReadOnlyRootfs, setUsernsMode, setCapPreset, setExtraCapAddList, setNetMode, setPortMappingsList, setIntWayland, setIntAudio, setIntGpu, setIntDbus, setIntNotify, setIntXdgOpen, setIntClipboard, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntSshAgent, setIntGpgAgent, setHostExecEnabled, setHostExecList, setXdgDocuments, setXdgDownloads, setXdgPictures, setXdgMusic, setXdgVideos, setXdgDesktop, setXdgProjects, setExportAppsList, setExportBinsList, setLifeQuadlet, setLifeAutostart, setLifeOnStop, setLifeAutoUpdate, setLifeIdleTimeout, setSysRequires, setSysAfter, setDbusPreset, setDbusTalkList, setDbusOwnList, setWaylandFirewall, setWaylandBlockedList, handleContainerNameChange, applyPatch, values, setters, hasRestoredSession, clearSavedSession };
 }
 
 export type StudioState = ReturnType<typeof useStudioState>;

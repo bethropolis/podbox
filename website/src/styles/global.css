@@ -169,3 +169,21 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
   color: #11111b;
   font-weight: 700;
 }
+
+/* Anchor targets clear the sticky navbar (3.5rem + breathing room) for
+   both native # jumps and scrollIntoView() smooth scrolls. */
+article h1[id],
+article h2[id],
+article h3[id] {
+  scroll-margin-top: 4.5rem;
+}
+
+/* Smooth scrolling for anchor jumps and programmatic scrolls. */
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

@@ -7,7 +7,8 @@ import { DocsToc } from '../../design/components/DocsToc';
 import { PodboxLogo } from '../../design/components/PodboxLogo';
 import { SEARCH_DOCS } from '../../design/searchIndex';
 import { docsNav } from '../../nav';
-import { ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
+import { createSlugger, plainHeadingText } from '../../design/components/markdown/links';
+import { ChevronLeft, ChevronRight, Edit3, AlignLeft } from 'lucide-react';
 
 export async function getStaticPaths() {
   const docs = await getCollection('docs');
@@ -41,6 +42,20 @@ const currentIndex = docsNav.findIndex((n) => n.slug === slug);
 const prevNav = currentIndex > 0 ? docsNav[currentIndex - 1] : null;
 const nextNav = currentIndex < docsNav.length - 1 ? docsNav[currentIndex + 1] : null;
 const navHref = (s: string) => (s === 'index' ? `${base}/docs/` : `${base}/docs/${s}/`);
+
+// Build-time TOC: same slugger the renderer uses (dedup included), so
+// anchors can never drift. Fenced code blocks are stripped first so
+// `#` comments inside samples don't become phantom entries.
+const tocSlugger = createSlugger();
+const tocHeadings = entry.body
+  .replace(/```[\s\S]*?```/g, '')
+  .split('\n')
+  .flatMap((line) => {
+    const m = line.match(/^(#{1,3})\s+(.+)$/);
+    if (!m) return [];
+    const display = plainHeadingText(m[2]).trim();
+    return [{ level: m[1].length, id: tocSlugger(plainHeadingText(m[2])), text: display }];
+  });
 ---
 
 <SiteLayout title={`${title} — podbox Documentation`} description={description} currentPath={currentPath} isDocsPage>
@@ -79,6 +94,26 @@ const navHref = (s: string) => (s === 'index' ? `${base}/docs/` : `${base}/docs/
       </div>
 
       {/* Markdown Rendered Content (static HTML, zero client JS) */}
+      {tocHeadings.length > 0 && (
+        <details class="xl:hidden mb-6 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] text-xs">
+          <summary class="flex items-center gap-1.5 px-3.5 py-2.5 cursor-pointer font-bold text-[var(--text-subtext)] uppercase tracking-wider text-[11px] select-none">
+            <AlignLeft className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />
+            <span>On this page</span>
+          </summary>
+          <div class="px-3.5 pb-3 pt-1 space-y-1 border-t border-[var(--border)]">
+            {tocHeadings.map((h) => (
+              <a
+                href={`#${h.id}`}
+                class={`block py-1 truncate transition-colors cursor-pointer ${
+                  h.level === 1 ? '' : h.level === 2 ? 'pl-3' : 'pl-6 text-[11px]'
+                } text-[var(--text-muted)] hover:text-[var(--text-primary)]`}
+              >
+                {h.text}
+              </a>
+            ))}
+          </div>
+        </details>
+      )}
       <article class="prose prose-invert max-w-none">
         <MarkdownRenderer content={entry.body} />
       </article>
@@ -134,7 +169,7 @@ const navHref = (s: string) => (s === 'index' ? `${base}/docs/` : `${base}/docs/
 
     {/* Right Rail: Table of Contents */}
     <aside class="hidden xl:block shrink-0 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-mantle)]/40">
-      <DocsToc client:visible />
+      <DocsToc client:visible headings={tocHeadings} />
     </aside>
   </div>
 </SiteLayout>

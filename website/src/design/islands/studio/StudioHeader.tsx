@@ -12,8 +12,10 @@ import {
   Minimize2,
   Monitor,
   RotateCcw,
+  Save,
   Sparkles,
   Terminal,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { withBase } from '../../base';
@@ -22,14 +24,19 @@ import { useOutputActions } from './useOutputActions';
 import { presetPatch, defaultPatch } from './presets';
 import { StudioImport } from './StudioImport';
 
-interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu'>; toml: string; quadlet: string; }
+interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession'>; toml: string; quadlet: string; }
 
 export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
-  const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu } = st;
+  const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu, hasRestoredSession } = st;
   const { handleDownloadToml, handleDownloadQuadlet, handleCopyConfig } = useOutputActions(st, toml, quadlet);
   const [showImport, setShowImport] = useState(false);
-  const onPreset = (p: 'rust' | 'arch-gui' | 'fullstack' | 'minimal') => st.applyPatch(presetPatch(p));
+  const [showPresetMenu, setShowPresetMenu] = useState(false);
+  const onPreset = (p: 'rust' | 'arch-gui' | 'fullstack' | 'minimal') => {
+    st.applyPatch(presetPatch(p));
+    setShowPresetMenu(false);
+  };
   const onReset = () => st.applyPatch(defaultPatch());
+  const onClearSession = () => st.clearSavedSession();
   return (
 <div className={`shrink-0 border-b border-[var(--border)] ${isFullscreen ? 'pb-2.5 mb-2.5 space-y-2' : 'pb-4 mb-4 space-y-3'}`}>
   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -54,13 +61,24 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
           </span>
         </div>
         <p className="text-xs text-[var(--text-muted)] mt-0.5 font-sans">
-          Full-spectrum declarative container architect & systemd Quadlet synthesizer
+          Full-spectrum declarative container architect &amp; systemd Quadlet synthesizer
         </p>
       </div>
     </div>
 
     {/* Right: Actions (Presets, Export, Reset, Fullscreen) */}
     <div className="flex flex-wrap items-center gap-2">
+      {/* Autosave state */}
+      <div
+        className="hidden lg:flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)]"
+        title={hasRestoredSession
+          ? 'Your last session was restored from this browser'
+          : 'Changes are saved to this browser automatically'}
+      >
+        <Save className="w-3.5 h-3.5" />
+        <span>{hasRestoredSession ? 'session restored' : 'autosaved locally'}</span>
+      </div>
+
       {/* Reset button */}
       <button
         onClick={onReset}
@@ -71,6 +89,51 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
         <RotateCcw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         <span className="hidden sm:inline">Reset</span>
       </button>
+
+      {/* Presets dropdown */}
+      <div className="relative">
+        <button
+          onClick={() => setShowPresetMenu(!showPresetMenu)}
+          type="button"
+          className="px-2.5 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50 transition-colors cursor-pointer flex items-center gap-1.5"
+          title="Apply a curated preset"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+          <span className="hidden sm:inline">Presets</span>
+          <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+        </button>
+
+        {showPresetMenu && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setShowPresetMenu(false)}
+            />
+            <div className="absolute left-0 top-full mt-1.5 z-50 w-52 rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl p-1 text-xs font-sans animate-fadeIn">
+              {([
+                { id: 'rust', label: 'Rust Dev', Icon: Flame, iconColor: 'text-[var(--accent-peach)]' },
+                { id: 'arch-gui', label: 'Arch GUI', Icon: Monitor, iconColor: 'text-[var(--accent-blue)]' },
+                { id: 'fullstack', label: 'Full-Stack', Icon: Globe, iconColor: 'text-[var(--accent-green)]' },
+                { id: 'minimal', label: 'Hardened', Icon: Lock, iconColor: 'text-[var(--accent-red)]' },
+              ] as const).map(({ id, label, Icon, iconColor }) => (
+                <button
+                  key={id}
+                  onClick={() => onPreset(id)}
+                  className={`w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] flex items-center gap-2 cursor-pointer ${
+                    activePreset === id
+                      ? 'text-[var(--accent-mauve)] font-bold'
+                      : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${iconColor}`} />
+                  <span>{label}</span>
+                  {activePreset === id && <span className="ml-auto">✓</span>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Import button */}
       <button
@@ -144,6 +207,19 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
                 <Copy className="w-4 h-4 text-[var(--accent-blue)]" />
                 <span>Copy Current Output</span>
               </button>
+
+              <div className="my-1 border-t border-[var(--border)]" />
+
+              <button
+                onClick={() => {
+                  onClearSession();
+                  setShowExportMenu(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-subtext)] hover:text-[var(--accent-red)] flex items-center gap-2 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Forget Saved Session</span>
+              </button>
             </div>
           </>
         )}
@@ -173,65 +249,6 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
 
   {showImport && <StudioImport st={st} onClose={() => setShowImport(false)} />}
 
-  {/* ------------------------------------------------------------------ */}
-  {/* Presets Bar                                                        */}
-  {/* ------------------------------------------------------------------ */}
-  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2">
-    <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5">
-      <Sparkles className="w-3.5 h-3.5 text-[var(--accent-yellow)]" />
-      <span className="font-medium">Curated Presets:</span>
-    </div>
-
-    <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5">
-      <button
-        onClick={() => onPreset('rust')}
-        className={`px-2.5 py-1 rounded-[2px] text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
-          activePreset === 'rust'
-            ? 'bg-[var(--accent-mauve)]/15 border-[var(--accent-mauve)] text-[var(--accent-mauve)] font-bold'
-            : 'bg-[var(--bg-mantle)] border-[var(--border)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
-        }`}
-      >
-        <Flame className="w-3 h-3 text-[var(--accent-peach)]" />
-        <span>Rust Dev</span>
-      </button>
-
-      <button
-        onClick={() => onPreset('arch-gui')}
-        className={`px-2.5 py-1 rounded-[2px] text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
-          activePreset === 'arch-gui'
-            ? 'bg-[var(--accent-mauve)]/15 border-[var(--accent-mauve)] text-[var(--accent-mauve)] font-bold'
-            : 'bg-[var(--bg-mantle)] border-[var(--border)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
-        }`}
-      >
-        <Monitor className="w-3 h-3 text-[var(--accent-blue)]" />
-        <span>Arch GUI</span>
-      </button>
-
-      <button
-        onClick={() => onPreset('fullstack')}
-        className={`px-2.5 py-1 rounded-[2px] text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
-          activePreset === 'fullstack'
-            ? 'bg-[var(--accent-mauve)]/15 border-[var(--accent-mauve)] text-[var(--accent-mauve)] font-bold'
-            : 'bg-[var(--bg-mantle)] border-[var(--border)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
-        }`}
-      >
-        <Globe className="w-3 h-3 text-[var(--accent-green)]" />
-        <span>Full-Stack</span>
-      </button>
-
-      <button
-        onClick={() => onPreset('minimal')}
-        className={`px-2.5 py-1 rounded-[2px] text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
-          activePreset === 'minimal'
-            ? 'bg-[var(--accent-mauve)]/15 border-[var(--accent-mauve)] text-[var(--accent-mauve)] font-bold'
-            : 'bg-[var(--bg-mantle)] border-[var(--border)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
-        }`}
-      >
-        <Lock className="w-3 h-3 text-[var(--accent-red)]" />
-        <span>Hardened</span>
-      </button>
-    </div>
-  </div>
 </div>
   );
 }

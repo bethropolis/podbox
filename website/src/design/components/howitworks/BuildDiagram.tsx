@@ -1,7 +1,7 @@
 import React from 'react';
-interface BuildDiagramProps { selectedNode: string; onSelect: (id: string) => void; isSimulating: boolean; simStep: number; }
+interface BuildDiagramProps { selectedNode: string; onSelect: (id: string) => void; }
 
-export function BuildDiagram({ selectedNode, onSelect, isSimulating, simStep }: BuildDiagramProps) {
+export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
   return (
 <svg
   viewBox="0 0 850 310"
@@ -64,17 +64,6 @@ export function BuildDiagram({ selectedNode, onSelect, isSimulating, simStep }: 
     strokeWidth="2.5"
     markerEnd="url(#ib-arrow)"
   />
-
-  {/* Animated pulse packet when simulating */}
-  {isSimulating && (
-    <circle r="5" fill="#cba6f7">
-      <animateMotion
-        path="M 160 135 L 210 135 M 400 135 C 420 135, 420 55, 440 55 M 600 55 C 630 55, 630 135, 660 135"
-        dur="3s"
-        repeatCount="indefinite"
-      />
-    </circle>
-  )}
 
   {/* Node 1: definition.toml */}
   <g

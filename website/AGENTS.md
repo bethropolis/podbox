@@ -12,6 +12,8 @@ If all islands render static (clicks do nothing) in dev, the Vite dep
 optimizer cache went stale (classic symptom: `504 Outdated Optimize Dep`
 for `lucide-react` in the browser console) — kill the job, run
 `bun run dev:fresh`, and re-check with a real click, not a screenshot.
+Adding dependencies (`bun add ...`) invalidates the optimizer cache the
+same way, so always follow it with `dev:fresh`.
 
 Content source of truth is `../docs/*.md`; `bun run build` (prebuild
 `scripts/sync-content.ts`) syncs it into `src/content/docs/` plus assets,

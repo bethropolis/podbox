@@ -1,7 +1,7 @@
 import React from 'react';
-interface RuntimeGuestNodesProps { selectedNode: string; onSelect: (id: string) => void; activePacket: string | null; }
+interface RuntimeGuestNodesProps { selectedNode: string; onSelect: (id: string) => void; }
 
-export function RuntimeGuestNodes({ selectedNode, onSelect, activePacket }: RuntimeGuestNodesProps) {
+export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesProps) {
   return (
     <>
 
@@ -78,23 +78,6 @@ export function RuntimeGuestNodes({ selectedNode, onSelect, activePacket }: Runt
   strokeDasharray="4,4"
   markerEnd="url(#rt-arrow)"
 />
-
-{/* Dynamic animated packet */}
-{activePacket && (
-  <circle r="6" fill="#a6e3a1">
-    <animateMotion
-      path={
-        activePacket === 'notification'
-          ? 'M 490 98 C 490 150, 630 150, 630 198 L 630 280 C 630 310, 510 310, 510 328'
-          : activePacket === 'clipboard'
-          ? 'M 425 98 L 425 198 L 425 328'
-          : 'M 360 98 C 360 150, 220 150, 220 198 L 220 280 C 220 310, 340 310, 340 328'
-      }
-      dur="1.2s"
-      repeatCount="1"
-    />
-  </circle>
-)}
 
     </>
   );

@@ -155,6 +155,7 @@ export function ContainerPanel({ st }: { st: ContainerPanelProps }) {
           <input
             type="text"
             value={m.host}
+            aria-label={`Mount ${idx + 1} host path`}
             onChange={(e) => {
               const updated = [...extraMounts];
               updated[idx].host = e.target.value;
@@ -167,6 +168,7 @@ export function ContainerPanel({ st }: { st: ContainerPanelProps }) {
           <input
             type="text"
             value={m.guest}
+            aria-label={`Mount ${idx + 1} container path`}
             onChange={(e) => {
               const updated = [...extraMounts];
               updated[idx].guest = e.target.value;

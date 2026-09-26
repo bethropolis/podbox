@@ -8,12 +8,12 @@ Four Quadlet/systemd unit files are generated per container:
 
 | File | Path (5.6–5.x) | Path (6.0+) | Purpose |
 |------|-----------------|-------------|---------|
-| `&lt;name&gt;.build` | `~/.config/containers/systemd/` | `~/.config/containers/systemd/&lt;name&gt;/` | Image build definition |
-| `&lt;name&gt;.container` | `~/.config/containers/systemd/` | `~/.config/containers/systemd/&lt;name&gt;/` | Container runtime |
-| `&lt;name&gt;.socket` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Host-guest Unix socket (custom) |
-| `&lt;name&gt;-host.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Host socket server (custom) |
-| `&lt;name&gt;-proxy.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | D-Bus proxy (conditional, custom) |
-| `&lt;name&gt;-compositor.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Wayland firewall proxy (conditional, custom) |
+| `<name>.build` | `~/.config/containers/systemd/` | `~/.config/containers/systemd/<name>/` | Image build definition |
+| `<name>.container` | `~/.config/containers/systemd/` | `~/.config/containers/systemd/<name>/` | Container runtime |
+| `<name>.socket` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Host-guest Unix socket (custom) |
+| `<name>-host.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Host socket server (custom) |
+| `<name>-proxy.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | D-Bus proxy (conditional, custom) |
+| `<name>-compositor.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Wayland firewall proxy (conditional, custom) |
 
 ---
 

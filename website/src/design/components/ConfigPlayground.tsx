@@ -79,6 +79,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             <input
               type="text"
               value={name}
+              aria-label="Container name"
               onChange={(e) =>
                 setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
               }
@@ -117,6 +118,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
                 <input
                   type="text"
                   value={customImage}
+                  aria-label="Custom image reference"
                   onChange={(e) => setCustomImage(e.target.value)}
                   placeholder="e.g. ghcr.io/org/custom:latest"
                   className="w-full px-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] text-[var(--text-primary)] text-xs font-mono focus:outline-none focus:border-[var(--accent-mauve)]"
@@ -136,6 +138,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             <input
               type="text"
               value={packages}
+              aria-label="Baked packages, comma-separated"
               onChange={(e) => setPackages(e.target.value)}
               className="w-full px-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30 transition-all"
             />

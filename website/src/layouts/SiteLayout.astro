@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { SEO } from 'astro-seo';
 import { Topbar } from '../design/islands/Topbar';
 import { CommandPalette } from '../design/components/CommandPalette';
 
@@ -12,8 +13,23 @@ interface Props {
 
 const { title, description, currentPath, isDocsPage = false } = Astro.props;
 const base = import.meta.env.BASE_URL;
-const canonical = `https://bethropolis.github.io/podbox${currentPath === '/' ? '/' : currentPath + '/'}`;
-const ogImage = `${base}/og-image.png`;
+const siteOrigin = 'https://bethropolis.github.io/podbox';
+const canonical = `${siteOrigin}${currentPath === '/' ? '/' : currentPath + '/'}`;
+// Social scrapers require absolute image URLs.
+const ogImage = `${siteOrigin}/og-image.png`;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'podbox',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Linux',
+  url: canonical,
+  downloadUrl: `${siteOrigin}/install.sh`,
+  codeRepository: 'https://github.com/bethropolis/podbox',
+  license: 'https://opensource.org/licenses/MIT',
+  offers: { '@type': 'Offer', price: '0' },
+  author: { '@type': 'Person', name: 'Bethuel Kipsang' },
+};
 ---
 
 <!doctype html>
@@ -21,30 +37,56 @@ const ogImage = `${base}/og-image.png`;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1e1e2e" />
-    <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
-    <link rel="apple-touch-icon" href={`${base}/podbox-logo.png`} />
-    <title>{title}</title>
-    <meta name="description" content={description} />
-    <meta
-      name="keywords"
-      content="podbox, podman, quadlet, systemd, rootless containers, distrobox, linux, toml, declarative containers, rust"
+    <SEO
+      title={title}
+      description={description}
+      canonical={canonical}
+      openGraph={{
+        basic: {
+          title,
+          type: 'website',
+          image: ogImage,
+          url: canonical,
+        },
+        optional: {
+          siteName: 'podbox',
+          description,
+          locale: 'en_US',
+        },
+        image: {
+          alt: `${title} — podbox`,
+          width: 1200,
+          height: 600,
+          type: 'image/png',
+        },
+      }}
+      twitter={{
+        card: 'summary_large_image',
+        title,
+        description,
+        image: ogImage,
+        imageAlt: `${title} — podbox`,
+      }}
+      extend={{
+        link: [
+          { rel: 'icon', type: 'image/svg+xml', href: `${base}/favicon.svg` },
+          { rel: 'icon', href: `${base}/favicon.ico`, sizes: 'any' },
+          { rel: 'apple-touch-icon', href: `${base}/podbox-logo.png` },
+        ],
+        meta: [
+          { name: 'author', content: 'Bethuel Kipsang' },
+          {
+            name: 'keywords',
+            content:
+              'podbox, podman, quadlet, systemd, rootless containers, distrobox, linux, toml, declarative containers, rust',
+          },
+          { name: 'robots', content: 'index, follow' },
+          { name: 'theme-color', content: '#1e1e2e' },
+          { name: 'generator', content: Astro.generator },
+        ],
+      }}
     />
-    <meta name="author" content="Bethuel Kipsang" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href={canonical} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={canonical} />
-    <meta property="og:site_name" content="podbox" />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
-    <meta property="og:image" content={ogImage} />
-    <meta property="og:locale" content="en_US" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
-    <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={ogImage} />
-    <meta name="generator" content={Astro.generator} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <script is:inline>
       // Pre-paint theme: SSR always renders mocha; reconcile before first paint.
       try {

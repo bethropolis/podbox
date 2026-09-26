@@ -8,7 +8,7 @@ import type { NodeDetail } from './nodeData';
 
 export function NodeInspector({ node }: { node: NodeDetail }) {
   return (
-<div className="lg:col-span-6 p-4 sm:p-5 space-y-4">
+<div className="p-4 sm:p-5 space-y-4 max-w-3xl">
   <div className="flex items-center justify-between">
     <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-[2px] bg-[var(--bg-surface0)] text-[var(--accent-mauve)] border border-[var(--border)]">
       {node.category}

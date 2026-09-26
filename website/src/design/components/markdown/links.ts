@@ -8,6 +8,26 @@ export function slugify(text: string): string {
     .replace(/\s+/g, '-');
 }
 
+// Stateful heading slugger with GitHub-style dedup (foo, foo-1, foo-2).
+// Single algorithm shared by the renderer and the build-time TOC
+// extractor so anchors can never drift. Plain-text normalization must
+// match MarkdownRenderer's heading pass exactly.
+export function plainHeadingText(raw: string): string {
+  return raw
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1');
+}
+
+export function createSlugger(): (text: string) => string {
+  const counts = new Map<string, number>();
+  return (text: string) => {
+    const base = slugify(text);
+    const count = counts.get(base) || 0;
+    counts.set(base, count + 1);
+    return count === 0 ? base : `${base}-${count}`;
+  };
+}
+
 export function cleanMarkdownLink(href: string): { isInternal: boolean; url: string } {
   if (!href) return { isInternal: false, url: '#' };
   if (href.startsWith('http://') || href.startsWith('https://')) {

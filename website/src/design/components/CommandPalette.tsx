@@ -171,7 +171,6 @@ export function CommandPalette() {
           <input
             ref={inputRef}
             type="text"
-            role="searchbox"
             aria-label="Search query"
             value={query}
             onChange={e => setQuery(e.target.value)}
