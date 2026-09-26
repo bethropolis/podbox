@@ -9,6 +9,10 @@ on:
       - 'README.md'
       - 'scripts/install-online.sh'
       - '.github/workflows/docs.yml'
+      # The site renders the workspace version, so a release bump must
+      # redeploy it or the published version badge goes stale.
+      - 'Cargo.toml'
+      - 'crates/*/Cargo.toml'
 
 permissions:
   contents: read
