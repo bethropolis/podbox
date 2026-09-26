@@ -7,25 +7,37 @@ import { VERSION } from './data';
 const base = import.meta.env.BASE_URL;
 
 // CI status is resolved once at build time and baked into the static HTML.
-// If the request fails (rate limit, offline), fall back to "passing".
+// Only COMPLETED runs are considered: this page is deployed by the very
+// push that triggers CI, so the newest run is always the one still in
+// flight and would report "running" forever. Falls back to "passing" if
+// the request fails (rate limit, offline).
 let ciStatus = 'passing';
 let ciColor = 'var(--accent-green)';
 try {
   const res = await fetch(
-    'https://api.github.com/repos/bethropolis/podbox/actions/workflows/ci.yml/runs?per_page=1',
-    { signal: AbortSignal.timeout(5000), headers: { Accept: 'application/vnd.github+json' } },
+    'https://api.github.com/repos/bethropolis/podbox/actions/workflows/ci.yml/runs?per_page=10',
+    {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        Accept: 'application/vnd.github+json',
+        ...(import.meta.env.GITHUB_TOKEN
+          ? { Authorization: `Bearer ${import.meta.env.GITHUB_TOKEN}` }
+          : {}),
+      },
+    },
   );
   if (res.ok) {
-    const run = ((await res.json()) as any)?.workflow_runs?.[0];
-    if (run?.conclusion === 'success') {
+    const runs = ((await res.json()) as any)?.workflow_runs ?? [];
+    const last = runs.find((r: any) => r?.status === 'completed');
+    if (!last) {
+      ciStatus = 'no runs yet';
+      ciColor = 'var(--text-muted)';
+    } else if (last.conclusion === 'success') {
       ciStatus = 'passing';
       ciColor = 'var(--accent-green)';
-    } else if (run?.conclusion && run.conclusion !== 'success') {
-      ciStatus = 'failing';
-      ciColor = 'var(--accent-red)';
     } else {
-      ciStatus = 'running';
-      ciColor = 'var(--accent-peach)';
+      ciStatus = last.conclusion === 'cancelled' ? 'cancelled' : 'failing';
+      ciColor = last.conclusion === 'cancelled' ? 'var(--text-muted)' : 'var(--accent-red)';
     }
   }
 } catch {
