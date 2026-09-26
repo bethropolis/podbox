@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="auto">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#3b82f6"/>
+      <stop offset="25%"  stop-color="#6366f1"/>
+      <stop offset="50%"  stop-color="#8b5cf6"/>
+      <stop offset="75%"  stop-color="#d946ef"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+    <mask id="split">
+      <rect x="0" y="0" width="512" height="512" fill="#ffffff" />
+      <rect x="0" y="244" width="512" height="24" fill="#000000" />
+    </mask>
+  </defs>
+  <rect x="72" y="72" width="368" height="368" rx="88" fill="none" stroke="url(#g)" stroke-width="44" />
+  <rect x="206" y="156" width="100" height="200" rx="50" fill="url(#g)" mask="url(#split)" />
+</svg>

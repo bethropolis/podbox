@@ -1,0 +1,385 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { TerminalCodeBlock } from '../design/components/TerminalCodeBlock';
+import { ComparisonTable } from '../design/components/ComparisonTable';
+import { HowItWorksSection } from '../design/components/HowItWorksSection';
+import { ConfigPlayground } from '../design/components/ConfigPlayground';
+import { PodboxLogo } from '../design/components/PodboxLogo';
+import { GithubIcon } from '../design/components/GithubIcon';
+import {
+  ArrowRight,
+  Layers3,
+  ShieldCheck,
+  Cpu,
+  Monitor,
+  Boxes,
+  ArrowLeftRight,
+  ChevronRight,
+  Package,
+  FileCode2,
+  Radio,
+} from 'lucide-react';
+
+const base = import.meta.env.BASE_URL;
+const VERSION = '0.7.2';
+
+const installTabs = [
+  { id: 'curl', label: 'curl script' },
+  { id: 'brew', label: 'Homebrew' },
+  { id: 'aur', label: 'Arch (AUR)' },
+  { id: 'cargo', label: 'cargo install' },
+  { id: 'source', label: 'Source' },
+] as const;
+
+const installCommands: Record<string, string> = {
+  curl: `# Grab the binary & verify
+curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
+
+# Spin up a prebuilt Fedora container and hop in
+podbox create fedora
+podbox enter fedora`,
+  brew: `# Homebrew (Linux only)
+brew install bethropolis/homebrew-tap/podbox
+
+# Spin up an environment
+podbox create fedora
+podbox enter fedora`,
+  aur: `# Arch Linux, via AUR
+paru -S podbox-bin
+
+# Spin up an environment
+podbox create fedora
+podbox enter fedora`,
+  cargo: `# From crates.io (supports prebuilt images only)
+cargo install podbox-cli
+
+# Spin up using a prebuilt GHCR image
+podbox create ghcr.io/bethropolis/podbox:fedora
+podbox enter fedora`,
+  source: `# Source install (builds CLI & guest daemon)
+git clone https://github.com/bethropolis/podbox
+cd podbox && scripts/install.sh   # installs to ~/.local/bin
+
+podbox create fedora
+podbox enter fedora`,
+};
+
+const features = [
+  { icon: FileCode2, color: 'text-[var(--accent-mauve)]', hover: 'hover:border-[var(--accent-mauve)]/50', title: 'Declarative TOML Specification', body: 'Environment configuration as code you can commit to git. No long sequences of CLI flags you ran once and forgot.' },
+  { icon: Cpu, color: 'text-[var(--accent-blue)]', hover: 'hover:border-[var(--accent-blue)]/50', title: 'systemd Quadlet Lifecycle', body: 'Autostart on login, automatic restart on failure, socket activation, and logging via `journalctl --user`. Zero podbox daemon.' },
+  { icon: Monitor, color: 'text-[var(--accent-teal)]', hover: 'hover:border-[var(--accent-teal)]/50', title: 'Wayland, Audio & GPU Passthrough', body: 'Run GUI tools and games with hardware acceleration. Wayland socket, PipeWire audio, and `/dev/dri` or NVIDIA GPUs configured automatically.' },
+  { icon: Radio, color: 'text-[var(--accent-green)]', hover: 'hover:border-[var(--accent-green)]/50', title: 'Filtered D-Bus via xdg-dbus-proxy', body: 'Containers never get unrestricted access to your host session bus. Specific interfaces like Notifications or MPRIS are selectively proxied.' },
+  { icon: ArrowLeftRight, color: 'text-[var(--accent-peach)]', hover: 'hover:border-[var(--accent-peach)]/50', title: 'Guest Interceptor & Desktop Export', body: 'Export GUI applications (`podbox export app`) and CLI binaries (`podbox export bin`) directly into your host application launcher and PATH.' },
+  { icon: Boxes, color: 'text-[var(--accent-red)]', hover: 'hover:border-[var(--accent-red)]/50', title: 'Baked-in Image Caching', body: 'Packages are installed during `podbox build` into the OCI layer, not on container start. Spin-up takes milliseconds, not minutes.' },
+];
+
+const dayToDay = [
+  { dot: 'bg-[var(--accent-mauve)]', title: "1. Build image & install Quadlet units", code: `# Build current directory's podbox.toml\npodbox build .\n\n# Or build from a specific config\npodbox build ~/configs/rust-dev.toml` },
+  { dot: 'bg-[var(--accent-blue)]', title: '2. Enter the interactive container shell', code: `# Start container (if stopped) and enter shell\npodbox enter rust-dev\n\n# Or run a command directly inside without entering\npodbox exec rust-dev -- cargo check` },
+  { dot: 'bg-[var(--accent-green)]', title: '3. Export GUI app to host launcher', code: `# Export desktop application (.desktop file)\npodbox export app rust-dev code\n\n# Export CLI tool to ~/.local/bin on host\npodbox export bin rust-dev rg` },
+  { dot: 'bg-[var(--accent-peach)]', title: '4. Inspect systemd lifecycle directly', code: `# Check systemd user service status\nsystemctl --user status podbox-rust-dev.service\n\n# View container logs via journald\njournalctl --user -u podbox-rust-dev.service -f` },
+];
+---
+
+<SiteLayout
+  title="podbox — Declarative Container Environment Manager for Linux"
+  description="Define once. Run anywhere. No host daemon. podbox turns one TOML file into an OCI image and systemd Quadlet units for Podman."
+  currentPath="/"
+>
+  <div class="w-full font-mono text-[var(--text-primary)]">
+    {/* Background terminal texture */}
+    <div class="relative overflow-hidden border-b border-[var(--border)] bg-[var(--bg-base)]">
+      <div class="absolute inset-0 bg-terminal-dots pointer-events-none" />
+
+      {/* HERO SECTION */}
+      <section class="relative max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-18 pb-16">
+        {/* Top Hero Pill Logo + terminal prompt tag */}
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+          <PodboxLogo className="w-9 h-9 shrink-0" />
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--accent-mauve)]">
+            <span class="text-[var(--accent-green)] font-bold">$</span>
+            <span>podbox --version</span>
+            <span class="text-[var(--text-muted)]">→</span>
+            <span class="text-[var(--text-primary)] font-semibold">{VERSION} (podman-native)</span>
+          </div>
+        </div>
+
+        {/* Real Tagline with Blinking Cursor */}
+        <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text-primary)] leading-[1.15] mb-6">
+          Define once. Run anywhere.
+          <br />
+          <span class="text-[var(--accent-mauve)]">No host daemon</span><span class="cursor-blink text-[var(--accent-blue)] ml-1 font-normal">_</span>
+        </h1>
+
+        {/* Authentic Description */}
+        <p class="text-base sm:text-lg text-[var(--text-subtext)] leading-relaxed max-w-3xl mb-8">
+          podbox is a declarative container environment manager for Linux. You write a TOML file,
+          podbox turns it into an OCI image and a set of systemd Quadlet units, and from then on systemd
+          owns the lifecycle: autostart, restart, socket activation, all of it.
+          No background service of podbox&apos;s own running on your machine.
+        </p>
+
+        {/* Badges Row from README */}
+        <div class="flex flex-wrap items-center gap-2.5 mb-10 select-none">
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+            <span class="text-[var(--text-muted)]">Version:</span>
+            <span class="text-[var(--accent-blue)] font-bold">v{VERSION}</span>
+          </div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+            <span class="w-2 h-2 rounded-full bg-[var(--accent-green)] inline-block"></span>
+            <span class="text-[var(--text-muted)]">CI:</span>
+            <span class="text-[var(--accent-green)] font-bold">passing</span>
+          </div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+            <span class="text-[var(--text-muted)]">License:</span>
+            <span class="text-[var(--accent-mauve)] font-bold">MIT</span>
+          </div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
+            <span class="text-[var(--text-muted)]">Platform:</span>
+            <span class="text-[var(--accent-peach)] font-bold">Linux (rootless)</span>
+          </div>
+        </div>
+
+        {/* CTAs */}
+        <div class="flex flex-wrap items-center gap-3 mb-12">
+          <a
+            href={`${base}docs/getting-started/`}
+            class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--accent-mauve)] text-[#11111b] font-bold text-xs sm:text-sm hover:brightness-110 transition-all cursor-pointer shadow-xs"
+          >
+            <span>Get Started</span>
+            <ArrowRight className="w-4 h-4" />
+          </a>
+
+          <a
+            href={`${base}docs/`}
+            class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
+          >
+            <span>Read Documentation</span>
+          </a>
+
+          <a
+            href="https://github.com/bethropolis/podbox"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-2 px-4 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text-subtext)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <GithubIcon className="w-4 h-4" />
+            <span>GitHub</span>
+          </a>
+        </div>
+
+        {/* Tabbed Quick Start Terminal Window (CSS-only tabs, zero JS) */}
+        <div class="install-tabs rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden shadow-lg">
+          {/* Terminal bar with install method tabs */}
+          <div class="flex flex-wrap items-center justify-between px-3 py-2 bg-[var(--bg-crust)] border-b border-[var(--border)] gap-2">
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1.5 mr-2" aria-hidden="true">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#f38ba8]/90 inline-block"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-[#f9e2af]/90 inline-block"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-[#a6e3a1]/90 inline-block"></span>
+              </div>
+              <span class="text-xs text-[var(--text-subtext)] font-semibold">quick-start.sh</span>
+            </div>
+
+            {/* Install tabs */}
+            <div role="tablist" aria-label="Installation options" class="flex items-center gap-1 overflow-x-auto text-[11px]">
+              {installTabs.map((tab, i) => (
+                <>
+                  <input type="radio" name="install-tab" id={`install-tab-${tab.id}`} checked={i === 0} />
+                  <label
+                    for={`install-tab-${tab.id}`}
+                    role="tab"
+                    class={`install-tab-label px-2.5 py-1 rounded-[2px] transition-colors cursor-pointer whitespace-nowrap`}
+                  >
+                    {tab.label}
+                  </label>
+                </>
+              ))}
+            </div>
+          </div>
+
+          {/* Code panels */}
+          {installTabs.map((tab) => (
+            <div id={`install-panel-${tab.id}`} role="tabpanel" class="install-panel p-1">
+              <TerminalCodeBlock code={installCommands[tab.id]} language="bash" showLineNumbers />
+            </div>
+          ))}
+          <div class="px-4 py-2 bg-[var(--bg-crust)]/60 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+            <span>* Installs podbox binary and systemd Quadlet generator generators</span>
+            <a
+              href={`${base}docs/getting-started/`}
+              class="text-[var(--accent-blue)] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>Read the Getting Started guide</span>
+              <ChevronRight className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    {/* CORE PHILOSOPHY / WHAT IT DOES */}
+    <section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
+      <div class="mb-10">
+        <div class="text-xs text-[var(--accent-mauve)] uppercase tracking-wider font-bold mb-2">
+          core // philosophy
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
+          Think Distrobox, but reproducible from git.
+        </h2>
+        <p class="mt-3 text-sm sm:text-base text-[var(--text-subtext)] leading-relaxed max-w-3xl">
+          Each environment is one TOML file: base image, packages, mounts, and runtime switches.
+          `podbox build` turns that into an OCI image and matching systemd Quadlet units — nothing hand-edited.
+          The container gets its own isolated home directory by default. Extra folders, GPU, and Wayland sockets are strictly opt-in.
+        </p>
+      </div>
+
+      {/* Feature Grid */}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {features.map((f) => (
+          <div class={`p-4 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] ${f.hover} transition-colors`}>
+            <div class={`w-8 h-8 rounded-[2px] bg-[var(--bg-surface0)] border border-[var(--border)] flex items-center justify-center ${f.color} mb-3`}>
+              <f.icon className="w-4 h-4" />
+            </div>
+            <h3 class="text-sm font-bold text-[var(--text-primary)] mb-1.5">
+              {f.title}
+            </h3>
+            <p class="text-xs text-[var(--text-subtext)] leading-relaxed">
+              {f.body}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {/* COMPARISON TABLE SECTION */}
+    <section id="comparison" class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
+      <div class="mb-6">
+        <div class="text-xs text-[var(--accent-mauve)] uppercase tracking-wider font-bold mb-2">
+          evaluation // comparison
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
+          podbox vs Distrobox / Toolbox vs Raw Podman
+        </h2>
+        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-3xl leading-relaxed">
+          Distrobox mounts your home directory and session bus by default and gets out of the way after that,
+          which is the right approach if you want a container that feels like the host.
+          podbox defaults to the opposite: <span class="text-[var(--text-primary)] font-bold">nothing is shared unless it is in the TOML</span>,
+          and the environment is reproducible from that file rather than whatever state the container happened to drift into.
+        </p>
+      </div>
+
+      <ComparisonTable />
+    </section>
+
+    {/* ARCHITECTURE SECTION */}
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 border-b border-[var(--border)]">
+      <HowItWorksSection client:visible />
+    </div>
+
+    {/* INTERACTIVE CONFIG PLAYGROUND */}
+    <section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
+      <div class="mb-6">
+        <div class="text-xs text-[var(--accent-green)] uppercase tracking-wider font-bold mb-2">
+          interactive // playground
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
+          Craft your container specification
+        </h2>
+        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-3xl leading-relaxed">
+          Quickly test parameters, custom images, and isolation toggles below.
+          Watch each option compile directly into both declarative <code class="text-[var(--accent-mauve)]">podbox.toml</code> and systemd Quadlet <code class="text-[var(--accent-peach)]">.container</code> units in real time, or jump into the dedicated <a href={`${base}studio/`} class="text-[var(--accent-mauve)] font-bold underline cursor-pointer">podbox Studio</a> for full-spectrum customization.
+        </p>
+      </div>
+
+      <ConfigPlayground client:visible />
+    </section>
+
+    {/* DAY TO DAY USAGE */}
+    <section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
+      <div class="mb-8">
+        <div class="text-xs text-[var(--accent-peach)] uppercase tracking-wider font-bold mb-2">
+          workflow // daily-ops
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
+          Day-to-day command examples
+        </h2>
+        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-3xl leading-relaxed">
+          Once built, podbox gives you natural, fast commands to enter, run commands, export apps, or inspect your containers.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {dayToDay.map((block) => (
+          <div>
+            <div class="text-xs font-bold text-[var(--text-subtext)] mb-2 flex items-center gap-2">
+              <span class={`w-2 h-2 rounded-full ${block.dot}`}></span>
+              {block.title}
+            </div>
+            <TerminalCodeBlock code={block.code} language="bash" />
+          </div>
+        ))}
+      </div>
+    </section>
+
+    {/* FOOTER */}
+    <footer class="w-full bg-[var(--bg-crust)] border-t border-[var(--border)] py-12 px-4 sm:px-6">
+      <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <PodboxLogo className="w-5 h-5" />
+            <span class="font-bold text-sm tracking-tight text-[var(--text-primary)]">
+              podbox
+            </span>
+            <span class="text-xs text-[var(--text-muted)]">v{VERSION}</span>
+          </div>
+          <p class="text-xs text-[var(--text-subtext)]">
+            Define once. Run anywhere. No host daemon.
+          </p>
+          <p class="text-[11px] text-[var(--text-muted)]">
+            Open source under the MIT License. Built for Linux & Podman.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-6 text-xs text-[var(--text-subtext)]">
+          <a
+            href={`${base}docs/`}
+            class="hover:text-[var(--text-primary)] cursor-pointer"
+          >
+            Documentation
+          </a>
+          <a
+            href={`${base}docs/getting-started/`}
+            class="hover:text-[var(--text-primary)] cursor-pointer"
+          >
+            Getting Started
+          </a>
+          <a
+            href={`${base}docs/config/`}
+            class="hover:text-[var(--text-primary)] cursor-pointer"
+          >
+            Config Reference
+          </a>
+          <a
+            href="https://github.com/bethropolis/podbox"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-[var(--text-primary)] flex items-center gap-1"
+          >
+            <GithubIcon className="w-3.5 h-3.5" />
+            <span>GitHub</span>
+          </a>
+          <a
+            href="https://crates.io/crates/podbox-cli"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-[var(--text-primary)] flex items-center gap-1"
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>crates.io</span>
+          </a>
+        </div>
+      </div>
+    </footer>
+  </div>
+</SiteLayout>

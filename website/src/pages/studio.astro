@@ -1,0 +1,12 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { StudioPage } from '../design/islands/StudioPage';
+---
+
+<SiteLayout
+  title="podbox Studio — Interactive Container & Quadlet Synthesizer"
+  description="Real-time interactive GUI workbench for tailoring rootless Podman containers, hardware passthrough, and generating production systemd Quadlet units."
+  currentPath="/studio"
+>
+  <StudioPage client:load />
+</SiteLayout>

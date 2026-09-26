@@ -4,11 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - 'website/**'
       - 'docs/**'
-      - 'mkdocs.yml'
       - 'README.md'
       - 'scripts/install-online.sh'
-      - 'scripts/install.sh'
       - '.github/workflows/docs.yml'
 
 permissions:
@@ -28,36 +27,23 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
+      - uses: oven-sh/setup-bun@v2
 
-      - run: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin pillow cairosvg
+      - run: bun install
+        working-directory: website
 
-      - run: |
-          cp README.md docs/index.md
-          sed -i 's|docs/assets/|assets/|g' docs/index.md
-          sed -i 's|docs/\([a-z-]*\)\.md|\1/|g' docs/index.md
-          mkdocs build
+      - run: bun run build
+        working-directory: website
 
-      - name: Fix asset paths in subdirectory pages
-        run: |
-          for dir in architecture config export guest dbus-proxy quadlet protocol troubleshooting; do
-            [ -d "site/$dir" ] && find "site/$dir" -name '*.html' -exec \
-              sed -i 's|"assets/|"../assets/|g' {} +
-          done
-
-      - name: Copy install script and assets
-        run: |
-          cp scripts/install-online.sh site/install.sh
+      # Smoke-test the installer URL the README and guides link to.
+      - run: bash -n dist/install.sh && test -s dist/install.sh
+        working-directory: website
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: website/dist
 
       - name: Deploy to GitHub Pages
         id: deployment

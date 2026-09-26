@@ -1,0 +1,140 @@
+---
+import { getCollection } from 'astro:content';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import { MarkdownRenderer } from '../../design/components/MarkdownRenderer';
+import { DocsSidebar } from '../../design/components/DocsSidebar';
+import { DocsToc } from '../../design/components/DocsToc';
+import { PodboxLogo } from '../../design/components/PodboxLogo';
+import { SEARCH_DOCS } from '../../design/searchIndex';
+import { docsNav } from '../../nav';
+import { ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs.map((entry) => {
+    const slug = entry.id.replace(/\.md$/, '');
+    return {
+      params: slug === 'index' ? { slug: undefined } : { slug },
+      props: { entry },
+    };
+  });
+}
+
+const { entry } = Astro.props;
+const slug = entry.id.replace(/\.md$/, '');
+const meta = SEARCH_DOCS.find((d) => d.id === slug);
+const title = meta?.title ?? entry.data.title ?? slug;
+const description =
+  meta?.description || entry.data.description || `podbox documentation: ${title}.`;
+const currentPath = slug === 'index' ? '/docs' : `/docs/${slug}`;
+const base = import.meta.env.BASE_URL;
+const file = `${slug}.md`;
+const editUrl = `https://github.com/bethropolis/podbox/edit/main/docs/${file}`;
+
+const sidebarItems = docsNav.map((n) => ({
+  id: n.slug,
+  title: n.label,
+  path: n.slug === 'index' ? '/docs' : `/docs/${n.slug}`,
+}));
+
+const currentIndex = docsNav.findIndex((n) => n.slug === slug);
+const prevNav = currentIndex > 0 ? docsNav[currentIndex - 1] : null;
+const nextNav = currentIndex < docsNav.length - 1 ? docsNav[currentIndex + 1] : null;
+const navHref = (s: string) => (s === 'index' ? `${base}docs/` : `${base}docs/${s}/`);
+---
+
+<SiteLayout title={`${title} — podbox Documentation`} description={description} currentPath={currentPath} isDocsPage>
+  <div class="w-full flex font-mono bg-[var(--bg-base)] text-[var(--text-primary)] min-h-[calc(100vh-3.5rem)]">
+    {/* Left Sidebar (filter input needs hydration on all viewports) */}
+    <DocsSidebar client:load items={sidebarItems} currentPath={currentPath} />
+
+    {/* Main Content Area */}
+    <main class="flex-1 md:ml-72 min-w-0 px-4 sm:px-8 py-8 max-w-4xl xl:max-w-5xl">
+      {/* Breadcrumb & GitHub Edit Bar */}
+      <div class="flex items-center justify-between gap-4 pb-4 mb-6 border-b border-[var(--border)] text-xs text-[var(--text-muted)] select-none">
+        <div class="flex items-center gap-1.5 truncate">
+          <a href={`${base}`} class="hover:text-[var(--text-primary)] cursor-pointer">
+            podbox
+          </a>
+          <span>/</span>
+          <a href={`${base}docs/`} class="hover:text-[var(--text-primary)] cursor-pointer">
+            docs
+          </a>
+          <span>/</span>
+          <span class="text-[var(--accent-mauve)] font-semibold truncate">
+            {file}
+          </span>
+        </div>
+
+        <a
+          href={editUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-1.5 text-[var(--text-muted)] hover:text-[var(--accent-mauve)] transition-colors shrink-0 text-xs"
+          title="Edit this documentation page on GitHub"
+        >
+          <Edit3 className="w-3.5 h-3.5" />
+          <span class="hidden sm:inline">Edit on GitHub</span>
+        </a>
+      </div>
+
+      {/* Markdown Rendered Content (static HTML, zero client JS) */}
+      <article class="prose prose-invert max-w-none">
+        <MarkdownRenderer content={entry.body} />
+      </article>
+
+      {/* Prev / Next Page Navigation Buttons */}
+      <div class="mt-12 pt-6 border-t border-[var(--border)] grid grid-cols-1 sm:grid-cols-2 gap-4 select-none">
+        {prevNav ? (
+          <a
+            href={navHref(prevNav.slug)}
+            class="flex flex-col items-start p-3.5 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] hover:border-[var(--accent-mauve)] transition-colors text-left cursor-pointer group"
+          >
+            <div class="flex items-center gap-1 text-[11px] text-[var(--text-muted)] mb-1">
+              <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>Previous page</span>
+            </div>
+            <span class="text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-mauve)]">
+              {prevNav.label}
+            </span>
+          </a>
+        ) : (
+          <div />
+        )}
+
+        {nextNav ? (
+          <a
+            href={navHref(nextNav.slug)}
+            class="flex flex-col items-end p-3.5 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] hover:border-[var(--accent-mauve)] transition-colors text-right cursor-pointer group"
+          >
+            <div class="flex items-center gap-1 text-[11px] text-[var(--text-muted)] mb-1">
+              <span>Next page</span>
+              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+            <span class="text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-mauve)]">
+              {nextNav.label}
+            </span>
+          </a>
+        ) : (
+          <div />
+        )}
+      </div>
+
+      {/* Docs Footer */}
+      <div class="mt-10 py-6 border-t border-[var(--border)] text-xs text-[var(--text-muted)] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <PodboxLogo className="w-4 h-4" />
+          <span>podbox — declarative Linux container environments</span>
+        </div>
+        <div class="text-[11px]">
+          Licensed under MIT. Open Source by bethropolis.
+        </div>
+      </div>
+    </main>
+
+    {/* Right Rail: Table of Contents */}
+    <aside class="hidden xl:block shrink-0 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-mantle)]/40">
+      <DocsToc client:visible />
+    </aside>
+  </div>
+</SiteLayout>

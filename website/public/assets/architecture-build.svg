@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 300" width="100%" height="auto">
+  <defs>
+    <filter id="text-shadow">
+      <feDropShadow dx="0" dy="1" stdDeviation="0.5" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#d946ef"/>
+    </linearGradient>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    :root {
+      --bg-canvas: #ffffff;
+      --bg-box: #f8fafc;
+      --border-box: #cbd5e1;
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      --line: #94a3b8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-canvas: #0d1117;
+        --bg-box: #161b22;
+        --border-box: #30363d;
+        --text-main: #c9d1d9;
+        --text-sub: #8b949e;
+        --line: #484f58;
+      }
+    }
+
+    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
+    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
+    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
+    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #e2e8f0; text-anchor: middle; filter: url(#text-shadow); }
+    .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
+    .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 1.5px; stroke-dasharray: 4,4; }
+
+    .accent-gradient-1 { fill: url(#grad1); stroke: #334155; stroke-width: 1px; }
+    .accent-gradient-2 { fill: url(#grad2); stroke: #334155; stroke-width: 1px; }
+    .accent-gradient-3 { fill: url(#grad3); stroke: #334155; stroke-width: 1px; }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--line)"/>
+    </marker>
+  </defs>
+
+  <!-- Step 1: Definition -->
+  <g transform="translate(20, 90)">
+    <rect class="box-bg" width="140" height="80" rx="8"/>
+    <text class="text-title" x="70" y="38">definition.toml</text>
+    <text class="text-desc" x="70" y="56">Declarative config</text>
+  </g>
+
+  <!-- Step 2: Codegen -->
+  <g transform="translate(210, 90)">
+    <rect class="accent-gradient-1" width="190" height="80" rx="8"/>
+    <text class="text-title" x="95" y="38" fill="#ffffff">podbox build / enable</text>
+    <text class="text-desc-shadow" x="95" y="56">Pure codegen, no daemon</text>
+  </g>
+
+  <!-- Step 3a: OCI Image -->
+  <g transform="translate(440, 10)">
+    <rect class="accent-gradient-2" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38" fill="#ffffff">OCI Image</text>
+    <text class="text-desc-shadow" x="75" y="56">Distro packages baked in</text>
+  </g>
+
+  <!-- Step 3b: Quadlet Units -->
+  <g transform="translate(440, 190)">
+    <rect class="accent-gradient-3" width="190" height="96" rx="8"/>
+    <text class="text-title" x="95" y="34" fill="#ffffff">Quadlet units</text>
+    <text class="text-desc-shadow" x="95" y="54">.container .socket .build</text>
+    <text class="text-desc-shadow" x="95" y="70">+ 3 companion services</text>
+  </g>
+
+  <!-- Step 4: systemd -->
+  <g transform="translate(660, 90)">
+    <rect class="box-bg" width="150" height="80" rx="8"/>
+    <text class="text-title" x="75" y="38">systemd --user</text>
+    <text class="text-desc" x="75" y="56">Owns the lifecycle</text>
+  </g>
+
+  <!-- Flow -->
+  <path class="conn-line" d="M 160 130 L 208 130" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 400 130 C 420 130, 420 50, 438 50" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 400 130 C 420 130, 420 238, 438 238" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 590 50 C 620 50, 620 130, 658 130" marker-end="url(#arrow)"/>
+  <path class="conn-line" d="M 630 238 C 650 238, 650 130, 658 130" marker-end="url(#arrow)"/>
+</svg>

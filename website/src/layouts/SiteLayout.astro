@@ -1,0 +1,101 @@
+---
+import '../styles/global.css';
+import { Topbar } from '../design/islands/Topbar';
+import { CommandPalette } from '../design/components/CommandPalette';
+
+interface Props {
+  title: string;
+  description: string;
+  currentPath: string;
+  isDocsPage?: boolean;
+}
+
+const { title, description, currentPath, isDocsPage = false } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const canonical = `https://bethropolis.github.io/podbox${currentPath === '/' ? '/' : currentPath + '/'}`;
+const ogImage = `${base}og-image.png`;
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1e1e2e" />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${base}podbox-logo.png`} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta
+      name="keywords"
+      content="podbox, podman, quadlet, systemd, rootless containers, distrobox, linux, toml, declarative containers, rust"
+    />
+    <meta name="author" content="Bethuel Kipsang" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="podbox" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="generator" content={Astro.generator} />
+    <script is:inline>
+      // Pre-paint theme: SSR always renders mocha; reconcile before first paint.
+      try {
+        if (localStorage.getItem('podbox-theme') === 'latte') {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.classList.add('light');
+        }
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[999999] focus:px-4 focus:py-2 focus:bg-[var(--accent-mauve)] focus:text-[#11111b] focus:font-bold focus:rounded-[3px] focus:shadow-2xl focus:outline-none focus:ring-2 focus:ring-white"
+    >
+      Skip to main content
+    </a>
+    <div class="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] flex flex-col font-mono selection:bg-[var(--accent-mauve)]/25 selection:text-[var(--accent-mauve)]">
+      <Topbar client:load currentPath={currentPath} isDocsPage={isDocsPage} />
+      <CommandPalette client:idle />
+      <main id="main-content" tabindex="-1" class="flex-1 focus:outline-none">
+        <slot />
+      </main>
+    </div>
+    <script is:inline>
+      // Delegated copy for every TerminalCodeBlock (static or island-rendered).
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-copy-btn]');
+        if (!btn) return;
+        const code = btn.getAttribute('data-code') || '';
+        try {
+          await navigator.clipboard.writeText(code);
+        } catch {
+          const ta = document.createElement('textarea');
+          ta.value = code;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        const label = btn.querySelector('[data-copy-label]');
+        if (label) {
+          const prev = label.textContent;
+          label.textContent = 'copied!';
+          label.classList.add('text-[var(--accent-green)]');
+          setTimeout(() => {
+            label.textContent = prev;
+            label.classList.remove('text-[var(--accent-green)]');
+          }, 2000);
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,116 @@
+---
+description: podbox CLI reference — every command grouped by workflow, container name resolution, exit codes, JSON output, and shell completion.
+---
+
+# CLI reference
+
+Groups, name resolution, exit codes, JSON output, and shell completion.
+
+## Command groups
+
+| Group | Commands |
+|-------|----------|
+| Get started | `create`, `init`, `profile` |
+| Day to day | `enter` (alias `shell`), `exec`, `run`, `start`, `stop`, `list` (alias `ls`), `status` |
+| Change | `edit`, `build`, `enable`, `disable`, `update`, `pull`, `diff` |
+| Inspect | `logs`, `inspect`, `stats`, `doctor`, `history`, `find-definition` |
+| Copy / backup | `clone`, `snapshot`, `restore`, `export` |
+| Remove | `remove` (alias `rm`) |
+| Context | `use` |
+
+Systemd internals (`serve`, `compositor`, `__complete-names`,
+`internal-stdin-watchdog`) are hidden but callable; Quadlet units depend on
+the first two.
+
+## Naming a container
+
+Every container command resolves its target the same way:
+
+1. positional `NAME`
+2. `-C NAME`
+3. `$PODBOX_CONTAINER`
+4. active context (`podbox use`)
+5. single config in the config dir / local `.podbox.toml`
+
+`exec` and `run` also accept a podman-style leading name
+(`podbox exec myenv ls`). It is treated as the container only when it matches
+a known config **and** more arguments follow, so `podbox exec -- ls` and a
+bare `podbox exec fedora` behave as before. An explicit `-C` always wins.
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | success |
+| 2 | definition file missing / unreadable (includes `find-definition NAME` miss) |
+| 3 | container/config not found for the requested operation |
+| 4 | build failure or podman inspect failure |
+| 5 | podman not installed |
+| 6 | image pull/tag failure |
+| 1 | anything else |
+
+## JSON output
+
+Read commands accept `--output json` and print nothing else on stdout:
+
+- `list`: `{"containers": [{"name","status","autostart","active"}]}`
+- `status`: `{"name","status","installed"}`
+- `snapshot list`: `{"snapshots": [{"tag","created","image"}]}`
+- `history`: `{"history": [{"timestamp","name","action","detail"}]}`
+
+`status` vocabulary is shared with `list`:
+`running | stopped | failed | unbuilt`. The extra boolean `installed` reports
+whether Quadlet files exist for an unbuilt container (formerly expressed as
+"not built" vs "not installed").
+
+## History
+
+Lifecycle commands append to `~/.local/state/podbox/history.log` on success;
+recording is best-effort and never fails the command.
+
+```bash
+podbox history              # newest first, all containers (default 25)
+podbox history myenv        # one container
+podbox history --limit 0    # no limit; --output json for scripting
+```
+
+Actions recorded: `create`, `build`, `enable`, `disable`, `start`, `stop`,
+`update`, `remove`, `recover`.
+
+## Shell completion
+
+```bash
+podbox completions bash > ~/.local/share/bash-completion/completions/podbox
+podbox completions zsh  > "${fpath[1]}/_podbox"
+podbox completions fish > ~/.config/fish/completions/podbox.fish
+```
+
+The generated scripts include dynamic container-name completion (fed by
+`podbox __complete-names`, which prints config stems) for **bash**, **zsh**,
+and **fish**: names complete after name-taking subcommands and as `-C/--container`
+values. Missing configs yield no candidates — completion never errors.
+
+### Fish daily-driver abbreviations
+
+`podbox completions fish --abbrs` appends opt-in `abbr` shorthand to the
+completion stream. This is **only** fish and **only** when the flag is given,
+so a piped default script is unchanged:
+
+```fish
+podbox completions fish --abbrs | source
+```
+
+`abbr` definitions expand a short token on typing (they are loaded in your
+session, not the completion script). Supported tokens expand `pb*` to the
+full command:
+
+| Token | Expands to | | Token | Expands to |
+|-------|------------|--|-------|------------|
+| `pb`  | `podbox`   | | `pbs` | `podbox start` |
+| `pbb` | `podbox build` | | `pbt` | `podbox stop` |
+| `pbc` | `podbox create` | | `pbu` | `podbox update` |
+| `pbd` | `podbox doctor` | | `pbv` | `podbox status` |
+| `pbe` | `podbox enter` | | `pbx` | `podbox exec --` |
+| `pbl` | `podbox list` | | `pbr` | `podbox recover` |
+
+`--abbrs` is ignored for `bash` and `zsh`.

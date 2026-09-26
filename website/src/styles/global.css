@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/* Self-hosted fonts (no third-party request, works offline). */
+@import '@fontsource/geist/latin-400.css';
+@import '@fontsource/geist/latin-500.css';
+@import '@fontsource/geist/latin-600.css';
+@import '@fontsource/geist/latin-700.css';
+@import '@fontsource/geist/latin-800.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-400-italic.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-600.css';
+@import '@fontsource/jetbrains-mono/latin-700.css';
+
+/* Design system tokens: Catppuccin Mocha (default) + Latte (html.light).
+   Ported 1:1 from the approved site design. */
+:root {
+  --bg-base: #1e1e2e;
+  --bg-mantle: #181825;
+  --bg-crust: #11111b;
+  --bg-surface0: #313244;
+  --bg-surface1: #45475a;
+  --bg-surface2: #585b70;
+  --text-primary: #cdd6f4;
+  --text-subtext: #a6adc8;
+  --text-muted: #6c7086;
+  --border: #313244;
+  --border-focus: #585b70;
+  --accent-mauve: #cba6f7;
+  --accent-blue: #89b4fa;
+  --accent-green: #a6e3a1;
+  --accent-peach: #fab387;
+  --accent-red: #f38ba8;
+  --accent-yellow: #f9e2af;
+  --accent-teal: #94e2d5;
+}
+
+html.light {
+  --bg-base: #eff1f5;
+  --bg-mantle: #e6e9ef;
+  --bg-crust: #dce0e8;
+  --bg-surface0: #ccd0da;
+  --bg-surface1: #bcc0cc;
+  --bg-surface2: #acb0be;
+  --text-primary: #4c4f69;
+  --text-subtext: #6c6f85;
+  --text-muted: #9ca0b0;
+  --border: #ccd0da;
+  --border-focus: #acb0be;
+  --accent-mauve: #8839ef;
+  --accent-blue: #1e66f5;
+  --accent-green: #40a02b;
+  --accent-peach: #fe640b;
+  --accent-red: #d20f39;
+  --accent-yellow: #df8e1d;
+  --accent-teal: #179299;
+}
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  letter-spacing: -0.01em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Monospace code styling */
+code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  letter-spacing: normal;
+}
+
+/* Sleek modern terminal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-surface1);
+  border-radius: 9999px;
+  border: 1px solid var(--bg-mantle);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-mauve);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-surface1) transparent;
+}
+
+/* Blinking cursor */
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+  display: inline-block;
+}
+
+/* Subtle dot grid */
+.bg-terminal-dots {
+  background-image: radial-gradient(circle, currentColor 0.75px, transparent 0.75px);
+  background-size: 24px 24px;
+  opacity: 0.04;
+}
+
+/* Code block syntax coloring helpers */
+.syntax-keyword { color: var(--accent-mauve); }
+.syntax-string { color: var(--accent-green); }
+.syntax-comment { color: var(--text-muted); font-style: italic; }
+.syntax-number { color: var(--accent-peach); }
+.syntax-func { color: var(--accent-blue); }
+.syntax-operator { color: var(--accent-teal); }
+.syntax-variable { color: var(--accent-red); }
+.syntax-section { color: var(--accent-yellow); font-weight: 600; }
+
+/* Install-tab switcher (CSS-only tabs, zero JS). Radios live hidden inside
+   .install-tabs; :has() wires the titlebar labels and panels together. */
+.install-tabs input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.install-tabs .install-panel {
+  display: none;
+}
+.install-tabs:has(#install-tab-curl:checked) #install-panel-curl,
+.install-tabs:has(#install-tab-brew:checked) #install-panel-brew,
+.install-tabs:has(#install-tab-aur:checked) #install-panel-aur,
+.install-tabs:has(#install-tab-cargo:checked) #install-panel-cargo,
+.install-tabs:has(#install-tab-source:checked) #install-panel-source {
+  display: block;
+}
+.install-tabs .install-tab-label {
+  color: var(--text-muted);
+}
+.install-tabs .install-tab-label:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface0);
+}
+.install-tabs:has(#install-tab-curl:checked) label[for='install-tab-curl'],
+.install-tabs:has(#install-tab-brew:checked) label[for='install-tab-brew'],
+.install-tabs:has(#install-tab-aur:checked) label[for='install-tab-aur'],
+.install-tabs:has(#install-tab-cargo:checked) label[for='install-tab-cargo'],
+.install-tabs:has(#install-tab-source:checked) label[for='install-tab-source'] {
+  background: var(--accent-mauve);
+  color: #11111b;
+  font-weight: 700;
+}
