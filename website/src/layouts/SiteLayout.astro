@@ -3,6 +3,7 @@ import '../styles/global.css';
 import { SEO } from 'astro-seo';
 import { Topbar } from '../design/islands/Topbar';
 import { CommandPalette } from '../design/components/CommandPalette';
+import { VERSION } from '../landing/data';
 
 interface Props {
   title: string;
@@ -105,8 +106,8 @@ const jsonLd = {
       Skip to main content
     </a>
     <div class="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] flex flex-col font-mono selection:bg-[var(--accent-mauve)]/25 selection:text-[var(--accent-mauve)]">
-      <Topbar client:load currentPath={currentPath} isDocsPage={isDocsPage} />
-      <CommandPalette client:idle />
+      <Topbar client:load currentPath={currentPath} isDocsPage={isDocsPage} version={VERSION} />
+      <CommandPalette client:idle version={VERSION} />
       <main id="main-content" tabindex="-1" class="flex-1 focus:outline-none">
         <slot />
       </main>

@@ -6,6 +6,7 @@ import { withBase } from '../../base';
 import { navLinks, isLinkActive } from './navLinks';
 
 interface NavbarDrawerProps {
+  version: string;
   currentPath: string;
   isDark: boolean;
   onToggleTheme: () => void;
@@ -13,7 +14,7 @@ interface NavbarDrawerProps {
   onOpenSearch: () => void;
 }
 
-export function NavbarDrawer({ currentPath, isDark, onToggleTheme, onClose, onOpenSearch }: NavbarDrawerProps) {
+export function NavbarDrawer({ currentPath, version, isDark, onToggleTheme, onClose, onOpenSearch }: NavbarDrawerProps) {
   return (
     <div
       id="mobile-nav-drawer"
@@ -148,7 +149,7 @@ export function NavbarDrawer({ currentPath, isDark, onToggleTheme, onClose, onOp
 
         {/* Drawer Footer */}
         <div className="p-4 bg-[var(--bg-crust)] border-t border-[var(--border)] flex items-center justify-between text-xs text-[var(--text-muted)] font-mono">
-          <span>v0.7.2 (MIT)</span>
+          <span>v{version} (MIT)</span>
           <button
             onClick={onToggleTheme}
             className="flex items-center gap-1.5 text-[var(--text-subtext)] hover:text-[var(--accent-yellow)]"

@@ -5,11 +5,13 @@ import type { SearchDoc } from '../searchIndex';
 import { predefinedCommands, type SearchResult } from './palette/commands';
 
 interface CommandPaletteProps {
-  // No props: the search index lazy-loads on first open (separate chunk),
-  // so it never ships with the initial page bundle.
+  // Only the version string crosses the Astro boundary; the search index
+  // still lazy-loads on first open (separate chunk), so it never ships
+  // with the initial page bundle.
+  version: string;
 }
 
-export function CommandPalette() {
+export function CommandPalette({ version }: CommandPaletteProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [docs, setDocs] = useState<SearchDoc[]>([]);
   const indexLoading = useRef(false);
@@ -259,7 +261,7 @@ export function CommandPalette() {
               <kbd className="px-1.5 py-0.5 bg-[var(--bg-surface0)] border border-[var(--border)] rounded-[2px] text-[10px]">esc</kbd> close
             </span>
           </div>
-          <span className="text-[var(--accent-mauve)]">podbox CLI v0.7.2</span>
+          <span className="text-[var(--accent-mauve)]">podbox CLI v{version}</span>
         </div>
       </div>
     </div>

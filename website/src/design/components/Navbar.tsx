@@ -17,9 +17,10 @@ import {
 interface NavbarProps {
   currentPath: string;
   isDocsPage?: boolean;
+  version: string;
 }
 
-export function Navbar({ currentPath, isDocsPage = false }: NavbarProps) {
+export function Navbar({ currentPath, isDocsPage = false, version }: NavbarProps) {
   const { toggleTheme, isDark } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -89,7 +90,7 @@ export function Navbar({ currentPath, isDocsPage = false }: NavbarProps) {
                   podbox
                 </span>
                 <span className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-[2px] bg-[var(--accent-mauve)]/10 text-[var(--accent-mauve)] border border-[var(--accent-mauve)]/30 font-semibold">
-                  v0.7.2
+                  v{version}
                 </span>
               </div>
             </a>
@@ -189,6 +190,7 @@ export function Navbar({ currentPath, isDocsPage = false }: NavbarProps) {
       {mobileMenuOpen && (
         <NavbarDrawer
           currentPath={currentPath}
+          version={version}
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onClose={() => setMobileMenuOpen(false)}
