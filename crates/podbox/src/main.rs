@@ -400,7 +400,7 @@ fn run() -> Result<()> {
         }
 
         Command::Inspect {
-            config: show_config,
+            toml: show_config,
             quadlet: show_quadlet,
             env: show_env,
             output,
@@ -426,7 +426,7 @@ fn run() -> Result<()> {
             name: _,
             all,
             force,
-            config: remove_config,
+            remove_config,
             ..
         } => {
             commands::lifecycle::run_remove(

@@ -170,7 +170,7 @@ projects = true
 
 ```bash
 # View the resolved TOML config
-podbox inspect myenv --config
+podbox inspect myenv --toml
 
 # View the generated Quadlet systemd units
 podbox inspect myenv --quadlet
@@ -381,7 +381,7 @@ podbox remove myenv --all
 podbox remove myenv --all --force
 
 # Also delete the TOML config file
-podbox remove myenv --config
+podbox remove myenv --remove-config
 
 # Clean up orphaned/failed containers
 podbox remove --stale

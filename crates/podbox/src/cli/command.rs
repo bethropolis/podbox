@@ -171,7 +171,7 @@ pub enum Command {
         stale: bool,
         /// Also delete the TOML definition file.
         #[arg(long)]
-        config: bool,
+        remove_config: bool,
     },
 
     /// Inspect container configuration, generated Quadlet, or computed environment.
@@ -180,8 +180,10 @@ pub enum Command {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
         /// Show the resolved TOML config.
+        // Spelled `--toml` rather than `--config` so the global
+        // `--config <PATH>` override stays reachable on this subcommand.
         #[arg(long)]
-        config: bool,
+        toml: bool,
         /// Show the generated Quadlet (.container file).
         #[arg(long)]
         quadlet: bool,

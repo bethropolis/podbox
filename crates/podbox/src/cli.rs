@@ -12,7 +12,9 @@ use std::path::PathBuf;
         podbox doctor             Diagnose host and container issues")]
 pub struct Cli {
     /// Path to the definition TOML file.
-    #[arg(long, short)]
+    // Global so it works on either side of the subcommand, which is what the
+    // "Hint: Use `--config <PATH>`" on a missing-config error promises.
+    #[arg(long, short, global = true)]
     pub config: Option<PathBuf>,
 
     /// Print what would happen without executing.

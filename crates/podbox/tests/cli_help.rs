@@ -98,3 +98,47 @@ fn rm_alias_resolves_to_remove() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Remove the container"));
 }
+
+/// The global `--config <PATH>` override must reach every subcommand. Two
+/// subcommands used to shadow it with a local `--config` boolean, which made
+/// the "Hint: Use `--config <PATH>`" printed on a missing-config error
+/// unusable for exactly the commands that showed the hint.
+#[test]
+fn global_config_path_is_not_shadowed_by_subcommands() {
+    for subcommand in ["inspect", "remove"] {
+        let out = podbox().args([subcommand, "--help"]).output().unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        // Match declared options only: prose elsewhere may name the flag.
+        let declares_config = stdout
+            .lines()
+            .any(|l| l.trim_start().starts_with("--config"));
+        assert!(
+            !declares_config,
+            "{subcommand} must not declare its own --config flag"
+        );
+    }
+}
+
+/// `inspect` keeps a way to dump the resolved TOML, now spelled `--toml`.
+#[test]
+fn inspect_exposes_toml_and_quadlet_and_env() {
+    let out = podbox().args(["inspect", "--help"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for flag in ["--toml", "--quadlet", "--env"] {
+        assert!(stdout.contains(flag), "inspect should expose {flag}");
+    }
+}
+
+/// `remove` still deletes the definition file, under an unambiguous name.
+#[test]
+fn remove_exposes_remove_config() {
+    let out = podbox().args(["remove", "--help"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("--remove-config"),
+        "remove should expose --remove-config"
+    );
+}
