@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::os::fd::{AsFd, AsRawFd};
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -13,11 +13,14 @@ use podbox::podman::{ContainerState, query_state};
 use podbox::protocol::{GuestMessage, write_frame};
 use podbox::xdg::ResolvedXdgDirs;
 
+mod context;
 pub mod doctor;
 
 use doctor::is_systemd_managed;
 pub use doctor::run_doctor;
 pub use doctor::try_fix_bare_memory_for_target;
+
+use context::resolve_container_workdir;
 
 /// Try to register a terminal session with the host's `socket_host`.
 ///
@@ -62,107 +65,6 @@ fn read_user_path(name: &str) -> Option<String> {
     } else {
         Some(trimmed)
     }
-}
-
-/// Resolve the working directory inside the container from the host CWD.
-///
-/// Builds a map of host→container mount paths from the config, canonicalizes
-/// the host CWD, and picks the longest-prefix match. Falls back to
-/// `/home/<username>` when nothing matches.
-fn resolve_container_workdir(
-    config: &Config,
-    env: &HostEnv,
-    xdg: &ResolvedXdgDirs,
-    strict: bool,
-) -> Result<String> {
-    let home = format!("/home/{}", env.username);
-
-    let host_cwd = match std::env::current_dir() {
-        Ok(p) => match std::fs::canonicalize(&p) {
-            Ok(c) => c,
-            Err(err) if strict => anyhow::bail!(
-                "cannot canonicalize current directory '{}': {err}",
-                p.display()
-            ),
-            Err(_) => p,
-        },
-        Err(err) if strict => anyhow::bail!("cannot resolve current directory: {err}"),
-        Err(_) => return Ok(home.clone()),
-    };
-
-    // (canonicalized host path, container path)
-    let mut mounts: Vec<(PathBuf, PathBuf)> = Vec::new();
-
-    // Home dir
-    if let Ok(h) = std::fs::canonicalize(&config.container.home) {
-        mounts.push((h, PathBuf::from(&home)));
-    }
-
-    // XDG dirs
-    let xdg_map: &[(&Option<podbox::xdg::ResolvedXdgDir>, &str)] = &[
-        (&xdg.documents, "Documents"),
-        (&xdg.downloads, "Downloads"),
-        (&xdg.pictures, "Pictures"),
-        (&xdg.music, "Music"),
-        (&xdg.videos, "Videos"),
-        (&xdg.desktop, "Desktop"),
-        (&xdg.projects, "Projects"),
-    ];
-    for (dir, name) in xdg_map {
-        if let Some(resolved) = dir {
-            if let Ok(h) = std::fs::canonicalize(&resolved.path) {
-                mounts.push((h, PathBuf::from(format!("{home}/{name}"))));
-            }
-        }
-    }
-
-    // Extra mounts: "host:container[:opts]"
-    for mount in &config.container.mounts.extra {
-        let parts: Vec<&str> = mount.split(':').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        let host_path = podbox::config::expand_tilde(parts[0]);
-        if let Ok(h) = std::fs::canonicalize(host_path) {
-            mounts.push((h, PathBuf::from(parts[1])));
-        }
-    }
-
-    if let Some(path) = translate_host_path(&host_cwd, &mounts) {
-        return Ok(path);
-    }
-    if strict {
-        anyhow::bail!(
-            "Current directory '{}' is not accessible inside container '{}'.\nHint: Add it to '{}.toml' under [container.mounts] extra = [\"/path/to/dir:/path/to/dir:z\"]",
-            host_cwd.display(),
-            config.container.name,
-            config.container.name
-        );
-    }
-    Ok(home)
-}
-
-fn translate_host_path(host_cwd: &Path, mounts: &[(PathBuf, PathBuf)]) -> Option<String> {
-    // Find longest host prefix match so nested explicit mounts override home.
-    let mut best: Option<(PathBuf, PathBuf)> = None;
-    for (host_path, container_path) in mounts {
-        if host_cwd == host_path || host_cwd.starts_with(host_path) {
-            match &best {
-                Some((best_host, _))
-                    if best_host.components().count() >= host_path.components().count() => {}
-                _ => best = Some((host_path.clone(), container_path.clone())),
-            }
-        }
-    }
-
-    best.map(
-        |(host_path, container_path)| match host_cwd.strip_prefix(&host_path) {
-            Ok(rel) if !rel.as_os_str().is_empty() => {
-                container_path.join(rel).to_string_lossy().to_string()
-            }
-            _ => container_path.to_string_lossy().to_string(),
-        },
-    )
 }
 
 fn append_env_args(args: &mut Vec<OsString>, env: &[String]) -> Result<()> {
@@ -705,21 +607,7 @@ fn args_to_string(args: &[OsString]) -> String {
 
 #[cfg(test)]
 mod workdir_tests {
-    use super::{append_env_args, translate_host_path};
-    use std::path::PathBuf;
-
-    #[test]
-    fn translates_using_longest_mount_prefix_and_respects_boundaries() {
-        let mounts = vec![
-            (PathBuf::from("/work"), PathBuf::from("/home/user/Work")),
-            (PathBuf::from("/work/project"), PathBuf::from("/workspace")),
-        ];
-        assert_eq!(
-            translate_host_path(&PathBuf::from("/work/project/src"), &mounts).as_deref(),
-            Some("/workspace/src")
-        );
-        assert_eq!(translate_host_path(&PathBuf::from("/work2"), &mounts), None);
-    }
+    use super::append_env_args;
 
     #[test]
     fn validates_explicit_environment_overrides() {
