@@ -89,6 +89,40 @@ TERM = "xterm-256color"
 
 ---
 
+## `[dotfiles]`
+
+Optional one-time dotfiles bootstrap during `podbox create`. Host sources are
+copied into the container's isolated home directory; Git sources are cloned on
+the host by default, so host SSH keys and credentials are used without being
+forwarded into the container.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `source` | string | *required* | `host:<path>` to copy a local directory, or a Git URL/reference to clone |
+| `target` | string | `~/.dotfiles` | Destination inside the container home; must stay within that home |
+| `clone_on` | string | `"host"` | Git clone location: `"host"` or `"container"` |
+| `install` | string | — | Shell command run inside the container from `target` after acquisition |
+
+```toml
+[dotfiles]
+source = "host:~/.dotfiles"
+target = "~/.dotfiles"
+install = "./install.sh"
+```
+
+Provisioning runs once during `create`, never during ordinary starts or enters.
+If creation used `--no-start`, or provisioning failed, run
+`podbox dotfiles sync [name]` to acquire/update the source and run the install
+command. `podbox dotfiles status [name]` reports whether files and the
+completion stamp are present. Dotfiles failures during creation are warnings;
+the container remains usable.
+
+The install command receives `PODBOX=1`, `PODBOX_CONTAINER`, `PODBOX_DISTRO`,
+`PODBOX_HOME`, and `PODBOX_DOTFILES_DIR`. `PODBOX_PROFILE` is set when the
+configured image name matches a built-in profile.
+
+---
+
 ## `[security]`
 
 | Key | Type | Default | Description |

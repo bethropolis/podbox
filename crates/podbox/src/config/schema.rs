@@ -28,8 +28,8 @@ impl SchemaVersion {
 
 use super::defaults::EMBEDDED_DEFAULT;
 use super::types::{
-    ContainerConfig, DbusConfig, ImageConfig, IntegrationConfig, LifecycleConfig, NetworkConfig,
-    SecurityConfig, SystemdConfig, WaylandConfig,
+    ContainerConfig, DbusConfig, DotfilesConfig, ImageConfig, IntegrationConfig, LifecycleConfig,
+    NetworkConfig, SecurityConfig, SystemdConfig, WaylandConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -40,6 +40,8 @@ pub struct Config {
     pub extends: Option<String>,
     pub image: ImageConfig,
     pub container: ContainerConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dotfiles: Option<DotfilesConfig>,
     #[serde(default)]
     pub integration: IntegrationConfig,
     #[serde(default)]

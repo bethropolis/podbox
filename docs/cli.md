@@ -17,6 +17,7 @@ Groups, name resolution, exit codes, JSON output, and shell completion.
 | Copy / backup | `clone`, `snapshot`, `restore`, `export` |
 | Remove | `remove` (alias `rm`) |
 | Context | `use` |
+| Dotfiles | `dotfiles sync`, `dotfiles status` |
 
 Systemd internals (`serve`, `compositor`, `__complete-names`,
 `internal-stdin-watchdog`) are hidden but callable; Quadlet units depend on

@@ -42,6 +42,48 @@ impl Config {
         if self.container.shell.trim().is_empty() {
             errors.push("container.shell: must not be empty".into());
         }
+        if let Some(dotfiles) = &self.dotfiles {
+            if dotfiles.source.trim().is_empty() {
+                errors.push("dotfiles.source: must not be empty".into());
+            } else if dotfiles.source == "host:" {
+                errors.push("dotfiles.source: host: must be followed by a directory path".into());
+            }
+            if dotfiles.target.trim().is_empty() {
+                errors.push("dotfiles.target: must not be empty".into());
+            } else {
+                let target = if dotfiles.target == "~" {
+                    ""
+                } else {
+                    dotfiles
+                        .target
+                        .strip_prefix("~/")
+                        .unwrap_or(&dotfiles.target)
+                };
+                let path = std::path::Path::new(target);
+                if path.is_absolute()
+                    || (target.starts_with('~')
+                        && dotfiles.target != "~"
+                        && !dotfiles.target.starts_with("~/"))
+                    || path.components().any(|part| {
+                        matches!(
+                            part,
+                            std::path::Component::ParentDir | std::path::Component::RootDir
+                        )
+                    })
+                {
+                    errors.push(
+                        "dotfiles.target: must be a path inside the container home (for example '~/.dotfiles')".into(),
+                    );
+                }
+            }
+            if dotfiles
+                .install
+                .as_ref()
+                .is_some_and(|cmd| cmd.trim().is_empty())
+            {
+                errors.push("dotfiles.install: must not be empty when set".into());
+            }
+        }
         if let Some(ref mem) = self.container.memory {
             if !is_valid_memory(mem) {
                 errors.push(format!(

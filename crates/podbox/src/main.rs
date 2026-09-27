@@ -100,6 +100,9 @@ fn run() -> Result<()> {
             | Command::History { .. }
             | Command::InternalStdinWatchdog { .. }
             | Command::Migrate { .. }
+            | Command::Dotfiles {
+                dotfiles_cmd: podbox::cli::DotfilesCommand::Status { .. }
+            }
     ) && which::which("podman").is_err()
     {
         return Err(PodboxError::PodmanNotFound.into());
@@ -413,6 +416,15 @@ fn run() -> Result<()> {
         Command::Pull { image } => {
             commands::pull::run_pull(&config, image, cli.dry_run)?;
         }
+
+        Command::Dotfiles { dotfiles_cmd } => match dotfiles_cmd {
+            podbox::cli::DotfilesCommand::Sync { .. } => {
+                commands::dotfiles::sync(&config, &env, cli.dry_run)?;
+            }
+            podbox::cli::DotfilesCommand::Status { .. } => {
+                commands::dotfiles::status(&config, &env)?;
+            }
+        },
 
         Command::Doctor {
             name: _,

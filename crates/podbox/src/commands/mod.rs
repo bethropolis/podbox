@@ -9,6 +9,7 @@ pub mod create;
 pub mod create_init;
 pub mod definition;
 pub mod diff;
+pub mod dotfiles;
 pub mod export;
 pub mod history;
 pub mod inspect;

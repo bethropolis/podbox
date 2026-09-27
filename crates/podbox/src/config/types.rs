@@ -76,6 +76,29 @@ pub struct RunConfig {
     pub commands: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DotfilesCloneOn {
+    #[default]
+    Host,
+    Container,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DotfilesConfig {
+    pub source: String,
+    #[serde(default = "default_dotfiles_target")]
+    pub target: String,
+    #[serde(default)]
+    pub clone_on: DotfilesCloneOn,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install: Option<String>,
+}
+
+fn default_dotfiles_target() -> String {
+    "~/.dotfiles".into()
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ContainerConfig {
     pub name: String,

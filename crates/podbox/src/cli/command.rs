@@ -292,6 +292,12 @@ pub enum Command {
         profile_cmd: ProfileCommand,
     },
 
+    /// Provision or inspect configured dotfiles.
+    Dotfiles {
+        #[command(subcommand)]
+        dotfiles_cmd: DotfilesCommand,
+    },
+
     /// Run diagnostic checks.
     #[command(display_order = 43)]
     Doctor {
@@ -447,6 +453,20 @@ pub enum ProfileCommand {
     Show {
         /// Name of the profile to display.
         name: String,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DotfilesCommand {
+    /// Acquire dotfiles and run the configured install command.
+    Sync {
+        /// Container name (overrides active context).
+        name: Option<String>,
+    },
+    /// Show dotfiles provisioning state.
+    Status {
+        /// Container name (overrides active context).
+        name: Option<String>,
     },
 }
 

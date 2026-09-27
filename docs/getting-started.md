@@ -486,6 +486,8 @@ podbox edit myenv --rebuild
 | `podbox translate-path --to-container <path>` | Translate a host path to container path |
 | `podbox translate-path --to-host <path>` | Translate a container path to host path |
 | `podbox completions <shell>` | Generate shell completions |
+| `podbox dotfiles sync [<name>]` | Update dotfiles and rerun their install command |
+| `podbox dotfiles status [<name>]` | Show dotfiles provisioning state |
 
 All commands support `--dry-run` to preview without side effects.
 

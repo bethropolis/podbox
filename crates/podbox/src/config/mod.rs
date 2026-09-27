@@ -21,8 +21,8 @@ pub use fs::{
 };
 pub use schema::{Config, SchemaVersion};
 pub use types::{
-    ContainerConfig, DbusConfig, ExportConfig, HardwareConfig, HostExecConfig, HostExecEntry,
-    ImageConfig, IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig,
-    RunConfig, SecretEntry, SecretSource, SecretType, SecurityConfig, SystemdConfig, WaylandConfig,
-    XdgDirConfig,
+    ContainerConfig, DbusConfig, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig,
+    HostExecConfig, HostExecEntry, ImageConfig, IntegrationConfig, LifecycleConfig, MountConfig,
+    NetworkConfig, PackageConfig, RunConfig, SecretEntry, SecretSource, SecretType, SecurityConfig,
+    SystemdConfig, WaylandConfig, XdgDirConfig,
 };

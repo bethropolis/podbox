@@ -32,11 +32,33 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
         podbox::quadlet_install::install(cfg, &env, &xdg, false)?;
     }
 
+    let dotfiles_pending =
+        cfg.dotfiles.is_some() && !crate::commands::dotfiles::is_provisioned(cfg);
+    let dotfiles_staged = if !dotfiles_pending {
+        true
+    } else if dry_run {
+        crate::commands::dotfiles::stage(cfg, &podbox::env::resolve()?, true).is_ok()
+    } else {
+        match crate::commands::dotfiles::stage(cfg, &podbox::env::resolve()?, false) {
+            Ok(()) => true,
+            Err(err) => {
+                eprintln!("Warning: dotfiles source setup failed: {err:#}");
+                eprintln!(
+                    "Fix the source issue and run `podbox dotfiles sync {container_name}` to retry."
+                );
+                false
+            }
+        }
+    };
+
     if no_start {
         println!("Container created but not started (--no-start).");
         println!("Run `podbox enter {container_name}` to start and enter it.");
     } else if dry_run {
         println!("podman start {container_name}");
+        if dotfiles_pending && dotfiles_staged {
+            crate::commands::dotfiles::provision(cfg, &podbox::env::resolve()?, true)?;
+        }
     } else {
         podbox::ui::step("Starting container...");
         if systemd::is_available() {
@@ -46,7 +68,22 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
             podbox::process::spawn_interactive("podman", &args)?;
         }
         podbox::ui::ok(&format!("Container '{container_name}' is running"));
+        if dotfiles_pending && dotfiles_staged {
+            if let Err(err) =
+                crate::commands::dotfiles::provision(cfg, &podbox::env::resolve()?, false)
+            {
+                eprintln!("Warning: dotfiles provisioning failed: {err:#}");
+                eprintln!(
+                    "Fix the issue and run `podbox dotfiles sync {container_name}` to retry."
+                );
+            }
+        }
         println!("Run `podbox enter` to enter.");
+    }
+    if no_start && dotfiles_pending {
+        println!(
+            "Dotfiles provisioning will run after the container is started; use `podbox dotfiles sync {container_name}` to run it explicitly."
+        );
     }
 
     if !dry_run {

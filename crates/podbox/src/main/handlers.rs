@@ -55,6 +55,10 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Recover { name, .. }
         | Command::Edit { name, .. }
         | Command::Doctor { name, .. } => name.clone(),
+        Command::Dotfiles { dotfiles_cmd } => match dotfiles_cmd {
+            podbox::cli::DotfilesCommand::Sync { name }
+            | podbox::cli::DotfilesCommand::Status { name } => name.clone(),
+        },
         _ => None,
     }
 }
