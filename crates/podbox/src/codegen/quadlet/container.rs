@@ -100,8 +100,9 @@ pub(super) fn emit_container_image(
 }
 
 pub(super) fn emit_network(lines: &mut Vec<String>, config: &Config) {
-    lines.push(format!("Network={}", config.network.mode));
-    if config.network.mode != "host" {
+    let mode = config.network.effective_mode();
+    lines.push(format!("Network={mode}"));
+    if mode != "host" && mode != "none" {
         for port in &config.network.ports {
             lines.push(format!("PublishPort={port}"));
         }
@@ -299,6 +300,50 @@ pub(super) fn emit_volumes(
     if !config.container.mounts.extra.is_empty() {
         lines.push(String::new());
     }
+
+    let caches = &config.storage.shared_caches;
+    for (enabled, name, path) in [
+        (caches.cargo, "cargo", "~/.cargo"),
+        (caches.npm, "npm", "~/.npm"),
+        (caches.pnpm, "pnpm", "~/.local/share/pnpm/store"),
+        (caches.pip, "pip", "~/.cache/pip"),
+        (caches.ccache, "ccache", "~/.cache/ccache"),
+        (caches.go, "go", "~/go/pkg/mod"),
+        (caches.rustup, "rustup", "~/.rustup"),
+    ] {
+        if enabled {
+            lines.push(format!(
+                "Volume=podbox-cache-{name}:{}:U",
+                home_in_container_path(path, home_in_container)
+            ));
+        }
+    }
+    for cache in &caches.custom {
+        lines.push(format!(
+            "Volume=podbox-cache-{}:{}:U",
+            cache.name,
+            home_in_container_path(&cache.container_path, home_in_container)
+        ));
+    }
+    if caches.cargo
+        || caches.npm
+        || caches.pnpm
+        || caches.pip
+        || caches.ccache
+        || caches.go
+        || caches.rustup
+        || !caches.custom.is_empty()
+    {
+        lines.push(String::new());
+    }
+}
+
+fn home_in_container_path(path: &str, home: &str) -> String {
+    match path.strip_prefix("~/") {
+        Some(rest) => format!("{home}/{rest}"),
+        None if path == "~" => home.to_string(),
+        None => path.to_string(),
+    }
 }
 
 pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv) {
@@ -311,7 +356,7 @@ pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _en
     }
 
     // Extra user env
-    for (key, value) in &config.container.env {
+    for (key, value) in &config.container.env.values {
         if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
             let clean = value.replace('\n', " ").replace('\r', "");
             let escaped = clean.replace('\\', "\\\\").replace('"', "\\\"");
@@ -324,6 +369,12 @@ pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _en
         } else {
             eprintln!("Warning: ignoring invalid environment variable key '{key}'");
         }
+    }
+    if !config.container.services.is_empty() {
+        let payload =
+            serde_json::to_string(&config.container.services).unwrap_or_else(|_| "{}".into());
+        let escaped = payload.replace('\\', "\\\\").replace('"', "\\\"");
+        lines.push(format!("Environment=PODBOX_SERVICES_JSON=\"{escaped}\""));
     }
     lines.push(format!("Environment=PODBOX_CONTAINER={name}"));
     lines.push(String::new());
@@ -362,6 +413,8 @@ pub(super) fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
 
 pub(super) fn emit_service_section(lines: &mut Vec<String>, config: &Config) {
     lines.push("[Service]".into());
+    lines.push(format!("Slice={}", config.container.slice));
+    lines.push(format!("CPUWeight={}", config.container.cpu_weight));
     lines.push("Restart=on-failure".into());
     lines.push("RestartSec=2s".into());
     if config.lifecycle.on_stop == crate::config::OnStop::Remove {

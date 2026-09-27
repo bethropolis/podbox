@@ -90,6 +90,20 @@ fn find_definition_missing_exits_two() {
     );
 }
 
+#[test]
+fn here_rejects_unmounted_current_directory_with_config_hint() {
+    let sb = Sandbox::new(&["myenv"]);
+    let out = sb
+        .cmd()
+        .args(["--dry-run", "-C", "myenv", "enter", "--here"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("is not accessible inside container 'myenv'"));
+    assert!(stderr.contains("[container.mounts] extra"));
+}
+
 /// Existing named config: exactly the path on stdout, exit 0.
 #[test]
 fn find_definition_prints_path() {

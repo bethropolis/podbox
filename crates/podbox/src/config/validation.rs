@@ -42,6 +42,12 @@ impl Config {
         if self.container.shell.trim().is_empty() {
             errors.push("container.shell: must not be empty".into());
         }
+        if self.container.slice.trim().is_empty() || self.container.slice.contains('\n') {
+            errors.push("container.slice: must be a non-empty systemd slice name".into());
+        }
+        if !(1..=10_000).contains(&self.container.cpu_weight) {
+            errors.push("container.cpu_weight: must be between 1 and 10000".into());
+        }
         if let Some(dotfiles) = &self.dotfiles {
             if dotfiles.source.trim().is_empty() {
                 errors.push("dotfiles.source: must not be empty".into());
@@ -105,12 +111,100 @@ impl Config {
                 ));
             }
         }
-        for (key, val) in &self.container.env {
+        for (key, val) in &self.container.env.values {
             if key.contains('\n') {
                 errors.push(format!("container.env: key {key:?} contains newline"));
             }
             if val.contains('\n') {
                 errors.push(format!("container.env: value for {key:?} contains newline"));
+            }
+        }
+        let mut cache_names = std::collections::HashSet::new();
+        for (i, cache) in self.storage.shared_caches.custom.iter().enumerate() {
+            if ["cargo", "npm", "pnpm", "pip", "ccache", "go", "rustup"]
+                .contains(&cache.name.as_str())
+            {
+                errors.push(format!(
+                    "storage.shared_caches.custom[{i}].name: {:?} is reserved for a built-in cache",
+                    cache.name
+                ));
+            }
+            if cache.name.is_empty()
+                || !cache
+                    .name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                errors.push(format!("storage.shared_caches.custom[{i}].name: use letters, digits, hyphens, or underscores"));
+            }
+            if !cache_names.insert(cache.name.as_str()) {
+                errors.push(format!(
+                    "storage.shared_caches.custom[{i}].name: duplicate cache name {:?}",
+                    cache.name
+                ));
+            }
+            let path = cache
+                .container_path
+                .strip_prefix("~/")
+                .unwrap_or(&cache.container_path);
+            if cache.container_path.trim().is_empty()
+                || cache
+                    .container_path
+                    .chars()
+                    .any(|c| matches!(c, '\n' | '\r' | ':'))
+                || (!cache.container_path.starts_with("~/")
+                    && !cache.container_path.starts_with('/'))
+                || std::path::Path::new(path)
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                errors.push(format!("storage.shared_caches.custom[{i}].container_path: expected an absolute container path or ~/ path without '..'"));
+            }
+        }
+        for (i, pattern) in self.container.env.forward.iter().enumerate() {
+            let key = pattern.strip_suffix('*').unwrap_or(pattern);
+            if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                errors.push(format!(
+                    "container.env.forward[{i}]: '{pattern}' must be an environment key or PREFIX_*"
+                ));
+            }
+        }
+        for (name, service) in &self.container.services {
+            let valid_name = !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            if !valid_name {
+                errors.push(format!("container.services: invalid service name '{name}'"));
+            }
+            let (command, env, restart) = match service {
+                crate::config::ServiceConfig::Short(command) => (command, None, "on-failure"),
+                crate::config::ServiceConfig::Detailed(detail) => {
+                    (&detail.command, Some(&detail.env), detail.restart.as_str())
+                }
+            };
+            if command.trim().is_empty() {
+                errors.push(format!(
+                    "container.services.{name}.command: must not be empty"
+                ));
+            }
+            if !["never", "on-failure", "always"].contains(&restart) {
+                errors.push(format!(
+                    "container.services.{name}.restart: expected never, on-failure, or always"
+                ));
+            }
+            if let Some(values) = env {
+                for (key, value) in values {
+                    if key.is_empty()
+                        || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        || key.as_bytes()[0].is_ascii_digit()
+                        || value.chars().any(|c| matches!(c, '\0' | '\n' | '\r'))
+                    {
+                        errors.push(format!(
+                            "container.services.{name}.env: invalid environment entry '{key}'"
+                        ));
+                    }
+                }
             }
         }
 
@@ -133,6 +227,11 @@ impl Config {
                 self.network.mode,
                 valid_modes.join(", ")
             ));
+        }
+        if self.network.effective_mode() == "none" && !self.network.ports.is_empty() {
+            errors.push(
+                "network.ports: cannot publish ports when network mode is none/offline".into(),
+            );
         }
 
         for (i, port) in self.network.ports.iter().enumerate() {

@@ -12,12 +12,13 @@ Groups, name resolution, exit codes, JSON output, and shell completion.
 |-------|----------|
 | Get started | `create`, `init`, `profile` |
 | Day to day | `enter` (alias `shell`), `exec`, `run`, `start`, `stop`, `list` (alias `ls`), `status` |
-| Change | `edit`, `build`, `enable`, `disable`, `update`, `pull`, `diff` |
+| Change | `edit`, `build`, `enable`, `disable`, `update`, `rollback`, `pull`, `diff` |
 | Inspect | `logs`, `inspect`, `stats`, `doctor`, `history`, `find-definition` |
 | Copy / backup | `clone`, `snapshot`, `restore`, `export` |
 | Remove | `remove` (alias `rm`) |
 | Context | `use` |
 | Dotfiles | `dotfiles sync`, `dotfiles status` |
+| Storage | `cache list`, `cache prune` |
 
 Systemd internals (`serve`, `compositor`, `__complete-names`,
 `internal-stdin-watchdog`) are hidden but callable; Quadlet units depend on
@@ -37,6 +38,22 @@ Every container command resolves its target the same way:
 (`podbox exec myenv ls`). It is treated as the container only when it matches
 a known config **and** more arguments follow, so `podbox exec -- ls` and a
 bare `podbox exec fedora` behave as before. An explicit `-C` always wins.
+
+`enter` and `exec` accept `--here` to translate the host current directory to
+an already-mounted container path. If it is not covered by the isolated home,
+an extra mount, or an enabled XDG mount, the command fails and tells you how to
+add a mount; Podbox never injects a mount into a running container. `enter`,
+`exec`, and `run` accept repeatable `-e KEY=VALUE` overrides. Host variables are
+forwarded only when named by `[container.env].forward`; explicit overrides win.
+
+`network.offline = true` is a persistent container-wide setting that generates
+`Network=none`. It cannot be toggled for one `exec` into an already-running
+container.
+
+With `[lifecycle].auto_checkpoint = true`, update and `build --rebuild` tag the
+current image as `checkpoint-prev` before mutation. `podbox rollback [NAME]`
+points the active Quadlet at that image and restarts the container; the home
+volume and definition file are left alone.
 
 ## Exit codes
 

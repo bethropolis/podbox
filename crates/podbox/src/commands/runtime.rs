@@ -69,15 +69,25 @@ fn read_user_path(name: &str) -> Option<String> {
 /// Builds a map of host→container mount paths from the config, canonicalizes
 /// the host CWD, and picks the longest-prefix match. Falls back to
 /// `/home/<username>` when nothing matches.
-fn resolve_container_workdir(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs) -> String {
+fn resolve_container_workdir(
+    config: &Config,
+    env: &HostEnv,
+    xdg: &ResolvedXdgDirs,
+    strict: bool,
+) -> Result<String> {
     let home = format!("/home/{}", env.username);
 
     let host_cwd = match std::env::current_dir() {
         Ok(p) => match std::fs::canonicalize(&p) {
             Ok(c) => c,
+            Err(err) if strict => anyhow::bail!(
+                "cannot canonicalize current directory '{}': {err}",
+                p.display()
+            ),
             Err(_) => p,
         },
-        Err(_) => return home.clone(),
+        Err(err) if strict => anyhow::bail!("cannot resolve current directory: {err}"),
+        Err(_) => return Ok(home.clone()),
     };
 
     // (canonicalized host path, container path)
@@ -112,31 +122,212 @@ fn resolve_container_workdir(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDi
         if parts.len() < 2 {
             continue;
         }
-        if let Ok(h) = std::fs::canonicalize(parts[0]) {
+        let host_path = podbox::config::expand_tilde(parts[0]);
+        if let Ok(h) = std::fs::canonicalize(host_path) {
             mounts.push((h, PathBuf::from(parts[1])));
         }
     }
 
-    // Find longest host prefix match
+    if let Some(path) = translate_host_path(&host_cwd, &mounts) {
+        return Ok(path);
+    }
+    if strict {
+        anyhow::bail!(
+            "Current directory '{}' is not accessible inside container '{}'.\nHint: Add it to '{}.toml' under [container.mounts] extra = [\"/path/to/dir:/path/to/dir:z\"]",
+            host_cwd.display(),
+            config.container.name,
+            config.container.name
+        );
+    }
+    Ok(home)
+}
+
+fn translate_host_path(host_cwd: &Path, mounts: &[(PathBuf, PathBuf)]) -> Option<String> {
+    // Find longest host prefix match so nested explicit mounts override home.
     let mut best: Option<(PathBuf, PathBuf)> = None;
     for (host_path, container_path) in mounts {
-        if host_cwd == host_path || host_cwd.starts_with(&host_path) {
+        if host_cwd == host_path || host_cwd.starts_with(host_path) {
             match &best {
                 Some((best_host, _))
                     if best_host.components().count() >= host_path.components().count() => {}
-                _ => best = Some((host_path, container_path)),
+                _ => best = Some((host_path.clone(), container_path.clone())),
             }
         }
     }
 
-    match best {
-        Some((host_path, container_path)) => match host_cwd.strip_prefix(&host_path) {
+    best.map(
+        |(host_path, container_path)| match host_cwd.strip_prefix(&host_path) {
             Ok(rel) if !rel.as_os_str().is_empty() => {
                 container_path.join(rel).to_string_lossy().to_string()
             }
             _ => container_path.to_string_lossy().to_string(),
         },
-        None => home,
+    )
+}
+
+fn append_env_args(args: &mut Vec<OsString>, env: &[String]) -> Result<()> {
+    for entry in env {
+        let (key, value) = entry.split_once('=').ok_or_else(|| {
+            anyhow::anyhow!("invalid environment override '{entry}': expected KEY=VALUE")
+        })?;
+        if key.is_empty()
+            || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            || key.as_bytes()[0].is_ascii_digit()
+            || value.chars().any(|c| matches!(c, '\0' | '\n' | '\r'))
+        {
+            anyhow::bail!("invalid environment override '{entry}': invalid key or value");
+        }
+        args.push(format!("--env={entry}").into());
+    }
+    Ok(())
+}
+
+fn append_forwarded_env(args: &mut Vec<OsString>, config: &Config, explicit: &[String]) {
+    let explicit_keys: std::collections::HashSet<&str> = explicit
+        .iter()
+        .filter_map(|entry| entry.split_once('=').map(|(key, _)| key))
+        .collect();
+    for (key, value) in std::env::vars() {
+        if config.container.env.values.contains_key(&key) || explicit_keys.contains(key.as_str()) {
+            continue;
+        }
+        let forwarded = config.container.env.forward.iter().any(|pattern| {
+            if let Some(prefix) = pattern.strip_suffix('*') {
+                key.starts_with(prefix)
+            } else {
+                key == *pattern
+            }
+        });
+        if forwarded {
+            args.push(format!("--env={key}={value}").into());
+        }
+    }
+}
+
+fn podman_exec_output(name: &str, user: &str, command: &[&str]) -> Option<String> {
+    let mut args: Vec<OsString> = vec!["exec".into(), "-u".into(), user.into(), name.into()];
+    args.extend(command.iter().map(OsString::from));
+    let output = podbox::process::run_piped("podman", &args).ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn git_mount_paths(
+    config: &Config,
+    xdg: &ResolvedXdgDirs,
+    here: Option<&str>,
+    name: &str,
+) -> Vec<String> {
+    let home = format!("/home/{name}");
+    let mut paths = Vec::new();
+    for mount in &config.container.mounts.extra {
+        if let Some(path) = mount.split(':').nth(1) {
+            paths.push(path.to_string());
+        }
+    }
+    for (dir, child) in [
+        (&xdg.documents, "Documents"),
+        (&xdg.downloads, "Downloads"),
+        (&xdg.pictures, "Pictures"),
+        (&xdg.music, "Music"),
+        (&xdg.videos, "Videos"),
+        (&xdg.desktop, "Desktop"),
+        (&xdg.projects, "Projects"),
+    ] {
+        if dir.is_some() {
+            paths.push(format!("{home}/{child}"));
+        }
+    }
+    if let Some(path) = here {
+        paths.push(path.to_string());
+    }
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn prepare_git_bridge(
+    config: &Config,
+    env: &HostEnv,
+    name: &str,
+    git_user: &str,
+    xdg: &ResolvedXdgDirs,
+    here: Option<&str>,
+    args: &mut Vec<OsString>,
+    explicit: &[String],
+) {
+    if !config.integration.git_identity {
+        return;
+    }
+    let mut identity_args = Vec::new();
+    if let Some(existing) = podman_exec_output(
+        name,
+        git_user,
+        &["git", "config", "--global", "--get-all", "safe.directory"],
+    ) {
+        for path in git_mount_paths(config, xdg, here, &env.username) {
+            if !existing.lines().any(|entry| entry == path) {
+                let _ = podman_exec_output(
+                    name,
+                    git_user,
+                    &[
+                        "git",
+                        "config",
+                        "--global",
+                        "--add",
+                        "safe.directory",
+                        &path,
+                    ],
+                );
+            }
+        }
+    }
+    let explicit_keys: std::collections::HashSet<&str> = explicit
+        .iter()
+        .filter_map(|entry| entry.split_once('=').map(|(key, _)| key))
+        .collect();
+    for (git_key, env_keys) in [
+        ("user.name", ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]),
+        ("user.email", ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"]),
+    ] {
+        let configured = podman_exec_output(name, git_user, &["git", "config", "--get", git_key])
+            .is_some_and(|v| !v.is_empty());
+        if configured {
+            continue;
+        }
+        let Ok(output) = std::process::Command::new("git")
+            .args(["config", "--global", "--get", git_key])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if value.is_empty() {
+            continue;
+        }
+        for env_key in env_keys {
+            let configured_env = podman_exec_output(name, git_user, &["printenv", env_key])
+                .is_some_and(|value| !value.is_empty());
+            let forwarded = std::env::var_os(env_key).is_some()
+                && config.container.env.forward.iter().any(|pattern| {
+                    pattern
+                        .strip_suffix('*')
+                        .map_or(pattern == env_key, |prefix| env_key.starts_with(prefix))
+                });
+            if forwarded
+                || configured_env
+                || explicit_keys.contains(env_key)
+                || config.container.env.values.contains_key(env_key)
+            {
+                continue;
+            }
+            identity_args.push(OsString::from(format!("--env={env_key}={value}")));
+        }
+    }
+    if let Some(index) = args.iter().position(|arg| arg == name) {
+        args.splice(index..index, identity_args);
     }
 }
 
@@ -256,21 +447,25 @@ pub fn run_shell_enter(
     name: &str,
     dry_run: bool,
     xdg: &ResolvedXdgDirs,
+    here: bool,
+    env_overrides: &[String],
 ) -> Result<()> {
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
-    let workdir = resolve_container_workdir(config, env, xdg);
+    let workdir = resolve_container_workdir(config, env, xdg, here)?;
 
     let mut exec_args: Vec<OsString> = vec![
         "exec".into(),
         tty_flag.into(),
         "-u".into(),
         env.username.as_str().into(),
-        "--workdir".into(),
-        workdir.into(),
+        "-w".into(),
+        workdir.clone().into(),
     ];
     if let Some(ref path) = read_user_path(name) {
         exec_args.push(format!("--env=PATH={path}").into());
     }
+    append_forwarded_env(&mut exec_args, config, env_overrides);
+    append_env_args(&mut exec_args, env_overrides)?;
     exec_args.push(name.into());
     exec_args.push(config.container.shell.as_str().into());
 
@@ -279,6 +474,16 @@ pub fn run_shell_enter(
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    prepare_git_bridge(
+        config,
+        env,
+        name,
+        &env.username,
+        xdg,
+        here.then_some(&workdir),
+        &mut exec_args,
+        env_overrides,
+    );
     register_session(name, &env.xdg_runtime_dir);
     spawn_stdin_watchdog();
     let err = podbox::process::exec_replace("podman", &exec_args);
@@ -292,6 +497,10 @@ pub fn run_exec(
     cmd_args: &[String],
     dry_run: bool,
     root: bool,
+    config: &Config,
+    xdg: &ResolvedXdgDirs,
+    here: bool,
+    env_overrides: &[String],
 ) -> Result<()> {
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
 
@@ -303,6 +512,12 @@ pub fn run_exec(
             exec_args.push(format!("--env=PATH={path}").into());
         }
     }
+    if here {
+        exec_args.push("-w".into());
+        exec_args.push(resolve_container_workdir(config, env, xdg, true)?.into());
+    }
+    append_forwarded_env(&mut exec_args, config, env_overrides);
+    append_env_args(&mut exec_args, env_overrides)?;
     exec_args.push(name.into());
     for a in cmd_args {
         exec_args.push(a.into());
@@ -313,6 +528,25 @@ pub fn run_exec(
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    let here_path = if here {
+        exec_args
+            .windows(2)
+            .find(|pair| pair[0] == "-w")
+            .and_then(|pair| pair[1].to_str())
+            .map(str::to_string)
+    } else {
+        None
+    };
+    prepare_git_bridge(
+        config,
+        env,
+        name,
+        if root { "root" } else { &env.username },
+        xdg,
+        here_path.as_deref(),
+        &mut exec_args,
+        env_overrides,
+    );
     register_session(name, &env.xdg_runtime_dir);
     spawn_stdin_watchdog();
     let err = podbox::process::exec_replace("podman", &exec_args);
@@ -326,6 +560,9 @@ pub fn run_run(
     app: &str,
     app_args: &[String],
     dry_run: bool,
+    config: &Config,
+    xdg: &ResolvedXdgDirs,
+    env_overrides: &[String],
 ) -> Result<()> {
     let mut exec_args: Vec<OsString> = vec![
         "exec".into(),
@@ -336,6 +573,8 @@ pub fn run_run(
     if let Some(ref path) = read_user_path(name) {
         exec_args.push(format!("--env=PATH={path}").into());
     }
+    append_forwarded_env(&mut exec_args, config, env_overrides);
+    append_env_args(&mut exec_args, env_overrides)?;
     exec_args.push(name.into());
     exec_args.push(app.into());
     for a in app_args {
@@ -347,6 +586,16 @@ pub fn run_run(
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    prepare_git_bridge(
+        config,
+        env,
+        name,
+        &env.username,
+        xdg,
+        None,
+        &mut exec_args,
+        env_overrides,
+    );
     register_session(name, &env.xdg_runtime_dir);
     podbox::process::spawn_interactive("podman", &exec_args).map(|_| ())
 }
@@ -452,4 +701,32 @@ fn args_to_string(args: &[OsString]) -> String {
         .map(|a| a.to_string_lossy().to_string())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod workdir_tests {
+    use super::{append_env_args, translate_host_path};
+    use std::path::PathBuf;
+
+    #[test]
+    fn translates_using_longest_mount_prefix_and_respects_boundaries() {
+        let mounts = vec![
+            (PathBuf::from("/work"), PathBuf::from("/home/user/Work")),
+            (PathBuf::from("/work/project"), PathBuf::from("/workspace")),
+        ];
+        assert_eq!(
+            translate_host_path(&PathBuf::from("/work/project/src"), &mounts).as_deref(),
+            Some("/workspace/src")
+        );
+        assert_eq!(translate_host_path(&PathBuf::from("/work2"), &mounts), None);
+    }
+
+    #[test]
+    fn validates_explicit_environment_overrides() {
+        let mut args = Vec::new();
+        assert!(append_env_args(&mut args, &["TOKEN=a=b".into()]).is_ok());
+        assert_eq!(args[0].to_string_lossy(), "--env=TOKEN=a=b");
+        assert!(append_env_args(&mut Vec::new(), &["BAD-NAME=x".into()]).is_err());
+        assert!(append_env_args(&mut Vec::new(), &["MISSING_VALUE".into()]).is_err());
+    }
 }

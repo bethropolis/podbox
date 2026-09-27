@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,7 @@ use crate::config::defaults::{
     default_network_mode, default_package_manager, default_pull_retry, default_pull_retry_delay,
     default_shell, default_true, is_default_gpu, is_default_host_exec, is_default_mounts,
     is_default_packages, is_default_pkg_mgr, is_default_pull_retry, is_default_pull_retry_delay,
-    is_default_run, is_default_shell, is_empty_hashmap, is_false, is_true,
+    is_default_run, is_default_shell, is_false, is_true,
 };
 use crate::config::enums::{CapPreset, GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 use crate::config::expand_tilde;
@@ -110,12 +110,80 @@ pub struct ContainerConfig {
     pub memory: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpus: Option<String>,
+    /// systemd slice for this container's service cgroup.
+    #[serde(
+        default = "default_container_slice",
+        skip_serializing_if = "is_default_container_slice"
+    )]
+    pub slice: String,
+    /// systemd CPU scheduling weight (1..=10000).
+    #[serde(
+        default = "default_cpu_weight",
+        skip_serializing_if = "is_default_cpu_weight"
+    )]
+    pub cpu_weight: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload_cmd: Option<String>,
     #[serde(default, skip_serializing_if = "is_default_mounts")]
     pub mounts: MountConfig,
-    #[serde(default, skip_serializing_if = "is_empty_hashmap")]
-    pub env: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "ContainerEnvConfig::is_empty")]
+    pub env: ContainerEnvConfig,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub services: BTreeMap<String, ServiceConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum ServiceConfig {
+    Short(String),
+    Detailed(ServiceDetailConfig),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ServiceDetailConfig {
+    pub command: String,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default = "default_service_restart")]
+    pub restart: String,
+}
+
+fn default_service_restart() -> String {
+    "on-failure".into()
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ContainerEnvConfig {
+    #[serde(flatten)]
+    pub values: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forward: Vec<String>,
+}
+
+impl ContainerEnvConfig {
+    fn is_empty(&self) -> bool {
+        self.values.is_empty() && self.forward.is_empty()
+    }
+}
+
+impl std::ops::Deref for ContainerEnvConfig {
+    type Target = HashMap<String, String>;
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+fn default_container_slice() -> String {
+    "podbox.slice".into()
+}
+fn is_default_container_slice(value: &String) -> bool {
+    value == "podbox.slice"
+}
+fn default_cpu_weight() -> u16 {
+    200
+}
+fn is_default_cpu_weight(value: &u16) -> bool {
+    *value == 200
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -209,6 +277,8 @@ impl HostExecConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct IntegrationConfig {
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub git_identity: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub wayland: bool,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub audio: bool,
@@ -245,6 +315,7 @@ pub struct IntegrationConfig {
 impl Default for IntegrationConfig {
     fn default() -> Self {
         IntegrationConfig {
+            git_identity: true,
             wayland: true,
             audio: true,
             gpu: GpuMode::Auto,
@@ -301,6 +372,8 @@ pub struct LifecycleConfig {
     pub on_stop: OnStop,
     #[serde(default)]
     pub auto_update: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub auto_checkpoint: bool,
     #[serde(default = "crate::config::defaults::default_idle_timeout")]
     pub idle_timeout: String,
 }
@@ -312,6 +385,7 @@ impl Default for LifecycleConfig {
             autostart: false,
             on_stop: OnStop::Keep,
             auto_update: false,
+            auto_checkpoint: false,
             idle_timeout: crate::config::defaults::default_idle_timeout(),
         }
     }
@@ -396,16 +470,57 @@ pub fn dbus_preset_talk(preset: &str) -> &[&str] {
 pub struct NetworkConfig {
     #[serde(default = "default_network_mode")]
     pub mode: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub offline: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct StorageConfig {
+    #[serde(default)]
+    pub shared_caches: SharedCachesConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct SharedCachesConfig {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub cargo: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub npm: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pnpm: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pip: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ccache: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub go: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub rustup: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom: Vec<CustomCacheConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CustomCacheConfig {
+    pub name: String,
+    pub container_path: String,
 }
 
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
             mode: default_network_mode(),
+            offline: false,
             ports: Vec::new(),
         }
+    }
+}
+
+impl NetworkConfig {
+    pub fn effective_mode(&self) -> &str {
+        if self.offline { "none" } else { &self.mode }
     }
 }
 

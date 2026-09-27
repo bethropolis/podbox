@@ -97,4 +97,25 @@ home = "~/env"
 "#;
     let cfg = Config::parse(toml).unwrap();
     assert!(cfg.container.cpus.is_none());
+    assert_eq!(cfg.container.slice, "podbox.slice");
+    assert_eq!(cfg.container.cpu_weight, 200);
+}
+
+#[test]
+fn scheduling_weight_range_is_validated() {
+    let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+cpu_weight = 0
+"#;
+    assert!(
+        Config::parse(toml)
+            .unwrap_err()
+            .to_string()
+            .contains("container.cpu_weight")
+    );
 }

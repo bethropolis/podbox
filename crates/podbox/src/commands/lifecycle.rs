@@ -23,6 +23,9 @@ pub fn run_build(
     rebuild: bool,
     no_diff: bool,
 ) -> Result<()> {
+    if rebuild && config.lifecycle.auto_checkpoint {
+        checkpoint_previous(config, &config.container.name, dry_run)?;
+    }
     podbox::build::run(config, env, xdg, dry_run, rebuild)?;
     if !dry_run {
         let _ = podbox::history::record(&config.container.name, "build", "");
@@ -198,6 +201,9 @@ pub fn run_update(
     no_restart: bool,
 ) -> Result<()> {
     if dry_run {
+        if config.lifecycle.auto_checkpoint {
+            checkpoint_previous(config, name, true)?;
+        }
         println!("podbox update: pull/rebuild and restart {name}");
         println!("  build::run(config, env, xdg, dry_run: true, rebuild: true)");
         if !no_restart {
@@ -211,6 +217,10 @@ pub fn run_update(
     }
 
     println!("Updating '{name}'...");
+
+    if config.lifecycle.auto_checkpoint {
+        checkpoint_previous(config, name, false)?;
+    }
 
     podbox::build::run(config, env, xdg, false, true)?;
 
@@ -230,6 +240,80 @@ pub fn run_update(
 
     println!("Update complete.");
     let _ = podbox::history::record(name, "update", "");
+    Ok(())
+}
+
+fn checkpoint_previous(config: &Config, name: &str, dry_run: bool) -> Result<()> {
+    let local_latest = format!("localhost/podbox-{name}:latest");
+    let fallback =
+        if config.image.source().is_prebuilt() && config.image.packages.install.is_empty() {
+            config.image.image_ref.as_deref().unwrap_or(&local_latest)
+        } else {
+            &local_latest
+        };
+    let previous = format!("localhost/podbox-{name}:checkpoint-prev");
+    if dry_run {
+        println!(
+            "podman tag \"$(podman inspect --format '{{{{.Image}}}}' podbox-{name})\" {previous}"
+        );
+        return Ok(());
+    }
+    let container = format!("podbox-{name}");
+    let inspect = podbox::process::run_piped(
+        "podman",
+        &podbox::process::args(&["inspect", "--format", "{{.Image}}", &container]),
+    );
+    let current = inspect
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|image| !image.is_empty())
+        .or_else(|| {
+            podbox::podman::image_exists(fallback)
+                .ok()
+                .filter(|exists| *exists)
+                .map(|_| fallback.to_string())
+        });
+    let Some(current) = current else {
+        return Ok(());
+    };
+    let output = podbox::process::run_piped(
+        "podman",
+        &podbox::process::args(&["tag", &current, &previous]),
+    )?;
+    if !output.status.success() {
+        anyhow::bail!("failed to checkpoint current image '{current}'");
+    }
+    Ok(())
+}
+
+/// Reinstall the Quadlet with the previous image and restart the container.
+pub fn run_rollback(
+    config: &Config,
+    env: &HostEnv,
+    xdg: &ResolvedXdgDirs,
+    name: &str,
+    dry_run: bool,
+) -> Result<()> {
+    if !dry_run && (!config.lifecycle.quadlet || !systemd::is_available()) {
+        anyhow::bail!("rollback requires a systemd-managed Quadlet container");
+    }
+    let image = format!("localhost/podbox-{name}:checkpoint-prev");
+    if !dry_run && !podbox::podman::image_exists(&image).unwrap_or(false) {
+        anyhow::bail!("no previous checkpoint exists for '{name}' ({image})");
+    }
+    let mut rollback_config = config.clone();
+    rollback_config.image.image_ref = Some(image.clone());
+    rollback_config.image.packages.install.clear();
+    if dry_run {
+        println!("Quadlet Image={image}");
+        println!("systemctl --user daemon-reload && systemctl --user restart {name}");
+        return Ok(());
+    }
+    podbox::quadlet_install::install(&rollback_config, env, xdg, false)?;
+    systemd::reset_failed(name)?;
+    systemd::restart_unit(name)?;
+    println!("Rolled '{name}' back to {image}. Container home and TOML were unchanged.");
     Ok(())
 }
 

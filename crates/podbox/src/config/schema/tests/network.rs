@@ -14,7 +14,31 @@ home = "~/env"
 "#;
     let cfg = Config::parse(toml).unwrap();
     assert_eq!(cfg.network.mode, "private");
+    assert!(!cfg.network.offline);
     assert!(cfg.network.ports.is_empty());
+}
+
+#[test]
+fn offline_forces_quadlet_network_none_without_mutating_mode() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[network]
+mode = "pasta"
+offline = true
+"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.network.mode, "pasta");
+    assert!(cfg.network.offline);
+    assert_eq!(cfg.network.effective_mode(), "none");
+    let serialized = toml::to_string(&cfg).unwrap();
+    assert!(serialized.contains("offline = true"));
 }
 #[test]
 fn test_network_parses_mode_and_ports() {

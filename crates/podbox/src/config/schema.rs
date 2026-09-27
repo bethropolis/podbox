@@ -29,7 +29,7 @@ impl SchemaVersion {
 use super::defaults::EMBEDDED_DEFAULT;
 use super::types::{
     ContainerConfig, DbusConfig, DotfilesConfig, ImageConfig, IntegrationConfig, LifecycleConfig,
-    NetworkConfig, SecurityConfig, SystemdConfig, WaylandConfig,
+    NetworkConfig, SecurityConfig, StorageConfig, SystemdConfig, WaylandConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -56,6 +56,13 @@ pub struct Config {
     pub wayland: WaylandConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    #[serde(default, skip_serializing_if = "storage_is_empty")]
+    pub storage: StorageConfig,
+}
+
+fn storage_is_empty(storage: &StorageConfig) -> bool {
+    let c = &storage.shared_caches;
+    !(c.cargo || c.npm || c.pnpm || c.pip || c.ccache || c.go || c.rustup || !c.custom.is_empty())
 }
 
 impl Config {

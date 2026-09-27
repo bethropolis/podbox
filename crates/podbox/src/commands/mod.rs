@@ -3,6 +3,7 @@ use anyhow::Result;
 use podbox::podman::{ContainerState, query_state};
 use podbox::systemd;
 
+pub mod cache;
 pub mod clone;
 pub mod context;
 pub mod create;

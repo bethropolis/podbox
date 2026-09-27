@@ -56,7 +56,17 @@ fn embed_guest_from_workspace(dest: &Path) {
         .expect("CARGO_MANIFEST_DIR has no parent")
         .parent()
         .expect("crates/podbox should have a grandparent workspace root");
-    let guest_target = workspace_root.join("target").join("guest-build");
+    let target_root = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                workspace_root.join(path)
+            }
+        })
+        .unwrap_or_else(|| workspace_root.join("target"));
+    let guest_target = target_root.join("guest-build");
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
 
     // Prefer a fully static musl build so the embedded guest works in any

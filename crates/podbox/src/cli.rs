@@ -37,7 +37,9 @@ pub struct Cli {
 
 mod command;
 
-pub use command::{Command, DotfilesCommand, ExportCommand, ProfileCommand, SnapshotCommand};
+pub use command::{
+    CacheCommand, Command, DotfilesCommand, ExportCommand, ProfileCommand, SnapshotCommand,
+};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OutputFormat {

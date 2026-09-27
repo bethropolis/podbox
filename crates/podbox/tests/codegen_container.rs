@@ -34,6 +34,26 @@ fn quadlet_container_has_cpu_quota() {
     // full.toml has cpus = "4.0" → 400000
     assert!(q.contains("CpuQuota=400000"));
 }
+
+#[test]
+fn quadlet_emits_offline_scheduling_cache_and_service_policy() {
+    let mut config = load_config("minimal.toml");
+    config.network.offline = true;
+    config.network.ports = vec!["8080:80".into()];
+    config.container.cpu_weight = 260;
+    config.storage.shared_caches.cargo = true;
+    config.container.services.insert(
+        "redis".into(),
+        podbox::config::ServiceConfig::Short("redis-server".into()),
+    );
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Network=none"));
+    assert!(!q.contains("PublishPort="));
+    assert!(q.contains("Slice=podbox.slice"));
+    assert!(q.contains("CPUWeight=260"));
+    assert!(q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
+    assert!(q.contains("Environment=PODBOX_SERVICES_JSON="));
+}
 #[test]
 fn quadlet_container_has_security_label_disable() {
     let config = load_config("full.toml");

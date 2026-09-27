@@ -50,6 +50,7 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
             snapshot_cmd: podbox::cli::SnapshotCommand::Prune { name, .. },
         }
         | Command::Restore { name, .. }
+        | Command::Rollback { name }
         | Command::Inspect { name, .. }
         | Command::FindDefinition { name }
         | Command::Recover { name, .. }
@@ -86,7 +87,7 @@ pub(crate) fn promote_leading_container_name(
         Command::Exec { args, .. } if args.len() > 1 && is_known_config(&args[0]) => {
             *explicit_container = Some(args.remove(0));
         }
-        Command::Run { app, app_args } if !app_args.is_empty() && is_known_config(app) => {
+        Command::Run { app, app_args, .. } if !app_args.is_empty() && is_known_config(app) => {
             let name = std::mem::take(app);
             *app = app_args.remove(0);
             *explicit_container = Some(name);

@@ -30,6 +30,54 @@ home = "~/containers/myenv"
     assert!(!cfg.integration.host_exec.enabled);
     assert!(cfg.integration.host_exec.allowlist.is_none());
     assert!(!cfg.integration.ssh_agent);
+    assert!(cfg.integration.git_identity);
+    assert!(!cfg.lifecycle.auto_checkpoint);
+}
+
+#[test]
+fn container_environment_supports_static_and_forwarded_values() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[container.env]
+EDITOR = "nvim"
+forward = ["SSH_AUTH_SOCK", "AWS_*"]
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        cfg.container.env.values.get("EDITOR").map(String::as_str),
+        Some("nvim")
+    );
+    assert_eq!(cfg.container.env.forward, vec!["SSH_AUTH_SOCK", "AWS_*"]);
+}
+
+#[test]
+fn cache_and_service_definitions_parse_with_opt_in_defaults() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[container.services]
+redis = "redis-server"
+postgres = { command = "postgres", restart = "always", env = { PGDATA = "/data" } }
+[storage.shared_caches]
+cargo = true
+"#,
+    )
+    .unwrap();
+    assert!(cfg.storage.shared_caches.cargo);
+    assert!(!cfg.storage.shared_caches.npm);
+    assert_eq!(cfg.container.services.len(), 2);
 }
 #[test]
 fn test_home_tilde_expanded() {

@@ -64,6 +64,20 @@ fn help_shows_workflow_hints() {
     assert!(stdout.contains("podbox enter"));
 }
 
+#[test]
+fn runtime_commands_expose_here_and_env_without_transient_offline() {
+    for command in ["enter", "exec"] {
+        let out = podbox().args([command, "--help"]).output().unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("--here"), "{command} should expose --here");
+        assert!(stdout.contains("--env"), "{command} should expose --env");
+        assert!(!stdout.contains("--offline"), "offline is declarative only");
+    }
+    let out = podbox().args(["run", "--help"]).output().unwrap();
+    assert!(String::from_utf8_lossy(&out.stdout).contains("--env"));
+}
+
 /// `enter` is canonical; `shell` resolves to the same command.
 #[test]
 fn shell_alias_resolves_to_enter() {

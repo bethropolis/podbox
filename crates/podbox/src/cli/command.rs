@@ -10,6 +10,12 @@ use super::{OutputFormat, Shell};
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Manage persistent shared cache volumes.
+    #[command(display_order = 60)]
+    Cache {
+        #[command(subcommand)]
+        cache_cmd: CacheCommand,
+    },
     /// Internal stdin watchdog for interactive sessions. Not for direct use.
     #[command(hide = true)]
     InternalStdinWatchdog {
@@ -79,6 +85,12 @@ pub enum Command {
         /// Run as root inside the container (omit -u flag).
         #[arg(long)]
         root: bool,
+        /// Set an environment variable in the container (KEY=VALUE). Repeatable.
+        #[arg(short = 'e', long = "env", value_name = "KEY=VALUE")]
+        env: Vec<String>,
+        /// Use the current directory when it is already shared with the container.
+        #[arg(long)]
+        here: bool,
         /// Command and arguments to execute.
         #[arg(required = true, trailing_var_arg = true)]
         args: Vec<String>,
@@ -89,6 +101,9 @@ pub enum Command {
     Run {
         /// Application to run.
         app: String,
+        /// Set an environment variable in the container (KEY=VALUE). Repeatable.
+        #[arg(short = 'e', long = "env", value_name = "KEY=VALUE")]
+        env: Vec<String>,
         /// Additional arguments for the application.
         #[arg(trailing_var_arg = true)]
         app_args: Vec<String>,
@@ -200,6 +215,12 @@ pub enum Command {
         /// Open config in editor before entering shell.
         #[arg(long)]
         edit: bool,
+        /// Use the current directory when it is already shared with the container.
+        #[arg(long)]
+        here: bool,
+        /// Set an environment variable in the container (KEY=VALUE). Repeatable.
+        #[arg(short = 'e', long = "env", value_name = "KEY=VALUE")]
+        env: Vec<String>,
     },
 
     /// Create and start a container from a profile or image in one step.
@@ -350,6 +371,13 @@ pub enum Command {
         name: Option<String>,
     },
 
+    /// Roll back to the image captured before the last update or rebuild.
+    #[command(display_order = 52)]
+    Rollback {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
+
     /// Set or show active context.
     #[command(display_order = 70)]
     Use {
@@ -419,6 +447,14 @@ pub enum Command {
     /// Print known container names, one per line (shell completion helper).
     #[command(hide = true, name = "__complete-names")]
     CompleteNames,
+}
+
+#[derive(Subcommand)]
+pub enum CacheCommand {
+    /// List provisioned shared caches and their attachments.
+    List,
+    /// Remove one cache volume, or prompt before removing all caches.
+    Prune { name: Option<String> },
 }
 
 #[derive(Subcommand)]

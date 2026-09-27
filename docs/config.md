@@ -59,6 +59,8 @@ commands = ["dnf clean all"]
 | `shell` | string | `"fish"` | Default login shell inside the container |
 | `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
 | `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Converted to `CpuQuota=` in Quadlet |
+| `slice` | string | `"podbox.slice"` | systemd slice for the container service |
+| `cpu_weight` | integer | `200` | systemd CPU contention weight (1–10000) |
 | `reload_cmd` | string | — | Command run on config reload. Passed as `ReloadCmd=` in Quadlet |
 
 ### `[container.mounts]`
@@ -72,6 +74,7 @@ commands = ["dnf clean all"]
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `*` | string | — | Arbitrary environment variables passed to the container |
+| `forward` | string[] | `[]` | Host variables to forward for `enter`, `exec`, and `run`; supports exact names and `PREFIX_*` patterns |
 
 ```toml
 [container]
@@ -85,7 +88,19 @@ extra = ["~/Projects:/home/user/Projects:z"]
 [container.env]
 EDITOR = "nvim"
 TERM = "xterm-256color"
+forward = ["SSH_AUTH_SOCK", "AWS_*"]
+
+[container.services]
+redis = "redis-server /etc/redis/redis.conf"
+postgres = { command = "postgres -D /home/user/pgdata", restart = "on-failure" }
 ```
+
+Services are launched and supervised by the background guest daemon (the
+container's actual init remains Podman's init process). Short declarations
+restart on failure; detailed declarations accept `restart = "never"`,
+`"on-failure"`, or `"always"`, plus an `env` table. Logs append to
+`/run/podbox/services/<name>.log`. Service process groups do not count as user
+sessions for idle shutdown.
 
 ---
 
@@ -159,7 +174,34 @@ cap_add = ["SYS_ADMIN"]
 [network]
 mode = "pasta"
 ports = ["8080:80", "443:443"]
+offline = false
 ```
+
+`offline = true` forces Quadlet `Network=none` while preserving the selected
+`mode` in the definition. Isolation is container-wide; there is no per-exec
+network override.
+
+## `[storage.shared_caches]`
+
+All cache sharing is opt-in. Enabled entries mount persistent named Podman
+volumes using user-namespace ownership mapping (`:U`); removing a container
+does not remove those volumes.
+
+```toml
+[storage.shared_caches]
+cargo = true
+npm = true
+rustup = false
+
+[[storage.shared_caches.custom]]
+name = "models"
+container_path = "~/.cache/models"
+```
+
+Built-in caches: `cargo`, `npm`, `pnpm`, `pip`, `ccache`, `go`, and `rustup`.
+Use `podbox cache list` to see created volumes and attachments, and
+`podbox cache prune NAME` to remove one. `podbox cache prune` asks before
+removing all cache volumes.
 
 ---
 
@@ -180,6 +222,7 @@ Controls which host resources are shared with the container.
 | `sync_icons` | bool | `true` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
 | `sync_themes` | bool | `true` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
+| `git_identity` | bool | `true` | Add mounted paths to the container user's Git `safe.directory` and use host Git identity only when container identity is unset |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
@@ -270,6 +313,7 @@ bins = ["rg", "gcc"]
 | `autostart` | bool | `false` | Start container on user login (`WantedBy=default.target`) |
 | `on_stop` | string | `"keep"` | Container behavior on stop (`"keep"` or `"remove"`) |
 | `auto_update` | bool | `false` | Add `Label=io.containers.autoupdate=registry` for auto-updates |
+| `auto_checkpoint` | bool | `false` | Tag the current image as `checkpoint-prev` before update or `build --rebuild`; `podbox rollback` restores that image |
 | `idle_timeout` | string | `"off"` | Idle timeout before guest daemon exits (`"off"`, `"30s"`, `"5m"`, `"1h") |
 
 ```toml

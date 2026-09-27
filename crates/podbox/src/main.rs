@@ -98,6 +98,7 @@ fn run() -> Result<()> {
             | Command::Compositor { .. }
             | Command::CompleteNames
             | Command::History { .. }
+            | Command::Cache { .. }
             | Command::InternalStdinWatchdog { .. }
             | Command::Migrate { .. }
             | Command::Dotfiles {
@@ -127,6 +128,10 @@ fn run() -> Result<()> {
             output,
         } => {
             return commands::history::run_history(name.clone(), *limit, *output);
+        }
+
+        Command::Cache { cache_cmd } => {
+            return commands::cache::run(cache_cmd, cli.dry_run);
         }
 
         Command::Init {
@@ -301,24 +306,62 @@ fn run() -> Result<()> {
             commands::lifecycle::run_stop(&config, &name, cli.dry_run)?;
         }
 
-        Command::Enter { name: _, edit } => {
+        Command::Enter {
+            name: _,
+            edit,
+            here,
+            env: env_overrides,
+        } => {
             if *edit {
                 let config_path = resolve_config_path(cli.container.as_deref())?;
                 let ed = editor::resolve()?;
                 editor::open(&ed, &config_path)?;
             }
-            commands::runtime::run_shell_enter(&env, &config, &name, cli.dry_run, &xdg)?;
+            commands::runtime::run_shell_enter(
+                &env,
+                &config,
+                &name,
+                cli.dry_run,
+                &xdg,
+                *here,
+                env_overrides,
+            )?;
         }
 
         Command::Exec {
             args: cmd_args,
             root,
+            env: env_overrides,
+            here,
         } => {
-            commands::runtime::run_exec(&env, &name, cmd_args, cli.dry_run, *root)?;
+            commands::runtime::run_exec(
+                &env,
+                &name,
+                cmd_args,
+                cli.dry_run,
+                *root,
+                &config,
+                &xdg,
+                *here,
+                env_overrides,
+            )?;
         }
 
-        Command::Run { app, app_args } => {
-            commands::runtime::run_run(&env, &name, app, app_args, cli.dry_run)?;
+        Command::Run {
+            app,
+            app_args,
+            env: env_overrides,
+        } => {
+            commands::runtime::run_run(
+                &env,
+                &name,
+                app,
+                app_args,
+                cli.dry_run,
+                &config,
+                &xdg,
+                env_overrides,
+            )?;
         }
 
         Command::Status { name: _, output } => {
@@ -350,6 +393,10 @@ fn run() -> Result<()> {
 
         Command::Restore { tag, .. } => {
             commands::lifecycle::run_restore(&config, &name, tag)?;
+        }
+
+        Command::Rollback { .. } => {
+            commands::lifecycle::run_rollback(&config, &env, &xdg, &name, cli.dry_run)?;
         }
 
         Command::Inspect {
@@ -466,6 +513,7 @@ fn run() -> Result<()> {
         | Command::Use { .. }
         | Command::Migrate { .. }
         | Command::Edit { .. } => unreachable!(),
+        Command::Cache { .. } => unreachable!(),
     }
 
     Ok(())
