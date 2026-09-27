@@ -79,6 +79,69 @@ cargo = true
     assert!(!cfg.storage.shared_caches.npm);
     assert_eq!(cfg.container.services.len(), 2);
 }
+
+#[test]
+fn host_caches_are_opt_in_and_default_empty() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#,
+    )
+    .unwrap();
+    assert!(!cfg.storage.host_caches.mbx);
+    assert!(cfg.storage.host_caches.custom.is_empty());
+    assert!(cfg.storage.host_caches.is_empty());
+}
+
+#[test]
+fn host_caches_parse_with_mbx_and_custom_entries() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[storage.host_caches]
+mbx = true
+[[storage.host_caches.custom]]
+name = "zig"
+host_path = "~/.cache/zig"
+container_path = "~/.cache/zig"
+"#,
+    )
+    .unwrap();
+    assert!(cfg.storage.host_caches.mbx);
+    assert_eq!(cfg.storage.host_caches.custom.len(), 1);
+    assert_eq!(cfg.storage.host_caches.custom[0].host_path, "~/.cache/zig");
+}
+
+#[test]
+fn host_caches_survive_a_serialization_round_trip() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[storage.host_caches]
+mbx = true
+"#,
+    )
+    .unwrap();
+    let serialized = toml::to_string_pretty(&cfg).unwrap();
+    assert!(serialized.contains("host_caches"), "{serialized}");
+    let reparsed = Config::parse(&serialized).unwrap();
+    assert!(reparsed.storage.host_caches.mbx);
+}
 #[test]
 fn test_home_tilde_expanded() {
     let toml = r#"

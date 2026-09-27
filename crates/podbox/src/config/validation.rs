@@ -1,5 +1,7 @@
 use anyhow::Result;
 
+mod caches;
+
 use crate::config::Config;
 use crate::error::PodboxError;
 
@@ -119,48 +121,7 @@ impl Config {
                 errors.push(format!("container.env: value for {key:?} contains newline"));
             }
         }
-        let mut cache_names = std::collections::HashSet::new();
-        for (i, cache) in self.storage.shared_caches.custom.iter().enumerate() {
-            if ["cargo", "npm", "pnpm", "pip", "ccache", "go", "rustup"]
-                .contains(&cache.name.as_str())
-            {
-                errors.push(format!(
-                    "storage.shared_caches.custom[{i}].name: {:?} is reserved for a built-in cache",
-                    cache.name
-                ));
-            }
-            if cache.name.is_empty()
-                || !cache
-                    .name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            {
-                errors.push(format!("storage.shared_caches.custom[{i}].name: use letters, digits, hyphens, or underscores"));
-            }
-            if !cache_names.insert(cache.name.as_str()) {
-                errors.push(format!(
-                    "storage.shared_caches.custom[{i}].name: duplicate cache name {:?}",
-                    cache.name
-                ));
-            }
-            let path = cache
-                .container_path
-                .strip_prefix("~/")
-                .unwrap_or(&cache.container_path);
-            if cache.container_path.trim().is_empty()
-                || cache
-                    .container_path
-                    .chars()
-                    .any(|c| matches!(c, '\n' | '\r' | ':'))
-                || (!cache.container_path.starts_with("~/")
-                    && !cache.container_path.starts_with('/'))
-                || std::path::Path::new(path)
-                    .components()
-                    .any(|c| matches!(c, std::path::Component::ParentDir))
-            {
-                errors.push(format!("storage.shared_caches.custom[{i}].container_path: expected an absolute container path or ~/ path without '..'"));
-            }
-        }
+        errors.extend(caches::validate_caches(self));
         for (i, pattern) in self.container.env.forward.iter().enumerate() {
             let key = pattern.strip_suffix('*').unwrap_or(pattern);
             if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {

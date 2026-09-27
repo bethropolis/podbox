@@ -58,6 +58,37 @@ fn quadlet_emits_offline_scheduling_cache_and_service_policy() {
 }
 
 #[test]
+fn quadlet_host_cache_mbx_is_a_bind_mount_without_userns_flag() {
+    let mut config = load_config("minimal.toml");
+    config.storage.host_caches.mbx = true;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=%h/.cache/mbx:/home/%u/.cache/mbx:rw,z"));
+    // A host directory is already owned by the host user, so the `:U`
+    // ownership remap that named volumes need would be wrong here.
+    assert!(!q.contains(".cache/mbx:U"));
+}
+
+#[test]
+fn quadlet_host_cache_custom_expands_both_sides() {
+    let mut config = load_config("minimal.toml");
+    config.storage.host_caches.custom.push(podbox::config::HostCacheConfig {
+        name: "zig".into(),
+        host_path: "~/.cache/zig".into(),
+        container_path: "~/.cache/zig".into(),
+    });
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=%h/.cache/zig:/home/%u/.cache/zig:rw,z"));
+}
+
+#[test]
+fn quadlet_emits_no_cache_volumes_unless_configured() {
+    let config = load_config("minimal.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("podbox-cache-"));
+    assert!(!q.contains(".cache/mbx"));
+}
+
+#[test]
 fn quadlet_escapes_user_environment_systemd_specifiers() {
     let mut config = load_config("minimal.toml");
     config

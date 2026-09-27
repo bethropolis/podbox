@@ -13,38 +13,6 @@ pub struct NetworkConfig {
     pub ports: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct StorageConfig {
-    #[serde(default)]
-    pub shared_caches: SharedCachesConfig,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct SharedCachesConfig {
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub cargo: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub npm: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub pnpm: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub pip: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub ccache: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub go: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub rustup: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub custom: Vec<CustomCacheConfig>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct CustomCacheConfig {
-    pub name: String,
-    pub container_path: String,
-}
-
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {

@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 
+use super::caches;
 use crate::config::Config;
 use crate::env::HostEnv;
 use crate::xdg::ResolvedXdgDirs;
@@ -311,57 +312,10 @@ pub(super) fn emit_volumes(
         lines.push(String::new());
     }
 
-    let caches = &config.storage.shared_caches;
-    if caches.cargo {
-        lines.push(format!(
-            "Volume=podbox-cache-cargo-registry:{}:U",
-            home_in_container_path("~/.cargo/registry", home_in_container)
-        ));
-        lines.push(format!(
-            "Volume=podbox-cache-cargo-git:{}:U",
-            home_in_container_path("~/.cargo/git", home_in_container)
-        ));
-    }
-    for (enabled, name, path) in [
-        (caches.npm, "npm", "~/.npm"),
-        (caches.pnpm, "pnpm", "~/.local/share/pnpm/store"),
-        (caches.pip, "pip", "~/.cache/pip"),
-        (caches.ccache, "ccache", "~/.cache/ccache"),
-        (caches.go, "go", "~/go/pkg/mod"),
-        (caches.rustup, "rustup", "~/.rustup"),
-    ] {
-        if enabled {
-            lines.push(format!(
-                "Volume=podbox-cache-{name}:{}:U",
-                home_in_container_path(path, home_in_container)
-            ));
-        }
-    }
-    for cache in &caches.custom {
-        lines.push(format!(
-            "Volume=podbox-cache-{}:{}:U",
-            cache.name,
-            home_in_container_path(&cache.container_path, home_in_container)
-        ));
-    }
-    if caches.cargo
-        || caches.npm
-        || caches.pnpm
-        || caches.pip
-        || caches.ccache
-        || caches.go
-        || caches.rustup
-        || !caches.custom.is_empty()
-    {
+    caches::emit_shared_caches(lines, &config.storage.shared_caches, home_in_container);
+    caches::emit_host_caches(lines, &config.storage.host_caches, home_in_container);
+    if caches::any_configured(config) {
         lines.push(String::new());
-    }
-}
-
-fn home_in_container_path(path: &str, home: &str) -> String {
-    match path.strip_prefix("~/") {
-        Some(rest) => format!("{home}/{rest}"),
-        None if path == "~" => home.to_string(),
-        None => path.to_string(),
     }
 }
 

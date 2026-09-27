@@ -12,10 +12,14 @@ use crate::config::defaults::{
 use crate::config::enums::{GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 use crate::config::expand_tilde;
 
+mod cache;
 mod runtime;
+pub use cache::{
+    CustomCacheConfig, HostCacheConfig, HostCachesConfig, SharedCachesConfig, StorageConfig,
+    SHARED_CACHE_NAMES,
+};
 pub use runtime::{
-    CustomCacheConfig, NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig,
-    SharedCachesConfig, StorageConfig,
+    NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

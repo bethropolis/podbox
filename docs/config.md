@@ -205,6 +205,54 @@ removes both Cargo volumes. Use `podbox cache list` to see created volumes and
 attachments, and `podbox cache prune NAME` to remove one. `podbox cache prune`
 asks before removing all cache volumes.
 
+Those volumes are shared between podbox containers only — they know nothing
+about caches on the host. To reuse a cache you already keep on the host, use
+`[storage.host_caches]`.
+
+---
+
+## `[storage.host_caches]`
+
+Also opt-in. These bind-mount a directory that already exists on the host, so
+the container reuses the work done outside it. Use this for compiler and build
+caches you maintain on the host; use `shared_caches` when the cache exists only
+to serve containers.
+
+```toml
+[storage.host_caches]
+mbx = true
+
+[[storage.host_caches.custom]]
+name = "zig"
+host_path = "~/.cache/zig"
+container_path = "~/.cache/zig"
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mbx` | bool | `false` | Shares Mr Boxington's store: `~/.cache/mbx` on both sides |
+| `custom[].name` | string | — | Label used in error messages; `mbx` is reserved |
+| `custom[].host_path` | string | — | Path on the host, `~/…` or absolute |
+| `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
+
+Emitted as `Volume=%h/.cache/mbx:/home/%u/.cache/mbx:rw,z`. The host side uses
+`%h` and the container side `/home/%u`, so the mount stays correct when the two
+usernames differ. There is deliberately no `:U` here: a host directory is
+already owned by the host user, and `keep-id` makes that the same UID inside
+the container.
+
+Notes:
+
+- Both sides then share one store, so its size budget and any automatic
+  collection apply to host and container builds together. A container build can
+  evict host cache entries.
+- If the host and the container build the *same* workspace path at the same
+  time, mbx's managed target directories collide. Serialise such builds.
+- A path already claimed by `[container.mounts].extra` is refused: both
+  mechanisms work on their own, but emitting two mounts for one destination
+  would fail inside Podman with an opaque duplicate-mount error. A hand-written
+  `mounts.extra` entry keeps working unchanged.
+
 ---
 
 ## `[integration]`
@@ -423,6 +471,25 @@ extra = ["~/Work:/home/user/Work:z"]
 [container.env]
 EDITOR = "nvim"
 TERM = "xterm-256color"
+# forward = ["HTTP_PROXY", "AWS_*"]  # Host vars copied in at exec time
+
+# ── Caches ─────────────────────────────────────────────
+[storage.shared_caches]           # podbox-managed volumes, shared between containers
+cargo  = true
+pip    = false
+rustup = false                    # compiler binaries must not cross libc boundaries
+
+[[storage.shared_caches.custom]]
+name = "models"
+container_path = "~/.cache/models"
+
+[storage.host_caches]             # host directories bind-mounted in
+mbx = false
+
+[[storage.host_caches.custom]]
+name = "zig"
+host_path = "~/.cache/zig"
+container_path = "~/.cache/zig"
 
 # ── Security ───────────────────────────────────────────
 [security]

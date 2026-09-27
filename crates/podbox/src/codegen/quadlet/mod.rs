@@ -1,9 +1,10 @@
 //! Quadlet unit generation for `podbox enable`.
 //!
 //! Slim dispatcher module; the `.container` section emitters live in
-//! [`container`], device passthrough in [`devices`], and companion units
-//! in [`services`].
+//! [`container`], cache volumes in [`caches`], device passthrough in
+//! [`devices`], and companion units in [`services`].
 
+mod caches;
 mod container;
 mod devices;
 mod services;
