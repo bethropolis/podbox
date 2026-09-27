@@ -13,6 +13,10 @@ fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
 }
 
+fn escape_systemd_specifiers(value: &str) -> String {
+    value.replace('%', "%%")
+}
+
 pub(super) fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
     lines.push("[Unit]".into());
     lines.push(format!("Description=podbox -- {name}"));
@@ -92,7 +96,10 @@ pub(super) fn emit_container_image(
         lines.push(format!("AppArmor={profile}"));
     }
     lines.push(format!("Environment=HOME={home_in_container}"));
-    lines.push(format!("Environment=HOST_USER={}", env.username));
+    lines.push(format!(
+        "Environment=HOST_USER={}",
+        escape_systemd_specifiers(&env.username)
+    ));
     lines.push("Environment=HOST_UID=%U".into());
     lines.push("Environment=HOST_GID=%G".into());
     lines.push("Environment=PATH=/run/podbox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
@@ -202,7 +209,10 @@ pub(super) fn emit_volumes(
     // Wayland
     if config.integration.wayland {
         if let Some(ref display) = env.wayland_display {
-            lines.push(format!("Environment=WAYLAND_DISPLAY={display}"));
+            lines.push(format!(
+                "Environment=WAYLAND_DISPLAY={}",
+                escape_systemd_specifiers(display)
+            ));
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
             if config.wayland.firewall {
                 lines.push(format!(
@@ -302,8 +312,17 @@ pub(super) fn emit_volumes(
     }
 
     let caches = &config.storage.shared_caches;
+    if caches.cargo {
+        lines.push(format!(
+            "Volume=podbox-cache-cargo-registry:{}:U",
+            home_in_container_path("~/.cargo/registry", home_in_container)
+        ));
+        lines.push(format!(
+            "Volume=podbox-cache-cargo-git:{}:U",
+            home_in_container_path("~/.cargo/git", home_in_container)
+        ));
+    }
     for (enabled, name, path) in [
-        (caches.cargo, "cargo", "~/.cargo"),
         (caches.npm, "npm", "~/.npm"),
         (caches.pnpm, "pnpm", "~/.local/share/pnpm/store"),
         (caches.pip, "pip", "~/.cache/pip"),
@@ -349,6 +368,7 @@ fn home_in_container_path(path: &str, home: &str) -> String {
 pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv) {
     // Locale environment
     if let Some(ref locale) = _env.host_locale {
+        let locale = escape_systemd_specifiers(locale);
         lines.push(format!("Environment=LANG={locale}"));
         lines.push(format!("Environment=LC_ALL={locale}"));
         lines.push(format!("Environment=LC_CTYPE={locale}"));
@@ -358,7 +378,12 @@ pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _en
     // Extra user env
     for (key, value) in &config.container.env.values {
         if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            let clean = value.replace('\n', " ").replace('\r', "");
+            // systemd expands % specifiers in Environment= values. Double
+            // user-supplied percent signs so they arrive literally in the
+            // container (e.g. `date +%s` must not become `%s` expansion).
+            let clean = escape_systemd_specifiers(value)
+                .replace('\n', " ")
+                .replace('\r', "");
             let escaped = clean.replace('\\', "\\\\").replace('"', "\\\"");
             let env_val = if escaped.contains(' ') || escaped.is_empty() {
                 format!("\"{escaped}\"")
@@ -373,10 +398,15 @@ pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _en
     if !config.container.services.is_empty() {
         let payload =
             serde_json::to_string(&config.container.services).unwrap_or_else(|_| "{}".into());
-        let escaped = payload.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped = escape_systemd_specifiers(&payload)
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
         lines.push(format!("Environment=PODBOX_SERVICES_JSON=\"{escaped}\""));
     }
-    lines.push(format!("Environment=PODBOX_CONTAINER={name}"));
+    lines.push(format!(
+        "Environment=PODBOX_CONTAINER={}",
+        escape_systemd_specifiers(name)
+    ));
     lines.push(String::new());
 }
 

@@ -295,8 +295,8 @@ pub fn run_rollback(
     name: &str,
     dry_run: bool,
 ) -> Result<()> {
-    if !dry_run && (!config.lifecycle.quadlet || !systemd::is_available()) {
-        anyhow::bail!("rollback requires a systemd-managed Quadlet container");
+    if !dry_run && (!podbox::quadlet_install::is_installed(name) || !systemd::is_available()) {
+        anyhow::bail!("rollback requires an installed, systemd-managed Quadlet container");
     }
     let image = format!("localhost/podbox-{name}:checkpoint-prev");
     if !dry_run && !podbox::podman::image_exists(&image).unwrap_or(false) {

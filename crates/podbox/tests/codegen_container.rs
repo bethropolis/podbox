@@ -51,9 +51,32 @@ fn quadlet_emits_offline_scheduling_cache_and_service_policy() {
     assert!(!q.contains("PublishPort="));
     assert!(q.contains("Slice=podbox.slice"));
     assert!(q.contains("CPUWeight=260"));
-    assert!(q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
+    assert!(q.contains("Volume=podbox-cache-cargo-registry:/home/%u/.cargo/registry:U"));
+    assert!(q.contains("Volume=podbox-cache-cargo-git:/home/%u/.cargo/git:U"));
+    assert!(!q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
     assert!(q.contains("Environment=PODBOX_SERVICES_JSON="));
 }
+
+#[test]
+fn quadlet_escapes_user_environment_systemd_specifiers() {
+    let mut config = load_config("minimal.toml");
+    config
+        .container
+        .env
+        .values
+        .insert("FORMAT".into(), "date +%s".into());
+    config.container.services.insert(
+        "clock".into(),
+        podbox::config::ServiceConfig::Short("date +%s".into()),
+    );
+
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Environment=FORMAT=\"date +%%s\""));
+    assert!(q.contains("date +%%s"));
+    // Podbox's own systemd specifier must remain active, not be escaped.
+    assert!(q.contains("Environment=HOST_UID=%U"));
+}
+
 #[test]
 fn quadlet_container_has_security_label_disable() {
     let config = load_config("full.toml");

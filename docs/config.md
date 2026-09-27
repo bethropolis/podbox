@@ -199,9 +199,11 @@ container_path = "~/.cache/models"
 ```
 
 Built-in caches: `cargo`, `npm`, `pnpm`, `pip`, `ccache`, `go`, and `rustup`.
-Use `podbox cache list` to see created volumes and attachments, and
-`podbox cache prune NAME` to remove one. `podbox cache prune` asks before
-removing all cache volumes.
+Cargo sharing is limited to `~/.cargo/registry` and `~/.cargo/git`; binaries
+in `~/.cargo/bin` are not shared across distros. `podbox cache prune cargo`
+removes both Cargo volumes. Use `podbox cache list` to see created volumes and
+attachments, and `podbox cache prune NAME` to remove one. `podbox cache prune`
+asks before removing all cache volumes.
 
 ---
 

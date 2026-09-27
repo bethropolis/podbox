@@ -126,17 +126,22 @@ fn parse_package_list(raw: &str, manager: PackageManager) -> Vec<String> {
 /// name.  Returns `None` for lines that should be skipped.
 fn normalize_package_name(line: &str, manager: PackageManager) -> Option<String> {
     match manager {
-        // apk list -I:  "zlib-1.3.1-r0 x86_64 {zlib}"  →  "zlib"
+        // apk list -I: "libgcc-14.2.1-r0 x86_64 {gcc}" → "libgcc".
+        // The braced value is the source-package origin, not necessarily the
+        // installed binary package name (e.g. libgcc is built from gcc).
         PackageManager::Apk => {
-            if let Some(start) = line.find('{') {
-                let end = line.find('}')?;
-                let name = line[start + 1..end].trim();
-                if !name.is_empty() {
-                    return Some(name.to_string());
-                }
-            }
             let first = line.split_whitespace().next()?;
-            let name = first.rsplit_once('-').map(|(n, _)| n).unwrap_or(first);
+            let name = first
+                .char_indices()
+                .find_map(|(index, ch)| {
+                    (ch == '-'
+                        && first[index + 1..]
+                            .chars()
+                            .next()
+                            .is_some_and(|c| c.is_ascii_digit()))
+                    .then_some(&first[..index])
+                })
+                .unwrap_or(first);
             Some(name.to_string())
         }
         // dpkg-query -W / rpm -qa / pacman -Qqn all give plain names
@@ -262,9 +267,14 @@ mod tests {
 
     #[test]
     fn parse_apk_output() {
-        let raw = "zlib-1.3.1-r0 x86_64 {zlib}\nalpine-base-3.20.0 x86_64 {alpine-base}\n";
+        let raw = concat!(
+            "zlib-1.3.1-r0 x86_64 {zlib}\n",
+            "alpine-base-3.20.0 x86_64 {alpine-base}\n",
+            "libgcc-14.2.1-r0 x86_64 {gcc}\n",
+            "libstdc++-14.2.1-r0 x86_64 {gcc}\n",
+        );
         let pkgs = parse_package_list(raw, PackageManager::Apk);
-        assert_eq!(pkgs, vec!["alpine-base", "zlib"]);
+        assert_eq!(pkgs, vec!["alpine-base", "libgcc", "libstdc++", "zlib"]);
     }
 
     #[test]
