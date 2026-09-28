@@ -27,6 +27,7 @@ export const VERSION = loadVersion();
 
 export const installTabs = [
   { id: 'curl', label: 'curl script' },
+  { id: 'mise', label: 'mise' },
   { id: 'brew', label: 'Homebrew' },
   { id: 'aur', label: 'Arch (AUR)' },
   { id: 'cargo', label: 'cargo install' },
@@ -38,6 +39,8 @@ export type InstallTabId = (typeof installTabs)[number]['id'];
 export const installCommands: Record<string, string> = {
   curl: `# Grab the binary & verify
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh`,
+  mise: `# Install as a mise tool (Linux only)
+mise use -g github:bethropolis/podbox`,
   brew: `# Homebrew (Linux only)
 brew install bethropolis/homebrew-tap/podbox`,
   aur: `# Arch Linux, via AUR

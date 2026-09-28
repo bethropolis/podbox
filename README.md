@@ -66,6 +66,11 @@ That's a prebuilt environment with no config file needed. For anything custom, s
 <details>
 <summary>Other install options</summary>
 
+**mise (Linux only):**
+```bash
+mise use -g github:bethropolis/podbox
+```
+
 **Homebrew (Linux only):**
 ```bash
 brew install bethropolis/homebrew-tap/podbox
