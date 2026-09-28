@@ -30,6 +30,12 @@ struct SupervisedService {
     backoff: std::time::Duration,
 }
 
+/// Spawn every configured service and supervise it for the daemon's life.
+///
+/// One function on purpose: the spawn/restart/exclude-pid bookkeeping is only
+/// meaningful as a whole, and splitting it would hide the ordering between
+/// "publish pgids" and "report ready".
+#[allow(clippy::too_many_lines)]
 pub(super) fn start_service_supervisor() {
     let Ok(payload) = std::env::var("PODBOX_SERVICES_JSON") else {
         return;

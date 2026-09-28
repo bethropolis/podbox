@@ -47,6 +47,10 @@ fn volume_bytes(path: &str) -> u64 {
 }
 
 fn human_size(bytes: u64) -> String {
+    // Display-only: `f64` carries 52 mantissa bits, so sizes above 8 PiB
+    // would round. Cache volumes are far below that, and the alternative is
+    // hand-rolled integer formatting for no accuracy that matters here.
+    #[allow(clippy::cast_precision_loss)]
     let mut size = bytes as f64;
     let mut unit = "B";
     for next in ["KiB", "MiB", "GiB", "TiB"] {

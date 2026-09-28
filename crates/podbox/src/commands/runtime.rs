@@ -8,7 +8,6 @@ use anyhow::Result;
 
 use podbox::codegen::distros;
 use podbox::config::Config;
-use podbox::env::HostEnv;
 use podbox::podman::{ContainerState, query_state};
 use podbox::protocol::{GuestMessage, write_frame};
 use podbox::xdg::ResolvedXdgDirs;
@@ -20,6 +19,7 @@ use doctor::is_systemd_managed;
 pub use doctor::run_doctor;
 pub use doctor::try_fix_bare_memory_for_target;
 
+pub(crate) use context::RunContext;
 use context::resolve_container_workdir;
 
 /// Try to register a terminal session with the host's `socket_host`.
@@ -148,15 +148,19 @@ fn git_mount_paths(
 }
 
 fn prepare_git_bridge(
-    config: &Config,
-    env: &HostEnv,
-    name: &str,
+    ctx: RunContext<'_>,
     git_user: &str,
-    xdg: &ResolvedXdgDirs,
     here: Option<&str>,
     args: &mut Vec<OsString>,
-    explicit: &[String],
 ) {
+    let RunContext {
+        config,
+        env,
+        name,
+        xdg,
+        env_overrides: explicit,
+        ..
+    } = ctx;
     if !config.integration.git_identity {
         return;
     }
@@ -343,15 +347,15 @@ pub fn run_stdin_watchdog(parent_pid: u32) -> Result<()> {
 }
 
 /// Enter a shell inside the container.
-pub fn run_shell_enter(
-    env: &HostEnv,
-    config: &Config,
-    name: &str,
-    dry_run: bool,
-    xdg: &ResolvedXdgDirs,
-    here: bool,
-    env_overrides: &[String],
-) -> Result<()> {
+pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
+    let RunContext {
+        env,
+        config,
+        name,
+        xdg,
+        env_overrides,
+        dry_run,
+    } = ctx;
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
     let workdir = resolve_container_workdir(config, env, xdg, here)?;
 
@@ -376,16 +380,7 @@ pub fn run_shell_enter(
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    prepare_git_bridge(
-        config,
-        env,
-        name,
-        &env.username,
-        xdg,
-        here.then_some(&workdir),
-        &mut exec_args,
-        env_overrides,
-    );
+    prepare_git_bridge(ctx, &env.username, here.then_some(&workdir), &mut exec_args);
     register_session(name, &env.xdg_runtime_dir);
     spawn_stdin_watchdog();
     let err = podbox::process::exec_replace("podman", &exec_args);
@@ -393,17 +388,15 @@ pub fn run_shell_enter(
 }
 
 /// Execute an arbitrary command inside the container.
-pub fn run_exec(
-    env: &HostEnv,
-    name: &str,
-    cmd_args: &[String],
-    dry_run: bool,
-    root: bool,
-    config: &Config,
-    xdg: &ResolvedXdgDirs,
-    here: bool,
-    env_overrides: &[String],
-) -> Result<()> {
+pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool) -> Result<()> {
+    let RunContext {
+        env,
+        config,
+        name,
+        xdg,
+        env_overrides,
+        dry_run,
+    } = ctx;
     let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
 
     let mut exec_args: Vec<OsString> = vec!["exec".into(), tty_flag.into()];
@@ -440,14 +433,10 @@ pub fn run_exec(
         None
     };
     prepare_git_bridge(
-        config,
-        env,
-        name,
+        ctx,
         if root { "root" } else { &env.username },
-        xdg,
         here_path.as_deref(),
         &mut exec_args,
-        env_overrides,
     );
     register_session(name, &env.xdg_runtime_dir);
     spawn_stdin_watchdog();
@@ -456,16 +445,15 @@ pub fn run_exec(
 }
 
 /// Run an app in the background inside the container.
-pub fn run_run(
-    env: &HostEnv,
-    name: &str,
-    app: &str,
-    app_args: &[String],
-    dry_run: bool,
-    config: &Config,
-    xdg: &ResolvedXdgDirs,
-    env_overrides: &[String],
-) -> Result<()> {
+pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()> {
+    let RunContext {
+        env,
+        name,
+        config,
+        env_overrides,
+        dry_run,
+        ..
+    } = ctx;
     let mut exec_args: Vec<OsString> = vec![
         "exec".into(),
         "-d".into(),
@@ -488,16 +476,7 @@ pub fn run_run(
         return Ok(());
     }
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    prepare_git_bridge(
-        config,
-        env,
-        name,
-        &env.username,
-        xdg,
-        None,
-        &mut exec_args,
-        env_overrides,
-    );
+    prepare_git_bridge(ctx, &env.username, None, &mut exec_args);
     register_session(name, &env.xdg_runtime_dir);
     podbox::process::spawn_interactive("podman", &exec_args).map(|_| ())
 }

@@ -317,15 +317,15 @@ fn run() -> Result<()> {
                 let ed = editor::resolve()?;
                 editor::open(&ed, &config_path)?;
             }
-            commands::runtime::run_shell_enter(
-                &env,
-                &config,
-                &name,
-                cli.dry_run,
-                &xdg,
-                *here,
+            let ctx = commands::runtime::RunContext {
+                env: &env,
+                config: &config,
+                xdg: &xdg,
+                name: &name,
                 env_overrides,
-            )?;
+                dry_run: cli.dry_run,
+            };
+            commands::runtime::run_shell_enter(ctx, *here)?;
         }
 
         Command::Exec {
@@ -334,17 +334,15 @@ fn run() -> Result<()> {
             env: env_overrides,
             here,
         } => {
-            commands::runtime::run_exec(
-                &env,
-                &name,
-                cmd_args,
-                cli.dry_run,
-                *root,
-                &config,
-                &xdg,
-                *here,
+            let ctx = commands::runtime::RunContext {
+                env: &env,
+                config: &config,
+                xdg: &xdg,
+                name: &name,
                 env_overrides,
-            )?;
+                dry_run: cli.dry_run,
+            };
+            commands::runtime::run_exec(ctx, cmd_args, *root, *here)?;
         }
 
         Command::Run {
@@ -352,16 +350,15 @@ fn run() -> Result<()> {
             app_args,
             env: env_overrides,
         } => {
-            commands::runtime::run_run(
-                &env,
-                &name,
-                app,
-                app_args,
-                cli.dry_run,
-                &config,
-                &xdg,
+            let ctx = commands::runtime::RunContext {
+                env: &env,
+                config: &config,
+                xdg: &xdg,
+                name: &name,
                 env_overrides,
-            )?;
+                dry_run: cli.dry_run,
+            };
+            commands::runtime::run_run(ctx, app, app_args)?;
         }
 
         Command::Status { name: _, output } => {

@@ -6,6 +6,31 @@ use podbox::config::Config;
 use podbox::env::HostEnv;
 use podbox::xdg::ResolvedXdgDirs;
 
+/// Everything a runtime command needs to know about its target container.
+///
+/// `enter`, `exec` and `run` all resolve this same handful of values before
+/// they build a `podman exec` line. Carrying them together keeps each
+/// signature about the command being run rather than the container it runs
+/// in, and stops a swapped pair of same-typed parameters from compiling.
+///
+/// Every field is a shared reference or a `bool`, so the context is `Copy`
+/// and a function can destructure it back into the names its body already
+/// uses:
+///
+/// ```ignore
+/// let RunContext { env, config, name, xdg, env_overrides, dry_run } = ctx;
+/// ```
+#[derive(Clone, Copy)]
+pub(crate) struct RunContext<'a> {
+    pub env: &'a HostEnv,
+    pub config: &'a Config,
+    pub xdg: &'a ResolvedXdgDirs,
+    pub name: &'a str,
+    /// `-e KEY=VALUE` overrides given on the command line.
+    pub env_overrides: &'a [String],
+    pub dry_run: bool,
+}
+
 /// Resolve the working directory inside the container from the host CWD.
 ///
 /// Builds a map of host→container mount paths from the config, canonicalizes
