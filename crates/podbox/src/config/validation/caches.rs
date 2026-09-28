@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 use std::path::{Component, Path};
 
-use crate::config::{Config, SHARED_CACHE_NAMES};
+use crate::config::{Config, builtin_cache_names};
 
 /// Accept `~/relative` or an absolute path, rejecting `..` escapes, colons
 /// (which would corrupt a `Volume=` line) and embedded newlines.
@@ -76,7 +76,7 @@ pub(super) fn validate_caches(config: &Config) -> Vec<String> {
     let mut names: HashSet<&str> = HashSet::new();
     for (i, cache) in config.storage.shared_caches.custom.iter().enumerate() {
         let label = format!("storage.shared_caches.custom[{i}]");
-        if SHARED_CACHE_NAMES.contains(&cache.name.as_str()) {
+        if builtin_cache_names().any(|n| n == cache.name) {
             errors.push(format!(
                 "{label}.name: {:?} is reserved for a built-in cache",
                 cache.name
@@ -99,14 +99,12 @@ pub(super) fn validate_caches(config: &Config) -> Vec<String> {
     // ---- host bind mounts ----
     let host = &config.storage.host_caches;
     let mut host_names: HashSet<&str> = HashSet::new();
-    if host.mbx {
-        host_names.insert("mbx");
-    }
     for (i, cache) in host.custom.iter().enumerate() {
         let label = format!("storage.host_caches.custom[{i}]");
-        if cache.name == "mbx" {
+        if builtin_cache_names().any(|n| n == cache.name) {
             errors.push(format!(
-                "{label}.name: \"mbx\" is reserved for the built-in host cache"
+                "{label}.name: {:?} is reserved for a built-in host cache",
+                cache.name
             ));
         }
         check_name(&cache.name, &format!("{label}.name"), &mut errors);
@@ -137,10 +135,11 @@ pub(super) fn validate_caches(config: &Config) -> Vec<String> {
         .map(container_key)
         .filter(|k| !k.is_empty())
         .collect();
-    let mut host_targets: Vec<(String, String)> = Vec::new();
-    if host.mbx {
-        host_targets.push((container_key("~/.cache/mbx"), "mbx".to_string()));
-    }
+    let mut host_targets: Vec<(String, String)> = host
+        .enabled_paths()
+        .iter()
+        .map(|p| (container_key(p.container_path), p.cache.to_string()))
+        .collect();
     for cache in &host.custom {
         host_targets.push((container_key(&cache.container_path), cache.name.clone()));
     }
@@ -179,8 +178,8 @@ home = "~/containers/env"
     #[test]
     fn clean_config_has_no_cache_errors() {
         let mut config = base();
-        config.storage.shared_caches.pip = true;
-        config.storage.host_caches.mbx = true;
+        config.storage.shared_caches.builtins.pip = true;
+        config.storage.host_caches.builtins.mbx = true;
         assert!(validate_caches(&config).is_empty());
     }
 
@@ -191,7 +190,7 @@ home = "~/containers/env"
             "/home/bet/.config/gh:/home/bet/.config/gh:ro".to_string(),
             "/home/bet/Projects:/home/bet/Projects:z".to_string(),
         ];
-        config.storage.host_caches.mbx = true;
+        config.storage.host_caches.builtins.mbx = true;
         assert!(validate_caches(&config).is_empty());
     }
 
@@ -200,7 +199,7 @@ home = "~/containers/env"
         let mut config = base();
         config.container.mounts.extra =
             vec!["/home/bet/.cache/mbx:/home/bet/.cache/mbx:rw,z".to_string()];
-        config.storage.host_caches.mbx = true;
+        config.storage.host_caches.builtins.mbx = true;
         let errors = validate_caches(&config);
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(
@@ -228,7 +227,7 @@ home = "~/containers/env"
         // `z` and `rw` both appear after the target; only the first colon
         // delimits it.
         config.container.mounts.extra = vec!["/srv/mbx:/home/bet/.cache/mbx:rw,z".to_string()];
-        config.storage.host_caches.mbx = true;
+        config.storage.host_caches.builtins.mbx = true;
         assert_eq!(validate_caches(&config).len(), 1);
     }
 
@@ -277,16 +276,28 @@ home = "~/containers/env"
     }
 
     #[test]
-    fn mbx_built_in_collides_with_a_duplicate_custom_name() {
+    fn a_custom_entry_may_not_shadow_a_built_in_in_either_mechanism() {
         let mut config = base();
-        config.storage.host_caches.mbx = true;
+        config.storage.host_caches.builtins.mbx = true;
+        config.storage.shared_caches.builtins.mbx = true;
         config.storage.host_caches.custom.push(HostCacheConfig {
             name: "mbx".into(),
             host_path: "~/.cache/other".into(),
             container_path: "~/.cache/other".into(),
         });
+        config.storage.shared_caches.custom.push(CustomCacheConfig {
+            name: "mbx".into(),
+            container_path: "~/.cache/other".into(),
+        });
         let errors = validate_caches(&config);
-        assert!(errors.iter().any(|e| e.contains("duplicate")), "{errors:?}");
+        assert!(
+            errors
+                .iter()
+                .all(|e| e.contains("reserved") || e.contains("duplicate")),
+            "{errors:?}"
+        );
+        // One report per offending entry, not two for the same problem.
+        assert_eq!(errors.len(), 2, "{errors:?}");
     }
 
     #[test]
@@ -313,6 +324,47 @@ home = "~/containers/env"
             host_path: "/var/cache/podbox".into(),
             container_path: "/var/cache/podbox".into(),
         });
+        assert!(validate_caches(&config).is_empty());
+    }
+
+    /// A host built-in that collides with a hand-written mount is refused,
+    /// the same as a custom one. This is the mistake a user actually makes:
+    /// they share `~/.npm` by hand, then turn on the `npm` toggle.
+    #[test]
+    fn host_builtin_clashing_with_an_extra_mount_is_refused() {
+        let mut config = base();
+        config.container.mounts.extra = vec!["/home/bet/.npm:/home/bet/.npm:rw,z".to_string()];
+        config.storage.host_caches.builtins.npm = true;
+        let errors = validate_caches(&config);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("npm"), "{errors:?}");
+    }
+
+    /// Built-ins are the same directory on both sides, so the container path
+    /// a host built-in claims must reduce to the same key a mount is
+    /// compared by.
+    #[test]
+    fn host_builtin_clash_is_detected_for_nested_paths() {
+        let mut config = base();
+        config.container.mounts.extra =
+            vec!["/srv/pnpm:/home/bet/.local/share/pnpm/store:rw,z".to_string()];
+        config.storage.host_caches.builtins.pnpm = true;
+        assert_eq!(validate_caches(&config).len(), 1);
+    }
+
+    /// A built-in on the host side must not clash with itself, or with an
+    /// unrelated mount.
+    #[test]
+    fn host_builtins_do_not_clash_with_each_other_or_unrelated_mounts() {
+        let mut config = base();
+        config.storage.host_caches.builtins = crate::config::BuiltinCaches {
+            cargo: true,
+            npm: true,
+            pip: true,
+            mbx: true,
+            ..Default::default()
+        };
+        config.container.mounts.extra = vec!["/home/bet/Projects:/home/bet/Projects:z".into()];
         assert!(validate_caches(&config).is_empty());
     }
 }

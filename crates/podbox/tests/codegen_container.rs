@@ -41,7 +41,7 @@ fn quadlet_emits_offline_scheduling_cache_and_service_policy() {
     config.network.offline = true;
     config.network.ports = vec!["8080:80".into()];
     config.container.cpu_weight = 260;
-    config.storage.shared_caches.cargo = true;
+    config.storage.shared_caches.builtins.cargo = true;
     config.container.services.insert(
         "redis".into(),
         podbox::config::ServiceConfig::Short("redis-server".into()),
@@ -60,7 +60,7 @@ fn quadlet_emits_offline_scheduling_cache_and_service_policy() {
 #[test]
 fn quadlet_host_cache_mbx_is_a_bind_mount_without_userns_flag() {
     let mut config = load_config("minimal.toml");
-    config.storage.host_caches.mbx = true;
+    config.storage.host_caches.builtins.mbx = true;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("Volume=%h/.cache/mbx:/home/%u/.cache/mbx:rw,z"));
     // A host directory is already owned by the host user, so the `:U`
@@ -249,4 +249,84 @@ fn quadlet_container_has_restart_rate_limiting() {
     assert!(q.contains("RestartSec=2s"));
     assert!(q.contains("StartLimitBurst=5"));
     assert!(q.contains("StartLimitIntervalSec=30s"));
+}
+
+/// Both mechanisms must offer the same built-ins, or the two lists drift
+/// and a user reasonably assumes a cache is exclusive to one of them.
+#[test]
+fn both_cache_mechanisms_offer_every_builtin() {
+    let all = podbox::config::BuiltinCaches {
+        cargo: true,
+        npm: true,
+        pnpm: true,
+        pip: true,
+        ccache: true,
+        go: true,
+        rustup: true,
+        mbx: true,
+    };
+    let mut config = load_config("minimal.toml");
+    config.storage.shared_caches.builtins = all;
+    config.storage.host_caches.builtins = all;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    // Same destination either way; the source and flags are what differ.
+    for path in [
+        "/home/%u/.npm",
+        "/home/%u/.local/share/pnpm/store",
+        "/home/%u/.cache/pip",
+        "/home/%u/.cache/ccache",
+        "/home/%u/go/pkg/mod",
+        "/home/%u/.rustup",
+        "/home/%u/.cache/mbx",
+    ] {
+        let host_side = path.trim_start_matches("/home/%u/");
+        assert!(
+            q.contains(&format!("Volume=%h/{host_side}:{path}:rw,z")),
+            "host bind mount missing for {path}"
+        );
+    }
+    // Cargo is split across two mounts and never the whole ~/.cargo.
+    assert!(q.contains("Volume=podbox-cache-cargo-registry:/home/%u/.cargo/registry:U"));
+    assert!(q.contains("Volume=podbox-cache-cargo-git:/home/%u/.cargo/git:U"));
+    assert!(!q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
+    assert!(q.contains("Volume=%h/.cargo/registry:/home/%u/.cargo/registry:rw,z"));
+    assert!(q.contains("Volume=%h/.cargo/git:/home/%u/.cargo/git:rw,z"));
+
+    // Every shared built-in got a volume, keyed by cache name.
+    for name in ["npm", "pnpm", "pip", "ccache", "go", "rustup", "mbx"] {
+        assert!(
+            q.contains(&format!("Volume=podbox-cache-{name}:")),
+            "shared volume missing for {name}"
+        );
+    }
+}
+
+/// `mbx` must be shareable between containers, not only with the host.
+#[test]
+fn mbx_is_available_as_a_shared_volume() {
+    let mut config = load_config("minimal.toml");
+    config.storage.shared_caches.builtins.mbx = true;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=podbox-cache-mbx:/home/%u/.cache/mbx:U"));
+}
+
+/// Enabling every built-in in both mechanisms must not emit a duplicate
+/// destination.
+#[test]
+fn every_builtin_can_be_enabled_at_once() {
+    let mut config = load_config("minimal.toml");
+    config.storage.shared_caches.builtins = podbox::config::BuiltinCaches {
+        cargo: true,
+        npm: true,
+        pnpm: true,
+        pip: true,
+        ccache: true,
+        go: true,
+        rustup: true,
+        mbx: true,
+    };
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=podbox-cache-cargo-registry:/home/%u/.cargo/registry:U"));
+    assert!(q.contains("Volume=podbox-cache-cargo-git:/home/%u/.cargo/git:U"));
+    assert!(!q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
 }

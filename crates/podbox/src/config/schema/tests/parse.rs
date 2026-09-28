@@ -75,8 +75,8 @@ cargo = true
 "#,
     )
     .unwrap();
-    assert!(cfg.storage.shared_caches.cargo);
-    assert!(!cfg.storage.shared_caches.npm);
+    assert!(cfg.storage.shared_caches.builtins.cargo);
+    assert!(!cfg.storage.shared_caches.builtins.npm);
     assert_eq!(cfg.container.services.len(), 2);
 }
 
@@ -93,7 +93,7 @@ home = "~/env"
 "#,
     )
     .unwrap();
-    assert!(!cfg.storage.host_caches.mbx);
+    assert!(!cfg.storage.host_caches.builtins.mbx);
     assert!(cfg.storage.host_caches.custom.is_empty());
     assert!(cfg.storage.host_caches.is_empty());
 }
@@ -117,7 +117,7 @@ container_path = "~/.cache/zig"
 "#,
     )
     .unwrap();
-    assert!(cfg.storage.host_caches.mbx);
+    assert!(cfg.storage.host_caches.builtins.mbx);
     assert_eq!(cfg.storage.host_caches.custom.len(), 1);
     assert_eq!(cfg.storage.host_caches.custom[0].host_path, "~/.cache/zig");
 }
@@ -140,7 +140,7 @@ mbx = true
     let serialized = toml::to_string_pretty(&cfg).unwrap();
     assert!(serialized.contains("host_caches"), "{serialized}");
     let reparsed = Config::parse(&serialized).unwrap();
-    assert!(reparsed.storage.host_caches.mbx);
+    assert!(reparsed.storage.host_caches.builtins.mbx);
 }
 #[test]
 fn test_home_tilde_expanded() {

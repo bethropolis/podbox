@@ -15,8 +15,8 @@ use crate::config::expand_tilde;
 mod cache;
 mod runtime;
 pub use cache::{
-    CustomCacheConfig, HostCacheConfig, HostCachesConfig, SHARED_CACHE_NAMES, SharedCachesConfig,
-    StorageConfig,
+    BuiltinCachePath, BuiltinCaches, CustomCacheConfig, HostCacheConfig, HostCachesConfig,
+    SharedCachesConfig, StorageConfig, builtin_cache_names,
 };
 pub use runtime::{NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig};
 

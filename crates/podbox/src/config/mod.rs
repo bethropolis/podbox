@@ -21,10 +21,11 @@ pub use fs::{
 };
 pub use schema::{Config, SchemaVersion};
 pub use types::{
-    ContainerConfig, ContainerEnvConfig, CustomCacheConfig, DbusConfig, DotfilesCloneOn,
-    DotfilesConfig, ExportConfig, HardwareConfig, HostCacheConfig, HostCachesConfig,
-    HostExecConfig, HostExecEntry, ImageConfig, IntegrationConfig, LifecycleConfig, MountConfig,
-    NetworkConfig, PackageConfig, RunConfig, SHARED_CACHE_NAMES, SecretEntry, SecretSource,
-    SecretType, SecurityConfig, ServiceConfig, ServiceDetailConfig, SharedCachesConfig,
-    StorageConfig, SystemdConfig, WaylandConfig, XdgDirConfig,
+    BuiltinCachePath, BuiltinCaches, ContainerConfig, ContainerEnvConfig, CustomCacheConfig,
+    DbusConfig, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig, HostCacheConfig,
+    HostCachesConfig, HostExecConfig, HostExecEntry, ImageConfig, IntegrationConfig,
+    LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig, SecretEntry,
+    SecretSource, SecretType, SecurityConfig, ServiceConfig, ServiceDetailConfig,
+    SharedCachesConfig, StorageConfig, SystemdConfig, WaylandConfig, XdgDirConfig,
+    builtin_cache_names,
 };

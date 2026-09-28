@@ -35,33 +35,12 @@ fn on_host(path: &str) -> String {
 
 /// Emit `Volume=` lines for podbox-managed shared cache volumes.
 pub(super) fn emit_shared_caches(lines: &mut Vec<String>, caches: &SharedCachesConfig, home: &str) {
-    if caches.cargo {
-        // Scoped deliberately: ~/.cargo/bin holds binaries built against one
-        // distro's libc and must not cross distro boundaries.
-        for (name, path) in [
-            ("cargo-registry", "~/.cargo/registry"),
-            ("cargo-git", "~/.cargo/git"),
-        ] {
-            lines.push(format!(
-                "Volume=podbox-cache-{name}:{}:U",
-                in_container(path, home)
-            ));
-        }
-    }
-    for (enabled, name, path) in [
-        (caches.npm, "npm", "~/.npm"),
-        (caches.pnpm, "pnpm", "~/.local/share/pnpm/store"),
-        (caches.pip, "pip", "~/.cache/pip"),
-        (caches.ccache, "ccache", "~/.cache/ccache"),
-        (caches.go, "go", "~/go/pkg/mod"),
-        (caches.rustup, "rustup", "~/.rustup"),
-    ] {
-        if enabled {
-            lines.push(format!(
-                "Volume=podbox-cache-{name}:{}:U",
-                in_container(path, home)
-            ));
-        }
+    for path in caches.enabled_paths() {
+        lines.push(format!(
+            "Volume=podbox-cache-{}:{}:U",
+            path.mount,
+            in_container(path.container_path, home)
+        ));
     }
     for cache in &caches.custom {
         lines.push(format!(
@@ -74,16 +53,14 @@ pub(super) fn emit_shared_caches(lines: &mut Vec<String>, caches: &SharedCachesC
 
 /// Emit `Volume=` lines for host bind-mounted caches.
 pub(super) fn emit_host_caches(lines: &mut Vec<String>, caches: &HostCachesConfig, home: &str) {
-    let push = |lines: &mut Vec<String>, host_path: &str, container_path: &str| {
+    // A built-in is the same relative path on both sides, so the host path
+    // is just the container path with the container home removed.
+    for path in caches.enabled_paths() {
         lines.push(format!(
             "Volume={}:{}:rw,z",
-            on_host(host_path),
-            in_container(container_path, home)
+            on_host(path.container_path),
+            in_container(path.container_path, home)
         ));
-    };
-
-    if caches.mbx {
-        push(lines, "~/.cache/mbx", "~/.cache/mbx");
     }
     for HostCacheConfig {
         name: _,
@@ -91,33 +68,44 @@ pub(super) fn emit_host_caches(lines: &mut Vec<String>, caches: &HostCachesConfi
         container_path,
     } in &caches.custom
     {
-        push(lines, host_path, container_path);
+        lines.push(format!(
+            "Volume={}:{}:rw,z",
+            on_host(host_path),
+            in_container(container_path, home)
+        ));
     }
 }
 
 /// Container-side paths a host cache would occupy, used by validation to
 /// catch a path that is already claimed by `[container.mounts].extra`.
 pub(crate) fn host_cache_targets(config: &Config) -> Vec<String> {
-    let mut targets = Vec::new();
-    if config.storage.host_caches.mbx {
-        targets.push("/.cache/mbx".to_string());
-    }
-    for cache in &config.storage.host_caches.custom {
-        targets.push(cache.container_path.clone());
-    }
+    let mut targets: Vec<String> = config
+        .storage
+        .host_caches
+        .enabled_paths()
+        .iter()
+        .map(|p| comparable(p.container_path))
+        .collect();
+    targets.extend(
+        config
+            .storage
+            .host_caches
+            .custom
+            .iter()
+            .map(|c| comparable(&c.container_path)),
+    );
     targets
+}
+
+/// Reduce a `~/`-relative container path to the part under the home, so a
+/// hand-written absolute mount and a config path can be compared.
+fn comparable(path: &str) -> String {
+    path.strip_prefix("~/").unwrap_or(path).to_string()
 }
 
 /// True when any shared or host cache is configured.
 pub(crate) fn any_configured(config: &Config) -> bool {
-    let shared = &config.storage.shared_caches;
-    !host_cache_targets(config).is_empty()
-        || shared.cargo
-        || shared.npm
-        || shared.pnpm
-        || shared.pip
-        || shared.ccache
-        || shared.go
-        || shared.rustup
-        || !shared.custom.is_empty()
+    !config.storage.shared_caches.enabled_paths().is_empty()
+        || !config.storage.shared_caches.custom.is_empty()
+        || !host_cache_targets(config).is_empty()
 }
