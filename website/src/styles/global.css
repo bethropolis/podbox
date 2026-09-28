@@ -137,7 +137,10 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
 .syntax-section { color: var(--accent-yellow); font-weight: 600; }
 
 /* Install-tab switcher (CSS-only tabs, zero JS). Radios live hidden inside
-   .install-tabs; :has() wires the titlebar labels and panels together. */
+   .install-tabs; :has() wires the titlebar labels and panels together.
+   Every id in `installTabs` (landing/data.ts) needs a line in both selector
+   lists below, or its panel stays hidden — a tab can look present and
+   still render nothing when clicked. */
 .install-tabs input[type='radio'] {
   position: absolute;
   opacity: 0;
@@ -147,6 +150,7 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
   display: none;
 }
 .install-tabs:has(#install-tab-curl:checked) #install-panel-curl,
+.install-tabs:has(#install-tab-mise:checked) #install-panel-mise,
 .install-tabs:has(#install-tab-brew:checked) #install-panel-brew,
 .install-tabs:has(#install-tab-aur:checked) #install-panel-aur,
 .install-tabs:has(#install-tab-cargo:checked) #install-panel-cargo,
@@ -161,6 +165,7 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
   background: var(--bg-surface0);
 }
 .install-tabs:has(#install-tab-curl:checked) label[for='install-tab-curl'],
+.install-tabs:has(#install-tab-mise:checked) label[for='install-tab-mise'],
 .install-tabs:has(#install-tab-brew:checked) label[for='install-tab-brew'],
 .install-tabs:has(#install-tab-aur:checked) label[for='install-tab-aur'],
 .install-tabs:has(#install-tab-cargo:checked) label[for='install-tab-cargo'],
