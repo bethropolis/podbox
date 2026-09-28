@@ -62,8 +62,7 @@ pub struct Config {
 
 fn storage_is_empty(storage: &StorageConfig) -> bool {
     let c = &storage.shared_caches;
-    !(c.cargo || c.npm || c.pnpm || c.pip || c.ccache || c.go || c.rustup
-        || !c.custom.is_empty())
+    !(c.cargo || c.npm || c.pnpm || c.pip || c.ccache || c.go || c.rustup || !c.custom.is_empty())
         && storage.host_caches.is_empty()
 }
 

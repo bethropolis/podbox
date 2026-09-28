@@ -71,11 +71,15 @@ fn quadlet_host_cache_mbx_is_a_bind_mount_without_userns_flag() {
 #[test]
 fn quadlet_host_cache_custom_expands_both_sides() {
     let mut config = load_config("minimal.toml");
-    config.storage.host_caches.custom.push(podbox::config::HostCacheConfig {
-        name: "zig".into(),
-        host_path: "~/.cache/zig".into(),
-        container_path: "~/.cache/zig".into(),
-    });
+    config
+        .storage
+        .host_caches
+        .custom
+        .push(podbox::config::HostCacheConfig {
+            name: "zig".into(),
+            host_path: "~/.cache/zig".into(),
+            container_path: "~/.cache/zig".into(),
+        });
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("Volume=%h/.cache/zig:/home/%u/.cache/zig:rw,z"));
 }

@@ -21,7 +21,9 @@ fn check_path(path: &str, label: &str, errors: &mut Vec<String>) {
             .components()
             .any(|c| matches!(c, Component::ParentDir))
     {
-        errors.push(format!("{label}: expected '~/path' or an absolute path without '..'"));
+        errors.push(format!(
+            "{label}: expected '~/path' or an absolute path without '..'"
+        ));
     }
 }
 
@@ -82,7 +84,10 @@ pub(super) fn validate_caches(config: &Config) -> Vec<String> {
         }
         check_name(&cache.name, &format!("{label}.name"), &mut errors);
         if !names.insert(cache.name.as_str()) {
-            errors.push(format!("{label}.name: duplicate cache name {:?}", cache.name));
+            errors.push(format!(
+                "{label}.name: duplicate cache name {:?}",
+                cache.name
+            ));
         }
         check_path(
             &cache.container_path,
@@ -106,7 +111,10 @@ pub(super) fn validate_caches(config: &Config) -> Vec<String> {
         }
         check_name(&cache.name, &format!("{label}.name"), &mut errors);
         if !host_names.insert(cache.name.as_str()) {
-            errors.push(format!("{label}.name: duplicate cache name {:?}", cache.name));
+            errors.push(format!(
+                "{label}.name: duplicate cache name {:?}",
+                cache.name
+            ));
         }
         check_path(&cache.host_path, &format!("{label}.host_path"), &mut errors);
         check_path(
@@ -219,8 +227,7 @@ home = "~/containers/env"
         let mut config = base();
         // `z` and `rw` both appear after the target; only the first colon
         // delimits it.
-        config.container.mounts.extra =
-            vec!["/srv/mbx:/home/bet/.cache/mbx:rw,z".to_string()];
+        config.container.mounts.extra = vec!["/srv/mbx:/home/bet/.cache/mbx:rw,z".to_string()];
         config.storage.host_caches.mbx = true;
         assert_eq!(validate_caches(&config).len(), 1);
     }
@@ -239,8 +246,14 @@ home = "~/containers/env"
         });
         let errors = validate_caches(&config);
         assert_eq!(errors.len(), 2, "{errors:?}");
-        assert!(errors.iter().any(|e| e.contains("built-in cache")), "{errors:?}");
-        assert!(errors.iter().any(|e| e.contains("built-in host cache")), "{errors:?}");
+        assert!(
+            errors.iter().any(|e| e.contains("built-in cache")),
+            "{errors:?}"
+        );
+        assert!(
+            errors.iter().any(|e| e.contains("built-in host cache")),
+            "{errors:?}"
+        );
     }
 
     #[test]
@@ -256,7 +269,11 @@ home = "~/containers/env"
             host_path: "~/.local/zig".into(),
             container_path: "~/.local/zig".into(),
         });
-        assert!(validate_caches(&config).iter().any(|e| e.contains("duplicate")));
+        assert!(
+            validate_caches(&config)
+                .iter()
+                .any(|e| e.contains("duplicate"))
+        );
     }
 
     #[test]

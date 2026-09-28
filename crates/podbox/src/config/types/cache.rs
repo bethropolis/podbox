@@ -53,8 +53,7 @@ pub struct CustomCacheConfig {
 
 /// Names of the built-in [`SharedCachesConfig`] toggles, which
 /// [`CustomCacheConfig::name`] may not shadow.
-pub const SHARED_CACHE_NAMES: [&str; 7] =
-    ["cargo", "npm", "pnpm", "pip", "ccache", "go", "rustup"];
+pub const SHARED_CACHE_NAMES: [&str; 7] = ["cargo", "npm", "pnpm", "pip", "ccache", "go", "rustup"];
 
 /// Host build caches bind-mounted into the container.
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

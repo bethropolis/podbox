@@ -15,12 +15,10 @@ use crate::config::expand_tilde;
 mod cache;
 mod runtime;
 pub use cache::{
-    CustomCacheConfig, HostCacheConfig, HostCachesConfig, SharedCachesConfig, StorageConfig,
-    SHARED_CACHE_NAMES,
+    CustomCacheConfig, HostCacheConfig, HostCachesConfig, SHARED_CACHE_NAMES, SharedCachesConfig,
+    StorageConfig,
 };
-pub use runtime::{
-    NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig,
-};
+pub use runtime::{NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ImageConfig {

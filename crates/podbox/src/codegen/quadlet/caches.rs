@@ -34,11 +34,7 @@ fn on_host(path: &str) -> String {
 }
 
 /// Emit `Volume=` lines for podbox-managed shared cache volumes.
-pub(super) fn emit_shared_caches(
-    lines: &mut Vec<String>,
-    caches: &SharedCachesConfig,
-    home: &str,
-) {
+pub(super) fn emit_shared_caches(lines: &mut Vec<String>, caches: &SharedCachesConfig, home: &str) {
     if caches.cargo {
         // Scoped deliberately: ~/.cargo/bin holds binaries built against one
         // distro's libc and must not cross distro boundaries.
@@ -77,11 +73,7 @@ pub(super) fn emit_shared_caches(
 }
 
 /// Emit `Volume=` lines for host bind-mounted caches.
-pub(super) fn emit_host_caches(
-    lines: &mut Vec<String>,
-    caches: &HostCachesConfig,
-    home: &str,
-) {
+pub(super) fn emit_host_caches(lines: &mut Vec<String>, caches: &HostCachesConfig, home: &str) {
     let push = |lines: &mut Vec<String>, host_path: &str, container_path: &str| {
         lines.push(format!(
             "Volume={}:{}:rw,z",
