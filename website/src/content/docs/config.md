@@ -59,6 +59,8 @@ commands = ["dnf clean all"]
 | `shell` | string | `"fish"` | Default login shell inside the container |
 | `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
 | `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Converted to `CpuQuota=` in Quadlet |
+| `slice` | string | `"podbox.slice"` | systemd slice for the container service |
+| `cpu_weight` | integer | `200` | systemd CPU contention weight (1–10000) |
 | `reload_cmd` | string | — | Command run on config reload. Passed as `ReloadCmd=` in Quadlet |
 
 ### `[container.mounts]`
@@ -72,6 +74,7 @@ commands = ["dnf clean all"]
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `*` | string | — | Arbitrary environment variables passed to the container |
+| `forward` | string[] | `[]` | Host variables to forward for `enter`, `exec`, and `run`; supports exact names and `PREFIX_*` patterns |
 
 ```toml
 [container]
@@ -85,7 +88,53 @@ extra = ["~/Projects:/home/user/Projects:z"]
 [container.env]
 EDITOR = "nvim"
 TERM = "xterm-256color"
+forward = ["SSH_AUTH_SOCK", "AWS_*"]
+
+[container.services]
+redis = "redis-server /etc/redis/redis.conf"
+postgres = { command = "postgres -D /home/user/pgdata", restart = "on-failure" }
 ```
+
+Services are launched and supervised by the background guest daemon (the
+container's actual init remains Podman's init process). Short declarations
+restart on failure; detailed declarations accept `restart = "never"`,
+`"on-failure"`, or `"always"`, plus an `env` table. Logs append to
+`/run/podbox/services/<name>.log`. Service process groups do not count as user
+sessions for idle shutdown.
+
+---
+
+## `[dotfiles]`
+
+Optional one-time dotfiles bootstrap during `podbox create`. Host sources are
+copied into the container's isolated home directory; Git sources are cloned on
+the host by default, so host SSH keys and credentials are used without being
+forwarded into the container.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `source` | string | *required* | `host:<path>` to copy a local directory, or a Git URL/reference to clone |
+| `target` | string | `~/.dotfiles` | Destination inside the container home; must stay within that home |
+| `clone_on` | string | `"host"` | Git clone location: `"host"` or `"container"` |
+| `install` | string | — | Shell command run inside the container from `target` after acquisition |
+
+```toml
+[dotfiles]
+source = "host:~/.dotfiles"
+target = "~/.dotfiles"
+install = "./install.sh"
+```
+
+Provisioning runs once during `create`, never during ordinary starts or enters.
+If creation used `--no-start`, or provisioning failed, run
+`podbox dotfiles sync [name]` to acquire/update the source and run the install
+command. `podbox dotfiles status [name]` reports whether files and the
+completion stamp are present. Dotfiles failures during creation are warnings;
+the container remains usable.
+
+The install command receives `PODBOX=1`, `PODBOX_CONTAINER`, `PODBOX_DISTRO`,
+`PODBOX_HOME`, and `PODBOX_DOTFILES_DIR`. `PODBOX_PROFILE` is set when the
+configured image name matches a built-in profile.
 
 ---
 
@@ -125,7 +174,84 @@ cap_add = ["SYS_ADMIN"]
 [network]
 mode = "pasta"
 ports = ["8080:80", "443:443"]
+offline = false
 ```
+
+`offline = true` forces Quadlet `Network=none` while preserving the selected
+`mode` in the definition. Isolation is container-wide; there is no per-exec
+network override.
+
+## `[storage.shared_caches]`
+
+All cache sharing is opt-in. Enabled entries mount persistent named Podman
+volumes using user-namespace ownership mapping (`:U`); removing a container
+does not remove those volumes.
+
+```toml
+[storage.shared_caches]
+cargo = true
+npm = true
+rustup = false
+
+[[storage.shared_caches.custom]]
+name = "models"
+container_path = "~/.cache/models"
+```
+
+Built-in caches: `cargo`, `npm`, `pnpm`, `pip`, `ccache`, `go`, and `rustup`.
+Cargo sharing is limited to `~/.cargo/registry` and `~/.cargo/git`; binaries
+in `~/.cargo/bin` are not shared across distros. `podbox cache prune cargo`
+removes both Cargo volumes. Use `podbox cache list` to see created volumes and
+attachments, and `podbox cache prune NAME` to remove one. `podbox cache prune`
+asks before removing all cache volumes.
+
+Those volumes are shared between podbox containers only — they know nothing
+about caches on the host. To reuse a cache you already keep on the host, use
+`[storage.host_caches]`.
+
+---
+
+## `[storage.host_caches]`
+
+Also opt-in. These bind-mount a directory that already exists on the host, so
+the container reuses the work done outside it. Use this for compiler and build
+caches you maintain on the host; use `shared_caches` when the cache exists only
+to serve containers.
+
+```toml
+[storage.host_caches]
+mbx = true
+
+[[storage.host_caches.custom]]
+name = "zig"
+host_path = "~/.cache/zig"
+container_path = "~/.cache/zig"
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mbx` | bool | `false` | Shares Mr Boxington's store: `~/.cache/mbx` on both sides |
+| `custom[].name` | string | — | Label used in error messages; `mbx` is reserved |
+| `custom[].host_path` | string | — | Path on the host, `~/…` or absolute |
+| `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
+
+Emitted as `Volume=%h/.cache/mbx:/home/%u/.cache/mbx:rw,z`. The host side uses
+`%h` and the container side `/home/%u`, so the mount stays correct when the two
+usernames differ. There is deliberately no `:U` here: a host directory is
+already owned by the host user, and `keep-id` makes that the same UID inside
+the container.
+
+Notes:
+
+- Both sides then share one store, so its size budget and any automatic
+  collection apply to host and container builds together. A container build can
+  evict host cache entries.
+- If the host and the container build the *same* workspace path at the same
+  time, mbx's managed target directories collide. Serialise such builds.
+- A path already claimed by `[container.mounts].extra` is refused: both
+  mechanisms work on their own, but emitting two mounts for one destination
+  would fail inside Podman with an opaque duplicate-mount error. A hand-written
+  `mounts.extra` entry keeps working unchanged.
 
 ---
 
@@ -146,6 +272,7 @@ Controls which host resources are shared with the container.
 | `sync_icons` | bool | `true` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
 | `sync_themes` | bool | `true` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
+| `git_identity` | bool | `true` | Add mounted paths to the container user's Git `safe.directory` and use host Git identity only when container identity is unset |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
@@ -236,6 +363,7 @@ bins = ["rg", "gcc"]
 | `autostart` | bool | `false` | Start container on user login (`WantedBy=default.target`) |
 | `on_stop` | string | `"keep"` | Container behavior on stop (`"keep"` or `"remove"`) |
 | `auto_update` | bool | `false` | Add `Label=io.containers.autoupdate=registry` for auto-updates |
+| `auto_checkpoint` | bool | `false` | Tag the current image as `checkpoint-prev` before update or `build --rebuild`; `podbox rollback` restores that image |
 | `idle_timeout` | string | `"off"` | Idle timeout before guest daemon exits (`"off"`, `"30s"`, `"5m"`, `"1h") |
 
 ```toml
@@ -343,6 +471,25 @@ extra = ["~/Work:/home/user/Work:z"]
 [container.env]
 EDITOR = "nvim"
 TERM = "xterm-256color"
+# forward = ["HTTP_PROXY", "AWS_*"]  # Host vars copied in at exec time
+
+# ── Caches ─────────────────────────────────────────────
+[storage.shared_caches]           # podbox-managed volumes, shared between containers
+cargo  = true
+pip    = false
+rustup = false                    # compiler binaries must not cross libc boundaries
+
+[[storage.shared_caches.custom]]
+name = "models"
+container_path = "~/.cache/models"
+
+[storage.host_caches]             # host directories bind-mounted in
+mbx = false
+
+[[storage.host_caches.custom]]
+name = "zig"
+host_path = "~/.cache/zig"
+container_path = "~/.cache/zig"
 
 # ── Security ───────────────────────────────────────────
 [security]

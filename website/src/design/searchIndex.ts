@@ -233,6 +233,11 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 3
       },
       {
+        "id": "dotfiles",
+        "text": "[dotfiles]",
+        "level": 2
+      },
+      {
         "id": "security",
         "text": "[security]",
         "level": 2
@@ -240,6 +245,16 @@ export const SEARCH_DOCS: SearchDoc[] = [
       {
         "id": "network",
         "text": "[network]",
+        "level": 2
+      },
+      {
+        "id": "storageshared_caches",
+        "text": "[storage.shared_caches]",
+        "level": 2
+      },
+      {
+        "id": "storagehost_caches",
+        "text": "[storage.host_caches]",
         "level": 2
       },
       {
