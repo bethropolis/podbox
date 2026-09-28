@@ -190,7 +190,7 @@ does not remove those volumes.
 ```toml
 [storage.shared_caches]
 cargo = true
-npm = true
+mbx = true
 rustup = false
 
 [[storage.shared_caches.custom]]
@@ -198,28 +198,46 @@ name = "models"
 container_path = "~/.cache/models"
 ```
 
-Built-in caches: `cargo`, `npm`, `pnpm`, `pip`, `ccache`, `go`, and `rustup`.
-Cargo sharing is limited to `~/.cargo/registry` and `~/.cargo/git`; binaries
-in `~/.cargo/bin` are not shared across distros. `podbox cache prune cargo`
-removes both Cargo volumes. Use `podbox cache list` to see created volumes and
-attachments, and `podbox cache prune NAME` to remove one. `podbox cache prune`
-asks before removing all cache volumes.
+| Key | Type | Default | Path shared |
+|-----|------|---------|-------------|
+| `cargo` | bool | `false` | `~/.cargo/registry`, `~/.cargo/git` |
+| `npm` | bool | `false` | `~/.npm` |
+| `pnpm` | bool | `false` | `~/.local/share/pnpm/store` |
+| `pip` | bool | `false` | `~/.cache/pip` |
+| `ccache` | bool | `false` | `~/.cache/ccache` |
+| `go` | bool | `false` | `~/go/pkg/mod` |
+| `rustup` | bool | `false` | `~/.rustup` |
+| `mbx` | bool | `false` | `~/.cache/mbx` |
+| `custom[].name` | string | — | Built-in names are reserved |
+| `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
+
+`cargo` and `rustup` are deliberately scoped: `~/.cargo/bin` and `~/.rustup`
+hold compiler binaries built against one distro's libc, and must not cross
+distro boundaries. `podbox cache prune cargo` removes both Cargo volumes. Use
+`podbox cache list` to see created volumes and attachments, `podbox cache prune
+NAME` to remove one, and `podbox cache prune` to remove all after confirming.
 
 Those volumes are shared between podbox containers only — they know nothing
 about caches on the host. To reuse a cache you already keep on the host, use
-`[storage.host_caches]`.
+`[storage.host_caches]`, which takes the same keys.
 
 ---
 
 ## `[storage.host_caches]`
 
 Also opt-in. These bind-mount a directory that already exists on the host, so
-the container reuses the work done outside it. Use this for compiler and build
-caches you maintain on the host; use `shared_caches` when the cache exists only
-to serve containers.
+the container reuses what the host has already downloaded, built or cached.
+Use this for anything you maintain on the host; use `shared_caches` when the
+cache exists only to serve containers.
+
+Same built-ins as `shared_caches` — `cargo`, `npm`, `pnpm`, `pip`, `ccache`,
+`go`, `rustup`, `mbx` — because a cache is either worth sharing with the host
+or with other containers, and which one should not be a per-tool decision. A
+built-in is the same relative path on both sides.
 
 ```toml
 [storage.host_caches]
+npm = true
 mbx = true
 
 [[storage.host_caches.custom]]
@@ -230,24 +248,30 @@ container_path = "~/.cache/zig"
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mbx` | bool | `false` | Shares Mr Boxington's store: `~/.cache/mbx` on both sides |
-| `custom[].name` | string | — | Label used in error messages; `mbx` is reserved |
+| `cargo` | bool | `false` | `~/.cargo/registry` and `~/.cargo/git` |
+| `npm`, `pnpm`, `pip`, `ccache`, `go`, `rustup`, `mbx` | bool | `false` | That tool's cache; see the table above for paths |
+| `custom[].name` | string | — | Label used in error messages; built-in names are reserved |
 | `custom[].host_path` | string | — | Path on the host, `~/…` or absolute |
 | `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
 
-Emitted as `Volume=%h/.cache/mbx:/home/%u/.cache/mbx:rw,z`. The host side uses
-`%h` and the container side `/home/%u`, so the mount stays correct when the two
-usernames differ. There is deliberately no `:U` here: a host directory is
-already owned by the host user, and `keep-id` makes that the same UID inside
-the container.
+`custom` is the general form: any directory on the host, mounted at any path in
+the container. A Zig cache, a model directory, a download folder — whatever you
+already maintain on the host and would rather not warm twice.
+
+Each entry is emitted as `Volume=%h/.cache/zig:/home/%u/.cache/zig:rw,z`: `%h`
+for the host and `/home/%u` for the container, so the mount stays correct when
+the two usernames differ. There is deliberately no `:U` here, unlike
+`shared_caches`: a host directory is already owned by the host user, and
+`keep-id` makes that the same UID inside the container.
 
 Notes:
 
-- Both sides then share one store, so its size budget and any automatic
-  collection apply to host and container builds together. A container build can
-  evict host cache entries.
-- If the host and the container build the *same* workspace path at the same
-  time, mbx's managed target directories collide. Serialise such builds.
+- Host and container write to one directory, so any size budget or automatic
+  collection on that store applies to both. A container can evict host entries.
+- Sharing a cache is safe; sharing a build state directory is not. If both
+  sides build the same workspace path simultaneously, the tool that manages
+  target directories — cargo, mbx, whatever it is — will collide. Serialise
+  such builds.
 - A path already claimed by `[container.mounts].extra` is refused: both
   mechanisms work on their own, but emitting two mounts for one destination
   would fail inside Podman with an opaque duplicate-mount error. A hand-written
@@ -474,17 +498,18 @@ TERM = "xterm-256color"
 # forward = ["HTTP_PROXY", "AWS_*"]  # Host vars copied in at exec time
 
 # ── Caches ─────────────────────────────────────────────
-[storage.shared_caches]           # podbox-managed volumes, shared between containers
+# Both opt-in, same keys, different sources:
+#   shared_caches → podbox volumes, shared between podbox containers
+#   host_caches   → a directory you already keep on the host, bind-mounted in
+# rustup and the ~/.cargo/bin half of cargo hold libc-bound binaries and are
+# never shared.
+[storage.shared_caches]
 cargo  = true
-pip    = false
-rustup = false                    # compiler binaries must not cross libc boundaries
+npm    = true
+mbx    = false
 
-[[storage.shared_caches.custom]]
-name = "models"
-container_path = "~/.cache/models"
-
-[storage.host_caches]             # host directories bind-mounted in
-mbx = false
+[storage.host_caches]
+mbx = false                       # ~/.cache/mbx on both sides
 
 [[storage.host_caches.custom]]
 name = "zig"
