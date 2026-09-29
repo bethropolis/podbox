@@ -12,6 +12,10 @@ use crate::config::Config;
 pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
     let mut lines: Vec<String> = Vec::new();
 
+    lines.push("[Quadlet]".into());
+    lines.push("DefaultDependencies=false".into());
+    lines.push(String::new());
+
     lines.push("[Build]".into());
     lines.push(format!(
         "ImageTag=localhost/podbox-{}:latest",

@@ -15,6 +15,24 @@ fn quadlet_container_has_userns_custom() {
     assert!(q.contains("UserNS=nomap"));
 }
 #[test]
+fn quadlet_disables_podman_default_network_dependency() {
+    let config = load_config("minimal.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("[Quadlet]\nDefaultDependencies=false"));
+    let quadlet_at = q.find("[Quadlet]").expect("quadlet group");
+    let unit_at = q.find("[Unit]").expect("unit group");
+    assert!(quadlet_at < unit_at, "[Quadlet] must precede [Unit]");
+
+    let build = quadlet::generate_build(&config, std::path::Path::new("/tmp/Containerfile"));
+    assert!(build.starts_with("[Quadlet]\nDefaultDependencies=false\n"));
+    let build_group = build.find("[Build]").expect("build group");
+    let quadlet_group = build.find("[Quadlet]").expect("quadlet group");
+    assert!(
+        quadlet_group < build_group,
+        "[Quadlet] must precede [Build]"
+    );
+}
+#[test]
 fn quadlet_container_userns_defaults_to_keep_id() {
     let config = load_config("minimal.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());

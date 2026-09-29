@@ -18,6 +18,12 @@ fn escape_systemd_specifiers(value: &str) -> String {
     value.replace('%', "%%")
 }
 
+pub(super) fn emit_quadlet(lines: &mut Vec<String>) {
+    lines.push("[Quadlet]".into());
+    lines.push("DefaultDependencies=false".into());
+    lines.push(String::new());
+}
+
 pub(super) fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
     lines.push("[Unit]".into());
     lines.push(format!("Description=podbox -- {name}"));

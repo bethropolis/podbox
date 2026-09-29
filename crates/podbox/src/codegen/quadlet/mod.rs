@@ -27,6 +27,7 @@ pub fn generate_container(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs)
     let home_in_container = "/home/%u";
     let mut lines: Vec<String> = Vec::new();
 
+    container::emit_quadlet(&mut lines);
     container::emit_unit(&mut lines, config, name);
     container::emit_container_image(&mut lines, config, name, home_in_container, env);
     container::emit_network(&mut lines, config);
