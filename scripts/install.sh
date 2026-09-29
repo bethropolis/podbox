@@ -155,6 +155,50 @@ if $SYSTEM; then
 fi
 
 # ── Build ─────────────────────────────────────────────────
+# The guest daemon is embedded into the podbox binary at compile time. Which
+# flavour gets embedded is decided by crates/podbox/build.rs, which picks the
+# musl target *only if it is already installed* and otherwise falls back to a
+# dynamic glibc build without saying much beyond one cargo warning. A dynamic
+# guest will not run in musl containers without gcompat, so install the target
+# first and let build.rs find it.
+musl_target_for_arch() {
+  case "$(uname -m)" in
+    x86_64)  printf 'x86_64-unknown-linux-musl\n' ;;
+    aarch64) printf 'aarch64-unknown-linux-musl\n' ;;
+    *)       printf '\n' ;;
+  esac
+}
+
+ensure_musl_target() {
+  local target
+  target="$(musl_target_for_arch)"
+
+  if [ -z "$target" ]; then
+    warn "unknown arch ${DIM}($(uname -m))${RST} — cannot pre-install a musl target"
+    warn "the embedded guest may be dynamic; musl containers will need gcompat"
+    return 0
+  fi
+
+  if ! command -v rustup &>/dev/null; then
+    warn "rustup not found — cannot install ${DIM}${target}${RST}"
+    warn "the embedded guest will be dynamic; musl containers will need gcompat"
+    return 0
+  fi
+
+  if rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+    ok "musl target ${DIM}${target}${RST} already installed"
+    return 0
+  fi
+
+  printf "     ${GRAY}rustup target add ${target}${RST}\n"
+  if rustup target add "$target" &>/dev/null; then
+    ok "musl target ${DIM}${target}${RST}"
+  else
+    warn "could not install ${DIM}${target}${RST} — continuing"
+    warn "the embedded guest will be dynamic; musl containers will need gcompat"
+  fi
+}
+
 build_binaries() {
   if [ -n "${PODBOX_SKIP_BUILD:-}" ]; then
     info "Skipping build ${DIM}(PODBOX_SKIP_BUILD is set)${RST}"
@@ -163,14 +207,29 @@ build_binaries() {
 
   step "Building podbox"
 
+  ensure_musl_target
+
+  BUILD_LOG="$(mktemp)"
+  # shellcheck disable=SC2064
+  trap "rm -f '$BUILD_LOG'" RETURN
+
   printf "     ${GRAY}cargo build --release -p podbox-cli${RST}\n"
-  if cargo build --release -p podbox-cli 2>&1 | \
+  # Keep the full output: build.rs reports whether the embedded guest ended up
+  # static or dynamic in a cargo warning, and that is the only signal that the
+  # guest will work in a musl container.
+  if cargo build --release -p podbox-cli 2>&1 | tee "$BUILD_LOG" | \
       grep -E "^(error|warning\[)" | \
       while IFS= read -r line; do detail "$line"; done; [ "${PIPESTATUS[0]}" -eq 0 ]; then
     ok "podbox"
   else
-    cargo build --release -p podbox-cli || die "podbox build failed"
+    cargo build --release -p podbox-cli 2>&1 | tee "$BUILD_LOG" || die "podbox build failed"
     ok "podbox"
+  fi
+
+  if grep -q 'podbox-guest binary built (musl / static)' "$BUILD_LOG"; then
+    ok "embedded guest ${DIM}(musl / static)${RST}"
+  elif grep -q 'podbox-guest binary built (dynamic)' "$BUILD_LOG"; then
+    warn "embedded guest is ${DIM}dynamic${RST} — Alpine containers will need gcompat"
   fi
 }
 
