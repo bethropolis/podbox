@@ -72,11 +72,23 @@ redis = "redis-server"
 postgres = { command = "postgres", restart = "always", env = { PGDATA = "/data" } }
 [storage.shared_caches]
 cargo = true
+uv = true
+yarn = true
+bun = true
+composer = true
+maven = true
+gradle = true
 "#,
     )
     .unwrap();
     assert!(cfg.storage.shared_caches.builtins.cargo);
+    assert!(cfg.storage.shared_caches.builtins.uv);
+    assert!(cfg.storage.shared_caches.builtins.yarn);
+    assert!(cfg.storage.shared_caches.builtins.bun);
+    assert!(cfg.storage.shared_caches.builtins.composer);
     assert!(!cfg.storage.shared_caches.builtins.npm);
+    assert!(cfg.storage.shared_caches.builtins.maven);
+    assert!(cfg.storage.shared_caches.builtins.gradle);
     assert_eq!(cfg.container.services.len(), 2);
 }
 

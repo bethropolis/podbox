@@ -130,22 +130,27 @@ pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool) -> Result<()> {
                     anyhow::bail!("invalid cache name '{name}'");
                 }
                 let existing = volume_names()?;
-                let requested = if name == "cargo" {
-                    // Include the old whole-`~/.cargo` volume so users can
-                    // explicitly clean it up after upgrading to scoped mounts.
-                    ["cargo", "cargo-registry", "cargo-git"]
-                        .into_iter()
-                        .map(|suffix| format!("{PREFIX}{suffix}"))
-                        .filter(|volume| existing.contains(volume))
-                        .collect::<Vec<_>>()
-                } else {
-                    let volume = format!("{PREFIX}{name}");
-                    existing
-                        .contains(&volume)
-                        .then_some(volume)
-                        .into_iter()
-                        .collect()
-                };
+                let requested =
+                    if let Some(mount_names) = podbox::config::builtin_cache_mount_names(name) {
+                        let mut names = mount_names;
+                        // Include the old whole-`~/.cargo` volume so users can
+                        // explicitly clean it up after upgrading to scoped mounts.
+                        if name == "cargo" {
+                            names.push("cargo");
+                        }
+                        names
+                            .into_iter()
+                            .map(|mount| format!("{PREFIX}{mount}"))
+                            .filter(|volume| existing.contains(volume))
+                            .collect::<Vec<_>>()
+                    } else {
+                        let volume = format!("{PREFIX}{name}");
+                        existing
+                            .contains(&volume)
+                            .then_some(volume)
+                            .into_iter()
+                            .collect()
+                    };
                 if requested.is_empty() {
                     anyhow::bail!("shared cache '{name}' does not exist");
                 }

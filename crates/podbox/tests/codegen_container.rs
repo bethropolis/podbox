@@ -278,6 +278,12 @@ fn both_cache_mechanisms_offer_every_builtin() {
         npm: true,
         pnpm: true,
         pip: true,
+        uv: true,
+        yarn: true,
+        bun: true,
+        composer: true,
+        maven: true,
+        gradle: true,
         ccache: true,
         go: true,
         rustup: true,
@@ -292,6 +298,13 @@ fn both_cache_mechanisms_offer_every_builtin() {
         "/home/%u/.npm",
         "/home/%u/.local/share/pnpm/store",
         "/home/%u/.cache/pip",
+        "/home/%u/.cache/uv",
+        "/home/%u/.cache/yarn",
+        "/home/%u/.yarn/berry/cache",
+        "/home/%u/.bun/install/cache",
+        "/home/%u/.cache/composer",
+        "/home/%u/.m2/repository",
+        "/home/%u/.gradle/caches",
         "/home/%u/.cache/ccache",
         "/home/%u/go/pkg/mod",
         "/home/%u/.rustup",
@@ -307,11 +320,16 @@ fn both_cache_mechanisms_offer_every_builtin() {
     assert!(q.contains("Volume=podbox-cache-cargo-registry:/home/%u/.cargo/registry:U"));
     assert!(q.contains("Volume=podbox-cache-cargo-git:/home/%u/.cargo/git:U"));
     assert!(!q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
+    assert!(q.contains("Volume=podbox-cache-yarn-classic-cache:/home/%u/.cache/yarn:U"));
+    assert!(q.contains("Volume=podbox-cache-yarn-berry-cache:/home/%u/.yarn/berry/cache:U"));
     assert!(q.contains("Volume=%h/.cargo/registry:/home/%u/.cargo/registry:rw,z"));
     assert!(q.contains("Volume=%h/.cargo/git:/home/%u/.cargo/git:rw,z"));
 
     // Every shared built-in got a volume, keyed by cache name.
-    for name in ["npm", "pnpm", "pip", "ccache", "go", "rustup", "mbx"] {
+    for name in [
+        "npm", "pnpm", "pip", "uv", "bun", "composer", "maven", "gradle", "ccache", "go", "rustup",
+        "mbx",
+    ] {
         assert!(
             q.contains(&format!("Volume=podbox-cache-{name}:")),
             "shared volume missing for {name}"
@@ -338,6 +356,12 @@ fn every_builtin_can_be_enabled_at_once() {
         npm: true,
         pnpm: true,
         pip: true,
+        uv: true,
+        yarn: true,
+        bun: true,
+        composer: true,
+        maven: true,
+        gradle: true,
         ccache: true,
         go: true,
         rustup: true,

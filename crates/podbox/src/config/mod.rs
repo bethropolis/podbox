@@ -27,5 +27,5 @@ pub use types::{
     LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, RunConfig, SecretEntry,
     SecretSource, SecretType, SecurityConfig, ServiceConfig, ServiceDetailConfig,
     SharedCachesConfig, StorageConfig, SystemdConfig, WaylandConfig, XdgDirConfig,
-    builtin_cache_names,
+    builtin_cache_mount_names, builtin_cache_names,
 };

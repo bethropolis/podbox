@@ -24,19 +24,37 @@ use crate::config::defaults::is_false;
 
 /// Every built-in cache and the paths it occupies in the container home.
 ///
-/// A cache with more than one path is split across several mounts, which is
-/// why `cargo` appears twice in the expansion: `~/.cargo/bin` holds binaries
-/// built against one distro's libc and must not cross distro boundaries.
-pub const BUILTIN_CACHES: &[(&str, &[&str])] = &[
-    ("cargo", &["~/.cargo/registry", "~/.cargo/git"]),
-    ("npm", &["~/.npm"]),
-    ("pnpm", &["~/.local/share/pnpm/store"]),
-    ("pip", &["~/.cache/pip"]),
-    ("ccache", &["~/.cache/ccache"]),
-    ("go", &["~/go/pkg/mod"]),
+/// Caches with multiple historical defaults are split across mounts (Cargo's
+/// registries/git and Yarn Classic/Berry's distinct cache roots).
+pub const BUILTIN_CACHES: &[(&str, &[(&str, &str)])] = &[
+    (
+        "cargo",
+        &[
+            ("cargo-registry", "~/.cargo/registry"),
+            ("cargo-git", "~/.cargo/git"),
+        ],
+    ),
+    ("npm", &[("npm", "~/.npm")]),
+    ("pnpm", &[("pnpm", "~/.local/share/pnpm/store")]),
+    ("pip", &[("pip", "~/.cache/pip")]),
+    ("uv", &[("uv", "~/.cache/uv")]),
+    // Yarn Classic and Berry use different default cache roots.
+    (
+        "yarn",
+        &[
+            ("yarn-classic-cache", "~/.cache/yarn"),
+            ("yarn-berry-cache", "~/.yarn/berry/cache"),
+        ],
+    ),
+    ("bun", &[("bun", "~/.bun/install/cache")]),
+    ("composer", &[("composer", "~/.cache/composer")]),
+    ("maven", &[("maven", "~/.m2/repository")]),
+    ("gradle", &[("gradle", "~/.gradle/caches")]),
+    ("ccache", &[("ccache", "~/.cache/ccache")]),
+    ("go", &[("go", "~/go/pkg/mod")]),
     // Compiler binaries, same reasoning as `~/.cargo/bin`.
-    ("rustup", &["~/.rustup"]),
-    ("mbx", &["~/.cache/mbx"]),
+    ("rustup", &[("rustup", "~/.rustup")]),
+    ("mbx", &[("mbx", "~/.cache/mbx")]),
 ];
 
 /// One mount belonging to a built-in cache.
@@ -55,21 +73,14 @@ pub struct BuiltinCachePath {
 fn all_builtin_paths() -> Vec<BuiltinCachePath> {
     BUILTIN_CACHES
         .iter()
-        .flat_map(|(cache, paths)| {
-            let multi = paths.len() > 1;
-            paths.iter().map(move |path| BuiltinCachePath {
-                cache,
-                mount: if multi {
-                    match *path {
-                        "~/.cargo/registry" => "cargo-registry",
-                        "~/.cargo/git" => "cargo-git",
-                        _ => cache,
-                    }
-                } else {
-                    cache
-                },
-                container_path: path,
-            })
+        .flat_map(|(cache, mounts)| {
+            mounts
+                .iter()
+                .map(move |(mount, container_path)| BuiltinCachePath {
+                    cache,
+                    mount,
+                    container_path,
+                })
         })
         .collect()
 }
@@ -88,6 +99,18 @@ pub struct BuiltinCaches {
     pub pnpm: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub pip: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub uv: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub yarn: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bun: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub composer: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub maven: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub gradle: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub ccache: bool,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -113,6 +136,12 @@ impl BuiltinCaches {
             "npm" => self.npm,
             "pnpm" => self.pnpm,
             "pip" => self.pip,
+            "uv" => self.uv,
+            "yarn" => self.yarn,
+            "bun" => self.bun,
+            "composer" => self.composer,
+            "maven" => self.maven,
+            "gradle" => self.gradle,
             "ccache" => self.ccache,
             "go" => self.go,
             "rustup" => self.rustup,
@@ -128,7 +157,38 @@ impl BuiltinCaches {
 
 /// Names a `custom` entry may not use, because it would shadow a built-in.
 pub fn builtin_cache_names() -> impl Iterator<Item = &'static str> {
-    BUILTIN_CACHES.iter().map(|(name, _)| *name)
+    BUILTIN_CACHES.iter().flat_map(|(name, mounts)| {
+        std::iter::once(*name).chain(mounts.iter().map(|(mount, _)| *mount))
+    })
+}
+
+/// Volume names used by a built-in cache, for grouped pruning.
+pub fn builtin_cache_mount_names(cache: &str) -> Option<Vec<&'static str>> {
+    let paths = all_builtin_paths();
+    let mounts: Vec<_> = paths
+        .iter()
+        .filter(|path| path.cache == cache)
+        .map(|path| path.mount)
+        .collect();
+    (!mounts.is_empty()).then_some(mounts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::builtin_cache_mount_names;
+
+    #[test]
+    fn multi_path_cache_volumes_keep_stable_distinct_names() {
+        assert_eq!(
+            builtin_cache_mount_names("yarn"),
+            Some(vec!["yarn-classic-cache", "yarn-berry-cache"])
+        );
+        assert_eq!(
+            builtin_cache_mount_names("cargo"),
+            Some(vec!["cargo-registry", "cargo-git"])
+        );
+        assert_eq!(builtin_cache_mount_names("not-a-cache"), None);
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

@@ -256,6 +256,18 @@ home = "~/containers/env"
     }
 
     #[test]
+    fn generated_builtin_mount_names_cannot_be_shadowed_by_custom_volumes() {
+        let mut config = base();
+        config.storage.shared_caches.custom.push(CustomCacheConfig {
+            name: "yarn-berry-cache".into(),
+            container_path: "~/.cache/custom".into(),
+        });
+        let errors = validate_caches(&config);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("reserved for a built-in cache"));
+    }
+
+    #[test]
     fn duplicate_names_within_a_cache_kind_are_rejected() {
         let mut config = base();
         config.storage.host_caches.custom.push(HostCacheConfig {
