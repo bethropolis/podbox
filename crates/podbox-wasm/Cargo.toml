@@ -1,0 +1,33 @@
+[package]
+name = "podbox-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "WebAssembly bindings exposing podbox config validation and Quadlet codegen to the website Studio."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "podbox_wasm"
+
+[dependencies]
+wasm-bindgen       = "0.2"
+serde-wasm-bindgen = "0.6"
+anyhow             = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+
+# The pure core only: no Linux CLI dependencies.
+podbox = { package = "podbox-cli", path = "../podbox", version = "0.8", default-features = false }
+
+[lints]
+workspace = true
+
+# wasm-pack's bundled wasm-opt predates rustc's bulk-memory output and fails
+# validation; scripts/build-wasm.sh runs a system wasm-opt instead when
+# available (otherwise the unoptimized binary is used as-is).
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

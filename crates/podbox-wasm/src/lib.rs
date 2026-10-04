@@ -1,0 +1,120 @@
+//! `podbox-wasm` — WebAssembly bindings for the website Studio.
+//!
+//! Exposes the exact CLI validation rules (`Config::parse`) and Quadlet
+//! codegen (`codegen::quadlet`) to JavaScript, evaluated against a
+//! deterministic mock host ([`HostEnv::mock_preview`]) so Studio previews
+//! match `podbox enable` output for the same TOML.
+//!
+//! Nothing on this path may print (`println!`/`eprintln!` panic on
+//! `wasm32-unknown-unknown`); diagnostics travel through return values.
+
+use serde::Serialize;
+use wasm_bindgen::prelude::*;
+
+use podbox::config::Config;
+use podbox::env::HostEnv;
+use podbox::error::PodboxError;
+use podbox::xdg::ResolvedXdgDirs;
+
+#[derive(Serialize)]
+pub struct ValidationResponse {
+    pub valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct CompileResponse {
+    pub container: String,
+    pub socket: String,
+    pub build: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+/// Split an `anyhow` parse error into Studio-ready issue strings.
+///
+/// Schema violations arrive as `ConfigValidationFailed { details }` with
+/// items joined by `"\n  - "`; everything else (TOML syntax errors, missing
+/// fields) is a single message.
+fn validation_errors(err: &anyhow::Error) -> Vec<String> {
+    if let Some(PodboxError::ConfigValidationFailed { details }) = err.downcast_ref::<PodboxError>()
+    {
+        details
+            .split("\n  - ")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    } else {
+        // `{:#}` renders the full anyhow chain ("failed to parse definition
+        // file: TOML parse error at line 1, column 9"); `{}` would show only
+        // the outermost context.
+        vec![format!("{err:#}")]
+    }
+}
+
+/// Validate a TOML definition string with the exact CLI rules.
+#[wasm_bindgen]
+pub fn validate_toml(toml_str: &str) -> JsValue {
+    let response = match Config::parse_with_warnings(toml_str) {
+        Ok((_, warnings)) => ValidationResponse {
+            valid: true,
+            errors: Vec::new(),
+            warnings,
+        },
+        Err(err) => ValidationResponse {
+            valid: false,
+            errors: validation_errors(&err),
+            warnings: Vec::new(),
+        },
+    };
+    serde_wasm_bindgen::to_value(&response).unwrap_or(JsValue::NULL)
+}
+
+/// Generate the systemd Quadlet units for a TOML definition string.
+///
+/// Uses the deterministic mock host, so output matches what
+/// `podbox enable` would emit on a fully-integrated desktop. Returns an
+/// `Err` when the TOML is invalid — call `validate_toml` first for
+/// structured issues.
+#[wasm_bindgen]
+pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
+    let (config, mut warnings) =
+        Config::parse_with_warnings(toml_str).map_err(|e| JsError::new(&format!("{e:#}")))?;
+    let env = HostEnv::mock_preview();
+    let xdg = ResolvedXdgDirs::mock_preview();
+
+    let (container, codegen_warnings) =
+        podbox::codegen::quadlet::generate_container_with_warnings(&config, &env, &xdg);
+    warnings.extend(codegen_warnings);
+    let socket = podbox::codegen::quadlet::generate_socket(&config);
+    let build = if config.image.image_ref.is_none() {
+        // Mirror the CLI `File=` path for the mock home (/home/user).
+        let containerfile = env
+            .home_dir
+            .join(".local/share/podbox")
+            .join(&config.container.name)
+            .join("Containerfile");
+        Some(podbox::codegen::quadlet::generate_build(
+            &config,
+            &containerfile,
+        ))
+    } else {
+        None
+    };
+
+    let response = CompileResponse {
+        container,
+        socket,
+        build,
+        warnings,
+    };
+    Ok(serde_wasm_bindgen::to_value(&response).unwrap_or(JsValue::NULL))
+}
+
+/// Parse a TOML definition into a plain JS object for Studio state import.
+#[wasm_bindgen]
+pub fn parse_toml_to_json(toml_str: &str) -> Result<JsValue, JsError> {
+    let config = Config::parse(toml_str).map_err(|e| JsError::new(&format!("{e:#}")))?;
+    Ok(serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::NULL))
+}
