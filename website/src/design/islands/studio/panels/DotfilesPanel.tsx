@@ -7,6 +7,7 @@ import {
   StudioSelect,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { DOTFILES_CLONE_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type DotfilesPanelProps = Pick<StudioState, 'dotfilesCloneOn' | 'dotfilesInstall' | 'dotfilesSource' | 'dotfilesTarget' | 'setDotfilesCloneOn' | 'setDotfilesInstall' | 'setDotfilesSource' | 'setDotfilesTarget'>;
@@ -24,7 +25,8 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Provision the container home from a dotfiles repo. Empty source disables provisioning entirely.
+      Populate the container home with your dotfiles from a directory on the host or a git URL.
+      Empty source skips this entirely.
     </p>
   </div>
 
@@ -34,8 +36,9 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
         <span>Source</span>
         <StudioTooltip
           section="[dotfiles]"
-          title="source = &quot;host:~/.dotfiles&quot;"
-          description="Dotfiles origin: host:~/path for a host directory, or an https git URL cloned on first start."
+          title='source = "host:~/.dotfiles"'
+          description="Where the files come from. A host: directory is copied into your container home, the same place the container's own files live; an https:// git URL is cloned there instead. Either way you end up with real files inside the container — it is a copy, not a live mount, so host edits show up on the next podbox dotfiles sync."
+          quadlet="Volume=%h/containers/dev/.dotfiles:/home/user/.dotfiles"
         />
       </div>
     }
@@ -53,8 +56,8 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
           <span>Target</span>
           <StudioTooltip
             section="[dotfiles]"
-            title="target = &quot;~/.dotfiles&quot;"
-            description="Checkout location inside the container home. Defaults to ~/.dotfiles when empty."
+            title='target = "~/.dotfiles"'
+            description="Where the files land inside the container home, which on the host is ~/containers/<name>. Must stay inside that home. Defaults to ~/.dotfiles — point it elsewhere if your setup expects stow or chezmoi to own a specific layout."
           />
         </div>
       }
@@ -71,17 +74,14 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
           <span>Clone Location</span>
           <StudioTooltip
             section="[dotfiles]"
-            title="clone_on = &quot;host&quot;"
-            description="Clone on the host (shared across rebuilds) or inside the container (isolated per image build)."
+            title='clone_on = "host"'
+            description="Where a git source gets cloned. On the host, podbox runs git itself, so your SSH agent, credential helpers and ~/.gitconfig are already in play — private repos clone without putting a key in the image, and the checkout is cached and reused. Inside the container the clone happens in the image instead, which leaves the host untouched but needs its own credentials. Ignored for host: sources, which are always copied from the host."
           />
         </div>
       }
       value={dotfilesCloneOn}
       onChange={setDotfilesCloneOn}
-      options={[
-        { value: 'host', label: 'host (shared, cached)' },
-        { value: 'container', label: 'container (isolated)' },
-      ]}
+      options={DOTFILES_CLONE_OPTIONS}
       error={err('dotfiles.clone_on')}
     />
   </div>
@@ -92,8 +92,8 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
         <span>Install Command</span>
         <StudioTooltip
           section="[dotfiles]"
-          title="install = &quot;./install.sh&quot;"
-          description="Optional command run inside the container after checkout (e.g. stow, chezmoi apply)."
+          title='install = "./install.sh"'
+          description="Run once inside the container after the files land, from the target directory. This is where stow, chezmoi apply, or your own install.sh goes. It gets PODBOX_DOTFILES_DIR and friends as environment variables. Leave empty if the files are already usable as-is."
         />
       </div>
     }

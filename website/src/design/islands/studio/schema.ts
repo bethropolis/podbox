@@ -13,7 +13,14 @@ import type { EnvVarItem, HostExecItem, MountItem, ServiceItem } from './types';
 
 // ── scalar field kinds ────────────────────────────────────────────────────
 
-export type FieldKind = 'string' | 'number' | 'boolean' | 'select' | 'string-list';
+export type FieldKind = 'string' | 'number' | 'boolean' | 'select' | 'string-list' | 'xdg-dir';
+
+/**
+ * `[integration.xdg_dirs]` is three-state, not boolean: the engine accepts
+ * either a plain `true` (read-only mount) or the detailed table form, and only
+ * the latter can ask for a writable bind.
+ */
+export type XdgDirMode = 'off' | 'ro' | 'rw';
 
 /** When a scalar field is written to TOML. */
 export type EmitMode =
@@ -39,18 +46,44 @@ export interface SelectOption {
   value: string;
   label: string;
   sublabel?: string;
+  /** Renders under an `<optgroup>`; options without one stay flat. */
+  group?: string;
 }
 
 // ── select options (mirrors Rust enums) ───────────────────────────────────
 
+// Tier-1 upstream images, grouped by family. Kept current on purpose:
+// Fedora 44 is stable, 45 is still in beta, and the rolling/testing entries
+// are opt-in for people who want them.
 export const IMAGE_PRESET_OPTIONS: SelectOption[] = [
-  { value: 'fedora:44', label: 'Fedora 44 Rawhide', sublabel: 'Recommended' },
-  { value: 'fedora:43', label: 'Fedora 43' },
-  { value: 'fedora:42', label: 'Fedora 42' },
-  { value: 'archlinux:latest', label: 'Arch Linux', sublabel: 'Rolling' },
-  { value: 'ubuntu:24.04', label: 'Ubuntu 24.04 LTS (Noble)' },
-  { value: 'debian:bookworm', label: 'Debian 12 (Bookworm)' },
-  { value: 'alpine:3.20', label: 'Alpine 3.20', sublabel: 'musl/minimal' },
+  { value: 'fedora:44', label: 'Fedora 44', sublabel: 'stable · recommended', group: 'Fedora' },
+  { value: 'fedora:45', label: 'Fedora 45', sublabel: 'beta', group: 'Fedora' },
+  { value: 'fedora:rawhide', label: 'Fedora Rawhide', sublabel: 'unstable', group: 'Fedora' },
+  { value: 'archlinux:latest', label: 'Arch Linux', sublabel: 'rolling', group: 'Arch' },
+  { value: 'cachyos/cachyos:latest', label: 'CachyOS', sublabel: 'rolling · perf', group: 'Arch' },
+  { value: 'ubuntu:26.04', label: 'Ubuntu 26.04 LTS', group: 'Ubuntu' },
+  { value: 'ubuntu:24.04', label: 'Ubuntu 24.04 LTS', group: 'Ubuntu' },
+  { value: 'debian:trixie', label: 'Debian 13 (trixie)', sublabel: 'stable', group: 'Debian' },
+  { value: 'debian:testing', label: 'Debian testing', sublabel: 'unstable', group: 'Debian' },
+  { value: 'alpine:3.24', label: 'Alpine 3.24', sublabel: 'musl · minimal', group: 'Alpine' },
+  { value: 'registry.opensuse.org/opensuse/tumbleweed:latest', label: 'openSUSE Tumbleweed', sublabel: 'rolling', group: 'openSUSE' },
+];
+
+export const DOTFILES_CLONE_OPTIONS: SelectOption[] = [
+  { value: 'host', label: 'host', sublabel: 'clones with host git' },
+  { value: 'container', label: 'container', sublabel: 'clones inside the image' },
+];
+
+// Suggestions for [integration.host_exec.allowlist]. The browser cannot ask
+// the host what is installed, so these are the commands worth reaching for
+// often enough to be one click away; any absolute path still works.
+export const HOST_EXEC_SUGGESTIONS: { alias: string; path: string }[] = [
+  { alias: 'podbox', path: '/usr/local/bin/podbox' },
+  { alias: 'git', path: '/usr/bin/git' },
+  { alias: 'gh', path: '/usr/bin/gh' },
+  { alias: 'podman', path: '/usr/bin/podman' },
+  { alias: 'docker', path: '/usr/bin/docker' },
+  { alias: 'rsync', path: '/usr/bin/rsync' },
 ];
 
 export const SHELL_OPTIONS: SelectOption[] = [
@@ -256,13 +289,13 @@ export interface StudioDefaults {
   intGpgAgent: boolean;
   hostExecEnabled: boolean;
   hostExecList: HostExecItem[];
-  xdgDocuments: boolean;
-  xdgDownloads: boolean;
-  xdgPictures: boolean;
-  xdgMusic: boolean;
-  xdgVideos: boolean;
-  xdgDesktop: boolean;
-  xdgProjects: boolean;
+  xdgDocuments: XdgDirMode;
+  xdgDownloads: XdgDirMode;
+  xdgPictures: XdgDirMode;
+  xdgMusic: XdgDirMode;
+  xdgVideos: XdgDirMode;
+  xdgDesktop: XdgDirMode;
+  xdgProjects: XdgDirMode;
   exportAppsList: string[];
   exportBinsList: string[];
   lifeQuadlet: boolean;
@@ -317,7 +350,9 @@ export const STUDIO_DEFAULTS: StudioDefaults = {
   containerSlice: 'podbox.slice',
   containerCpuWeight: 200,
   containerReloadCmd: '',
-  extraMounts: [],
+  // One empty row so the host/guest pairing is discoverable; the emitter drops
+// rows with a blank side, so the placeholder never becomes a real mount.
+extraMounts: [{ host: '', guest: '', mode: 'z' }],
   envVars: [],
   services: [],
   // [security]
@@ -349,13 +384,13 @@ export const STUDIO_DEFAULTS: StudioDefaults = {
   intGpgAgent: false,
   hostExecEnabled: false,
   hostExecList: [],
-  xdgDocuments: false,
-  xdgDownloads: false,
-  xdgPictures: false,
-  xdgMusic: false,
-  xdgVideos: false,
-  xdgDesktop: false,
-  xdgProjects: false,
+  xdgDocuments: 'off',
+  xdgDownloads: 'off',
+  xdgPictures: 'off',
+  xdgMusic: 'off',
+  xdgVideos: 'off',
+  xdgDesktop: 'off',
+  xdgProjects: 'off',
   exportAppsList: [],
   exportBinsList: [],
   // [lifecycle]
@@ -432,13 +467,13 @@ export const FIELDS: FieldDef[] = [
   { stateKey: 'intSshAgent', tomlPath: 'integration.ssh_agent', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intGpgAgent', tomlPath: 'integration.gpg_agent', kind: 'boolean', def: false, emit: 'is-true' },
   // [integration.xdg_dirs]
-  { stateKey: 'xdgDocuments', tomlPath: 'integration.xdg_dirs.documents', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'xdgDownloads', tomlPath: 'integration.xdg_dirs.downloads', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'xdgPictures', tomlPath: 'integration.xdg_dirs.pictures', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'xdgMusic', tomlPath: 'integration.xdg_dirs.music', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'xdgVideos', tomlPath: 'integration.xdg_dirs.videos', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'xdgDesktop', tomlPath: 'integration.xdg_dirs.desktop', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'xdgProjects', tomlPath: 'integration.xdg_dirs.projects', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'xdgDocuments', tomlPath: 'integration.xdg_dirs.documents', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgDownloads', tomlPath: 'integration.xdg_dirs.downloads', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgPictures', tomlPath: 'integration.xdg_dirs.pictures', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgMusic', tomlPath: 'integration.xdg_dirs.music', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgVideos', tomlPath: 'integration.xdg_dirs.videos', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgDesktop', tomlPath: 'integration.xdg_dirs.desktop', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgProjects', tomlPath: 'integration.xdg_dirs.projects', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
   // [integration.export]
   { stateKey: 'exportAppsList', tomlPath: 'integration.export.apps', kind: 'string-list', def: [], emit: 'non-empty' },
   { stateKey: 'exportBinsList', tomlPath: 'integration.export.bins', kind: 'string-list', def: [], emit: 'non-empty' },
@@ -488,6 +523,11 @@ export function formatScalar(kind: FieldKind, value: unknown): string {
   if (kind === 'string-list') {
     return `[${((value as string[]) ?? []).map((e) => `"${e}"`).join(', ')}]`;
   }
+  if (kind === 'xdg-dir') {
+    // `true` is the read-only shorthand; the table form is the only way to ask
+    // for a writable bind (see `emit_xdg_dir` in the Rust codegen).
+    return value === 'rw' ? '{ enabled = true, read_write = true }' : 'true';
+  }
   if (kind === 'boolean' || kind === 'number') return String(value);
   return `"${value}"`;
 }
@@ -507,6 +547,16 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : und
 const bool = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
 const strArr = (v: unknown): string[] | undefined =>
   Array.isArray(v) ? v.filter((e): e is string => typeof e === 'string') : undefined;
+/** Accepts `true`, `false`, and the detailed `{ enabled, read_write }`. */
+const xdgMode = (v: unknown): XdgDirMode | undefined => {
+  if (typeof v === 'boolean') return v ? 'ro' : 'off';
+  if (v && typeof v === 'object') {
+    const t = v as { enabled?: unknown; read_write?: unknown };
+    if (t.enabled !== true) return 'off';
+    return t.read_write === true ? 'rw' : 'ro';
+  }
+  return undefined;
+};
 
 /** Coerce a TOML value into state shape for a scalar field. */
 export function coerceScalar(kind: FieldKind, raw: unknown): unknown {
@@ -518,6 +568,8 @@ export function coerceScalar(kind: FieldKind, raw: unknown): unknown {
       return num(raw);
     case 'boolean':
       return bool(raw);
+    case 'xdg-dir':
+      return xdgMode(raw);
     case 'string-list':
       return strArr(raw);
   }

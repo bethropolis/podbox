@@ -5,6 +5,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { STUDIO_FIELD } from '../../../components/StudioControls';
 import { CACHE_DESCRIPTIONS, CACHE_ORDER } from '../schema';
 import type { StudioState } from '../useStudioState';
 
@@ -141,7 +142,7 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
         onClick={() =>
           setExtraMounts([
             ...extraMounts,
-            { host: '~/Downloads', guest: '/home/user/Downloads', mode: 'z' },
+            { host: '', guest: '', mode: 'z' },
           ])
         }
         className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
@@ -164,7 +165,7 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
               setExtraMounts(updated);
             }}
             placeholder="Host path (e.g. ~/Projects)"
-            className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+            className={`${STUDIO_FIELD} flex-1`}
           />
           <span className="text-[var(--text-muted)] text-xs font-mono">→</span>
           <input
@@ -177,7 +178,7 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
               setExtraMounts(updated);
             }}
             placeholder="Guest path"
-            className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+            className={`${STUDIO_FIELD} flex-1`}
           />
           <button
             type="button"

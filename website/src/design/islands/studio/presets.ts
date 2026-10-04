@@ -44,7 +44,7 @@ export function presetPatch(preset: 'rust' | 'arch-gui' | 'fullstack' | 'minimal
       patch.lifeAutostart = true;
     } else if (preset === 'minimal') {
       patch.imageType = 'preset';
-      patch.selectedPresetDistro = 'alpine:3.20';
+      patch.selectedPresetDistro = 'alpine:3.24';
       patch.containerName = 'micro-box';
       patch.imageName = 'micro-box';
       patch.containerHome = '~/containers/micro-box';
@@ -92,13 +92,13 @@ export function defaultPatch(): Partial<StudioValues> {
     patch.intGpgAgent = false;
     patch.hostExecEnabled = false;
     patch.hostExecList = [];
-    patch.xdgDocuments = false;
-    patch.xdgDownloads = false;
-    patch.xdgPictures = false;
-    patch.xdgMusic = false;
-    patch.xdgVideos = false;
-    patch.xdgDesktop = false;
-    patch.xdgProjects = false;
+    patch.xdgDocuments = 'off';
+    patch.xdgDownloads = 'off';
+    patch.xdgPictures = 'off';
+    patch.xdgMusic = 'off';
+    patch.xdgVideos = 'off';
+    patch.xdgDesktop = 'off';
+    patch.xdgProjects = 'off';
     patch.exportAppsList = [];
     patch.exportBinsList = [];
     patch.dbusPreset = 'portal';

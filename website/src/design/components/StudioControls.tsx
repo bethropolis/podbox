@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
+import React, { createElement, useId, useState } from 'react';
 import { ChevronDown, Plus, X } from 'lucide-react';
+
+/**
+ * Shared class for the hand-rolled text fields panels build (mount rows,
+ * host-exec pairs, RUN commands) so they focus and hover exactly like
+ * `StudioInput`. Focus paints a shadow rather than a ring+border combo, which
+ * keeps the box from resizing as you tab through the form.
+ */
+export const STUDIO_FIELD =
+  'px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] ' +
+  'placeholder-[var(--text-muted)] outline-none transition-[border-color,box-shadow] duration-150 ease-out ' +
+  'border-[var(--border)] hover:border-[var(--border-focus)] focus:border-[var(--accent-mauve)] ' +
+  'focus:shadow-[0_0_0_2px_rgba(203,166,247,0.22)]';
 
 /* -------------------------------------------------------------------------- */
 /* Switch Toggle                                                              */
@@ -24,7 +36,7 @@ export function StudioSwitch({
   return (
     <label
       htmlFor={id}
-      className={`group flex items-start justify-between gap-3 p-2.5 rounded-[3px] border transition-all cursor-pointer select-none ${
+      className={`group flex items-start justify-between gap-3 p-2.5 rounded-[3px] border transition-[border-color,background-color] duration-150 ease-out cursor-pointer select-none ${
         checked
           ? 'bg-[var(--accent-mauve)]/5 border-[var(--accent-mauve)]/30'
           : 'bg-[var(--bg-mantle)] border-[var(--border)] hover:border-[var(--border-focus)]'
@@ -51,7 +63,7 @@ export function StudioSwitch({
           className="sr-only"
         />
         <div
-          className={`w-9 h-5 rounded-full transition-colors relative flex items-center p-0.5 ${
+          className={`w-9 h-5 rounded-full transition-colors duration-150 relative flex items-center p-0.5 ${
             checked
               ? 'bg-[var(--accent-mauve)] shadow-[0_0_8px_rgba(203,166,247,0.35)]'
               : 'bg-[var(--bg-surface1)]'
@@ -103,10 +115,14 @@ export function StudioInput({
         )}
         <input
           {...props}
-          className={`w-full px-3 py-1.5 text-xs rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none transition-all ${
+          spellCheck={props.spellCheck ?? false}
+          autoComplete={props.autoComplete ?? 'off'}
+          autoCorrect={props.autoCorrect ?? 'off'}
+          autoCapitalize={props.autoCapitalize ?? 'off'}
+          className={`w-full px-3 py-1.5 text-xs rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-[border-color,box-shadow] duration-150 ease-out ${
             error
-              ? 'border-[var(--accent-red)] focus:border-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/30'
-              : 'border-[var(--border)] focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30'
+              ? 'border-[var(--accent-red)] focus:shadow-[0_0_0_2px_rgba(243,139,168,0.25)]'
+              : 'border-[var(--border)] hover:border-[var(--border-focus)] focus:border-[var(--accent-mauve)] focus:shadow-[0_0_0_2px_rgba(203,166,247,0.22)]'
           } ${
             isMono ? 'font-mono' : 'font-sans'
           } ${prefixIcon ? 'pl-8' : ''} ${className}`}
@@ -132,6 +148,7 @@ interface StudioSelectOption {
   value: string;
   label: string;
   sublabel?: string;
+  group?: string;
 }
 
 interface StudioSelectProps {
@@ -151,6 +168,45 @@ export function StudioSelect({
   helperText,
   error,
 }: StudioSelectProps) {
+  // Option content is real markup so the closed button can show just the name
+  // while the popup shows the sublabel too (see `.sel-*` in global.css).
+  // Browsers without `appearance: base-select` flatten this to plain text and
+  // concatenate the spans with nothing between them, so the separator is a
+  // real character — Firefox ignores ::before on <option>.
+  const renderOption = (opt: StudioSelectOption, key: string) => (
+    <option key={key} value={opt.value}>
+      <span className="sel-name">{opt.label}</span>
+      {opt.sublabel && (
+        <span className="sel-sub">
+          {' '}
+          {opt.sublabel}
+        </span>
+      )}
+    </option>
+  );
+
+  // Grouped options render as <optgroup> so a long preset list stays
+  // navigable instead of one flat wall.
+  const groups = [...new Set(options.map((o) => o.group).filter(Boolean))] as string[];
+  const ungrouped = options.filter((o) => !o.group);
+  const body: React.ReactNode =
+    groups.length === 0
+      ? options.map((o) => renderOption(o, o.value))
+      : [
+          ...groups.map((group) => (
+            <optgroup key={group} label={group}>
+              {options.filter((o) => o.group === group).map((o) => renderOption(o, o.value))}
+            </optgroup>
+          )),
+          ...(ungrouped.length > 0
+            ? [
+                <optgroup key="other" label="Other">
+                  {ungrouped.map((o) => renderOption(o, o.value))}
+                </optgroup>,
+              ]
+            : []),
+        ];
+
   return (
     <div className="space-y-1.5 w-full">
       {label && (
@@ -162,23 +218,18 @@ export function StudioSelect({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full appearance-none px-3 py-1.5 pr-8 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] focus:outline-none transition-all cursor-pointer ${
+          className={`studio-select w-full px-3 py-1.5 pr-8 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] outline-none transition-[border-color,box-shadow] duration-150 ease-out cursor-pointer ${
             error
-              ? 'border-[var(--accent-red)] focus:border-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/30'
-              : 'border-[var(--border)] focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30'
+              ? 'border-[var(--accent-red)] focus:shadow-[0_0_0_2px_rgba(243,139,168,0.25)]'
+              : 'border-[var(--border)] hover:border-[var(--border-focus)] focus:border-[var(--accent-mauve)] focus:shadow-[0_0_0_2px_rgba(203,166,247,0.22)]'
           }`}
         >
-          {options.map((opt) => (
-            <option
-              key={opt.value}
-              value={opt.value}
-              className="bg-[var(--bg-mantle)] text-[var(--text-primary)]"
-            >
-              {opt.label} {opt.sublabel ? `(${opt.sublabel})` : ''}
-            </option>
-          ))}
+          {createElement('button', null, createElement('selectedcontent'))}
+          {body}
         </select>
-        <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+        {/* Fallback arrow. `appearance: base-select` draws its own via
+            ::picker-icon, so this is hidden wherever that is supported. */}
+        <ChevronDown className="studio-select-chevron w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
       </div>
       {error ? (
         <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
@@ -203,6 +254,8 @@ interface StudioTagInputProps {
   placeholder?: string;
   helperText?: string;
   error?: string;
+  /** Values offered as native autocomplete; free text is always accepted. */
+  suggestions?: string[];
 }
 
 export function StudioTagInput({
@@ -212,15 +265,43 @@ export function StudioTagInput({
   placeholder = 'Add item and press Enter...',
   helperText,
   error,
+  suggestions,
 }: StudioTagInputProps) {
   const [inputVal, setInputVal] = useState('');
+  const [dupe, setDupe] = useState<string | null>(null);
+  const listId = useId();
+
+  // Split on the separators people actually paste with, so dropping a
+  // comma-separated list into the field does the obvious thing.
+  const splitInput = (raw: string) =>
+    raw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const addAll = (candidates: string[]) => {
+    const fresh = candidates.filter((c) => !tags.includes(c));
+    if (fresh.length === 0 && candidates.length > 0) {
+      setDupe(candidates[0]);
+      window.setTimeout(() => setDupe(null), 1400);
+      return;
+    }
+    setDupe(null);
+    if (fresh.length > 0) onChange([...tags, ...fresh]);
+  };
 
   const handleAdd = () => {
-    const trimmed = inputVal.trim();
-    if (trimmed && !tags.includes(trimmed)) {
-      onChange([...tags, trimmed]);
-      setInputVal('');
-    }
+    const parts = splitInput(inputVal);
+    if (parts.length === 0) return;
+    addAll(parts);
+    setInputVal('');
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = splitInput(e.clipboardData.getData('text'));
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    addAll(pasted);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -235,6 +316,10 @@ export function StudioTagInput({
   const handleRemove = (index: number) => {
     onChange(tags.filter((_, i) => i !== index));
   };
+
+  const matches = suggestions
+    ? suggestions.filter((s) => !tags.includes(s) && s.includes(inputVal.toLowerCase())).slice(0, 8)
+    : [];
 
   return (
     <div className="space-y-1.5 w-full">
@@ -258,6 +343,7 @@ export function StudioTagInput({
               type="button"
               onClick={() => handleRemove(idx)}
               className="text-[var(--text-muted)] hover:text-[var(--accent-red)] p-0.5 rounded-full transition-colors cursor-pointer"
+              title={`Remove ${tag}`}
             >
               <X className="w-2.5 h-2.5" />
             </button>
@@ -267,7 +353,11 @@ export function StudioTagInput({
           <input
             type="text"
             value={inputVal}
+            list={suggestions ? listId : undefined}
+            autoComplete="off"
+            spellCheck={false}
             onChange={(e) => setInputVal(e.target.value)}
+            onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             placeholder={tags.length === 0 ? placeholder : 'Add more...'}
             className="w-full bg-transparent text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none py-0.5"
@@ -284,15 +374,26 @@ export function StudioTagInput({
           )}
         </div>
       </div>
+      {suggestions && (
+        <datalist id={listId}>
+          {(matches.length > 0 ? matches : suggestions.filter((s) => !tags.includes(s))).map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      )}
       {error ? (
         <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
           {error}
         </p>
-      ) : helperText && (
+      ) : dupe ? (
+        <p className="text-[11px] text-[var(--accent-yellow)] font-mono mt-1">
+          '{dupe}' is already in the list
+        </p>
+      ) : helperText ? (
         <p className="text-[11px] text-[var(--text-muted)] leading-tight">
           {helperText}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

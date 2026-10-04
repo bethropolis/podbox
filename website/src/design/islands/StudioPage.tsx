@@ -36,6 +36,8 @@ export function StudioPage(_props: StudioPageProps) {
   const warnings = [...(validation?.warnings ?? []), ...(compiled?.warnings ?? [])];
   const engine = compiled ? 'rust' : 'ts';
   const errorMap = validation?.errorMap ?? {};
+  // Advisories keep their tab badge but never the red banner or field border.
+  const errors = validation?.errors ?? [];
 
   // Banner click-to-focus: jump to the tab owning the field, then focus it.
   const focusField = (field: string | undefined) => {
@@ -65,9 +67,9 @@ export function StudioPage(_props: StudioPageProps) {
       <StudioHeader st={st} toml={toml} quadlet={quadlet} containerfile={containerfile} />
 
 {/* Live diagnostics from the Rust engine (validation errors + codegen warnings) */}
-{wasmReady && validation && (!validation.valid || warnings.length > 0) && (
+{wasmReady && validation && (errors.length > 0 || warnings.length > 0) && (
   <div className="mb-4 space-y-1.5 font-mono text-xs">
-    {!validation.valid && validation.errors.map((issue, idx) => (
+    {errors.map((issue, idx) => (
       <button
         key={`e-${idx}`}
         type="button"
@@ -91,17 +93,17 @@ export function StudioPage(_props: StudioPageProps) {
 <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-stretch ${st.isFullscreen ? 'flex-1 min-h-0 overflow-hidden' : 'lg:flex-1 lg:min-h-0 lg:overflow-hidden'}`}>
   {/* LEFT COLUMN: Categories & Settings Form (7 cols) */}
   <div className="lg:col-span-7 flex flex-col min-h-0 h-full overflow-hidden rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)]/40 shadow-sm">
-          <CategoryTabs st={st} errorMap={errorMap} />
+          <CategoryTabs st={st} errorMap={errorMap} advisoryMap={validation?.advisoryMap ?? {}} />
 
 {/* Form Content Body - Scrollable */}
-<div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-6 custom-scrollbar bg-[var(--bg-base)]">
+<div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-6 scrollbar-slim bg-[var(--bg-base)]">
             {activeCategory === 'image' && <ImagePanel st={st} errorMap={errorMap} />}
             {activeCategory === 'container' && <ContainerPanel st={st} errorMap={errorMap} />}
             {activeCategory === 'dotfiles' && <DotfilesPanel st={st} errorMap={errorMap} />}
             {activeCategory === 'storage' && <StoragePanel st={st} />}
             {activeCategory === 'security' && <SecurityPanel st={st} />}
             {activeCategory === 'network' && <NetworkPanel st={st} errorMap={errorMap} />}
-            {activeCategory === 'integration' && <IntegrationPanel st={st} />}
+            {activeCategory === 'integration' && <IntegrationPanel st={st} errorMap={errorMap} />}
             {activeCategory === 'lifecycle' && <LifecyclePanel st={st} />}
             {activeCategory === 'dbus' && <DbusPanel st={st} />}
             {activeCategory === 'wayland' && <WaylandPanel st={st} />}

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft,
-  Box,
   ChevronDown,
   Copy,
   Download,
@@ -15,7 +14,6 @@ import {
   RotateCcw,
   Save,
   Sparkles,
-  Terminal,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -29,9 +27,12 @@ interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch
 
 export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderProps) {
   const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu, hasRestoredSession } = st;
-  const { handleDownloadToml, handleDownloadQuadlet, handleDownloadContainerfile, handleCopyConfig } = useOutputActions(st, toml, quadlet, containerfile);
+  const { handleDownloadToml, handleCopyConfig } = useOutputActions(st, toml, quadlet, containerfile);
   const [showImport, setShowImport] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
+  // Fullscreen is a workbench, not a landing page: drop to a single slim
+  // toolbar row with icon-only actions.
+  const iconOnly = isFullscreen;
   const onPreset = (p: 'rust' | 'arch-gui' | 'fullstack' | 'minimal') => {
     st.applyPatch(presetPatch(p));
     setShowPresetMenu(false);
@@ -53,17 +54,9 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
         </a>
       )}
       <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-            podbox Studio
-          </h1>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded-[2px] bg-[var(--accent-mauve)]/10 text-[var(--accent-mauve)] border border-[var(--accent-mauve)]/30 font-semibold uppercase">
-            Workbench
-          </span>
-        </div>
-        <p className="text-xs text-[var(--text-muted)] mt-0.5 font-sans">
-          Full-spectrum declarative container architect &amp; systemd Quadlet synthesizer
-        </p>
+        <h1 className={`font-bold tracking-tight text-[var(--text-primary)] ${iconOnly ? 'text-sm' : 'text-xl sm:text-2xl'}`}>
+          podbox Studio
+        </h1>
       </div>
     </div>
 
@@ -71,7 +64,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
     <div className="flex flex-wrap items-center gap-2">
       {/* Autosave state */}
       <div
-        className="hidden lg:flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)]"
+        className={`items-center gap-1.5 text-[11px] font-mono text-[var(--text-muted)] ${iconOnly ? 'hidden' : 'hidden lg:flex'}`}
         title={hasRestoredSession
           ? 'Your last session was restored from this browser'
           : 'Changes are saved to this browser automatically'}
@@ -88,7 +81,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
         title="Reset all settings to default"
       >
         <RotateCcw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-        <span className="hidden sm:inline">Reset</span>
+        {!iconOnly && <span className="hidden sm:inline">Reset</span>}
       </button>
 
       {/* Presets dropdown */}
@@ -100,7 +93,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
           title="Apply a curated preset"
         >
           <Sparkles className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-          <span className="hidden sm:inline">Presets</span>
+          {!iconOnly && <span className="hidden sm:inline">Presets</span>}
           <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
         </button>
 
@@ -144,7 +137,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
         title="Import an existing podbox.toml"
       >
         <Upload className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-        <span className="hidden sm:inline">Import</span>
+        {!iconOnly && <span className="hidden sm:inline">Import</span>}
       </button>
 
       {/* Export Dropdown */}
@@ -155,7 +148,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
           className="px-3 py-1.5 rounded-[2px] bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm hover:opacity-95"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Export</span>
+          {!iconOnly && <span>Export</span>}
           <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
         </button>
 
@@ -165,7 +158,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
               className="fixed inset-0 z-40"
               onClick={() => setShowExportMenu(false)}
             />
-            <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl p-1 text-xs font-sans animate-fadeIn">
+            <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl p-1 text-xs font-sans animate-fadeIn">
               <button
                 onClick={handleDownloadToml}
                 className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-primary)] flex items-center justify-between cursor-pointer"
@@ -180,38 +173,6 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
                   </div>
                 </div>
               </button>
-
-              <button
-                onClick={handleDownloadQuadlet}
-                className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-primary)] flex items-center justify-between cursor-pointer"
-              >
-                <div className="flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-[var(--accent-peach)]" />
-                  <div>
-                    <div className="font-medium">Download Quadlet Unit</div>
-                    <div className="text-[10px] text-[var(--text-muted)] font-mono">
-                      {containerName || 'podbox'}.container
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              {containerfile && (
-                <button
-                  onClick={handleDownloadContainerfile}
-                  className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-primary)] flex items-center justify-between cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <Box className="w-4 h-4 text-[var(--accent-teal)]" />
-                    <div>
-                      <div className="font-medium">Download Containerfile</div>
-                      <div className="text-[10px] text-[var(--text-muted)] font-mono">
-                        Containerfile
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              )}
 
               <div className="my-1 border-t border-[var(--border)]" />
 
@@ -251,10 +212,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
         title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen'}
       >
         {isFullscreen ? (
-          <>
-            <Minimize2 className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />
-            <span className="hidden sm:inline">Exit Fullscreen</span>
-          </>
+          <Minimize2 className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />
         ) : (
           <>
             <Maximize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />

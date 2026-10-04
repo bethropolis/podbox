@@ -8,6 +8,7 @@ import {
   StudioInput,
   StudioSelect,
   StudioTagInput,
+  STUDIO_FIELD,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { IMAGE_PRESET_OPTIONS, PACKAGE_MANAGER_OPTIONS } from '../schema';
@@ -228,7 +229,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
                 }
               }}
               placeholder="e.g. dnf clean all"
-              className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)]"
+              className={`${STUDIO_FIELD} flex-1`}
             />
             <button
               type="button"

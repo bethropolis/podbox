@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Monitor,
   Plus,
@@ -8,15 +8,58 @@ import {
   StudioSelect,
   StudioSwitch,
   StudioTagInput,
+  STUDIO_FIELD,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { GPU_OPTIONS } from '../schema';
+import {
+  GPU_OPTIONS,
+  HOST_EXEC_SUGGESTIONS,
+  type XdgDirMode,
+} from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
+type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
-export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
-  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, intAudio, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
+export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; errorMap?: Record<string, string> }) {
+  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
+  const err = (field: string) => errorMap?.[field];
+  const XDG_DIRS = [
+    { id: 'documents', label: 'Documents', mode: xdgDocuments, setter: setXdgDocuments },
+    { id: 'downloads', label: 'Downloads', mode: xdgDownloads, setter: setXdgDownloads },
+    { id: 'pictures', label: 'Pictures', mode: xdgPictures, setter: setXdgPictures },
+    { id: 'music', label: 'Music', mode: xdgMusic, setter: setXdgMusic },
+    { id: 'videos', label: 'Videos', mode: xdgVideos, setter: setXdgVideos },
+    { id: 'desktop', label: 'Desktop', mode: xdgDesktop, setter: setXdgDesktop },
+    { id: 'projects', label: 'Projects', mode: xdgProjects, setter: setXdgProjects },
+  ] as const;
+  // off -> read-only -> read-write -> off. The engine defaults an enabled dir
+  // to read-only (`ro,z`) and only honours a writable bind through the
+  // detailed table form, so the mode has to be explicit in the TOML.
+  const cycleXdg = (mode: XdgDirMode) =>
+    mode === 'off' ? 'ro' : mode === 'ro' ? 'rw' : 'off';
+  // What can actually be exported is what the image contains, and the Studio
+  // already knows that: `[image] packages.install`. Suggest those first (in
+  // the order you listed them), then fall back to the curated list for
+  // anything you did not install through podbox.
+  const imagePackages = useMemo(
+    () => packagesInstallList.map((p) => p.trim()).filter(Boolean),
+    [packagesInstallList],
+  );
+  // Suggestions are the packages actually installed into the image. A curated
+  // list looked helpful but mostly offered names that aren't in the image,
+  // which is worse than no suggestion at all.
+  const suggestions = useMemo(
+    () => [...new Set(imagePackages)],
+    [imagePackages],
+  );
+
+  // An allowlist entry only counts once both halves are filled in; the Rust
+  // validator rejects partial rows, so the hint keys off the same rule.
+  const allowlistReady = hostExecList.some((e) => e.alias.trim() && e.path.trim());
+  const addAllowlistEntry = (entry: { alias: string; path: string }) => {
+    if (hostExecList.some((e) => e.alias === entry.alias)) return;
+    setHostExecList([...hostExecList, entry]);
+  };
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -166,43 +209,95 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
         id="int-sync-themes"
         checked={intSyncThemes}
         onChange={setIntSyncThemes}
-        label="Theme Sync (~/.themes)"
-        description="Share host GTK/icon themes read-only"
+        label={
+          <div className="flex items-center">
+            <span>Theme Sync</span>
+            <StudioTooltip
+              section="[integration]"
+              title="sync_themes = true"
+              description="Bind-mount ~/.themes so GTK and Qt apps inside the container pick up your host theme instead of shipping a default."
+              quadlet="Volume=%h/.themes:/home/user/.themes:ro"
+            />
+          </div>
+        }
       />
       <StudioSwitch
         id="int-sync-icons"
         checked={intSyncIcons}
         onChange={setIntSyncIcons}
-        label="Icon Sync (~/.icons)"
-        description="Share host icon themes read-only"
+        label={
+          <div className="flex items-center">
+            <span>Icon Sync</span>
+            <StudioTooltip
+              section="[integration]"
+              title="sync_icons = true"
+              description="Bind-mount ~/.icons, including hicolor, so icon themes match the host desktop."
+              quadlet="Volume=%h/.icons:/home/user/.icons:ro"
+            />
+          </div>
+        }
       />
       <StudioSwitch
         id="int-sync-fonts"
         checked={intSyncFonts}
         onChange={setIntSyncFonts}
-        label="Font Sync (~/.fonts)"
-        description="Share host fonts read-only"
+        label={
+          <div className="flex items-center">
+            <span>Font Sync</span>
+            <StudioTooltip
+              section="[integration]"
+              title="sync_fonts = true"
+              description="Bind-mount ~/.fonts and ~/.local/share/fonts so documents and terminal apps render with your installed fonts."
+              quadlet="Volume=%h/.fonts:/home/user/.fonts:ro"
+            />
+          </div>
+        }
       />
       <StudioSwitch
         id="int-git-identity"
         checked={intGitIdentity}
         onChange={setIntGitIdentity}
-        label="Git Identity Passthrough"
-        description="Mount gitconfig + credentials (git_identity)"
+        label={
+          <div className="flex items-center">
+            <span>Git Identity Passthrough</span>
+            <StudioTooltip
+              section="[integration]"
+              title="git_identity = true"
+              description="Mount ~/.gitconfig and ~/.git-credentials so commits are authored as you and pushes authenticate with your existing credentials."
+              quadlet="Volume=%h/.gitconfig:/home/user/.gitconfig:ro"
+            />
+          </div>
+        }
       />
       <StudioSwitch
         id="int-gpg-agent"
         checked={intGpgAgent}
         onChange={setIntGpgAgent}
-        label="Forward GPG Agent"
-        description="Mount S.gpg-agent for commit signing"
+        label={
+          <div className="flex items-center">
+            <span>Forward GPG Agent</span>
+            <StudioTooltip
+              section="[integration]"
+              title="gpg_agent = true"
+              description="Mount the host gpg-agent socket so commit signing and other signing operations work without importing private keys."
+            />
+          </div>
+        }
       />
       <StudioSwitch
         id="int-xdg-open"
         checked={intXdgOpen}
         onChange={setIntXdgOpen}
-        label="XDG Open Portal"
-        description="Allow opening host URLs/files (xdg_open)"
+        label={
+          <div className="flex items-center">
+            <span>XDG Open Portal</span>
+            <StudioTooltip
+              section="[integration]"
+              title="xdg_open = true"
+              description="Lets a container app hand a URL or file path back to the host opener, the way a browser's Open With does."
+            />
+          </div>
+        }
       />
     </div>
   </div>
@@ -213,19 +308,43 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
       <span className="text-xs font-medium text-[var(--text-subtext)]">XDG Directories</span>
       <StudioTooltip
         section="[integration.xdg_dirs]"
-        title="documents = true"
-        description="Bind-mount host XDG user directories into the container."
+        title='projects = { enabled = true, read_write = true }'
+        description="Bind-mount the matching host XDG user directory into the container, so files you open or save land in the same place as on the host. Each one is off, read-only (the default when enabled), or read-write; read-write needs the detailed table form, so podbox emits it only when you ask for it."
+        quadlet="Volume=%h/Documents:/home/user/Documents:z"
       />
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <StudioSwitch id="xdg-documents" checked={xdgDocuments} onChange={setXdgDocuments} label="Documents" />
-      <StudioSwitch id="xdg-downloads" checked={xdgDownloads} onChange={setXdgDownloads} label="Downloads" />
-      <StudioSwitch id="xdg-pictures" checked={xdgPictures} onChange={setXdgPictures} label="Pictures" />
-      <StudioSwitch id="xdg-music" checked={xdgMusic} onChange={setXdgMusic} label="Music" />
-      <StudioSwitch id="xdg-videos" checked={xdgVideos} onChange={setXdgVideos} label="Videos" />
-      <StudioSwitch id="xdg-desktop" checked={xdgDesktop} onChange={setXdgDesktop} label="Desktop" />
-      <StudioSwitch id="xdg-projects" checked={xdgProjects} onChange={setXdgProjects} label="Projects" />
+    <div className="flex flex-wrap gap-1.5">
+      {XDG_DIRS.map(({ id, label, mode, setter }) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => setter(cycleXdg(mode))}
+          aria-pressed={mode !== 'off'}
+          title={
+            mode === 'rw'
+              ? `~/${label} is mounted read-write. Click for read-only.`
+              : mode === 'ro'
+                ? `~/${label} is mounted read-only. Click for read-write, again to disable.`
+                : `~/${label} is not mounted. Click to mount it read-only.`
+          }
+          className={`px-2 py-1 rounded-[2px] text-[11px] font-mono transition-colors cursor-pointer border flex items-center gap-1 ${
+            mode === 'rw'
+              ? 'bg-[var(--accent-green)]/15 border-[var(--accent-green)]/50 text-[var(--accent-green)] font-bold'
+              : mode === 'ro'
+                ? 'bg-[var(--accent-blue)]/10 border-[var(--accent-blue)]/40 text-[var(--accent-blue)] font-bold'
+                : 'bg-[var(--bg-mantle)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-focus)]'
+          }`}
+        >
+          {label}
+          {mode !== 'off' && (
+            <span className="text-[9px] uppercase opacity-80">{mode}</span>
+          )}
+        </button>
+      ))}
     </div>
+    <p className="text-[11px] text-[var(--text-muted)]">
+      Click a directory to cycle: off &rarr; read-only &rarr; read-write.
+    </p>
   </div>
 
   {/* Host exec */}
@@ -240,12 +359,46 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
           <StudioTooltip
             section="[integration.host_exec]"
             title="enabled = true"
-            description="Allowlist host binaries the container may invoke (filtered shims)."
+            description="Expose host binaries inside the container as filtered shims. Nothing is exposed until you name it in the allowlist below — podbox will not hand the container a blanket pass to your host shell."
+            quadlet="Environment=PODBOX_HOST_EXEC_ALLOWLIST=&quot;{...}&quot;"
           />
         </div>
       }
       description="Expose allowlisted host commands inside the container"
     />
+    {/* The engine rejects enabled-without-allowlist, and rightly so. Keep the
+        error, but say what fixes it instead of just refusing. */}
+    {hostExecEnabled && !allowlistReady && (
+      <div className="flex flex-col gap-2 rounded-[3px] border border-[var(--accent-yellow)]/40 bg-[var(--accent-yellow)]/5 p-2.5">
+        <p className="text-[11px] text-[var(--text-subtext)] leading-snug">
+          <span className="font-bold text-[var(--accent-yellow)]">Needs an allowlist.</span>{' '}
+          Host execution stays blocked until at least one alias and absolute path pair is
+          filled in below — that pairing is the whole security boundary.
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-tight text-[var(--text-muted)]">
+            Add common:
+          </span>
+          {HOST_EXEC_SUGGESTIONS.map((s) => (
+            <button
+              key={s.alias}
+              type="button"
+              onClick={() => addAllowlistEntry(s)}
+              disabled={hostExecList.some((e) => e.alias === s.alias)}
+              title={s.path}
+              className="px-1.5 py-0.5 rounded-[2px] text-[11px] font-mono border border-[var(--border)] bg-[var(--bg-mantle)] text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:text-[var(--text-subtext)]"
+            >
+              {s.alias}
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+    {err('integration.host_exec') && !allowlistReady && (
+      <p className="text-[11px] leading-snug text-[var(--text-muted)]">
+        podbox will refuse this config until the allowlist has at least one entry.
+      </p>
+    )}
     {hostExecEnabled && (
       <div className="space-y-2">
         {hostExecList.map((e, idx) => (
@@ -260,7 +413,7 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
                 setHostExecList(updated);
               }}
               placeholder="alias"
-              className="w-32 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+              className={`${STUDIO_FIELD} w-32 shrink-0`}
             />
             <input
               type="text"
@@ -272,7 +425,7 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
                 setHostExecList(updated);
               }}
               placeholder="/usr/bin/..."
-              className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+              className={`${STUDIO_FIELD} flex-1`}
             />
             <button
               type="button"
@@ -303,20 +456,28 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
       <StudioTooltip
         section="[integration.export]"
         title="apps = [...]"
-        description="Export container apps/bins to the host desktop."
+        description="Publish .desktop entries on the host so container apps show up in your launcher with their icons. Apps are desktop entries, bins are plain executables added to your PATH — both keep working after the container stops."
       />
     </div>
     <StudioTagInput
       label="Exported Apps"
       tags={exportAppsList}
       onChange={setExportAppsList}
-      placeholder="e.g. firefox..."
+      placeholder="Pick an installed package or type a name..."
+      suggestions={suggestions}
+      helperText={
+        imagePackages.length > 0
+          ? `Suggests the ${imagePackages.length} package${imagePackages.length === 1 ? '' : 's'} you install. Anything can be typed.`
+          : 'Add packages under [image] to get suggestions here.'
+      }
     />
     <StudioTagInput
       label="Exported Bins"
       tags={exportBinsList}
       onChange={setExportBinsList}
-      placeholder="e.g. code..."
+      placeholder="Pick an installed package or type a binary..."
+      suggestions={suggestions}
+      helperText="Executables added to your PATH from inside the container."
     />
   </div>
 </div>

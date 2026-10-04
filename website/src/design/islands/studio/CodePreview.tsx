@@ -42,9 +42,11 @@ export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePr
   const { activeView, setActiveView, containerName, copied } = st;
   const { handleCopyConfig } = useOutputActions(
     st as Pick<StudioState, 'activeView' | 'containerName' | 'copied' | 'setCopied' | 'setShowExportMenu'>, toml, quadlet, containerfile);
-  // No Containerfile for custom bases (guest binary isn't in the browser):
-  // hide the tab instead of showing a placeholder comment.
-  const showContainerfile = containerfile != null;
+  // The engine always renders a Containerfile: prebuilt images get the short
+  // overlay, custom bases the full recipe whose guest layer carries an inline
+  // comment. That comment is the only signal — no tab badge, since it would
+  // flag every config rather than anything actionable.
+  const showContainerfile = containerfile != null && containerfile.length > 0;
   const view = activeView === 'containerfile' && !showContainerfile ? 'toml' : activeView;
   const code = view === 'toml' ? toml : view === 'containerfile' ? (containerfile ?? '') : quadlet;
   const lines = code.split('\n');
@@ -63,7 +65,7 @@ export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePr
         }`}
       >
         <FileCode2 className="w-3 h-3" />
-        <span>podbox.toml</span>
+        <span>{containerName || 'podbox'}.toml</span>
       </button>
 
       <button
@@ -118,7 +120,7 @@ export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePr
   </div>
 
   {/* Code Body - flex-1 min-h-0 overflow-auto */}
-  <div className="flex-1 min-h-0 overflow-auto p-3.5 font-mono text-[12.5px] leading-relaxed select-text custom-scrollbar bg-[var(--bg-crust)]/50">
+  <div className="flex-1 min-h-0 overflow-auto p-3.5 font-mono text-[12.5px] leading-relaxed select-text scrollbar-slim bg-[var(--bg-crust)]/50">
     <div className="table w-full">
       {lines.map((line, idx) => (
         <div key={idx} className="table-row hover:bg-[var(--bg-surface0)]/40 transition-colors">
@@ -133,21 +135,15 @@ export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePr
     </div>
   </div>
 
-  {/* Bottom Bar: Line count, engine & CLI Hint */}
-  <div className="shrink-0 px-3 py-2 bg-[var(--bg-crust)] border-t border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-[11px] font-mono">
-    <div className="flex items-center gap-2 text-[var(--text-muted)]">
-      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)]" />
-      <span>{lines.length} lines</span>
-      <span className="text-[var(--border)]">|</span>
-      <span className="text-[var(--text-subtext)]">{view === 'toml' ? 'podbox.toml' : view === 'containerfile' ? 'Containerfile' : 'systemd unit'}</span>
-      <span className="text-[var(--border)]">|</span>
-      <span className="text-[10px] uppercase font-bold text-[var(--accent-mauve)]">
-        {engine === 'rust' ? 'Rust Engine' : 'Live Synthesizer'}
-      </span>
-    </div>
-    <div className="text-[10px] text-[var(--accent-teal)] truncate">
-      $ podbox build . && podbox enter {containerName || 'dev-box'}
-    </div>
+  {/* Bottom Bar: line count + engine. The filename and kind are already in
+      the tab directly above, so repeating them here was pure noise. */}
+  <div className="shrink-0 px-3 py-1.5 bg-[var(--bg-crust)] border-t border-[var(--border)] flex items-center gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+    <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)]" />
+    <span>{lines.length} lines</span>
+    <span className="text-[var(--border)]">|</span>
+    <span className="text-[10px] uppercase font-bold text-[var(--accent-mauve)]">
+      {engine === 'rust' ? 'Rust Engine' : 'Live Synthesizer'}
+    </span>
   </div>
 </div>
   );

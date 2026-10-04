@@ -7,6 +7,7 @@ import {
 import {
   StudioInput,
   StudioSelect,
+  STUDIO_FIELD,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { SHELL_OPTIONS, SERVICE_RESTART_OPTIONS } from '../schema';
@@ -158,6 +159,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
         </div>
       }
       type="number"
+      inputMode="numeric"
       value={containerCpuWeight}
       onChange={(e) => setContainerCpuWeight(parseInt(e.target.value) || 0)}
       min={1}
@@ -174,8 +176,9 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
         <span className="text-xs font-medium text-[var(--text-subtext)]">Background Services</span>
         <StudioTooltip
           section="[container.services]"
-          title='redis = "redis-server ..."'
-          description="Supervised services started alongside the container. A restart policy other than on-failure uses the detailed table form."
+          title='redis = "redis-server --save 60 1"'
+          description="Long-running processes the container should keep alive (databases, queues, dev servers). The podbox guest supervises them: each starts with the container, is restarted on failure, and dies with it. Use the table form when you need an explicit restart policy or a working directory."
+          quadlet="Environment=PODBOX_SERVICES_JSON=&quot;{...}&quot;"
         />
       </div>
       <button
@@ -201,7 +204,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
               setServices(updated);
             }}
             placeholder="name (e.g. redis)"
-            className="w-32 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+            className={`${STUDIO_FIELD} w-32 shrink-0`}
           />
           <input
             type="text"
@@ -213,7 +216,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
               setServices(updated);
             }}
             placeholder="command"
-            className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+            className={`${STUDIO_FIELD} flex-1`}
           />
           <select
             value={svc.restart || 'on-failure'}
@@ -223,7 +226,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
               updated[idx].restart = e.target.value;
               setServices(updated);
             }}
-            className="px-2 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)] cursor-pointer"
+            className={`${STUDIO_FIELD} px-2 cursor-pointer`}
           >
             {SERVICE_RESTART_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>

@@ -6,6 +6,12 @@ import { STUDIO_DEFAULTS } from './schema';
 // ignored instead of half-applying stale keys.
 const STORAGE_KEY = 'podbox-studio-v1';
 
+// State keys whose shape changed after sessions were already saved.
+const XDG_DIR_KEYS = [
+  'xdgDocuments', 'xdgDownloads', 'xdgPictures', 'xdgMusic',
+  'xdgVideos', 'xdgDesktop', 'xdgProjects',
+];
+
 function loadSaved(): Record<string, any> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -187,6 +193,12 @@ const handleContainerNameChange = (val: string) => {
       // newline-joined string; split it back so old sessions survive.
       if (typeof saved.runCommands === 'string') {
         saved.runCommands = (saved.runCommands as string).split('\n').filter((c) => c.trim());
+      }
+      // XDG dirs were plain booleans before the read-write mode existed.
+      for (const key of XDG_DIR_KEYS) {
+        if (typeof saved[key] === 'boolean') {
+          saved[key] = saved[key] ? 'ro' : 'off';
+        }
       }
       applyPatch(saved);
       setHasRestoredSession(true);
