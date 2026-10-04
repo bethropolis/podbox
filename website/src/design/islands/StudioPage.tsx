@@ -108,7 +108,7 @@ export function StudioPage(_props: StudioPageProps) {
           </div>
         </div>
 
-        <CodePreview st={st} toml={toml} quadlet={quadlet} containerfile={containerfile} wasmReady={wasmReady} engine={engine} />
+        <CodePreview st={st} toml={toml} quadlet={quadlet} containerfile={containerfile} engine={engine} />
       </div>
     </div>
   );
