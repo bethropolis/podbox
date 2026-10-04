@@ -116,10 +116,10 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
   const runRaw = image.run;
   if (Array.isArray(runRaw)) {
     const run = strArr(runRaw);
-    if (run) patch.runCommands = run.join('\n');
+    if (run) patch.runCommands = run;
   } else if (runRaw && typeof runRaw === 'object' && !Array.isArray(runRaw)) {
     const run = strArr((runRaw as Record<string, unknown>).commands);
-    if (run) patch.runCommands = run.join('\n');
+    if (run) patch.runCommands = run;
   }
 
   const container = sec('container');

@@ -212,7 +212,7 @@ export interface StudioDefaults {
   packagesInstallList: string[];
   packagesRemoveList: string[];
   packageManager: string;
-  runCommands: string;
+  runCommands: string[];
   dotfilesSource: string;
   dotfilesTarget: string;
   dotfilesCloneOn: string;
@@ -299,7 +299,7 @@ export const STUDIO_DEFAULTS: StudioDefaults = {
   packagesInstallList: ['git'],
   packagesRemoveList: [],
   packageManager: 'auto',
-  runCommands: 'dnf clean all',
+  runCommands: ['dnf clean all'],
   // [dotfiles]
   dotfilesSource: '',
   dotfilesTarget: '',

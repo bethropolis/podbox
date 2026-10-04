@@ -67,7 +67,7 @@ function customLines(s: StudioValues, table: string): string[] {
       return [`base = "${s.imageType === 'preset' ? s.selectedPresetDistro : s.customImageBase}"`];
     }
     case 'image.run': {
-      const cmds = s.runCommands.split('\n').filter((r) => r.trim());
+      const cmds = s.runCommands.filter((r) => r.trim());
       if (cmds.length === 0) return [];
       return ['commands = [', ...cmds.map((r) => `  "${r.trim()}",`), ']'];
     }

@@ -42,7 +42,7 @@ const [packagesInstallList, setPackagesInstallList] = useState<string[]>([
 ]);
 const [packagesRemoveList, setPackagesRemoveList] = useState<string[]>(STUDIO_DEFAULTS.packagesRemoveList);
 const [packageManager, setPackageManager] = useState<string>(STUDIO_DEFAULTS.packageManager);
-const [runCommands, setRunCommands] = useState(STUDIO_DEFAULTS.runCommands);
+const [runCommands, setRunCommands] = useState<string[]>(STUDIO_DEFAULTS.runCommands);
 
 // [dotfiles]
 const [dotfilesSource, setDotfilesSource] = useState(STUDIO_DEFAULTS.dotfilesSource);
@@ -183,6 +183,11 @@ const handleContainerNameChange = (val: string) => {
   useEffect(() => {
     const saved = loadSaved();
     if (Object.keys(saved).length > 0) {
+      // Sessions saved before RUN commands became a list stored them as one
+      // newline-joined string; split it back so old sessions survive.
+      if (typeof saved.runCommands === 'string') {
+        saved.runCommands = (saved.runCommands as string).split('\n').filter((c) => c.trim());
+      }
       applyPatch(saved);
       setHasRestoredSession(true);
     }

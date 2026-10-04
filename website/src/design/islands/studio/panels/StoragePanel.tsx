@@ -4,64 +4,64 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import {
-  StudioSwitch,
-} from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { CACHE_DESCRIPTIONS, CACHE_ORDER } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-const CACHE_ORDER = ['cargo', 'npm', 'pnpm', 'pip', 'uv', 'yarn', 'bun', 'composer', 'maven', 'gradle', 'ccache', 'go', 'rustup', 'mbx'];
+type CacheMode = 'off' | 'shared' | 'host';
 
-const CACHE_DESCRIPTIONS: Record<string, string> = {
-  cargo: 'Rust crate registry + git checkouts',
-  npm: 'Node package cache',
-  pnpm: 'pnpm content-addressable store',
-  pip: 'Python wheel cache',
-  uv: 'uv package cache',
-  yarn: 'Yarn Classic + Berry caches',
-  bun: 'Bun install cache',
-  composer: 'PHP Composer cache',
-  maven: 'Maven local repository',
-  gradle: 'Gradle build caches',
-  ccache: 'C/C++ compiler cache',
-  go: 'Go module cache',
-  rustup: 'Rust toolchain installs',
-  mbx: 'Mr Boxington shared cache',
+const MODE_OPTIONS: { id: CacheMode; label: string; title: string }[] = [
+  { id: 'off', label: 'off', title: 'Not persisted' },
+  { id: 'shared', label: 'shared', title: 'Podbox-managed named volume (podbox-cache-<name>), shared between podbox containers' },
+  { id: 'host', label: 'host', title: "Bind-mount the cache directory from your host home, reusing work done outside the container" },
+];
+
+const ACTIVE_CLASS: Record<CacheMode, string> = {
+  off: 'bg-[var(--bg-surface1)] text-[var(--text-primary)]',
+  shared: 'bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-bold',
+  host: 'bg-[var(--accent-blue)] text-[var(--bg-crust)] font-bold',
 };
+
+// One row per cache with a three-way choice, instead of two near-identical
+// grids of toggles: shared and host are mutually exclusive by construction.
+function ModeControl({ mode, onChange }: { mode: CacheMode; onChange: (m: CacheMode) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 p-0.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] shrink-0">
+      {MODE_OPTIONS.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          title={o.title}
+          aria-pressed={mode === o.id}
+          className={`px-1.5 py-0.5 rounded-[1px] text-[10px] font-mono uppercase tracking-tight transition-colors cursor-pointer ${
+            mode === o.id ? ACTIVE_CLASS[o.id] : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 type StoragePanelProps = Pick<StudioState, 'extraMounts' | 'hostCaches' | 'setExtraMounts' | 'setHostCaches' | 'setSharedCaches' | 'sharedCaches'>;
 
 export function StoragePanel({ st }: { st: StoragePanelProps }) {
   const { extraMounts, hostCaches, setExtraMounts, setHostCaches, setSharedCaches, sharedCaches } = st;
 
-  const toggle = (list: string[], setList: (v: string[]) => void, name: string) => {
-    setList(list.includes(name) ? list.filter((c) => c !== name) : [...list, name]);
+  // Rebuilding from a Set keeps the two lists exclusive and in the canonical
+  // BUILTIN_CACHES order, so the emitted TOML never depends on click order.
+  const setCacheMode = (name: string, mode: CacheMode) => {
+    const shared = new Set(sharedCaches.filter((c) => c !== name));
+    const host = new Set(hostCaches.filter((c) => c !== name));
+    if (mode === 'shared') shared.add(name);
+    if (mode === 'host') host.add(name);
+    setSharedCaches(CACHE_ORDER.filter((c) => shared.has(c)));
+    setHostCaches(CACHE_ORDER.filter((c) => host.has(c)));
   };
 
-  const cacheSwitch = (
-    name: string,
-    enabled: boolean,
-    onChange: (v: boolean) => void,
-    kind: string,
-  ) => (
-    <StudioSwitch
-      key={`${kind}-${name}`}
-      id={`storage-${kind}-${name}`}
-      checked={enabled}
-      onChange={onChange}
-      label={
-        <div className="flex items-center">
-          <span className="font-mono">{name}</span>
-          <StudioTooltip
-            section="[storage]"
-            title={`${name} = true`}
-            description={CACHE_DESCRIPTIONS[name] ?? 'Persistent cache volume'}
-          />
-        </div>
-      }
-      description={CACHE_DESCRIPTIONS[name]}
-    />
-  );
+  const enabled = sharedCaches.length + hostCaches.length;
 
   return (
 <div className="space-y-5 animate-fadeIn">
@@ -78,35 +78,49 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
   </div>
 
   <div className="space-y-2">
-    <div className="flex items-center">
-      <span className="text-xs font-medium text-[var(--text-subtext)]">Shared Caches (managed volumes)</span>
-      <StudioTooltip
-        section="[storage.shared_caches]"
-        title="cargo = true"
-        description="Podbox provisions a named volume per cache and mounts it into the container home."
-        quadlet="Volume=podbox-cache-cargo:/home/user/.cargo/registry"
-      />
+    <div className="flex items-center justify-between">
+      <div className="flex items-center">
+        <span className="text-xs font-medium text-[var(--text-subtext)]">Caches</span>
+        <StudioTooltip
+          section="[storage.shared_caches]"
+          title="cargo = true"
+          description="Each cache is off, a podbox-managed volume shared between podbox containers, or a bind mount of the directory that already lives on your host."
+          quadlet="Volume=podbox-cache-cargo:/home/user/.cargo/registry"
+        />
+      </div>
+      <span className="text-[11px] font-mono text-[var(--text-muted)]">
+        {enabled === 0 ? 'none enabled' : `${sharedCaches.length} shared · ${hostCaches.length} host`}
+      </span>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {CACHE_ORDER.map((c) =>
-        cacheSwitch(c, sharedCaches.includes(c), (v) => toggle(sharedCaches, setSharedCaches, c), 'shared'),
-      )}
-    </div>
-  </div>
 
-  <div className="space-y-2 pt-2 border-t border-[var(--border)]">
-    <div className="flex items-center">
-      <span className="text-xs font-medium text-[var(--text-subtext)]">Host Caches (bind mounts)</span>
-      <StudioTooltip
-        section="[storage.host_caches]"
-        title="npm = true"
-        description="Bind-mount the cache directory straight from your host home instead of a managed volume."
-      />
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {CACHE_ORDER.map((c) =>
-        cacheSwitch(c, hostCaches.includes(c), (v) => toggle(hostCaches, setHostCaches, c), 'host'),
-      )}
+    <div className="divide-y divide-[var(--border)] rounded-[2px] border border-[var(--border)] overflow-hidden">
+      {CACHE_ORDER.map((name) => {
+        const mode: CacheMode = sharedCaches.includes(name)
+          ? 'shared'
+          : hostCaches.includes(name)
+            ? 'host'
+            : 'off';
+        return (
+          <div
+            key={name}
+            className="flex items-center justify-between gap-3 px-2.5 py-1 hover:bg-[var(--bg-surface0)]/40 transition-colors"
+          >
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span
+                className={`text-xs font-mono font-medium shrink-0 ${
+                  mode === 'off' ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'
+                }`}
+              >
+                {name}
+              </span>
+              <span className="text-[11px] text-[var(--text-muted)] truncate hidden md:block">
+                {CACHE_DESCRIPTIONS[name]}
+              </span>
+            </div>
+            <ModeControl mode={mode} onChange={(m) => setCacheMode(name, m)} />
+          </div>
+        );
+      })}
     </div>
   </div>
 
