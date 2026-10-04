@@ -8,12 +8,13 @@ import {
   StudioSwitch,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { ON_STOP_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type LifecyclePanelProps = Pick<StudioState, 'lifeAutoUpdate' | 'lifeAutostart' | 'lifeOnStop' | 'lifeQuadlet' | 'setLifeAutoUpdate' | 'setLifeAutostart' | 'setLifeOnStop' | 'setLifeQuadlet' | 'setSysAfter' | 'sysAfter'>;
+type LifecyclePanelProps = Pick<StudioState, 'lifeAutoCheckpoint' | 'lifeAutoUpdate' | 'lifeAutostart' | 'lifeOnStop' | 'lifeQuadlet' | 'setLifeAutoCheckpoint' | 'setLifeAutoUpdate' | 'setLifeAutostart' | 'setLifeOnStop' | 'setLifeQuadlet' | 'setSysAfter' | 'sysAfter'>;
 
 export function LifecyclePanel({ st }: { st: LifecyclePanelProps }) {
-  const { lifeAutoUpdate, lifeAutostart, lifeOnStop, lifeQuadlet, setLifeAutoUpdate, setLifeAutostart, setLifeOnStop, setLifeQuadlet, setSysAfter, sysAfter } = st;
+  const { lifeAutoCheckpoint, lifeAutoUpdate, lifeAutostart, lifeOnStop, lifeQuadlet, setLifeAutoCheckpoint, setLifeAutoUpdate, setLifeAutostart, setLifeOnStop, setLifeQuadlet, setSysAfter, sysAfter } = st;
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -96,12 +97,26 @@ export function LifecyclePanel({ st }: { st: LifecyclePanelProps }) {
         }
         value={lifeOnStop}
         onChange={setLifeOnStop}
-        options={[
-          { value: 'keep', label: 'keep (Preserve container on stop)' },
-          { value: 'remove', label: 'remove (Destroy container on stop)' },
-        ]}
+        options={ON_STOP_OPTIONS}
       />
     </div>
+
+    <StudioSwitch
+      id="life-autocheckpoint"
+      checked={lifeAutoCheckpoint}
+      onChange={setLifeAutoCheckpoint}
+      label={
+        <div className="flex items-center">
+          <span>Auto Checkpoint</span>
+          <StudioTooltip
+            section="[lifecycle]"
+            title="auto_checkpoint = true"
+            description="Checkpoint the container to disk on stop for faster restores."
+          />
+        </div>
+      }
+      description="Persist container state on stop"
+    />
   </div>
 
   <div className="pt-2 border-t border-[var(--border)]">

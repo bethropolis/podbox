@@ -8,12 +8,14 @@ import {
   StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { IMAGE_PRESET_OPTIONS, PACKAGE_MANAGER_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type ImagePanelProps = Pick<StudioState, 'customImageBase' | 'imageType' | 'packageManager' | 'packagesInstallList' | 'packagesRemoveList' | 'pullRetry' | 'runCommands' | 'selectedPresetDistro' | 'setCustomImageBase' | 'setImageType' | 'setPackageManager' | 'setPackagesInstallList' | 'setPackagesRemoveList' | 'setPullRetry' | 'setRunCommands' | 'setSelectedPresetDistro'>;
 
-export function ImagePanel({ st }: { st: ImagePanelProps }) {
+export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: Record<string, string> }) {
   const { customImageBase, imageType, packageManager, packagesInstallList, packagesRemoveList, pullRetry, runCommands, selectedPresetDistro, setCustomImageBase, setImageType, setPackageManager, setPackagesInstallList, setPackagesRemoveList, setPullRetry, setRunCommands, setSelectedPresetDistro } = st;
+  const err = (field: string) => errorMap?.[field];
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -79,15 +81,7 @@ export function ImagePanel({ st }: { st: ImagePanelProps }) {
       }
       value={selectedPresetDistro}
       onChange={(val) => setSelectedPresetDistro(val)}
-      options={[
-        { value: 'fedora:44', label: 'Fedora 44 Rawhide', sublabel: 'Recommended' },
-        { value: 'fedora:43', label: 'Fedora 43' },
-        { value: 'fedora:42', label: 'Fedora 42' },
-        { value: 'archlinux:latest', label: 'Arch Linux', sublabel: 'Rolling' },
-        { value: 'ubuntu:24.04', label: 'Ubuntu 24.04 LTS (Noble)' },
-        { value: 'debian:bookworm', label: 'Debian 12 (Bookworm)' },
-        { value: 'alpine:3.20', label: 'Alpine 3.20', sublabel: 'musl/minimal' },
-      ]}
+      options={IMAGE_PRESET_OPTIONS}
     />
   ) : (
     <StudioInput
@@ -104,6 +98,8 @@ export function ImagePanel({ st }: { st: ImagePanelProps }) {
       value={customImageBase}
       onChange={(e) => setCustomImageBase(e.target.value)}
       placeholder="ghcr.io/org/custom-image:latest"
+      id="studio-input-image-base"
+      error={err('image.base')}
     />
   )}
 
@@ -157,13 +153,7 @@ export function ImagePanel({ st }: { st: ImagePanelProps }) {
       }
       value={packageManager}
       onChange={setPackageManager}
-      options={[
-        { value: 'auto', label: 'Auto Detect (Recommended)' },
-        { value: 'dnf', label: 'DNF (Fedora / RHEL)' },
-        { value: 'apt', label: 'APT (Ubuntu / Debian)' },
-        { value: 'pacman', label: 'Pacman (Arch Linux)' },
-        { value: 'apk', label: 'APK (Alpine)' },
-      ]}
+      options={PACKAGE_MANAGER_OPTIONS}
     />
 
     <StudioInput

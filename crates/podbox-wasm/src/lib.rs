@@ -17,9 +17,18 @@ use podbox::error::PodboxError;
 use podbox::xdg::ResolvedXdgDirs;
 
 #[derive(Serialize)]
+pub struct ValidationError {
+    /// Dotted schema path (`container.memory`), when the issue is a schema
+    /// violation of the form `<field>: <reason>`. `None` for TOML syntax
+    /// errors, which carry no field target.
+    pub field: Option<String>,
+    pub message: String,
+}
+
+#[derive(Serialize)]
 pub struct ValidationResponse {
     pub valid: bool,
-    pub errors: Vec<String>,
+    pub errors: Vec<ValidationError>,
     pub warnings: Vec<String>,
 }
 
@@ -28,28 +37,47 @@ pub struct CompileResponse {
     pub container: String,
     pub socket: String,
     pub build: Option<String>,
+    /// Rendered Containerfile, or `None` when it cannot be produced here.
+    /// The engine always emits the short overlay for prebuilt images; custom
+    /// `base` images need the guest binary baked in at build time, which the
+    /// wasm build does not embed (`PODBOX_GUEST` is `None`), so those yield
+    /// `None` and the Studio renders an explanatory comment instead.
+    pub containerfile: Option<String>,
     pub warnings: Vec<String>,
 }
 
-/// Split an `anyhow` parse error into Studio-ready issue strings.
+/// Split an `anyhow` parse error into Studio-ready issues.
 ///
 /// Schema violations arrive as `ConfigValidationFailed { details }` with
-/// items joined by `"\n  - "`; everything else (TOML syntax errors, missing
-/// fields) is a single message.
-fn validation_errors(err: &anyhow::Error) -> Vec<String> {
+/// items joined by `"\n  - "`, each shaped `<field>: <reason>`; the field
+/// target is split off for input highlighting. Everything else (TOML syntax
+/// errors, missing fields) is a single field-less message.
+fn validation_errors(err: &anyhow::Error) -> Vec<ValidationError> {
     if let Some(PodboxError::ConfigValidationFailed { details }) = err.downcast_ref::<PodboxError>()
     {
         details
             .split("\n  - ")
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .map(str::to_string)
+            .map(|line| match line.split_once(':') {
+                Some((field, message)) => ValidationError {
+                    field: Some(field.trim().to_string()),
+                    message: message.trim().to_string(),
+                },
+                None => ValidationError {
+                    field: None,
+                    message: line.to_string(),
+                },
+            })
             .collect()
     } else {
-        // `{:#}` renders the full anyhow chain ("failed to parse definition
-        // file: TOML parse error at line 1, column 9"); `{}` would show only
-        // the outermost context.
-        vec![format!("{err:#}")]
+        vec![ValidationError {
+            field: None,
+            // `{:#}` renders the full anyhow chain ("failed to parse definition
+            // file: TOML parse error at line 1, column 9"); `{}` would show only
+            // the outermost context.
+            message: format!("{err:#}"),
+        }]
     }
 }
 
@@ -107,6 +135,7 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
         container,
         socket,
         build,
+        containerfile: podbox::codegen::containerfile::generate(&config, "podbox-guest").ok(),
         warnings,
     };
     Ok(serde_wasm_bindgen::to_value(&response).unwrap_or(JsValue::NULL))

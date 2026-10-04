@@ -1,189 +1,156 @@
+// Studio TOML emission, driven by studio/schema.ts.
+//
+// Scalar fields come straight from FIELDS (one line per field, no per-key
+// code); only genuinely custom shapes have hand-written emitters below.
+// Tables render in TABLE_ORDER and are omitted when empty, so sections
+// appear exactly when the user configures them.
+
 import type { StudioValues } from './useStudioState';
-import type { MountItem, EnvVarItem, HostExecItem } from './types';
+import {
+  FIELDS,
+  CACHE_ORDER,
+  tableOf,
+  keyOf,
+  shouldEmit,
+  formatScalar,
+} from './schema';
+
+type V = Record<string, any>;
+
+const TABLE_ORDER = [
+  'image',
+  'image.packages',
+  'image.run',
+  'container',
+  'container.mounts',
+  'container.services',
+  'dotfiles',
+  'storage.shared_caches',
+  'storage.host_caches',
+  'security',
+  'network',
+  'integration',
+  'integration.host_exec',
+  'integration.xdg_dirs',
+  'integration.export',
+  'lifecycle',
+  'systemd',
+  'dbus',
+  'wayland',
+];
+
+// Tables that only render when their feature toggle is on (talk/own lists
+// without dbus, or firewall rules without wayland, would be dead config).
+const TABLE_GATES: Record<string, (s: StudioValues) => boolean> = {
+  dbus: (s) => s.intDbus,
+  wayland: (s) => s.intWayland,
+};
+
+function scalarLines(s: StudioValues, table: string): string[] {
+  const vals = s as unknown as V;
+  const lines: string[] = [];
+  for (const f of FIELDS) {
+    if (tableOf(f.tomlPath) !== table) continue;
+    const v = vals[f.stateKey];
+    if (!shouldEmit(f, v)) continue;
+    lines.push(`${keyOf(f.tomlPath)} = ${formatScalar(f.kind, v)}`);
+  }
+  return lines;
+}
+
+// ── custom shapes ─────────────────────────────────────────────────────────
+
+function customLines(s: StudioValues, table: string): string[] {
+  switch (table) {
+    case 'image': {
+      // Preset distros are plain base refs; `preset` is the legacy Studio key.
+      return [`base = "${s.imageType === 'preset' ? s.selectedPresetDistro : s.customImageBase}"`];
+    }
+    case 'image.run': {
+      const cmds = s.runCommands.split('\n').filter((r) => r.trim());
+      if (cmds.length === 0) return [];
+      return ['commands = [', ...cmds.map((r) => `  "${r.trim()}",`), ']'];
+    }
+    case 'container': {
+      const valid = s.envVars.filter((e) => e.key.trim());
+      if (valid.length === 0) return [];
+      return [`env = {`, ...valid.map((e) => `  ${e.key} = "${e.value}",`), `}`];
+    }
+    case 'container.mounts': {
+      const valid = s.extraMounts.filter((m) => m.host.trim() && m.guest.trim());
+      if (valid.length === 0) return [];
+      return ['extra = [', ...valid.map((m) => `  "${m.host}:${m.guest}:${m.mode || 'z'}",`), ']'];
+    }
+    case 'container.services': {
+      const valid = s.services.filter((svc) => svc.name.trim() && svc.command.trim());
+      if (valid.length === 0) return [];
+      const lines: string[] = [];
+      for (const svc of valid) {
+        const restart = svc.restart || 'on-failure';
+        if (restart === 'on-failure') {
+          lines.push(`${svc.name.trim()} = "${svc.command.trim()}"`);
+        } else {
+          lines.push(`[${table}.${svc.name.trim()}]`);
+          lines.push(`command = "${svc.command.trim()}"`);
+          lines.push(`restart = "${restart}"`);
+        }
+      }
+      return lines;
+    }
+    case 'storage.shared_caches':
+      return cacheLines(s.sharedCaches);
+    case 'storage.host_caches':
+      return cacheLines(s.hostCaches);
+    case 'integration': {
+      // gpu accepts bare bools or "auto"/"nvidia" strings in the schema.
+      const g = s.intGpu;
+      return [`gpu = ${g === 'true' || g === 'false' ? g : `"${g}"`}`];
+    }
+    case 'integration.host_exec': {
+      if (!s.hostExecEnabled) return [];
+      const lines = ['enabled = true'];
+      const valid = s.hostExecList.filter((e) => e.alias.trim() && e.path.trim());
+      if (valid.length > 0) {
+        lines.push(`allowlist = { ${valid.map((e) => `${e.alias} = "${e.path}"`).join(', ')} }`);
+      }
+      return lines;
+    }
+    case 'systemd': {
+      const reqList = s.sysRequires.split(',').map((r) => r.trim()).filter(Boolean);
+      const afterList = s.sysAfter.split(',').map((a) => a.trim()).filter(Boolean);
+      const lines: string[] = [];
+      if (reqList.length > 0) lines.push(`requires = [${reqList.map((r) => `"${r}"`).join(', ')}]`);
+      // sysAfter defaults to network-online.target; a custom value (or an
+      // explicit empty, meaning "no ordering") is emitted.
+      if (reqList.length > 0 || s.sysAfter !== 'network-online.target') {
+        if (afterList.length > 0) lines.push(`after = [${afterList.map((a) => `"${a}"`).join(', ')}]`);
+      }
+      return lines;
+    }
+    case 'wayland': {
+      if (!s.intWayland) return [];
+      return s.waylandFirewall ? [] : ['firewall = false'];
+    }
+    default:
+      return [];
+  }
+}
+
+function cacheLines(enabled: string[]): string[] {
+  return CACHE_ORDER.filter((c) => enabled.includes(c)).map((c) => `${c} = true`);
+}
 
 export function generateStudioToml(s: StudioValues): string {
-    let t = `# podbox.toml — generated by podbox Studio\n\n`;
-
-    // [image] — key names mirror the Rust schema (ImageConfig): `base`
-    // (preset distros are plain base refs), `image` for prebuilt refs,
-    // `[image.packages]` install/remove/manager, `[image.run]` commands.
-    t += `[image]\n`;
-    if (s.imageType === 'preset') {
-      t += `base = "${s.selectedPresetDistro}"\n`;
-    } else {
-      t += `base = "${s.customImageBase}"\n`;
-    }
-    // `name` is required by the schema — always emit, even when it matches
-    // the container name.
-    if (s.imageName) {
-      t += `name = "${s.imageName}"\n`;
-    }
-    if (s.imagePrebuiltRef) {
-      t += `image = "${s.imagePrebuiltRef}"\n`;
-    }
-    if (s.pullRetry !== 3) t += `pull_retry = ${s.pullRetry}\n`;
-    if (s.pullRetryDelay !== '5s') t += `pull_retry_delay = "${s.pullRetryDelay}"\n`;
-
-    if (s.packagesInstallList.length > 0 || s.packagesRemoveList.length > 0 || s.packageManager !== 'auto') {
-      t += `\n[image.packages]\n`;
-      if (s.packagesInstallList.length > 0) {
-        t += `install = [${s.packagesInstallList.map((p) => `"${p}"`).join(', ')}]\n`;
-      }
-      if (s.packagesRemoveList.length > 0) {
-        t += `remove = [${s.packagesRemoveList.map((p) => `"${p}"`).join(', ')}]\n`;
-      }
-      if (s.packageManager !== 'auto') t += `manager = "${s.packageManager}"\n`;
-    }
-    if (s.runCommands.trim()) {
-      t += `\n[image.run]\n`;
-      t += `commands = [\n${s.runCommands
-        .split('\n')
-        .filter((r) => r.trim())
-        .map((r) => `  "${r.trim()}",\n`)
-        .join('')}]\n`;
-    }
-
-    // [container]
-    t += `\n[container]\n`;
-    t += `name = "${s.containerName}"\n`;
-    if (s.containerHome) t += `home = "${s.containerHome}"\n`;
-    if (s.containerShell) t += `shell = "${s.containerShell}"\n`;
-    if (s.containerMemory) t += `memory = "${s.containerMemory}"\n`;
-    if (s.containerCpus) t += `cpus = "${s.containerCpus}"\n`;
-    if (s.containerReloadCmd) t += `reload_cmd = "${s.containerReloadCmd}"\n`;
-
-    const validMounts = s.extraMounts.filter((m) => m.host.trim() && m.guest.trim());
-    if (validMounts.length > 0) {
-      t += `\n[container.mounts]\n`;
-      t += `extra = [\n${validMounts
-        .map((m) => `  "${m.host}:${m.guest}:${m.mode || 'z'}",\n`)
-        .join('')}]\n`;
-    }
-
-    const validEnvs = s.envVars.filter((e) => e.key.trim());
-    if (validEnvs.length > 0) {
-      t += `env = {\n${validEnvs
-        .map((e) => `  ${e.key} = "${e.value}",\n`)
-        .join('')}}\n`;
-    }
-
-    // [security]
-    const hasSecurity =
-      s.apparmor ||
-      s.seccomp !== 'default' ||
-      !s.secLabelDisable ||
-      !s.noNewPrivileges ||
-      s.readOnlyRootfs ||
-      s.usernsMode !== 'keep-id' ||
-      s.capPreset !== 'default' ||
-      s.extraCapAddList.length > 0;
-    if (hasSecurity) {
-      t += `\n[security]\n`;
-      if (s.apparmor) t += `apparmor = "${s.apparmor}"\n`;
-      if (s.seccomp !== 'default') t += `seccomp = "${s.seccomp}"\n`;
-      if (!s.secLabelDisable) t += `security_label_disable = false\n`;
-      if (!s.noNewPrivileges) t += `no_new_privileges = false\n`;
-      if (s.readOnlyRootfs) t += `read_only_rootfs = true\n`;
-      if (s.usernsMode !== 'keep-id') t += `userns = "${s.usernsMode}"\n`;
-      if (s.capPreset !== 'default') t += `cap_preset = "${s.capPreset}"\n`;
-      if (s.extraCapAddList.length > 0) {
-        t += `cap_add = [${s.extraCapAddList.map((c) => `"${c}"`).join(', ')}]\n`;
-      }
-    }
-
-    // [network]
-    const hasNet = s.netMode !== 'private' || s.portMappingsList.length > 0;
-    if (hasNet) {
-      t += `\n[network]\n`;
-      t += `mode = "${s.netMode}"\n`;
-      if (s.portMappingsList.length > 0 && s.netMode !== 'host') {
-        t += `ports = [${s.portMappingsList.map((p) => `"${p}"`).join(', ')}]\n`;
-      }
-    }
-
-    // [integration]
-    t += `\n[integration]\n`;
-    t += `wayland = ${s.intWayland}\n`;
-    t += `audio = ${s.intAudio}\n`;
-    t += `gpu = ${s.intGpu === 'true' || s.intGpu === 'false' ? s.intGpu : `"${s.intGpu}"`}\n`;
-    t += `dbus = ${s.intDbus}\n`;
-    if (!s.intNotify) t += `notify = false\n`;
-    if (!s.intXdgOpen) t += `xdg_open = false\n`;
-    if (!s.intClipboard) t += `clipboard = false\n`;
-    if (!s.intSyncFonts) t += `sync_fonts = false\n`;
-    if (!s.intSyncIcons) t += `sync_icons = false\n`;
-    if (!s.intSyncThemes) t += `sync_themes = false\n`;
-    if (s.intSshAgent) t += `ssh_agent = true\n`;
-    if (s.intGpgAgent) t += `gpg_agent = true\n`;
-
-    if (s.hostExecEnabled) {
-      t += `\n[integration.host_exec]\n`;
-      t += `enabled = true\n`;
-      const validExecs = s.hostExecList.filter((e) => e.alias.trim() && e.path.trim());
-      if (validExecs.length > 0) {
-        t += `allowlist = { ${validExecs.map((e) => `${e.alias} = "${e.path}"`).join(', ')} }\n`;
-      }
-    }
-
-    const hasXdgDirs =
-      s.xdgDocuments || s.xdgDownloads || s.xdgPictures || s.xdgMusic || s.xdgVideos || s.xdgDesktop || s.xdgProjects;
-    if (hasXdgDirs) {
-      t += `\n[integration.xdg_dirs]\n`;
-      if (s.xdgDocuments) t += `documents = true\n`;
-      if (s.xdgDownloads) t += `downloads = true\n`;
-      if (s.xdgPictures) t += `pictures = true\n`;
-      if (s.xdgMusic) t += `music = true\n`;
-      if (s.xdgVideos) t += `videos = true\n`;
-      if (s.xdgDesktop) t += `desktop = true\n`;
-      if (s.xdgProjects) t += `projects = true\n`;
-    }
-
-    if (s.exportAppsList.length > 0 || s.exportBinsList.length > 0) {
-      t += `\n[integration.export]\n`;
-      if (s.exportAppsList.length > 0) t += `apps = [${s.exportAppsList.map((a) => `"${a}"`).join(', ')}]\n`;
-      if (s.exportBinsList.length > 0) t += `bins = [${s.exportBinsList.map((b) => `"${b}"`).join(', ')}]\n`;
-    }
-
-    // [lifecycle] — the schema defaults `quadlet` to false while Studio
-    // defaults it to true, so always emit the flag when the section exists.
-    const hasLifecycle =
-      s.lifeQuadlet || s.lifeAutostart || s.lifeOnStop !== 'keep' || s.lifeAutoUpdate || s.lifeIdleTimeout !== 'off';
-    if (hasLifecycle) {
-      t += `\n[lifecycle]\n`;
-      t += `quadlet = ${s.lifeQuadlet}\n`;
-      if (s.lifeAutostart) t += `autostart = true\n`;
-      if (s.lifeOnStop !== 'keep') t += `on_stop = "${s.lifeOnStop}"\n`;
-      if (s.lifeAutoUpdate) t += `auto_update = true\n`;
-      if (s.lifeIdleTimeout !== 'off') t += `idle_timeout = "${s.lifeIdleTimeout}"\n`;
-    }
-
-    // [systemd]
-    const reqList = s.sysRequires.split(',').map((s) => s.trim()).filter(Boolean);
-    const afterList = s.sysAfter.split(',').map((s) => s.trim()).filter(Boolean);
-    if (reqList.length > 0 || s.sysAfter !== 'network-online.target') {
-      t += `\n[systemd]\n`;
-      if (reqList.length > 0) t += `requires = [${reqList.map((r) => `"${r}"`).join(', ')}]\n`;
-      if (afterList.length > 0) t += `after = [${afterList.map((a) => `"${a}"`).join(', ')}]\n`;
-    }
-
-    // [dbus]
-    if (s.intDbus) {
-      if (s.dbusPreset !== 'portal' || s.dbusTalkList.length > 0 || s.dbusOwnList.length > 0) {
-        t += `\n[dbus]\n`;
-        if (s.dbusPreset !== 'none') t += `preset = "${s.dbusPreset}"\n`;
-        if (s.dbusTalkList.length > 0) t += `talk = [${s.dbusTalkList.map((tk) => `"${tk}"`).join(', ')}]\n`;
-        if (s.dbusOwnList.length > 0) t += `own = [${s.dbusOwnList.map((o) => `"${o}"`).join(', ')}]\n`;
-      }
-    }
-
-    // [wayland]
-    if (s.intWayland && (!s.waylandFirewall || s.waylandBlockedList.length > 0)) {
-      t += `\n[wayland]\n`;
-      if (!s.waylandFirewall) t += `firewall = false\n`;
-      if (s.waylandBlockedList.length > 0) {
-        t += `blocked_interfaces = [\n${s.waylandBlockedList.map((b) => `  "${b}",\n`).join('')}]\n`;
-      }
-    }
-
-    return t;
+  let t = `# podbox.toml — generated by podbox Studio\n\n`;
+  let first = true;
+  for (const table of TABLE_ORDER) {
+    if (TABLE_GATES[table] && !TABLE_GATES[table](s)) continue;
+    const lines = [...scalarLines(s, table), ...customLines(s, table)];
+    if (lines.length === 0) continue;
+    if (!first) t += `\n`;
+    first = false;
+    t += `[${table}]\n`;
+    t += `${lines.join('\n')}\n`;
+  }
+  return t;
 }

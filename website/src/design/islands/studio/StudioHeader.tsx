@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft,
+  Box,
   ChevronDown,
   Copy,
   Download,
@@ -24,11 +25,11 @@ import { useOutputActions } from './useOutputActions';
 import { presetPatch, defaultPatch } from './presets';
 import { StudioImport } from './StudioImport';
 
-interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession'>; toml: string; quadlet: string; }
+interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession'>; toml: string; quadlet: string; containerfile: string | null; }
 
-export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
+export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderProps) {
   const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu, hasRestoredSession } = st;
-  const { handleDownloadToml, handleDownloadQuadlet, handleCopyConfig } = useOutputActions(st, toml, quadlet);
+  const { handleDownloadToml, handleDownloadQuadlet, handleDownloadContainerfile, handleCopyConfig } = useOutputActions(st, toml, quadlet, containerfile);
   const [showImport, setShowImport] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const onPreset = (p: 'rust' | 'arch-gui' | 'fullstack' | 'minimal') => {
@@ -194,6 +195,23 @@ export function StudioHeader({ st, toml, quadlet }: StudioHeaderProps) {
                   </div>
                 </div>
               </button>
+
+              {containerfile && (
+                <button
+                  onClick={handleDownloadContainerfile}
+                  className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-primary)] flex items-center justify-between cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <Box className="w-4 h-4 text-[var(--accent-teal)]" />
+                    <div>
+                      <div className="font-medium">Download Containerfile</div>
+                      <div className="text-[10px] text-[var(--text-muted)] font-mono">
+                        Containerfile
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
 
               <div className="my-1 border-t border-[var(--border)]" />
 

@@ -3,17 +3,19 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import {
+  StudioInput,
   StudioSelect,
   StudioSwitch,
   StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { CAP_PRESET_OPTIONS, USERNS_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type SecurityPanelProps = Pick<StudioState, 'capPreset' | 'extraCapAddList' | 'noNewPrivileges' | 'readOnlyRootfs' | 'secLabelDisable' | 'setCapPreset' | 'setExtraCapAddList' | 'setNoNewPrivileges' | 'setReadOnlyRootfs' | 'setSecLabelDisable' | 'setUsernsMode' | 'usernsMode'>;
+type SecurityPanelProps = Pick<StudioState, 'apparmor' | 'capPreset' | 'extraCapAddList' | 'noNewPrivileges' | 'readOnlyRootfs' | 'secLabelDisable' | 'seccomp' | 'setApparmor' | 'setCapPreset' | 'setExtraCapAddList' | 'setNoNewPrivileges' | 'setReadOnlyRootfs' | 'setSecLabelDisable' | 'setSeccomp' | 'setUsernsMode' | 'usernsMode'>;
 
 export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
-  const { capPreset, extraCapAddList, noNewPrivileges, readOnlyRootfs, secLabelDisable, setCapPreset, setExtraCapAddList, setNoNewPrivileges, setReadOnlyRootfs, setSecLabelDisable, setUsernsMode, usernsMode } = st;
+  const { apparmor, capPreset, extraCapAddList, noNewPrivileges, readOnlyRootfs, seccomp, secLabelDisable, setApparmor, setCapPreset, setExtraCapAddList, setNoNewPrivileges, setReadOnlyRootfs, setSecLabelDisable, setSeccomp, setUsernsMode, usernsMode } = st;
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -100,13 +102,45 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
         }
         value={usernsMode}
         onChange={setUsernsMode}
-        options={[
-          { value: 'keep-id', label: 'keep-id (Host UID = Container UID)' },
-          { value: 'nomap', label: 'nomap (Rootless subordinate IDs)' },
-          { value: 'private', label: 'private (Standard user namespace)' },
-        ]}
+        options={USERNS_OPTIONS}
       />
     </div>
+  </div>
+
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--border)]">
+    <StudioInput
+      label={
+        <div className="flex items-center">
+          <span>AppArmor Profile</span>
+          <StudioTooltip
+            section="[security]"
+            title="apparmor = &quot;...&quot;"
+            description="AppArmor profile confining the container. Empty means podman default."
+          />
+        </div>
+      }
+      value={apparmor}
+      onChange={(e) => setApparmor(e.target.value)}
+      placeholder="podman default"
+      id="studio-input-security-apparmor"
+    />
+
+    <StudioInput
+      label={
+        <div className="flex items-center">
+          <span>Seccomp Profile</span>
+          <StudioTooltip
+            section="[security]"
+            title="seccomp = &quot;...&quot;"
+            description="Seccomp filter profile path or `unconfined`. Empty means podman default."
+          />
+        </div>
+      }
+      value={seccomp === 'default' ? '' : seccomp}
+      onChange={(e) => setSeccomp(e.target.value || 'default')}
+      placeholder="podman default"
+      id="studio-input-security-seccomp"
+    />
   </div>
 
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--border)]">
@@ -123,12 +157,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
       }
       value={capPreset}
       onChange={setCapPreset}
-      options={[
-        { value: 'default', label: 'Default (Standard rootless dev)' },
-        { value: 'none', label: 'None (Drop all capabilities)' },
-        { value: 'monitoring', label: 'Monitoring (Add SYS_PTRACE)' },
-        { value: 'admin', label: 'Admin (CAP_NET_ADMIN / SYS_ADMIN)' },
-      ]}
+      options={CAP_PRESET_OPTIONS}
     />
 
     <StudioTagInput

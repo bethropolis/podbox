@@ -11,79 +11,14 @@ import { parse as parseTomlText } from "smol-toml";
 import { generateStudioToml } from "../src/design/islands/studio/generateToml";
 import { tomlToPatch } from "../src/design/islands/studio/parseImport";
 import { presetPatch } from "../src/design/islands/studio/presets";
+import { STUDIO_DEFAULTS } from "../src/design/islands/studio/schema";
 import type { StudioValues } from "../src/design/islands/studio/useStudioState";
 
 await init();
 
-// Mirror of the useState initializers in useStudioState.ts (config values
-// only — view state excluded, same as the persistable subset).
-const defaults: StudioValues = {
-  activePreset: "custom",
-  imageType: "preset",
-  selectedPresetDistro: "fedora:44",
-  customImageBase: "ghcr.io/username/custom-env:latest",
-  imageName: "dev-box",
-  imagePrebuiltRef: "",
-  pullRetry: 3,
-  pullRetryDelay: "5s",
-  packagesInstallList: ["git"],
-  packagesRemoveList: [],
-  packageManager: "auto",
-  runCommands: "dnf clean all",
-  containerName: "dev-box",
-  containerHome: "~/containers/dev-box",
-  containerShell: "bash",
-  containerMemory: "4G",
-  containerCpus: "2.0",
-  containerReloadCmd: "",
-  extraMounts: [],
-  envVars: [],
-  apparmor: "",
-  seccomp: "default",
-  secLabelDisable: true,
-  noNewPrivileges: true,
-  readOnlyRootfs: false,
-  usernsMode: "keep-id",
-  capPreset: "default",
-  extraCapAddList: [],
-  netMode: "private",
-  portMappingsList: [],
-  intWayland: true,
-  intAudio: true,
-  intGpu: "auto",
-  intDbus: false,
-  intNotify: false,
-  intXdgOpen: false,
-  intClipboard: false,
-  intSyncFonts: false,
-  intSyncIcons: false,
-  intSyncThemes: false,
-  intSshAgent: false,
-  intGpgAgent: false,
-  hostExecEnabled: false,
-  hostExecList: [],
-  xdgDocuments: false,
-  xdgDownloads: false,
-  xdgPictures: false,
-  xdgMusic: false,
-  xdgVideos: false,
-  xdgDesktop: false,
-  xdgProjects: false,
-  exportAppsList: [],
-  exportBinsList: [],
-  lifeQuadlet: true,
-  lifeAutostart: false,
-  lifeOnStop: "keep",
-  lifeAutoUpdate: false,
-  lifeIdleTimeout: "off",
-  sysRequires: "",
-  sysAfter: "network-online.target",
-  dbusPreset: "portal",
-  dbusTalkList: [],
-  dbusOwnList: [],
-  waylandFirewall: false,
-  waylandBlockedList: [],
-} as StudioValues;
+// Defaults live in the shared schema module (same object the UI boots
+// from), so this guard tests exactly what users see.
+const defaults: StudioValues = { ...STUDIO_DEFAULTS };
 
 const cases: Array<[string, Partial<StudioValues>]> = [
   ["defaults", {}],
@@ -91,21 +26,48 @@ const cases: Array<[string, Partial<StudioValues>]> = [
   ["arch-gui", presetPatch("arch-gui")],
   ["fullstack", presetPatch("fullstack")],
   ["minimal", presetPatch("minimal")],
+  // New panels: dotfiles + caches + services + slice/weight + offline.
+  [
+    "integrations",
+    {
+      dotfilesSource: "host:~/.dotfiles",
+      dotfilesTarget: "~/.dotfiles",
+      dotfilesCloneOn: "container",
+      dotfilesInstall: "./install.sh",
+      sharedCaches: ["cargo", "npm"],
+      hostCaches: ["pip"],
+      services: [
+        { name: "redis", command: "redis-server", restart: "on-failure" },
+        { name: "worker", command: "npm run worker", restart: "always" },
+      ],
+      containerSlice: "podbox.slice",
+      containerCpuWeight: 500,
+      netOffline: true,
+      intGitIdentity: false,
+      lifeAutoCheckpoint: true,
+    },
+  ],
 ];
 
 let failed = 0;
 for (const [name, patch] of cases) {
   const values = { ...defaults, ...patch };
   const toml = generateStudioToml(values);
-  const v = validate_toml(toml) as { valid: boolean; errors: string[]; warnings: string[] };
+  const v = validate_toml(toml) as {
+    valid: boolean;
+    errors: Array<{ field?: string; message: string }>;
+    warnings: string[];
+  };
   if (!v.valid) {
-    console.error(`✗ ${name}: TOML rejected by Rust engine:\n  - ${v.errors.join("\n  - ")}`);
+    console.error(
+      `✗ ${name}: TOML rejected by Rust engine:\n  - ${v.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  - ")}`,
+    );
     failed++;
     continue;
   }
-  let compiled: { container: string };
+  let compiled: { container: string; containerfile: string | null };
   try {
-    compiled = compile_quadlet(toml) as { container: string };
+    compiled = compile_quadlet(toml) as { container: string; containerfile: string | null };
   } catch (e) {
     console.error(`✗ ${name}: compile threw: ${e}`);
     failed++;
@@ -116,13 +78,26 @@ for (const [name, patch] of cases) {
     failed++;
     continue;
   }
+  // Base-image presets cannot embed the guest binary in wasm, so no
+  // Containerfile is produced (None serializes as undefined); the prebuilt
+  // case below covers the Some path.
+  if (compiled.containerfile != null) {
+    console.error(`✗ ${name}: expected no Containerfile for base-image preset`);
+    failed++;
+    continue;
+  }
   // Import loop: generated TOML -> state patch -> regenerated TOML must
   // still validate (guards parseImport.ts against schema drift too).
   const reimported = { ...values, ...tomlToPatch(parseTomlText(toml) as Record<string, any>) };
   const toml2 = generateStudioToml(reimported);
-  const v2 = validate_toml(toml2) as { valid: boolean; errors: string[] };
+  const v2 = validate_toml(toml2) as {
+    valid: boolean;
+    errors: Array<{ field?: string; message: string }>;
+  };
   if (!v2.valid) {
-    console.error(`✗ ${name}: re-imported TOML rejected:\n  - ${v2.errors.join("\n  - ")}`);
+    console.error(
+      `✗ ${name}: re-imported TOML rejected:\n  - ${v2.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  - ")}`,
+    );
     failed++;
     continue;
   }
@@ -132,5 +107,32 @@ for (const [name, patch] of cases) {
 if (failed > 0) {
   console.error(`\n${failed} case(s) failed — Studio and podbox schema have drifted.`);
   process.exit(1);
+}
+
+// Structured errors carry field targets for input highlighting.
+{
+  const bad = { ...defaults, containerMemory: "bogus" };
+  const v = validate_toml(generateStudioToml(bad)) as {
+    valid: boolean;
+    errors: Array<{ field?: string; message: string }>;
+  };
+  const memErr = v.errors.find((e) => e.field === "container.memory");
+  if (v.valid || !memErr) {
+    console.error("✗ field-errors: expected a container.memory-targeted issue");
+    process.exit(1);
+  }
+  console.log(`✓ field-errors: container.memory -> "${memErr.message}"`);
+}
+// Prebuilt-image configs take the overlay path, which the wasm build CAN
+// render (no guest binary needed).
+{
+  const values = { ...defaults, imagePrebuiltRef: "ghcr.io/bethropolis/podbox:cachy-latest" };
+  const toml = generateStudioToml(values);
+  const compiled = compile_quadlet(toml) as { containerfile: string | null };
+  if (!compiled.containerfile?.includes("FROM")) {
+    console.error("✗ prebuilt: expected a Containerfile overlay");
+    process.exit(1);
+  }
+  console.log(`✓ prebuilt: Containerfile overlay rendered (${compiled.containerfile.split("\n").length} lines)`);
 }
 console.log("\nAll Studio presets round-trip through the Rust engine.");

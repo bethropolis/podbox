@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import {
   Box,
   Boxes,
+  Database,
+  FolderGit2,
   ShieldCheck,
   Network,
   Monitor,
@@ -10,19 +12,24 @@ import {
   Layers3,
 } from 'lucide-react';
 import type { StudioState } from './useStudioState';
+import { CATEGORIES } from './schema';
 
-const categories = [
-  { id: 'image', label: '[image]', icon: Box, count: 'Distro & Packages' },
-  { id: 'container', label: '[container]', icon: Boxes, count: 'Resources & Shell' },
-  { id: 'security', label: '[security]', icon: ShieldCheck, count: 'UserNS & Caps' },
-  { id: 'network', label: '[network]', icon: Network, count: 'Pasta & Ports' },
-  { id: 'integration', label: '[integration]', icon: Monitor, count: 'Wayland & GPU' },
-  { id: 'lifecycle', label: '[lifecycle]', icon: RefreshCw, count: 'Quadlet & Boot' },
-  { id: 'dbus', label: '[dbus]', icon: Radio, count: 'Proxy Rules' },
-  { id: 'wayland', label: '[wayland]', icon: Layers3, count: 'Filter Protocol' },
-];
+const icons: Record<string, typeof Box> = {
+  image: Box,
+  container: Boxes,
+  dotfiles: FolderGit2,
+  storage: Database,
+  security: ShieldCheck,
+  network: Network,
+  integration: Monitor,
+  lifecycle: RefreshCw,
+  dbus: Radio,
+  wayland: Layers3,
+};
 
-export function CategoryTabs({ st }: { st: Pick<StudioState, 'activeCategory' | 'setActiveCategory'> }) {
+const categories = CATEGORIES.map((cat) => ({ ...cat, icon: icons[cat.id] ?? Box }));
+
+export function CategoryTabs({ st, errorMap }: { st: Pick<StudioState, 'activeCategory' | 'setActiveCategory'>; errorMap?: Record<string, string> }) {
   const stripRef = useRef<HTMLDivElement>(null);
 
   // Translate vertical wheel into horizontal scroll while hovering the
@@ -49,6 +56,7 @@ export function CategoryTabs({ st }: { st: Pick<StudioState, 'activeCategory' | 
   {categories.map((cat) => {
     const Icon = cat.icon;
     const isActive = st.activeCategory === cat.id;
+    const hasError = !!errorMap && Object.keys(errorMap).some((f) => f === cat.id || f.startsWith(`${cat.id}.`));
     return (
       <button
         key={cat.id}
@@ -62,6 +70,9 @@ export function CategoryTabs({ st }: { st: Pick<StudioState, 'activeCategory' | 
       >
         <Icon className="w-3.5 h-3.5" />
         <span>{cat.label}</span>
+        {hasError && (
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-red)] inline-block ml-1" title="This section has validation errors" />
+        )}
       </button>
     );
   })}

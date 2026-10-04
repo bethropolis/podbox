@@ -1,18 +1,22 @@
 import React from 'react';
 import {
   Monitor,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import {
   StudioSelect,
   StudioSwitch,
+  StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { GPU_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type IntegrationPanelProps = Pick<StudioState, 'intAudio' | 'intClipboard' | 'intDbus' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intWayland' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntWayland'>;
+type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
 export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
-  const { intAudio, intClipboard, intDbus, intGpu, intNotify, intSshAgent, intWayland, setIntAudio, setIntClipboard, setIntDbus, setIntGpu, setIntNotify, setIntSshAgent, setIntWayland } = st;
+  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, intAudio, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -148,12 +152,171 @@ export function IntegrationPanel({ st }: { st: IntegrationPanelProps }) {
       }
       value={intGpu}
       onChange={setIntGpu}
-      options={[
-        { value: 'auto', label: 'auto (Pass /dev/dri if present on host)' },
-        { value: 'nvidia', label: 'nvidia (NVIDIA Container Toolkit CDI)' },
-        { value: 'true', label: 'true (Require /dev/dri passthrough)' },
-        { value: 'false', label: 'false (Software rendering only)' },
-      ]}
+      options={GPU_OPTIONS}
+    />
+  </div>
+
+  {/* Desktop sync + identity */}
+  <div className="pt-2 border-t border-[var(--border)] space-y-3">
+    <div className="flex items-center">
+      <span className="text-xs font-medium text-[var(--text-subtext)]">Desktop Sync &amp; Identity</span>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <StudioSwitch
+        id="int-sync-themes"
+        checked={intSyncThemes}
+        onChange={setIntSyncThemes}
+        label="Theme Sync (~/.themes)"
+        description="Share host GTK/icon themes read-only"
+      />
+      <StudioSwitch
+        id="int-sync-icons"
+        checked={intSyncIcons}
+        onChange={setIntSyncIcons}
+        label="Icon Sync (~/.icons)"
+        description="Share host icon themes read-only"
+      />
+      <StudioSwitch
+        id="int-sync-fonts"
+        checked={intSyncFonts}
+        onChange={setIntSyncFonts}
+        label="Font Sync (~/.fonts)"
+        description="Share host fonts read-only"
+      />
+      <StudioSwitch
+        id="int-git-identity"
+        checked={intGitIdentity}
+        onChange={setIntGitIdentity}
+        label="Git Identity Passthrough"
+        description="Mount gitconfig + credentials (git_identity)"
+      />
+      <StudioSwitch
+        id="int-gpg-agent"
+        checked={intGpgAgent}
+        onChange={setIntGpgAgent}
+        label="Forward GPG Agent"
+        description="Mount S.gpg-agent for commit signing"
+      />
+      <StudioSwitch
+        id="int-xdg-open"
+        checked={intXdgOpen}
+        onChange={setIntXdgOpen}
+        label="XDG Open Portal"
+        description="Allow opening host URLs/files (xdg_open)"
+      />
+    </div>
+  </div>
+
+  {/* XDG directories */}
+  <div className="pt-2 border-t border-[var(--border)] space-y-3">
+    <div className="flex items-center">
+      <span className="text-xs font-medium text-[var(--text-subtext)]">XDG Directories</span>
+      <StudioTooltip
+        section="[integration.xdg_dirs]"
+        title="documents = true"
+        description="Bind-mount host XDG user directories into the container."
+      />
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <StudioSwitch id="xdg-documents" checked={xdgDocuments} onChange={setXdgDocuments} label="Documents" />
+      <StudioSwitch id="xdg-downloads" checked={xdgDownloads} onChange={setXdgDownloads} label="Downloads" />
+      <StudioSwitch id="xdg-pictures" checked={xdgPictures} onChange={setXdgPictures} label="Pictures" />
+      <StudioSwitch id="xdg-music" checked={xdgMusic} onChange={setXdgMusic} label="Music" />
+      <StudioSwitch id="xdg-videos" checked={xdgVideos} onChange={setXdgVideos} label="Videos" />
+      <StudioSwitch id="xdg-desktop" checked={xdgDesktop} onChange={setXdgDesktop} label="Desktop" />
+      <StudioSwitch id="xdg-projects" checked={xdgProjects} onChange={setXdgProjects} label="Projects" />
+    </div>
+  </div>
+
+  {/* Host exec */}
+  <div className="pt-2 border-t border-[var(--border)] space-y-3">
+    <StudioSwitch
+      id="host-exec-enabled"
+      checked={hostExecEnabled}
+      onChange={setHostExecEnabled}
+      label={
+        <div className="flex items-center">
+          <span>Host Command Execution</span>
+          <StudioTooltip
+            section="[integration.host_exec]"
+            title="enabled = true"
+            description="Allowlist host binaries the container may invoke (filtered shims)."
+          />
+        </div>
+      }
+      description="Expose allowlisted host commands inside the container"
+    />
+    {hostExecEnabled && (
+      <div className="space-y-2">
+        {hostExecList.map((e, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={e.alias}
+              aria-label={`Host exec ${idx + 1} alias`}
+              onChange={(ev) => {
+                const updated = [...hostExecList];
+                updated[idx].alias = ev.target.value;
+                setHostExecList(updated);
+              }}
+              placeholder="alias"
+              className="w-32 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+            />
+            <input
+              type="text"
+              value={e.path}
+              aria-label={`Host exec ${idx + 1} path`}
+              onChange={(ev) => {
+                const updated = [...hostExecList];
+                updated[idx].path = ev.target.value;
+                setHostExecList(updated);
+              }}
+              placeholder="/usr/bin/..."
+              className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)]"
+            />
+            <button
+              type="button"
+              onClick={() => setHostExecList(hostExecList.filter((_, i) => i !== idx))}
+              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer"
+              title="Remove entry"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => setHostExecList([...hostExecList, { alias: '', path: '' }])}
+          className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
+        >
+          <Plus className="w-3 h-3" />
+          <span>Add Allowlist Entry</span>
+        </button>
+      </div>
+    )}
+  </div>
+
+  {/* Desktop export */}
+  <div className="pt-2 border-t border-[var(--border)] space-y-3">
+    <div className="flex items-center">
+      <span className="text-xs font-medium text-[var(--text-subtext)]">Desktop Export</span>
+      <StudioTooltip
+        section="[integration.export]"
+        title="apps = [...]"
+        description="Export container apps/bins to the host desktop."
+      />
+    </div>
+    <StudioTagInput
+      label="Exported Apps"
+      tags={exportAppsList}
+      onChange={setExportAppsList}
+      placeholder="e.g. firefox..."
+    />
+    <StudioTagInput
+      label="Exported Bins"
+      tags={exportBinsList}
+      onChange={setExportBinsList}
+      placeholder="e.g. code..."
     />
   </div>
 </div>

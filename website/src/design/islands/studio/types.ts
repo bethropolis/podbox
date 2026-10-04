@@ -13,3 +13,9 @@ export interface HostExecItem {
   alias: string;
   path: string;
 }
+
+export interface ServiceItem {
+  name: string;
+  command: string;
+  restart: string;
+}

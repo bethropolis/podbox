@@ -7,6 +7,7 @@ import {
   StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { DBUS_PRESET_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type DbusPanelProps = Pick<StudioState, 'dbusPreset' | 'dbusTalkList' | 'setDbusPreset' | 'setDbusTalkList'>;
@@ -41,13 +42,7 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
       }
       value={dbusPreset}
       onChange={setDbusPreset}
-      options={[
-        { value: 'portal', label: 'portal (Desktop Portals & Notifications)' },
-        { value: 'gnome', label: 'gnome (GNOME Shell integration)' },
-        { value: 'kde', label: 'kde (KDE Plasma integration)' },
-        { value: 'flatpak', label: 'flatpak (Strict Flatpak compatibility)' },
-        { value: 'none', label: 'none (Custom rules only)' },
-      ]}
+      options={DBUS_PRESET_OPTIONS}
     />
 
     <StudioTagInput

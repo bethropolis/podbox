@@ -4,15 +4,18 @@ import {
 } from 'lucide-react';
 import {
   StudioSelect,
+  StudioSwitch,
   StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
+import { NETWORK_MODE_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type NetworkPanelProps = Pick<StudioState, 'netMode' | 'portMappingsList' | 'setNetMode' | 'setPortMappingsList'>;
+type NetworkPanelProps = Pick<StudioState, 'netMode' | 'netOffline' | 'portMappingsList' | 'setNetMode' | 'setNetOffline' | 'setPortMappingsList'>;
 
-export function NetworkPanel({ st }: { st: NetworkPanelProps }) {
-  const { netMode, portMappingsList, setNetMode, setPortMappingsList } = st;
+export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap?: Record<string, string> }) {
+  const { netMode, netOffline, portMappingsList, setNetMode, setNetOffline, setPortMappingsList } = st;
+  const err = (field: string) => errorMap?.[field];
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -42,13 +45,7 @@ export function NetworkPanel({ st }: { st: NetworkPanelProps }) {
       }
       value={netMode}
       onChange={setNetMode}
-      options={[
-        { value: 'private', label: 'private (Isolated loopback namespace)' },
-        { value: 'pasta', label: 'pasta (Podman userspace networking)' },
-        { value: 'host', label: 'host (Direct host network stack)' },
-        { value: 'bridge', label: 'bridge (Podman default CNI bridge)' },
-        { value: 'none', label: 'none (Completely offline / airgapped)' },
-      ]}
+      options={NETWORK_MODE_OPTIONS}
     />
 
     <StudioTagInput
@@ -67,6 +64,26 @@ export function NetworkPanel({ st }: { st: NetworkPanelProps }) {
       onChange={setPortMappingsList}
       placeholder="e.g. 3000:3000, 8080:80"
       helperText="Ignored when network mode is set to host."
+      error={err('network.ports')}
+    />
+  </div>
+
+  <div className="pt-2 border-t border-[var(--border)]">
+    <StudioSwitch
+      id="net-offline"
+      checked={netOffline}
+      onChange={setNetOffline}
+      label={
+        <div className="flex items-center">
+          <span>Offline Mode</span>
+          <StudioTooltip
+            section="[network]"
+            title="offline = true"
+            description="Hard-disable all networking (overrides mode)."
+          />
+        </div>
+      }
+      description="Airgap the container completely"
     />
   </div>
 </div>

@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
 import init, { validate_toml, compile_quadlet, parse_toml_to_json } from '../../../wasm/podbox_wasm';
 
-export interface ValidationResult {
+export interface ValidationIssue {
+  field?: string;
+  message: string;
+}
+
+export interface ValidationReport {
   valid: boolean;
-  errors: string[];
+  errors: ValidationIssue[];
   warnings: string[];
+  /** field path -> first message, for input highlighting and tab badges. */
+  errorMap: Record<string, string>;
 }
 
 export interface CompileResult {
   container: string;
   socket: string;
   build: string | null;
+  containerfile: string | null;
   warnings: string[];
 }
 
@@ -43,10 +51,21 @@ export function useWasm() {
 
   return {
     ready,
-    validate: (toml: string): ValidationResult | null => {
+    validate: (toml: string): ValidationReport | null => {
       if (!ready) return null;
       try {
-        return validate_toml(toml) as ValidationResult;
+        const raw = validate_toml(toml) as {
+          valid: boolean;
+          errors: ValidationIssue[];
+          warnings: string[];
+        };
+        const errorMap: Record<string, string> = {};
+        for (const issue of raw.errors) {
+          if (issue.field && !(issue.field in errorMap)) {
+            errorMap[issue.field] = issue.message;
+          }
+        }
+        return { valid: raw.valid, errors: raw.errors, warnings: raw.warnings, errorMap };
       } catch (e) {
         console.error('wasm validate failed', e);
         return null;

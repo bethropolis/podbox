@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import type { MountItem, EnvVarItem, HostExecItem } from './types';
+import type { MountItem, EnvVarItem, HostExecItem, ServiceItem } from './types';
+import { STUDIO_DEFAULTS } from './schema';
 
 // Bump the suffix when the value shape changes; older payloads are then
 // ignored instead of half-applying stale keys.
@@ -17,106 +18,122 @@ function loadSaved(): Record<string, any> {
 }
 
 export function useStudioState() {
-const [isFullscreen, setIsFullscreen] = useState(false);
+const [isFullscreen, setIsFullscreen] = useState(STUDIO_DEFAULTS.isFullscreen);
 const [activeCategory, setActiveCategory] = useState<
-  'image' | 'container' | 'security' | 'network' | 'integration' | 'lifecycle' | 'dbus' | 'wayland'
->('image');
-const [activeView, setActiveView] = useState<'toml' | 'quadlet'>('toml');
-const [copied, setCopied] = useState(false);
-const [showExportMenu, setShowExportMenu] = useState(false);
-const [activePreset, setActivePreset] = useState<string>('custom');
+  'image' | 'container' | 'security' | 'network' | 'integration' | 'lifecycle' | 'dbus' | 'wayland' | 'dotfiles' | 'storage'
+>(STUDIO_DEFAULTS.activeCategory);
+const [activeView, setActiveView] = useState<'toml' | 'quadlet' | 'containerfile'>(STUDIO_DEFAULTS.activeView);
+const [copied, setCopied] = useState(STUDIO_DEFAULTS.copied);
+const [showExportMenu, setShowExportMenu] = useState(STUDIO_DEFAULTS.showExportMenu);
+const [activePreset, setActivePreset] = useState<string>(STUDIO_DEFAULTS.activePreset);
 
 // --- CONFIGURATION STATE ---
 
 // [image]
-const [imageType, setImageType] = useState<'preset' | 'custom'>('preset');
-const [selectedPresetDistro, setSelectedPresetDistro] = useState<string>('fedora:44');
-const [customImageBase, setCustomImageBase] = useState<string>('ghcr.io/username/custom-env:latest');
-const [imageName, setImageName] = useState('dev-box');
-const [imagePrebuiltRef, setImagePrebuiltRef] = useState('');
-const [pullRetry, setPullRetry] = useState(3);
-const [pullRetryDelay, setPullRetryDelay] = useState('5s');
+const [imageType, setImageType] = useState<'preset' | 'custom'>(STUDIO_DEFAULTS.imageType);
+const [selectedPresetDistro, setSelectedPresetDistro] = useState<string>(STUDIO_DEFAULTS.selectedPresetDistro);
+const [customImageBase, setCustomImageBase] = useState<string>(STUDIO_DEFAULTS.customImageBase);
+const [imageName, setImageName] = useState(STUDIO_DEFAULTS.imageName);
+const [imagePrebuiltRef, setImagePrebuiltRef] = useState(STUDIO_DEFAULTS.imagePrebuiltRef);
+const [pullRetry, setPullRetry] = useState(STUDIO_DEFAULTS.pullRetry);
+const [pullRetryDelay, setPullRetryDelay] = useState(STUDIO_DEFAULTS.pullRetryDelay);
 const [packagesInstallList, setPackagesInstallList] = useState<string[]>([
   'git',
 ]);
-const [packagesRemoveList, setPackagesRemoveList] = useState<string[]>([]);
-const [packageManager, setPackageManager] = useState<string>('auto');
-const [runCommands, setRunCommands] = useState('dnf clean all');
+const [packagesRemoveList, setPackagesRemoveList] = useState<string[]>(STUDIO_DEFAULTS.packagesRemoveList);
+const [packageManager, setPackageManager] = useState<string>(STUDIO_DEFAULTS.packageManager);
+const [runCommands, setRunCommands] = useState(STUDIO_DEFAULTS.runCommands);
+
+// [dotfiles]
+const [dotfilesSource, setDotfilesSource] = useState(STUDIO_DEFAULTS.dotfilesSource);
+const [dotfilesTarget, setDotfilesTarget] = useState(STUDIO_DEFAULTS.dotfilesTarget);
+const [dotfilesCloneOn, setDotfilesCloneOn] = useState<string>(STUDIO_DEFAULTS.dotfilesCloneOn);
+const [dotfilesInstall, setDotfilesInstall] = useState(STUDIO_DEFAULTS.dotfilesInstall);
+
+// [storage]
+const [sharedCaches, setSharedCaches] = useState<string[]>(STUDIO_DEFAULTS.sharedCaches);
+const [hostCaches, setHostCaches] = useState<string[]>(STUDIO_DEFAULTS.hostCaches);
 
 // [container]
-const [containerName, setContainerName] = useState('dev-box');
-const [containerHome, setContainerHome] = useState('~/containers/dev-box');
-const [containerShell, setContainerShell] = useState('bash');
-const [containerMemory, setContainerMemory] = useState('4G');
-const [containerCpus, setContainerCpus] = useState('2.0');
-const [containerReloadCmd, setContainerReloadCmd] = useState('');
-const [extraMounts, setExtraMounts] = useState<MountItem[]>([]);
-const [envVars, setEnvVars] = useState<EnvVarItem[]>([]);
+const [containerName, setContainerName] = useState(STUDIO_DEFAULTS.containerName);
+const [containerHome, setContainerHome] = useState(STUDIO_DEFAULTS.containerHome);
+const [containerShell, setContainerShell] = useState(STUDIO_DEFAULTS.containerShell);
+const [containerMemory, setContainerMemory] = useState(STUDIO_DEFAULTS.containerMemory);
+const [containerCpus, setContainerCpus] = useState(STUDIO_DEFAULTS.containerCpus);
+const [containerSlice, setContainerSlice] = useState(STUDIO_DEFAULTS.containerSlice);
+const [containerCpuWeight, setContainerCpuWeight] = useState(STUDIO_DEFAULTS.containerCpuWeight);
+const [containerReloadCmd, setContainerReloadCmd] = useState(STUDIO_DEFAULTS.containerReloadCmd);
+const [extraMounts, setExtraMounts] = useState<MountItem[]>(STUDIO_DEFAULTS.extraMounts);
+const [envVars, setEnvVars] = useState<EnvVarItem[]>(STUDIO_DEFAULTS.envVars);
+const [services, setServices] = useState<ServiceItem[]>(STUDIO_DEFAULTS.services);
 
 // [security]
-const [apparmor, setApparmor] = useState('');
-const [seccomp, setSeccomp] = useState('default');
-const [secLabelDisable, setSecLabelDisable] = useState(true);
-const [noNewPrivileges, setNoNewPrivileges] = useState(true);
-const [readOnlyRootfs, setReadOnlyRootfs] = useState(false);
-const [usernsMode, setUsernsMode] = useState<string>('keep-id');
-const [capPreset, setCapPreset] = useState<string>('default');
-const [extraCapAddList, setExtraCapAddList] = useState<string[]>([]);
+const [apparmor, setApparmor] = useState(STUDIO_DEFAULTS.apparmor);
+const [seccomp, setSeccomp] = useState(STUDIO_DEFAULTS.seccomp);
+const [secLabelDisable, setSecLabelDisable] = useState(STUDIO_DEFAULTS.secLabelDisable);
+const [noNewPrivileges, setNoNewPrivileges] = useState(STUDIO_DEFAULTS.noNewPrivileges);
+const [readOnlyRootfs, setReadOnlyRootfs] = useState(STUDIO_DEFAULTS.readOnlyRootfs);
+const [usernsMode, setUsernsMode] = useState<string>(STUDIO_DEFAULTS.usernsMode);
+const [capPreset, setCapPreset] = useState<string>(STUDIO_DEFAULTS.capPreset);
+const [extraCapAddList, setExtraCapAddList] = useState<string[]>(STUDIO_DEFAULTS.extraCapAddList);
 
 // [network]
-const [netMode, setNetMode] = useState<string>('private');
-const [portMappingsList, setPortMappingsList] = useState<string[]>([]);
+const [netMode, setNetMode] = useState<string>(STUDIO_DEFAULTS.netMode);
+const [netOffline, setNetOffline] = useState(STUDIO_DEFAULTS.netOffline);
+const [portMappingsList, setPortMappingsList] = useState<string[]>(STUDIO_DEFAULTS.portMappingsList);
 
 // [integration]
-const [intWayland, setIntWayland] = useState(true);
-const [intAudio, setIntAudio] = useState(true);
-const [intGpu, setIntGpu] = useState<string>('auto');
-const [intDbus, setIntDbus] = useState(false);
-const [intNotify, setIntNotify] = useState(false);
-const [intXdgOpen, setIntXdgOpen] = useState(false);
-const [intClipboard, setIntClipboard] = useState(false);
-const [intSyncFonts, setIntSyncFonts] = useState(false);
-const [intSyncIcons, setIntSyncIcons] = useState(false);
-const [intSyncThemes, setIntSyncThemes] = useState(false);
-const [intSshAgent, setIntSshAgent] = useState(false);
-const [intGpgAgent, setIntGpgAgent] = useState(false);
+const [intGitIdentity, setIntGitIdentity] = useState(STUDIO_DEFAULTS.intGitIdentity);
+const [intWayland, setIntWayland] = useState(STUDIO_DEFAULTS.intWayland);
+const [intAudio, setIntAudio] = useState(STUDIO_DEFAULTS.intAudio);
+const [intGpu, setIntGpu] = useState<string>(STUDIO_DEFAULTS.intGpu);
+const [intDbus, setIntDbus] = useState(STUDIO_DEFAULTS.intDbus);
+const [intNotify, setIntNotify] = useState(STUDIO_DEFAULTS.intNotify);
+const [intXdgOpen, setIntXdgOpen] = useState(STUDIO_DEFAULTS.intXdgOpen);
+const [intClipboard, setIntClipboard] = useState(STUDIO_DEFAULTS.intClipboard);
+const [intSyncFonts, setIntSyncFonts] = useState(STUDIO_DEFAULTS.intSyncFonts);
+const [intSyncIcons, setIntSyncIcons] = useState(STUDIO_DEFAULTS.intSyncIcons);
+const [intSyncThemes, setIntSyncThemes] = useState(STUDIO_DEFAULTS.intSyncThemes);
+const [intSshAgent, setIntSshAgent] = useState(STUDIO_DEFAULTS.intSshAgent);
+const [intGpgAgent, setIntGpgAgent] = useState(STUDIO_DEFAULTS.intGpgAgent);
 
 // [integration.host_exec]
-const [hostExecEnabled, setHostExecEnabled] = useState(false);
-const [hostExecList, setHostExecList] = useState<HostExecItem[]>([]);
+const [hostExecEnabled, setHostExecEnabled] = useState(STUDIO_DEFAULTS.hostExecEnabled);
+const [hostExecList, setHostExecList] = useState<HostExecItem[]>(STUDIO_DEFAULTS.hostExecList);
 
 // [integration.xdg_dirs]
-const [xdgDocuments, setXdgDocuments] = useState(false);
-const [xdgDownloads, setXdgDownloads] = useState(false);
-const [xdgPictures, setXdgPictures] = useState(false);
-const [xdgMusic, setXdgMusic] = useState(false);
-const [xdgVideos, setXdgVideos] = useState(false);
-const [xdgDesktop, setXdgDesktop] = useState(false);
-const [xdgProjects, setXdgProjects] = useState(false);
+const [xdgDocuments, setXdgDocuments] = useState(STUDIO_DEFAULTS.xdgDocuments);
+const [xdgDownloads, setXdgDownloads] = useState(STUDIO_DEFAULTS.xdgDownloads);
+const [xdgPictures, setXdgPictures] = useState(STUDIO_DEFAULTS.xdgPictures);
+const [xdgMusic, setXdgMusic] = useState(STUDIO_DEFAULTS.xdgMusic);
+const [xdgVideos, setXdgVideos] = useState(STUDIO_DEFAULTS.xdgVideos);
+const [xdgDesktop, setXdgDesktop] = useState(STUDIO_DEFAULTS.xdgDesktop);
+const [xdgProjects, setXdgProjects] = useState(STUDIO_DEFAULTS.xdgProjects);
 
 // [integration.export]
-const [exportAppsList, setExportAppsList] = useState<string[]>([]);
-const [exportBinsList, setExportBinsList] = useState<string[]>([]);
+const [exportAppsList, setExportAppsList] = useState<string[]>(STUDIO_DEFAULTS.exportAppsList);
+const [exportBinsList, setExportBinsList] = useState<string[]>(STUDIO_DEFAULTS.exportBinsList);
 
 // [lifecycle]
-const [lifeQuadlet, setLifeQuadlet] = useState(true);
-const [lifeAutostart, setLifeAutostart] = useState(false);
-const [lifeOnStop, setLifeOnStop] = useState<string>('keep');
-const [lifeAutoUpdate, setLifeAutoUpdate] = useState(false);
-const [lifeIdleTimeout, setLifeIdleTimeout] = useState<string>('off');
+const [lifeQuadlet, setLifeQuadlet] = useState(STUDIO_DEFAULTS.lifeQuadlet);
+const [lifeAutostart, setLifeAutostart] = useState(STUDIO_DEFAULTS.lifeAutostart);
+const [lifeOnStop, setLifeOnStop] = useState<string>(STUDIO_DEFAULTS.lifeOnStop);
+const [lifeAutoUpdate, setLifeAutoUpdate] = useState(STUDIO_DEFAULTS.lifeAutoUpdate);
+const [lifeAutoCheckpoint, setLifeAutoCheckpoint] = useState(STUDIO_DEFAULTS.lifeAutoCheckpoint);
+const [lifeIdleTimeout, setLifeIdleTimeout] = useState<string>(STUDIO_DEFAULTS.lifeIdleTimeout);
 
 // [systemd]
-const [sysRequires, setSysRequires] = useState('');
-const [sysAfter, setSysAfter] = useState('network-online.target');
+const [sysRequires, setSysRequires] = useState(STUDIO_DEFAULTS.sysRequires);
+const [sysAfter, setSysAfter] = useState(STUDIO_DEFAULTS.sysAfter);
 
 // [dbus]
-const [dbusPreset, setDbusPreset] = useState<string>('portal');
-const [dbusTalkList, setDbusTalkList] = useState<string[]>([]);
-const [dbusOwnList, setDbusOwnList] = useState<string[]>([]);
+const [dbusPreset, setDbusPreset] = useState<string>(STUDIO_DEFAULTS.dbusPreset);
+const [dbusTalkList, setDbusTalkList] = useState<string[]>(STUDIO_DEFAULTS.dbusTalkList);
+const [dbusOwnList, setDbusOwnList] = useState<string[]>(STUDIO_DEFAULTS.dbusOwnList);
 
 // [wayland]
-const [waylandFirewall, setWaylandFirewall] = useState(false);
-const [waylandBlockedList, setWaylandBlockedList] = useState<string[]>([]);
+const [waylandFirewall, setWaylandFirewall] = useState(STUDIO_DEFAULTS.waylandFirewall);
+const [waylandBlockedList, setWaylandBlockedList] = useState<string[]>(STUDIO_DEFAULTS.waylandBlockedList);
 
 
 // Keyboard shortcut for Esc when fullscreen and body scroll lock
@@ -149,7 +166,7 @@ const handleContainerNameChange = (val: string) => {
   const applyPatch = (patch: Record<string, any>) => {
     for (const [k, v] of Object.entries(patch)) setters[k]?.(v as never);
   };
-  const values = { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, containerName, containerHome, containerShell, containerMemory, containerCpus, containerReloadCmd, extraMounts, envVars, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, portMappingsList, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList };
+  const values = { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, dotfilesSource, dotfilesTarget, dotfilesCloneOn, dotfilesInstall, sharedCaches, hostCaches, containerName, containerHome, containerShell, containerMemory, containerCpus, containerSlice, containerCpuWeight, containerReloadCmd, extraMounts, envVars, services, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, netOffline, portMappingsList, intGitIdentity, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeAutoCheckpoint, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList };
   // Persist only configuration, never view state (a reload should not
   // re-open the fullscreen editor or a dropdown).
   const UI_ONLY = new Set(['isFullscreen', 'activeCategory', 'activeView', 'copied', 'showExportMenu']);
@@ -197,7 +214,7 @@ const handleContainerNameChange = (val: string) => {
     setHasRestoredSession(false);
   };
 
-  return { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, containerName, containerHome, containerShell, containerMemory, containerCpus, containerReloadCmd, extraMounts, envVars, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, portMappingsList, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList, setIsFullscreen, setActiveCategory, setActiveView, setCopied, setShowExportMenu, setActivePreset, setImageType, setSelectedPresetDistro, setCustomImageBase, setImageName, setImagePrebuiltRef, setPullRetry, setPullRetryDelay, setPackagesInstallList, setPackagesRemoveList, setPackageManager, setRunCommands, setContainerName, setContainerHome, setContainerShell, setContainerMemory, setContainerCpus, setContainerReloadCmd, setExtraMounts, setEnvVars, setApparmor, setSeccomp, setSecLabelDisable, setNoNewPrivileges, setReadOnlyRootfs, setUsernsMode, setCapPreset, setExtraCapAddList, setNetMode, setPortMappingsList, setIntWayland, setIntAudio, setIntGpu, setIntDbus, setIntNotify, setIntXdgOpen, setIntClipboard, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntSshAgent, setIntGpgAgent, setHostExecEnabled, setHostExecList, setXdgDocuments, setXdgDownloads, setXdgPictures, setXdgMusic, setXdgVideos, setXdgDesktop, setXdgProjects, setExportAppsList, setExportBinsList, setLifeQuadlet, setLifeAutostart, setLifeOnStop, setLifeAutoUpdate, setLifeIdleTimeout, setSysRequires, setSysAfter, setDbusPreset, setDbusTalkList, setDbusOwnList, setWaylandFirewall, setWaylandBlockedList, handleContainerNameChange, applyPatch, values, setters, hasRestoredSession, clearSavedSession };
+  return { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, dotfilesSource, dotfilesTarget, dotfilesCloneOn, dotfilesInstall, sharedCaches, hostCaches, containerName, containerHome, containerShell, containerMemory, containerCpus, containerSlice, containerCpuWeight, containerReloadCmd, extraMounts, envVars, services, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, netOffline, portMappingsList, intGitIdentity, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeAutoCheckpoint, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList, setIsFullscreen, setActiveCategory, setActiveView, setCopied, setShowExportMenu, setActivePreset, setImageType, setSelectedPresetDistro, setCustomImageBase, setImageName, setImagePrebuiltRef, setPullRetry, setPullRetryDelay, setPackagesInstallList, setPackagesRemoveList, setPackageManager, setRunCommands, setDotfilesSource, setDotfilesTarget, setDotfilesCloneOn, setDotfilesInstall, setSharedCaches, setHostCaches, setContainerName, setContainerHome, setContainerShell, setContainerMemory, setContainerCpus, setContainerSlice, setContainerCpuWeight, setContainerReloadCmd, setExtraMounts, setEnvVars, setServices, setApparmor, setSeccomp, setSecLabelDisable, setNoNewPrivileges, setReadOnlyRootfs, setUsernsMode, setCapPreset, setExtraCapAddList, setNetMode, setNetOffline, setPortMappingsList, setIntGitIdentity, setIntWayland, setIntAudio, setIntGpu, setIntDbus, setIntNotify, setIntXdgOpen, setIntClipboard, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntSshAgent, setIntGpgAgent, setHostExecEnabled, setHostExecList, setXdgDocuments, setXdgDownloads, setXdgPictures, setXdgMusic, setXdgVideos, setXdgDesktop, setXdgProjects, setExportAppsList, setExportBinsList, setLifeQuadlet, setLifeAutostart, setLifeOnStop, setLifeAutoUpdate, setLifeAutoCheckpoint, setLifeIdleTimeout, setSysRequires, setSysAfter, setDbusPreset, setDbusTalkList, setDbusOwnList, setWaylandFirewall, setWaylandBlockedList, handleContainerNameChange, applyPatch, values, setters, hasRestoredSession, clearSavedSession };
 }
 
 export type StudioState = ReturnType<typeof useStudioState>;

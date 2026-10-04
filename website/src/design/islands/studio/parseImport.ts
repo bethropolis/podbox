@@ -1,5 +1,12 @@
+// Reverse of generateStudioToml: parsed podbox.toml -> studio state patch.
+//
+// Scalar fields come straight from schema FIELDS (one line per field);
+// only genuinely custom shapes and legacy-key back-compat have hand-written
+// readers below. Unknown keys are ignored; missing keys keep current state.
+
 import type { StudioValues } from './useStudioState';
-import type { MountItem, EnvVarItem, HostExecItem } from './types';
+import type { MountItem, EnvVarItem, HostExecItem, ServiceItem } from './types';
+import { FIELDS, CACHE_ORDER, getPath, coerceScalar } from './schema';
 
 type Patch = Partial<StudioValues>;
 
@@ -7,7 +14,6 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 const bool = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
 const strArr = (v: unknown): string[] | undefined =>
   Array.isArray(v) ? v.filter((e): e is string => typeof e === 'string') : undefined;
-const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 
 function parseMounts(list: string[] | undefined): MountItem[] | undefined {
   if (!list) return undefined;
@@ -37,14 +43,50 @@ function parseAllowlist(rec: unknown): HostExecItem[] | undefined {
     .map(([alias, path]) => ({ alias, path: path as string }));
 }
 
-// Reverse of generateStudioToml: plain podbox.toml -> studio state patch.
-// Unknown keys are ignored; missing keys keep current state.
+function parseServices(rec: unknown): ServiceItem[] | undefined {
+  if (!rec || typeof rec !== 'object') return undefined;
+  const out: ServiceItem[] = [];
+  for (const [name, svc] of Object.entries(rec as Record<string, unknown>)) {
+    if (typeof svc === 'string') {
+      if (name.trim() && svc.trim()) out.push({ name, command: svc, restart: 'on-failure' });
+    } else if (svc && typeof svc === 'object') {
+      const detail = svc as Record<string, unknown>;
+      if (typeof detail.command === 'string' && detail.command.trim()) {
+        out.push({
+          name,
+          command: detail.command,
+          restart: typeof detail.restart === 'string' ? detail.restart : 'on-failure',
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// `[storage.shared_caches]` / `[storage.host_caches]` are flat name->bool
+// tables; canonical order first, unknown names preserved after.
+function parseCacheFlags(rec: unknown): string[] | undefined {
+  if (!rec || typeof rec !== 'object') return undefined;
+  const entries = rec as Record<string, unknown>;
+  return CACHE_ORDER.filter((c) => entries[c] === true).concat(
+    Object.keys(entries).filter((k) => !CACHE_ORDER.includes(k) && entries[k] === true),
+  );
+}
+
 export function tomlToPatch(doc: Record<string, any>): Patch {
-  const patch: Patch = { activePreset: 'custom' };
+  const patch: Record<string, any> = { activePreset: 'custom' };
   const sec = (name: string): Record<string, any> =>
     doc?.[name] && typeof doc[name] === 'object' ? doc[name] : {};
 
+  // Generic scalars: every FIELDS entry reads its TOML path.
+  for (const f of FIELDS) {
+    const coerced = coerceScalar(f.kind, getPath(doc, f.tomlPath));
+    if (coerced !== undefined) patch[f.stateKey] = coerced;
+  }
+
   const image = sec('image');
+  // `base` selects the custom-URI mode; legacy `preset` selects a preset.
+  // (The generic pass above ignores both: they share one state switch.)
   if (str(image.preset) !== undefined) {
     patch.imageType = 'preset';
     patch.selectedPresetDistro = image.preset!;
@@ -52,30 +94,33 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
     patch.imageType = 'custom';
     patch.customImageBase = image.base!;
   }
-  if (str(image.name) !== undefined) patch.imageName = image.name;
-  // Canonical key is `image`; `prebuilt` is the legacy Studio key.
-  if (str(image.image) !== undefined) patch.imagePrebuiltRef = image.image;
-  else if (str(image.prebuilt) !== undefined) patch.imagePrebuiltRef = image.prebuilt;
-  if (num(image.pull_retry) !== undefined) patch.pullRetry = image.pull_retry;
-  if (str(image.pull_retry_delay) !== undefined) patch.pullRetryDelay = image.pull_retry_delay;
-  // Canonical shape is `[image.packages]`; flat `packages` / `package_manager`
-  // keys are the legacy Studio shape.
-  const pkgsObj =
-    image.packages && typeof image.packages === 'object' && !Array.isArray(image.packages)
-      ? (image.packages as Record<string, unknown>)
-      : undefined;
-  const install = strArr(pkgsObj?.install) ?? strArr(image.packages);
-  if (install) patch.packagesInstallList = install;
-  const remove = strArr(pkgsObj?.remove) ?? strArr(image.remove_packages);
-  if (remove) patch.packagesRemoveList = remove;
-  const manager = str(pkgsObj?.manager) ?? str(image.package_manager);
-  if (manager !== undefined) patch.packageManager = manager;
-  const runObj =
-    image.run && typeof image.run === 'object' && !Array.isArray(image.run)
-      ? (image.run as Record<string, unknown>)
-      : undefined;
-  const run = strArr(runObj?.commands) ?? strArr(image.run);
-  if (run) patch.runCommands = run.join('\n');
+  // Legacy flat keys from older Studio exports.
+  if (str(image.prebuilt) !== undefined && str(image.image) === undefined) {
+    patch.imagePrebuiltRef = image.prebuilt;
+  }
+  if (str(image.package_manager) !== undefined) {
+    const pkgs = sec('image').packages;
+    if (!pkgs || typeof pkgs !== 'object' || (pkgs as Record<string, unknown>).manager === undefined) {
+      patch.packageManager = image.package_manager;
+    }
+  }
+  const pkgsRaw = image.packages;
+  if (Array.isArray(pkgsRaw)) {
+    const pkgs = strArr(pkgsRaw);
+    if (pkgs) patch.packagesInstallList = pkgs;
+  }
+  if (Array.isArray(image.remove_packages)) {
+    const rm = strArr(image.remove_packages);
+    if (rm) patch.packagesRemoveList = rm;
+  }
+  const runRaw = image.run;
+  if (Array.isArray(runRaw)) {
+    const run = strArr(runRaw);
+    if (run) patch.runCommands = run.join('\n');
+  } else if (runRaw && typeof runRaw === 'object' && !Array.isArray(runRaw)) {
+    const run = strArr((runRaw as Record<string, unknown>).commands);
+    if (run) patch.runCommands = run.join('\n');
+  }
 
   const container = sec('container');
   const cname = str(container.name);
@@ -86,110 +131,48 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
     patch.containerHome = `~/containers/${clean}`;
   }
   if (str(container.home) !== undefined) patch.containerHome = container.home;
-  if (str(container.shell) !== undefined) patch.containerShell = container.shell;
-  if (str(container.memory) !== undefined) patch.containerMemory = container.memory;
-  if (str(container.cpus) !== undefined) patch.containerCpus = container.cpus;
-  if (str(container.reload_cmd) !== undefined) patch.containerReloadCmd = container.reload_cmd;
-  // Canonical shape is `[container.mounts] extra`; flat `mounts` is legacy.
   const mountsObj =
     container.mounts && typeof container.mounts === 'object' && !Array.isArray(container.mounts)
       ? (container.mounts as Record<string, unknown>)
       : undefined;
+  // Legacy flat `mounts` list.
   const mounts = parseMounts(strArr(mountsObj?.extra) ?? strArr(container.mounts));
   if (mounts) patch.extraMounts = mounts;
   const env = parseEnv(container.env);
   if (env) patch.envVars = env;
+  const services = parseServices(container.services);
+  if (services) patch.services = services;
 
-  const security = sec('security');
-  const apparmor = str(security.apparmor) ?? str((security.s as any)?.apparmor);
-  if (apparmor !== undefined) patch.apparmor = apparmor;
-  const seccomp = str(security.seccomp) ?? str((security.s as any)?.seccomp);
-  if (seccomp !== undefined) patch.seccomp = seccomp;
-  if (bool(security.security_label_disable) !== undefined)
-    patch.secLabelDisable = security.security_label_disable;
-  if (bool(security.no_new_privileges) !== undefined)
-    patch.noNewPrivileges = security.no_new_privileges;
-  if (bool(security.read_only_rootfs) !== undefined)
-    patch.readOnlyRootfs = security.read_only_rootfs;
-  if (str(security.userns) !== undefined) patch.usernsMode = security.userns;
-  if (str(security.cap_preset) !== undefined) patch.capPreset = security.cap_preset;
-  const capAdd = strArr(security.cap_add);
-  if (capAdd) patch.extraCapAddList = capAdd;
-
-  const network = sec('network');
-  if (str(network.mode) !== undefined) patch.netMode = network.mode;
-  const ports = strArr(network.ports);
-  if (ports) patch.portMappingsList = ports;
+  const storage = sec('storage');
+  const sharedCaches = parseCacheFlags(storage.shared_caches);
+  if (sharedCaches) patch.sharedCaches = sharedCaches;
+  const hostCaches = parseCacheFlags(storage.host_caches);
+  if (hostCaches) patch.hostCaches = hostCaches;
 
   const integration = sec('integration');
-  if (bool(integration.wayland) !== undefined) patch.intWayland = integration.wayland;
-  if (bool(integration.audio) !== undefined) patch.intAudio = integration.audio;
-  if (
-    typeof integration.gpu === 'boolean' ||
-    typeof integration.gpu === 'string'
-  )
+  // gpu accepts bare bools or "auto"/"nvidia"/"true"/"false" strings.
+  if (typeof integration.gpu === 'boolean' || typeof integration.gpu === 'string') {
     patch.intGpu = String(integration.gpu);
-  if (bool(integration.dbus) !== undefined) patch.intDbus = integration.dbus;
-  if (bool(integration.notify) !== undefined) patch.intNotify = integration.notify;
-  if (bool(integration.xdg_open) !== undefined) patch.intXdgOpen = integration.xdg_open;
-  if (bool(integration.clipboard) !== undefined) patch.intClipboard = integration.clipboard;
-  if (bool(integration.sync_fonts) !== undefined) patch.intSyncFonts = integration.sync_fonts;
-  if (bool(integration.sync_icons) !== undefined) patch.intSyncIcons = integration.sync_icons;
-  if (bool(integration.sync_themes) !== undefined) patch.intSyncThemes = integration.sync_themes;
-  if (bool(integration.ssh_agent) !== undefined) patch.intSshAgent = integration.ssh_agent;
-  if (bool(integration.gpg_agent) !== undefined) patch.intGpgAgent = integration.gpg_agent;
-
-  const hostExec = sec('integration').host_exec as any;
+  }
+  const hostExec = integration.host_exec as any;
   if (hostExec && typeof hostExec === 'object') {
     if (bool(hostExec.enabled) !== undefined) patch.hostExecEnabled = hostExec.enabled;
     const allow = parseAllowlist(hostExec.allowlist);
     if (allow) patch.hostExecList = allow;
   }
-  const xdg = (sec('integration').xdg_dirs as any) ?? {};
-  for (const [tomlKey, stateKey] of [
-    ['documents', 'xdgDocuments'],
-    ['downloads', 'xdgDownloads'],
-    ['pictures', 'xdgPictures'],
-    ['music', 'xdgMusic'],
-    ['videos', 'xdgVideos'],
-    ['desktop', 'xdgDesktop'],
-    ['projects', 'xdgProjects'],
-  ] as const) {
-    if (bool(xdg[tomlKey]) !== undefined) (patch as any)[stateKey] = xdg[tomlKey];
-  }
-  const exp = (sec('integration').export as any) ?? {};
-  const apps = strArr(exp.apps);
-  if (apps) patch.exportAppsList = apps;
-  const bins = strArr(exp.bins);
-  if (bins) patch.exportBinsList = bins;
-
-  const lifecycle = sec('lifecycle');
-  if (bool(lifecycle.quadlet) !== undefined) patch.lifeQuadlet = lifecycle.quadlet;
-  if (bool(lifecycle.autostart) !== undefined) patch.lifeAutostart = lifecycle.autostart;
-  if (str(lifecycle.on_stop) !== undefined) patch.lifeOnStop = lifecycle.on_stop;
-  if (bool(lifecycle.auto_update) !== undefined) patch.lifeAutoUpdate = lifecycle.auto_update;
-  if (str(lifecycle.idle_timeout) !== undefined) patch.lifeIdleTimeout = lifecycle.idle_timeout;
-
-  const systemd = sec('systemd');
-  const requires = strArr(systemd.requires);
-  if (requires) patch.sysRequires = requires.join(', ');
-  const after = strArr(systemd.after);
-  if (after) patch.sysAfter = after.join(', ');
 
   const dbus = sec('dbus');
   if (str(dbus.preset) !== undefined) {
     patch.dbusPreset = dbus.preset;
     if (dbus.preset === 'none') patch.intDbus = false;
   }
-  const talk = strArr(dbus.talk);
-  if (talk) patch.dbusTalkList = talk;
-  const own = strArr(dbus.own);
-  if (own) patch.dbusOwnList = own;
 
-  const wayland = sec('wayland');
-  if (bool(wayland.firewall) !== undefined) patch.waylandFirewall = wayland.firewall;
-  const blocked = strArr(wayland.blocked_interfaces);
-  if (blocked) patch.waylandBlockedList = blocked;
+  // Comma-joined systemd lists (custom state shape).
+  const systemd = sec('systemd');
+  const requires = strArr(systemd.requires);
+  if (requires) patch.sysRequires = requires.join(', ');
+  const after = strArr(systemd.after);
+  if (after) patch.sysAfter = after.join(', ');
 
-  return patch;
+  return patch as Patch;
 }

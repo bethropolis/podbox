@@ -76,6 +76,7 @@ interface StudioInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   prefixIcon?: React.ReactNode;
   helperText?: string;
   isMono?: boolean;
+  error?: string;
 }
 
 export function StudioInput({
@@ -83,6 +84,7 @@ export function StudioInput({
   prefixIcon,
   helperText,
   isMono = true,
+  error,
   className = '',
   ...props
 }: StudioInputProps) {
@@ -101,12 +103,20 @@ export function StudioInput({
         )}
         <input
           {...props}
-          className={`w-full px-3 py-1.5 text-xs rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30 transition-all ${
+          className={`w-full px-3 py-1.5 text-xs rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none transition-all ${
+            error
+              ? 'border-[var(--accent-red)] focus:border-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/30'
+              : 'border-[var(--border)] focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30'
+          } ${
             isMono ? 'font-mono' : 'font-sans'
           } ${prefixIcon ? 'pl-8' : ''} ${className}`}
         />
       </div>
-      {helperText && (
+      {error ? (
+        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
+          {error}
+        </p>
+      ) : helperText && (
         <p className="text-[11px] text-[var(--text-muted)] leading-tight">
           {helperText}
         </p>
@@ -130,6 +140,7 @@ interface StudioSelectProps {
   onChange: (value: string) => void;
   options: StudioSelectOption[];
   helperText?: string;
+  error?: string;
 }
 
 export function StudioSelect({
@@ -138,6 +149,7 @@ export function StudioSelect({
   onChange,
   options,
   helperText,
+  error,
 }: StudioSelectProps) {
   return (
     <div className="space-y-1.5 w-full">
@@ -150,7 +162,11 @@ export function StudioSelect({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none px-3 py-1.5 pr-8 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30 transition-all cursor-pointer"
+          className={`w-full appearance-none px-3 py-1.5 pr-8 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] focus:outline-none transition-all cursor-pointer ${
+            error
+              ? 'border-[var(--accent-red)] focus:border-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/30'
+              : 'border-[var(--border)] focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30'
+          }`}
         >
           {options.map((opt) => (
             <option
@@ -164,7 +180,11 @@ export function StudioSelect({
         </select>
         <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
       </div>
-      {helperText && (
+      {error ? (
+        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
+          {error}
+        </p>
+      ) : helperText && (
         <p className="text-[11px] text-[var(--text-muted)] leading-tight">
           {helperText}
         </p>
@@ -182,6 +202,7 @@ interface StudioTagInputProps {
   onChange: (tags: string[]) => void;
   placeholder?: string;
   helperText?: string;
+  error?: string;
 }
 
 export function StudioTagInput({
@@ -190,6 +211,7 @@ export function StudioTagInput({
   onChange,
   placeholder = 'Add item and press Enter...',
   helperText,
+  error,
 }: StudioTagInputProps) {
   const [inputVal, setInputVal] = useState('');
 
@@ -221,7 +243,11 @@ export function StudioTagInput({
           {label}
         </div>
       )}
-      <div className="p-2 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] focus-within:border-[var(--accent-mauve)] focus-within:ring-1 focus-within:ring-[var(--accent-mauve)]/30 transition-all flex flex-wrap gap-1.5 items-center min-h-[36px]">
+      <div className={`p-2 rounded-[2px] bg-[var(--bg-mantle)] border transition-all flex flex-wrap gap-1.5 items-center min-h-[36px] ${
+        error
+          ? 'border-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/30'
+          : 'border-[var(--border)] focus-within:border-[var(--accent-mauve)] focus-within:ring-1 focus-within:ring-[var(--accent-mauve)]/30'
+      }`}>
         {tags.map((tag, idx) => (
           <span
             key={`${tag}-${idx}`}
@@ -258,7 +284,11 @@ export function StudioTagInput({
           )}
         </div>
       </div>
-      {helperText && (
+      {error ? (
+        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
+          {error}
+        </p>
+      ) : helperText && (
         <p className="text-[11px] text-[var(--text-muted)] leading-tight">
           {helperText}
         </p>

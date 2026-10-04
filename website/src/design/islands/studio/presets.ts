@@ -56,6 +56,9 @@ export function presetPatch(preset: 'rust' | 'arch-gui' | 'fullstack' | 'minimal
       patch.readOnlyRootfs = true;
       patch.noNewPrivileges = true;
       patch.netMode = 'none';
+      // Ports are rejected when the network is none/offline, so a preset
+      // promising a working config must not inherit them from a session.
+      patch.portMappingsList = [];
     }
   return patch;
 }

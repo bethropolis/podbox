@@ -66,9 +66,9 @@ impl HostEnv {
             host_has_local_share_fonts: true,
             host_shell: Some("/usr/bin/fish".into()),
             host_locale: Some("en_US.UTF-8".into()),
-            gpg_agent_socket: None,
-            gpg_home: None,
-            ssh_agent_socket: None,
+            gpg_agent_socket: Some(PathBuf::from("/home/user/.gnupg/S.gpg-agent")),
+            gpg_home: Some(PathBuf::from("/home/user/.gnupg")),
+            ssh_agent_socket: Some(PathBuf::from("/run/user/1000/keyring/ssh")),
         }
     }
 }
