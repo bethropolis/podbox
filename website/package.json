@@ -10,6 +10,7 @@
     "prebuild": "bun scripts/sync-content.ts",
     "build": "astro build",
     "preview": "astro preview",
+    "check:studio": "bun scripts/check-studio-parity.ts",
     "astro": "astro",
     "dev:fresh": "rm -rf node_modules/.vite && bun run dev"
   },

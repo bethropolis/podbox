@@ -14,7 +14,11 @@ export default defineConfig({
   base: '/podbox',
   integrations: [react(), sitemap()],
   vite: {
-    plugins: [tailwindcss()]
+    plugins: [tailwindcss()],
+    // Serve the wasm-pack output: the glue JS fetches podbox_wasm_bg.wasm
+    // via `new URL(..., import.meta.url)`, which Vite only rewrites for
+    // known asset types.
+    assetsInclude: ['**/*.wasm'],
   },
   markdown: {
     shikiConfig: {

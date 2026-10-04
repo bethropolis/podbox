@@ -1,5 +1,6 @@
 import React from 'react';
 import { useStudioState } from './studio/useStudioState';
+import { useWasm } from './studio/useWasm';
 import { generateStudioToml } from './studio/generateToml';
 import { generateStudioQuadlet } from './studio/generateQuadlet';
 import { StudioHeader } from './studio/StudioHeader';
@@ -22,7 +23,15 @@ export function StudioPage(_props: StudioPageProps) {
   const st = useStudioState();
   const { isFullscreen, activeCategory } = st;
   const toml = generateStudioToml(st.values);
-  const quadlet = generateStudioQuadlet(st.values);
+
+  // Rust engine (wasm): exact CLI validation + Quadlet codegen. TS template
+  // stays as the fallback until wasm initializes (or if it fails to load).
+  const { ready: wasmReady, validate, compileQuadlet } = useWasm();
+  const validation = validate(toml);
+  const compiled = compileQuadlet(toml);
+  const quadlet = compiled?.container ?? generateStudioQuadlet(st.values);
+  const warnings = [...(validation?.warnings ?? []), ...(compiled?.warnings ?? [])];
+  const engine = compiled ? 'rust' : 'ts';
 
   return (
 <div
@@ -34,6 +43,22 @@ export function StudioPage(_props: StudioPageProps) {
 >
   {/* -------------------------------------------------------------------- */}
       <StudioHeader st={st} toml={toml} quadlet={quadlet} />
+
+{/* Live diagnostics from the Rust engine (validation errors + codegen warnings) */}
+{wasmReady && validation && (!validation.valid || warnings.length > 0) && (
+  <div className="mb-4 space-y-1.5 font-mono text-xs">
+    {!validation.valid && validation.errors.map((msg, idx) => (
+      <div key={`e-${idx}`} className="px-3 py-2 rounded-[2px] bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/40 text-[var(--accent-red)]">
+        ✘ {msg}
+      </div>
+    ))}
+    {warnings.map((msg, idx) => (
+      <div key={`w-${idx}`} className="px-3 py-2 rounded-[2px] bg-[var(--accent-peach)]/10 border border-[var(--accent-peach)]/40 text-[var(--accent-peach)]">
+        ⚠ {msg}
+      </div>
+    ))}
+  </div>
+)}
 
 {/* 2. MAIN WORKSPACE (SETTINGS + LIVE PREVIEW)                           */}
 {/* -------------------------------------------------------------------- */}
@@ -55,7 +80,7 @@ export function StudioPage(_props: StudioPageProps) {
           </div>
         </div>
 
-        <CodePreview st={st} toml={toml} quadlet={quadlet} />
+        <CodePreview st={st} toml={toml} quadlet={quadlet} engine={engine} />
       </div>
     </div>
   );

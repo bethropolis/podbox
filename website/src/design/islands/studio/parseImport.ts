@@ -53,15 +53,28 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
     patch.customImageBase = image.base!;
   }
   if (str(image.name) !== undefined) patch.imageName = image.name;
-  if (str(image.prebuilt) !== undefined) patch.imagePrebuiltRef = image.prebuilt;
+  // Canonical key is `image`; `prebuilt` is the legacy Studio key.
+  if (str(image.image) !== undefined) patch.imagePrebuiltRef = image.image;
+  else if (str(image.prebuilt) !== undefined) patch.imagePrebuiltRef = image.prebuilt;
   if (num(image.pull_retry) !== undefined) patch.pullRetry = image.pull_retry;
   if (str(image.pull_retry_delay) !== undefined) patch.pullRetryDelay = image.pull_retry_delay;
-  if (str(image.package_manager) !== undefined) patch.packageManager = image.package_manager;
-  const pkgs = strArr(image.packages);
-  if (pkgs) patch.packagesInstallList = pkgs;
-  const rm = strArr(image.remove_packages);
-  if (rm) patch.packagesRemoveList = rm;
-  const run = strArr(image.run);
+  // Canonical shape is `[image.packages]`; flat `packages` / `package_manager`
+  // keys are the legacy Studio shape.
+  const pkgsObj =
+    image.packages && typeof image.packages === 'object' && !Array.isArray(image.packages)
+      ? (image.packages as Record<string, unknown>)
+      : undefined;
+  const install = strArr(pkgsObj?.install) ?? strArr(image.packages);
+  if (install) patch.packagesInstallList = install;
+  const remove = strArr(pkgsObj?.remove) ?? strArr(image.remove_packages);
+  if (remove) patch.packagesRemoveList = remove;
+  const manager = str(pkgsObj?.manager) ?? str(image.package_manager);
+  if (manager !== undefined) patch.packageManager = manager;
+  const runObj =
+    image.run && typeof image.run === 'object' && !Array.isArray(image.run)
+      ? (image.run as Record<string, unknown>)
+      : undefined;
+  const run = strArr(runObj?.commands) ?? strArr(image.run);
   if (run) patch.runCommands = run.join('\n');
 
   const container = sec('container');
@@ -77,7 +90,12 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
   if (str(container.memory) !== undefined) patch.containerMemory = container.memory;
   if (str(container.cpus) !== undefined) patch.containerCpus = container.cpus;
   if (str(container.reload_cmd) !== undefined) patch.containerReloadCmd = container.reload_cmd;
-  const mounts = parseMounts(strArr(container.mounts));
+  // Canonical shape is `[container.mounts] extra`; flat `mounts` is legacy.
+  const mountsObj =
+    container.mounts && typeof container.mounts === 'object' && !Array.isArray(container.mounts)
+      ? (container.mounts as Record<string, unknown>)
+      : undefined;
+  const mounts = parseMounts(strArr(mountsObj?.extra) ?? strArr(container.mounts));
   if (mounts) patch.extraMounts = mounts;
   const env = parseEnv(container.env);
   if (env) patch.envVars = env;

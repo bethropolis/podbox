@@ -38,6 +38,12 @@ jobs:
       - run: bun install
         working-directory: website
 
+      # Studio/Rust schema parity: every Studio preset must generate TOML
+      # the Rust engine accepts (uses the committed website/src/wasm build,
+      # so no Rust toolchain is needed here).
+      - run: bun run check:studio
+        working-directory: website
+
       - run: bun run build
         working-directory: website
         env:

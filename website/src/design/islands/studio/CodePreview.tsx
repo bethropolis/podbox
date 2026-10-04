@@ -36,9 +36,9 @@ const highlightCodeLine = (line: string, lang: string) => {
   return <span>{line}</span>;
 };
 
-interface CodePreviewProps { st: Pick<StudioState, 'activeView' | 'setActiveView' | 'containerName' | 'copied'>; toml: string; quadlet: string; }
+interface CodePreviewProps { st: Pick<StudioState, 'activeView' | 'setActiveView' | 'containerName' | 'copied'>; toml: string; quadlet: string; engine: 'rust' | 'ts'; }
 
-export function CodePreview({ st, toml, quadlet }: CodePreviewProps) {
+export function CodePreview({ st, toml, quadlet, engine }: CodePreviewProps) {
   const { activeView, setActiveView, containerName, copied } = st;
   const { handleDownloadToml, handleDownloadQuadlet, handleCopyConfig } = useOutputActions(
     st as Pick<StudioState, 'activeView' | 'containerName' | 'copied' | 'setCopied' | 'setShowExportMenu'>, toml, quadlet);
@@ -116,7 +116,7 @@ export function CodePreview({ st, toml, quadlet }: CodePreviewProps) {
         : `systemd Unit (~/.config/containers/systemd/${containerName || 'podbox'}.container)`}
     </span>
     <span className="text-[10px] uppercase font-bold text-[var(--accent-mauve)] shrink-0 ml-2">
-      Live Synthesizer
+      {engine === 'rust' ? 'Rust Engine' : 'Live Synthesizer'}
     </span>
   </div>
 
