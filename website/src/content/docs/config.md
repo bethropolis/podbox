@@ -204,6 +204,12 @@ container_path = "~/.cache/models"
 | `npm` | bool | `false` | `~/.npm` |
 | `pnpm` | bool | `false` | `~/.local/share/pnpm/store` |
 | `pip` | bool | `false` | `~/.cache/pip` |
+| `uv` | bool | `false` | `~/.cache/uv` |
+| `yarn` | bool | `false` | `~/.cache/yarn`, `~/.yarn/berry/cache` |
+| `bun` | bool | `false` | `~/.bun/install/cache` |
+| `composer` | bool | `false` | `~/.cache/composer` |
+| `maven` | bool | `false` | `~/.m2/repository` |
+| `gradle` | bool | `false` | `~/.gradle/caches` |
 | `ccache` | bool | `false` | `~/.cache/ccache` |
 | `go` | bool | `false` | `~/go/pkg/mod` |
 | `rustup` | bool | `false` | `~/.rustup` |
@@ -213,9 +219,11 @@ container_path = "~/.cache/models"
 
 `cargo` and `rustup` are deliberately scoped: `~/.cargo/bin` and `~/.rustup`
 hold compiler binaries built against one distro's libc, and must not cross
-distro boundaries. `podbox cache prune cargo` removes both Cargo volumes. Use
-`podbox cache list` to see created volumes and attachments, `podbox cache prune
-NAME` to remove one, and `podbox cache prune` to remove all after confirming.
+distro boundaries. Yarn covers the default cache locations for Classic and
+Berry; `podbox cache prune yarn` removes both Yarn volumes. `podbox cache prune
+cargo` removes both Cargo volumes. Use `podbox cache list` to see created
+volumes and attachments, `podbox cache prune NAME` to remove one, and
+`podbox cache prune` to remove all after confirming.
 
 Those volumes are shared between podbox containers only — they know nothing
 about caches on the host. To reuse a cache you already keep on the host, use
@@ -230,10 +238,11 @@ the container reuses what the host has already downloaded, built or cached.
 Use this for anything you maintain on the host; use `shared_caches` when the
 cache exists only to serve containers.
 
-Same built-ins as `shared_caches` — `cargo`, `npm`, `pnpm`, `pip`, `ccache`,
-`go`, `rustup`, `mbx` — because a cache is either worth sharing with the host
-or with other containers, and which one should not be a per-tool decision. A
-built-in is the same relative path on both sides.
+Same built-ins as `shared_caches` — `cargo`, `npm`, `pnpm`, `pip`, `uv`,
+`yarn`, `bun`, `composer`, `maven`, `gradle`, `ccache`, `go`, `rustup`, `mbx` —
+because a cache is either worth sharing with the host or with other containers,
+and which one should not be a per-tool decision. A built-in is the same
+relative path on both sides.
 
 ```toml
 [storage.host_caches]
@@ -249,7 +258,7 @@ container_path = "~/.cache/zig"
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `cargo` | bool | `false` | `~/.cargo/registry` and `~/.cargo/git` |
-| `npm`, `pnpm`, `pip`, `ccache`, `go`, `rustup`, `mbx` | bool | `false` | That tool's cache; see the table above for paths |
+| `npm`, `pnpm`, `pip`, `uv`, `yarn`, `bun`, `composer`, `maven`, `gradle`, `ccache`, `go`, `rustup`, `mbx` | bool | `false` | That tool's cache; see the table above for paths |
 | `custom[].name` | string | — | Label used in error messages; built-in names are reserved |
 | `custom[].host_path` | string | — | Path on the host, `~/…` or absolute |
 | `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
