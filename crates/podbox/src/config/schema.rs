@@ -139,12 +139,20 @@ impl Config {
     }
 
     pub fn parse(content: &str) -> Result<Config> {
+        let (config, _) = Self::parse_with_warnings(content)?;
+        Ok(config)
+    }
+
+    /// Parse, keeping non-fatal validation diagnostics alongside the config.
+    /// The wasm/Studio path uses this so warnings render in the UI instead
+    /// of going to stderr (which panics on wasm targets).
+    pub fn parse_with_warnings(content: &str) -> Result<(Config, Vec<String>)> {
         let mut config: Config = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
         config.run_migrations();
         config.apply_defaults();
-        config.validate()?;
-        Ok(config)
+        let (warnings, result) = config.validate_with_warnings();
+        result.map(|()| (config, warnings))
     }
 
     /// Parse with `extends` resolution anchored at `path`.

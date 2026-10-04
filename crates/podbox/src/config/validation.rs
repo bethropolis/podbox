@@ -7,6 +7,21 @@ use crate::error::PodboxError;
 
 impl Config {
     pub fn validate(&self) -> Result<()> {
+        let validated = self.validate_with_warnings();
+        // The wasm/Studio path uses `validate_with_warnings` directly: the
+        // print macros panic on wasm targets, so only the CLI may print.
+        #[cfg(feature = "cli")]
+        for warning in &validated.0 {
+            eprintln!("{warning}");
+        }
+        validated.1
+    }
+
+    /// Validate, collecting non-fatal diagnostics alongside the verdict.
+    /// Warnings are produced independently of the error outcome, matching
+    /// the CLI (which prints them even when validation fails).
+    pub fn validate_with_warnings(&self) -> (Vec<String>, Result<()>) {
+        let mut warnings: Vec<String> = Vec::new();
         let mut errors: Vec<String> = Vec::new();
 
         if self.image.base.trim().is_empty() {
@@ -256,12 +271,12 @@ impl Config {
 
         for svc in &self.dbus.talk {
             if is_portal_family(svc) {
-                eprintln!(
+                warnings.push(format!(
                     "warning: dbus.talk entry '{svc}' grants the container access to the full \
                      xdg-desktop-portal bus surface (DynamicLauncher, Screenshot, ScreenCast, \
                      Settings, ...). Prefer relying on the built-in interface-scoped portal rules \
                      from integration.notify / integration.xdg_open instead."
-                );
+                ));
             }
         }
 
@@ -276,12 +291,15 @@ impl Config {
         }
 
         if errors.is_empty() {
-            Ok(())
+            (warnings, Ok(()))
         } else {
-            Err(PodboxError::ConfigValidationFailed {
-                details: errors.join("\n  - "),
-            }
-            .into())
+            (
+                warnings,
+                Err(PodboxError::ConfigValidationFailed {
+                    details: errors.join("\n  - "),
+                }
+                .into()),
+            )
         }
     }
 }

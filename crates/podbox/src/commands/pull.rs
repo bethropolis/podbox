@@ -50,7 +50,7 @@ pub fn run_pull(config: &Config, image: &Option<String>, dry_run: bool) -> Resul
         }
         .into());
     }
-    let context_dir = podbox::build::build_context_dir(&config.image.name);
+    let context_dir = podbox::env::build_context_dir(&config.image.name);
     std::fs::create_dir_all(&context_dir)?;
     let digest = podbox::podman::image_digest(&local_tag)?;
     let lock = podbox::lock::LockFile {

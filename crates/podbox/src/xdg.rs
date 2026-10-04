@@ -1,8 +1,12 @@
 use std::path::PathBuf;
+
+#[cfg(feature = "cli")]
 use std::process::Command;
 
+#[cfg(feature = "cli")]
 use anyhow::Result;
 
+#[cfg(feature = "cli")]
 use crate::config::{XdgDirConfig, XdgDirValue};
 
 pub struct ResolvedXdgDir {
@@ -20,6 +24,22 @@ pub struct ResolvedXdgDirs {
     pub projects: Option<ResolvedXdgDir>,
 }
 
+impl ResolvedXdgDirs {
+    /// Empty stand-in for previews (Studio/wasm): no host directories are
+    /// shared, so generated units show only the config-driven mounts.
+    pub fn mock_preview() -> Self {
+        Self {
+            documents: None,
+            downloads: None,
+            pictures: None,
+            music: None,
+            videos: None,
+            desktop: None,
+            projects: None,
+        }
+    }
+}
+
 /// Resolve XDG user directories from the host.
 ///
 /// For each enabled dir, tries in order:
@@ -27,6 +47,10 @@ pub struct ResolvedXdgDirs {
 /// 2. Call `xdg-user-dir <NAME>`
 /// 3. Fall back to `~/DirName`
 /// 4. If path doesn't exist on disk: `None`
+///
+/// Host-only (`cli` feature): shells out to `xdg-user-dir` and probes the
+/// filesystem, neither of which exists on wasm.
+#[cfg(feature = "cli")]
 pub fn resolve(config: &XdgDirConfig) -> Result<ResolvedXdgDirs> {
     Ok(ResolvedXdgDirs {
         documents: resolve_dir(&config.documents, "DOCUMENTS", "Documents"),
@@ -39,6 +63,7 @@ pub fn resolve(config: &XdgDirConfig) -> Result<ResolvedXdgDirs> {
     })
 }
 
+#[cfg(feature = "cli")]
 fn resolve_dir(value: &XdgDirValue, xdg_name: &str, fallback_name: &str) -> Option<ResolvedXdgDir> {
     if !value.is_enabled() {
         return None;
@@ -73,6 +98,7 @@ fn resolve_dir(value: &XdgDirValue, xdg_name: &str, fallback_name: &str) -> Opti
     None
 }
 
+#[cfg(feature = "cli")]
 fn home_dir_str() -> String {
     dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())

@@ -19,32 +19,54 @@ path = "src/lib.rs"
 name = "podbox"
 path = "src/main.rs"
 
+[features]
+default = ["cli"]
+cli = [
+    "dep:clap",
+    "dep:clap_complete",
+    "dep:dialoguer",
+    "dep:hex",
+    "dep:indexmap",
+    "dep:nix",
+    "dep:notify-rust",
+    "dep:owo-colors",
+    "dep:rustix",
+    "dep:sha2",
+    "dep:shell-words",
+    "dep:signal-hook",
+    "dep:toml_edit",
+    "dep:tracing-journald",
+    "dep:tracing-subscriber",
+    "dep:url",
+    "dep:which",
+]
+
 [dependencies]
-clap            = { workspace = true }
-clap_complete   = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 toml            = { workspace = true }
 anyhow          = { workspace = true }
 thiserror       = { workspace = true }
 dirs            = { workspace = true }
-which           = { workspace = true }
-indexmap        = { workspace = true }
-notify-rust     = { workspace = true }
-nix             = { workspace = true }
-rustix          = { workspace = true }
-signal-hook     = { workspace = true }
-dialoguer       = { workspace = true }
-sha2            = { workspace = true }
-hex             = { workspace = true }
-url             = { workspace = true }
-toml_edit       = { workspace = true }
-shell-words     = { workspace = true }
-owo-colors      = { workspace = true }
 tracing         = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-journald   = { workspace = true }
-podbox-protocol   = { workspace = true }
+podbox-protocol = { workspace = true }
+clap            = { workspace = true, optional = true }
+clap_complete   = { workspace = true, optional = true }
+which           = { workspace = true, optional = true }
+indexmap        = { workspace = true, optional = true }
+notify-rust     = { workspace = true, optional = true }
+nix             = { workspace = true, optional = true }
+rustix          = { workspace = true, optional = true }
+signal-hook     = { workspace = true, optional = true }
+dialoguer       = { workspace = true, optional = true }
+sha2            = { workspace = true, optional = true }
+hex             = { workspace = true, optional = true }
+url             = { workspace = true, optional = true }
+toml_edit       = { workspace = true, optional = true }
+shell-words     = { workspace = true, optional = true }
+owo-colors      = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+tracing-journald   = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

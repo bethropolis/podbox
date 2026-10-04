@@ -11,10 +11,11 @@ use nix::fcntl::{Flock, FlockArg};
 
 use crate::codegen::distros::DistroFamily;
 use crate::config::Config;
+use crate::env::build_context_dir;
 use crate::error::PodboxError;
 use crate::ui;
 
-use super::{build_context_dir, checksum, open_log, run_podman_logged};
+use super::{checksum, open_log, run_podman_logged};
 
 pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
     let image_ref = match config.image.source() {

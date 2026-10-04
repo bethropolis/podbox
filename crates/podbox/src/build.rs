@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::codegen::containerfile;
 use crate::config::Config;
-use crate::env::HostEnv;
+use crate::env::{HostEnv, build_context_dir};
 use crate::error::PodboxError;
 use crate::ui;
 use crate::xdg::ResolvedXdgDirs;
@@ -24,14 +24,6 @@ pub fn checksum(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     hex::encode(hasher.finalize())
-}
-
-/// Build context directory: ~/.local/share/podbox/<name>/
-pub fn build_context_dir(name: &str) -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("~/.local/share"))
-        .join("podbox")
-        .join(name)
 }
 
 /// Full build log for a container: ~/.local/state/podbox/<name>/build.log

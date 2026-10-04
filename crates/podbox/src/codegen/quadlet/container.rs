@@ -3,16 +3,10 @@
 //! Extracted verbatim from `quadlet.rs`; see `super` for the unit entry
 //! points.
 
-use std::path::PathBuf;
-
 use super::caches;
 use crate::config::Config;
 use crate::env::HostEnv;
 use crate::xdg::ResolvedXdgDirs;
-
-fn home() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
-}
 
 fn escape_systemd_specifiers(value: &str) -> String {
     value.replace('%', "%%")
@@ -131,6 +125,7 @@ pub(super) fn emit_volumes(
     env: &HostEnv,
     name: &str,
     home_in_container: &str,
+    warnings: &mut Vec<String>,
 ) {
     // Isolated custom home
     let host_home = config.container.home.to_string_lossy().to_string();
@@ -157,10 +152,12 @@ pub(super) fn emit_volumes(
         lines.push(String::new());
     }
 
-    // Visual integration: themes, fonts, icons
+    // Visual integration: themes, fonts, icons.
+    // Presence comes from HostEnv (resolved once on the host, mocked for
+    // previews) — never probe the filesystem here so output stays a pure
+    // function of (config, env, xdg).
     if config.integration.sync_themes {
-        let h = home();
-        if h.join(".themes").exists() {
+        if env.host_has_themes {
             lines.push(format!("Volume=%h/.themes:{home_in_container}/.themes:ro"));
         }
         if env.host_has_local_share_themes {
@@ -170,8 +167,7 @@ pub(super) fn emit_volumes(
         }
     }
     if config.integration.sync_icons {
-        let h = home();
-        if h.join(".icons").exists() {
+        if env.host_has_icons {
             lines.push(format!("Volume=%h/.icons:{home_in_container}/.icons:ro"));
         }
         if env.host_has_local_share_icons {
@@ -181,8 +177,7 @@ pub(super) fn emit_volumes(
         }
     }
     if config.integration.sync_fonts {
-        let h = home();
-        if h.join(".fonts").exists() {
+        if env.host_has_fonts {
             lines.push(format!("Volume=%h/.fonts:{home_in_container}/.fonts:ro"));
         }
         if env.host_has_local_share_fonts {
@@ -256,8 +251,8 @@ pub(super) fn emit_volumes(
             ));
             lines.push("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock".into());
         } else {
-            eprintln!(
-                "Warning: ssh_agent = true but SSH_AUTH_SOCK not found on host. Skipping SSH agent."
+            warnings.push(
+                "ssh_agent = true but SSH_AUTH_SOCK not found on host. Skipping SSH agent.".into(),
             );
         }
         lines.push(String::new());
@@ -273,15 +268,16 @@ pub(super) fn emit_volumes(
             lines.push("Environment=GPG_TTY=/dev/pts/0".into());
             lines.push("Environment=GNUPGHOME=/run/podbox/gnupg".into());
         } else {
-            eprintln!(
-                "Warning: gpg_agent = true but S.gpg-agent socket not found on host. Skipping GPG agent."
+            warnings.push(
+                "gpg_agent = true but S.gpg-agent socket not found on host. Skipping GPG agent."
+                    .into(),
             );
         }
         lines.push(String::new());
     }
 
     // Sandbox environment detection marker (read-only host-side kernel mount)
-    let flatpak_info_path = crate::build::build_context_dir(name).join(".flatpak-info");
+    let flatpak_info_path = crate::env::build_context_dir(name).join(".flatpak-info");
     lines.push(format!(
         "Volume={}:/.flatpak-info:ro",
         flatpak_info_path.display()
@@ -325,7 +321,13 @@ pub(super) fn emit_volumes(
     }
 }
 
-pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _env: &HostEnv) {
+pub(super) fn emit_env(
+    lines: &mut Vec<String>,
+    config: &Config,
+    name: &str,
+    _env: &HostEnv,
+    warnings: &mut Vec<String>,
+) {
     // Locale environment
     if let Some(ref locale) = _env.host_locale {
         let locale = escape_systemd_specifiers(locale);
@@ -352,7 +354,7 @@ pub(super) fn emit_env(lines: &mut Vec<String>, config: &Config, name: &str, _en
             };
             lines.push(format!("Environment={key}={env_val}"));
         } else {
-            eprintln!("Warning: ignoring invalid environment variable key '{key}'");
+            warnings.push(format!("ignoring invalid environment variable key '{key}'"));
         }
     }
     if !config.container.services.is_empty() {

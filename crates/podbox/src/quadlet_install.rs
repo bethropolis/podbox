@@ -37,7 +37,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     });
     let qdir = quadlet_dir();
     let sdir = systemd_user_dir();
-    let context_dir = crate::build::build_context_dir(name);
+    let context_dir = crate::env::build_context_dir(name);
     let containerfile_path = context_dir.join("Containerfile");
 
     let socket_content = quadlet::generate_socket(config);

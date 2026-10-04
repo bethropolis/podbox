@@ -210,8 +210,16 @@ pub fn detect_package_manager(image: &str) -> crate::config::PackageManager {
     DistroFamily::from_base_image(image).manager()
 }
 
+/// True when stdin is a TTY. Always false off-host (wasm): there is no
+/// controlling terminal, and the `nix` dependency is `cli`-gated.
+#[cfg(feature = "cli")]
 pub fn is_tty() -> bool {
     nix::unistd::isatty(std::io::stdin()).unwrap_or(false)
+}
+
+#[cfg(not(feature = "cli"))]
+pub fn is_tty() -> bool {
+    false
 }
 
 #[cfg(test)]

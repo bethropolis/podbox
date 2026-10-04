@@ -9,6 +9,16 @@ fn main() {
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION not set"));
     println!("cargo:rustc-env=PODBOX_VERSION={version}");
 
+    // The guest daemon is a Linux binary: embedding it into a wasm build is
+    // meaningless (and `cargo build -p podbox-guest` would target wasm).
+    // Emit the same `None` stub the crates.io path uses.
+    if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+        let dest = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("podbox_guest.rs");
+        std::fs::write(&dest, "pub static PODBOX_GUEST: Option<&[u8]> = None;")
+            .expect("failed to write podbox_guest.rs");
+        return;
+    }
+
     embed_guest();
 }
 

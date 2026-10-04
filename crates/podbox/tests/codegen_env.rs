@@ -52,7 +52,10 @@ fn quadlet_visual_themes_present() {
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_themes = true;
-        let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+        let mut env = default_env();
+        env.host_has_themes = true;
+        env.host_has_local_share_themes = true;
+        let q = quadlet::generate_container(&config, &env, &default_xdg());
         assert!(q.contains("Volume=%h/.themes:/home/%u/.themes:ro"));
     });
 }
@@ -63,7 +66,10 @@ fn quadlet_visual_icons_present() {
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_icons = true;
-        let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+        let mut env = default_env();
+        env.host_has_icons = true;
+        env.host_has_local_share_icons = true;
+        let q = quadlet::generate_container(&config, &env, &default_xdg());
         assert!(q.contains("Volume=%h/.icons:/home/%u/.icons:ro"));
     });
 }
@@ -75,7 +81,10 @@ fn quadlet_visual_fonts_present() {
         let config = load_config("full.toml");
         let mut config = config.clone();
         config.integration.sync_fonts = true;
-        let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+        let mut env = default_env();
+        env.host_has_fonts = true;
+        env.host_has_local_share_fonts = true;
+        let q = quadlet::generate_container(&config, &env, &default_xdg());
         assert!(q.contains("Volume=%h/.fonts:/home/%u/.fonts:ro"));
     });
 }
@@ -123,6 +132,7 @@ fn quadlet_modern_theme_path_present() {
         let mut config = config.clone();
         config.integration.sync_themes = true;
         let mut env = default_env();
+        env.host_has_themes = true;
         env.host_has_local_share_themes = true;
         let q = quadlet::generate_container(&config, &env, &default_xdg());
         assert!(q.contains("Volume=%h/.themes:/home/%u/.themes:ro"));
@@ -137,6 +147,7 @@ fn quadlet_modern_icon_path_present() {
         let mut config = config.clone();
         config.integration.sync_icons = true;
         let mut env = default_env();
+        env.host_has_icons = true;
         env.host_has_local_share_icons = true;
         let q = quadlet::generate_container(&config, &env, &default_xdg());
         assert!(q.contains("Volume=%h/.icons:/home/%u/.icons:ro"));
@@ -152,6 +163,7 @@ fn quadlet_modern_font_path_present() {
         let mut config = config.clone();
         config.integration.sync_fonts = true;
         let mut env = default_env();
+        env.host_has_fonts = true;
         env.host_has_local_share_fonts = true;
         let q = quadlet::generate_container(&config, &env, &default_xdg());
         assert!(q.contains("Volume=%h/.fonts:/home/%u/.fonts:ro"));

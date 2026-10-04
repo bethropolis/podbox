@@ -57,6 +57,7 @@ pub fn default_env() -> HostEnv {
     HostEnv {
         uid: 1000,
         username: "testuser".into(),
+        home_dir: PathBuf::from("/home/testuser"),
         xdg_runtime_dir: PathBuf::from("/run/user/1000"),
         wayland_display: Some("wayland-0".into()),
         wayland_socket: Some(PathBuf::from("/run/user/1000/wayland-0")),
@@ -68,6 +69,9 @@ pub fn default_env() -> HostEnv {
         gpu_has_nvidia_uvm: false,
         host_has_localtime: false,
         host_has_timezone_file: false,
+        host_has_themes: false,
+        host_has_icons: false,
+        host_has_fonts: false,
         host_has_local_share_themes: false,
         host_has_local_share_icons: false,
         host_has_local_share_fonts: false,
