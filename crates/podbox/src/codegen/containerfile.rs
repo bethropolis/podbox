@@ -2,7 +2,20 @@ use crate::codegen::distros::{DistroFamily, detect_host_locale, detect_host_shel
 use crate::config::Config;
 use crate::error::PodboxError;
 
-pub fn generate(config: &Config, _guest_binary_name: &str) -> Result<String, PodboxError> {
+/// Marker emitted in place of the guest `COPY` when no guest binary is
+/// embedded. Keeps the preview honest about what the real build adds.
+const GUEST_PLACEHOLDER: &str = "\
+# --- podbox-guest: not embedded in this build (browser preview) ---
+# A real build bakes it in (`podbox build` on Linux); without it the image
+# cannot start, so `podbox build` on a non-musl host fails outright.";
+
+/// Render the Containerfile for a real build.
+///
+/// A custom build without an embedded guest binary is an error here: the
+/// image it would produce cannot start, and [`crate::build`] would fail on
+/// the missing bytes anyway. Preview callers that cannot embed a guest
+/// (the wasm engine behind Studio) use [`generate_preview`] instead.
+pub fn generate(config: &Config, guest_binary_name: &str) -> Result<String, PodboxError> {
     if config.image.source().is_prebuilt() {
         // Prebuilt registry images already embed a guest binary; the local
         // overlay path (`build::prebuilt`) layers the host guest on top when
@@ -10,7 +23,31 @@ pub fn generate(config: &Config, _guest_binary_name: &str) -> Result<String, Pod
         // cache-friendly.
         return Ok(generate_prebuilt(config));
     }
-    generate_custom(config)
+    if crate::guest::PODBOX_GUEST.is_none() {
+        return Err(PodboxError::GuestBinaryUnavailable);
+    }
+    Ok(generate_custom_with(config, guest_binary_name, true))
+}
+
+/// Render the Containerfile for preview, never failing on a missing guest.
+///
+/// The wasm build has no guest binary to embed, so the recipe is still worth
+/// showing: packages, RUN steps, locale and ENV are all accurate. What the
+/// preview cannot show is the guest layer, so it is replaced by
+/// [`GUEST_PLACEHOLDER`].
+///
+/// That placeholder is deliberately not reported as a warning: it is a fact
+/// about the preview environment rather than anything wrong with the config,
+/// and it is plainly visible in the rendered output.
+pub fn generate_preview(config: &Config, guest_binary_name: &str) -> String {
+    if config.image.source().is_prebuilt() {
+        return generate_prebuilt(config);
+    }
+    generate_custom_with(
+        config,
+        guest_binary_name,
+        crate::guest::PODBOX_GUEST.is_some(),
+    )
 }
 
 fn generate_prebuilt(config: &Config) -> String {
@@ -22,18 +59,23 @@ fn generate_prebuilt(config: &Config) -> String {
         .build()
 }
 
-fn generate_custom(config: &Config) -> Result<String, PodboxError> {
+/// Shared body of the custom-build recipe.
+///
+/// `guest_available` decides whether the guest `COPY`/`chmod` pair is
+/// emitted or replaced by [`GUEST_PLACEHOLDER`].
+fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool) -> String {
     let distro = DistroFamily::from_base_image(&config.image.base);
     let host_shell = detect_host_shell();
     let host_locale = detect_host_locale();
 
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
-    let builder = builder
+    builder
         .add_base_packages(distro, host_shell.as_deref(), host_locale.as_deref())
         .add_user_packages(config.image.packages.install.clone())
         .add_run_commands(config.image.run.commands.clone())
-        .add_guest_binary()?;
-    Ok(builder.build())
+        .set_guest(guest_name, guest_available)
+        .set_shell(&config.container.shell)
+        .build()
 }
 
 struct ContainerfileBuilder {
@@ -41,6 +83,7 @@ struct ContainerfileBuilder {
     container_name: String,
     packages: Vec<String>,
     run_commands: Vec<String>,
+    guest_name: String,
     has_guest_binary: bool,
     env_vars: Vec<(String, String)>,
     forced_shell: Option<String>,
@@ -53,6 +96,7 @@ impl ContainerfileBuilder {
             container_name: container_name.to_string(),
             packages: Vec::new(),
             run_commands: Vec::new(),
+            guest_name: "podbox-guest".to_string(),
             has_guest_binary: false,
             env_vars: Vec::new(),
             forced_shell: None,
@@ -95,12 +139,10 @@ impl ContainerfileBuilder {
         self
     }
 
-    fn add_guest_binary(mut self) -> Result<Self, PodboxError> {
-        if crate::guest::PODBOX_GUEST.is_none() {
-            return Err(PodboxError::GuestBinaryUnavailable);
-        }
-        self.has_guest_binary = true;
-        Ok(self)
+    fn set_guest(mut self, guest_name: &str, available: bool) -> Self {
+        self.guest_name = guest_name.to_string();
+        self.has_guest_binary = available;
+        self
     }
 
     fn set_shell(mut self, shell: &str) -> Self {
@@ -156,8 +198,14 @@ impl ContainerfileBuilder {
         }
 
         if self.has_guest_binary {
-            lines.push("COPY podbox-guest /usr/local/bin/podbox-guest".into());
-            lines.push("RUN chmod +x /usr/local/bin/podbox-guest".into());
+            lines.push(format!(
+                "COPY {} /usr/local/bin/{}",
+                self.guest_name, self.guest_name
+            ));
+            lines.push(format!("RUN chmod +x /usr/local/bin/{}", self.guest_name));
+            lines.push(String::new());
+        } else {
+            lines.push(GUEST_PLACEHOLDER.to_string());
             lines.push(String::new());
         }
 
@@ -169,7 +217,10 @@ impl ContainerfileBuilder {
         lines.push(format!("ENV PODBOX_HOST_VERSION={}", crate::VERSION));
         lines.push(String::new());
 
-        lines.push("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]".into());
+        lines.push(format!(
+            "ENTRYPOINT [\"/usr/local/bin/{}\", \"--entry\"]",
+            self.guest_name
+        ));
         lines.push(format!("CMD [\"{}\"]", self.default_shell()));
         lines.push(String::new());
 
@@ -268,5 +319,27 @@ mod tests {
         assert!(cf.contains("apk add --no-cache"));
         assert!(cf.contains("sudo"));
         assert!(cf.contains("ENV PODBOX_CONTAINER=test"));
+    }
+
+    /// The browser preview has no guest binary to embed: the recipe must
+    /// still render, with the guest layer marked rather than silently dropped.
+    #[test]
+    fn test_preview_without_guest_marks_the_guest_layer() {
+        let cf = generate_custom_with(&crate::config::Config::embedded(), "podbox-guest", false);
+        assert!(cf.contains("FROM "));
+        assert!(cf.contains("RUN "));
+        assert!(cf.contains(GUEST_PLACEHOLDER));
+        assert!(!cf.contains("COPY podbox-guest"));
+        // The entrypoint still points at the guest: the preview shows the
+        // real recipe, and the comment explains the missing layer.
+        assert!(cf.contains("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]"));
+    }
+
+    #[test]
+    fn test_guest_layer_present_when_available() {
+        let cf = generate_custom_with(&crate::config::Config::embedded(), "podbox-guest", true);
+        assert!(cf.contains("COPY podbox-guest /usr/local/bin/podbox-guest"));
+        assert!(cf.contains("RUN chmod +x /usr/local/bin/podbox-guest"));
+        assert!(!cf.contains(GUEST_PLACEHOLDER));
     }
 }

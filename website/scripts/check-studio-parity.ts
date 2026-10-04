@@ -65,9 +65,9 @@ for (const [name, patch] of cases) {
     failed++;
     continue;
   }
-  let compiled: { container: string; containerfile: string | null };
+  let compiled: { container: string; containerfile: string | null; warnings: string[] };
   try {
-    compiled = compile_quadlet(toml) as { container: string; containerfile: string | null };
+    compiled = compile_quadlet(toml) as { container: string; containerfile: string | null; warnings: string[] };
   } catch (e) {
     console.error(`✗ ${name}: compile threw: ${e}`);
     failed++;
@@ -78,11 +78,33 @@ for (const [name, patch] of cases) {
     failed++;
     continue;
   }
-  // Base-image presets cannot embed the guest binary in wasm, so no
-  // Containerfile is produced (None serializes as undefined); the prebuilt
-  // case below covers the Some path.
-  if (compiled.containerfile != null) {
-    console.error(`✗ ${name}: expected no Containerfile for base-image preset`);
+  // Every config yields a Containerfile. A custom base renders the full
+  // recipe with the guest layer marked as a placeholder (wasm embeds no
+  // guest binary) plus a warning; prebuilt images get the short overlay.
+  const cf = compiled.containerfile as string | undefined;
+  if (!cf || !cf.startsWith('FROM ')) {
+    console.error(`✗ ${name}: expected a Containerfile starting with FROM`);
+    failed++;
+    continue;
+  }
+  const guestMarked = cf.includes('podbox-guest: not embedded in this build');
+  const guestCopied = cf.includes('COPY podbox-guest');
+  const prebuilt = values.imagePrebuiltRef !== '';
+  if (prebuilt) {
+    if (guestCopied) {
+      console.error(`✗ ${name}: prebuilt overlay must not COPY the guest`);
+      failed++;
+      continue;
+    }
+  } else if (!guestMarked || guestCopied) {
+    console.error(`✗ ${name}: custom base must mark the guest layer instead of copying it`);
+    failed++;
+    continue;
+  }
+  // The placeholder describes the preview environment, so it belongs in the
+  // rendered text and must never reach the user as a config warning.
+  if (compiled.warnings.some((w) => w.toLowerCase().includes('guest'))) {
+    console.error(`✗ ${name}: guest placeholder must not be reported as a warning`);
     failed++;
     continue;
   }

@@ -6,6 +6,7 @@ mod common;
 use common::*;
 
 use podbox::codegen::quadlet;
+use podbox::xdg::ResolvedXdgDir;
 use std::path::PathBuf;
 
 #[test]
@@ -371,4 +372,26 @@ fn every_builtin_can_be_enabled_at_once() {
     assert!(q.contains("Volume=podbox-cache-cargo-registry:/home/%u/.cargo/registry:U"));
     assert!(q.contains("Volume=podbox-cache-cargo-git:/home/%u/.cargo/git:U"));
     assert!(!q.contains("Volume=podbox-cache-cargo:/home/%u/.cargo:U"));
+}
+
+#[test]
+fn xdg_dirs_default_to_read_only_and_respect_read_write() {
+    let config = load_config("full.toml");
+    // `default_xdg()` resolves every dir read-only.
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=/home/user/Documents:/home/%u/Documents:ro,z"));
+    assert!(q.contains("Volume=/home/user/Downloads:/home/%u/Downloads:ro,z"));
+
+    // The detailed table form is the only way to ask for a writable bind; the
+    // Studio emits it for `[integration.xdg_dirs]` entries set to read-write.
+    let mut writable = default_xdg();
+    writable.documents = Some(ResolvedXdgDir {
+        path: PathBuf::from("/home/user/Documents"),
+        read_write: true,
+    });
+    let q = quadlet::generate_container(&config, &default_env(), &writable);
+    assert!(q.contains("Volume=/home/user/Documents:/home/%u/Documents:z"));
+    assert!(!q.contains("Volume=/home/user/Documents:/home/%u/Documents:ro,z"));
+    // Unset dirs stay unmounted.
+    assert!(!q.contains("/home/user/Pictures"));
 }

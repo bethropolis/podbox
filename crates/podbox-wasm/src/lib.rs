@@ -37,11 +37,11 @@ pub struct CompileResponse {
     pub container: String,
     pub socket: String,
     pub build: Option<String>,
-    /// Rendered Containerfile, or `None` when it cannot be produced here.
-    /// The engine always emits the short overlay for prebuilt images; custom
-    /// `base` images need the guest binary baked in at build time, which the
-    /// wasm build does not embed (`PODBOX_GUEST` is `None`), so those yield
-    /// `None` and the Studio renders an explanatory comment instead.
+    /// Rendered Containerfile. Always present: prebuilt images get the short
+    /// overlay, and a custom `base` gets the full recipe with the `podbox-guest`
+    /// layer marked as a placeholder (this wasm build embeds no guest binary).
+    /// The placeholder lives in the text rather than in `warnings` — it describes
+    /// the preview environment, not a problem with the submitted config.
     pub containerfile: Option<String>,
     pub warnings: Vec<String>,
 }
@@ -131,11 +131,13 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
         None
     };
 
+    let containerfile = podbox::codegen::containerfile::generate_preview(&config, "podbox-guest");
+
     let response = CompileResponse {
         container,
         socket,
         build,
-        containerfile: podbox::codegen::containerfile::generate(&config, "podbox-guest").ok(),
+        containerfile: Some(containerfile),
         warnings,
     };
     Ok(serde_wasm_bindgen::to_value(&response).unwrap_or(JsValue::NULL))
