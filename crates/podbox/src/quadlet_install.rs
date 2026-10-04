@@ -5,6 +5,7 @@
 
 pub mod paths;
 pub mod preflight;
+pub mod targets;
 pub mod units;
 
 pub use paths::{is_installed, list_installed_names};
@@ -105,6 +106,10 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             config.container.home.display()
         )
     })?;
+
+    // Pre-create bind-mount targets inside the home with the host user's
+    // ownership, so podman never creates them as root (see targets.rs).
+    targets::precreate_bind_targets(config, env, xdg)?;
 
     if ver.at_least(6, 0) {
         // 6.0+: use --application with directory install.
