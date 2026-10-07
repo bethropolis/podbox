@@ -155,6 +155,14 @@ fn git_mount_paths(
 /// that made a plain `podbox exec true` spend most of its time asking git
 /// questions it already knew the answer to.
 struct GitBridgeState {
+    /// Whether the image actually has `git` on `PATH`.
+    ///
+    /// `git_identity` bridges host identity into a container that already
+    /// bakes git; podbox never installs it. Without this flag a git-less image
+    /// still answers the probe (the marker sections come back empty, `sh` is
+    /// present), so the bridge would collect identity env for a tool that
+    /// isn't installed and pay for a `safe.directory` write that cannot land.
+    has_git: bool,
     safe_directories: Vec<String>,
     has_name: bool,
     has_email: bool,
@@ -165,10 +173,11 @@ struct GitBridgeState {
 ///
 /// Sections are delimited by `@@key` markers so values containing newlines
 /// stay unambiguous. `sh` is present in every base image podbox builds for.
-const GIT_PROBE: &str = r#"printf '@@safe\n'; git config --global --get-all safe.directory 2>/dev/null; printf '@@name\n'; git config --global --get user.name 2>/dev/null; printf '@@email\n'; git config --global --get user.email 2>/dev/null; printf '@@env\n'; env | grep -E '^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL)='"#;
+const GIT_PROBE: &str = r#"printf '@@git\n'; command -v git >/dev/null 2>&1 && echo yes || echo no; printf '@@safe\n'; git config --global --get-all safe.directory 2>/dev/null; printf '@@name\n'; git config --global --get user.name 2>/dev/null; printf '@@email\n'; git config --global --get user.email 2>/dev/null; printf '@@env\n'; env | grep -E '^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL)='"#;
 
 /// Parse [`GIT_PROBE`] output.
 fn parse_git_probe(stdout: &str) -> GitBridgeState {
+    let mut has_git = false;
     let mut safe_directories = Vec::new();
     let mut has_name = false;
     let mut has_email = false;
@@ -177,11 +186,13 @@ fn parse_git_probe(stdout: &str) -> GitBridgeState {
 
     for line in stdout.lines() {
         match line.trim_end() {
+            "@@git" => section = "git".into(),
             "@@safe" => section = "safe".into(),
             "@@name" => section = "name".into(),
             "@@email" => section = "email".into(),
             "@@env" => section = "env".into(),
             _ => match section.as_str() {
+                "git" => has_git = line.trim() == "yes",
                 "safe" => safe_directories.push(line.to_string()),
                 "name" => has_name = !line.trim().is_empty(),
                 "email" => has_email = !line.trim().is_empty(),
@@ -198,6 +209,7 @@ fn parse_git_probe(stdout: &str) -> GitBridgeState {
     }
 
     GitBridgeState {
+        has_git,
         safe_directories,
         has_name,
         has_email,
@@ -339,6 +351,13 @@ fn sync_git_bridge(
     let Some(state) = probe_git_bridge(name, git_user) else {
         return identity_env;
     };
+    // No git in the image: there is nothing to bridge. Bail before the
+    // `safe.directory` write (which would fail silently) and before reading
+    // the host identity, rather than injecting GIT_* env for a tool that
+    // isn't installed.
+    if !state.has_git {
+        return identity_env;
+    }
 
     let missing: Vec<String> = paths
         .iter()
@@ -768,9 +787,10 @@ mod git_bridge_tests {
     #[test]
     fn probe_reads_sections() {
         let state = parse_git_probe(
-            "@@safe\n/home/user\n/home/user/Projects\n@@name\nbet\n@@email\n\n@@env\n\
+            "@@git\nyes\n@@safe\n/home/user\n/home/user/Projects\n@@name\nbet\n@@email\n\n@@env\n\
              GIT_AUTHOR_NAME=bet\nGIT_COMMITTER_NAME=\nGIT_AUTHOR_EMAIL=bet@host\n",
         );
+        assert!(state.has_git);
         assert_eq!(
             state.safe_directories,
             ["/home/user", "/home/user/Projects"]
@@ -783,9 +803,31 @@ mod git_bridge_tests {
     }
 
     #[test]
+    fn probe_reports_a_missing_git() {
+        // An image without git still runs `sh`, so the probe succeeds and
+        // comes back with empty sections. The bridge has to notice that the
+        // absence of `@@git` / "no" means there is nothing to bridge.
+        let state = parse_git_probe("@@git\nno\n@@safe\n@@name\n@@email\n@@env\n");
+        assert!(!state.has_git);
+        assert!(state.safe_directories.is_empty());
+        assert!(!state.has_name);
+        assert!(!state.has_email);
+        assert!(state.env_set.is_empty());
+    }
+
+    #[test]
+    fn probe_treats_a_missing_git_marker_as_no_git() {
+        // Defensive: never collect identity env on the strength of a probe
+        // that did not report git at all.
+        let state = parse_git_probe("@@safe\n/home/user\n");
+        assert!(!state.has_git);
+    }
+
+    #[test]
     fn probe_handles_empty_output() {
         // A container without git configured still has to parse.
         let state = parse_git_probe("");
+        assert!(!state.has_git);
         assert!(state.safe_directories.is_empty());
         assert!(!state.has_name);
         assert!(!state.has_email);
@@ -794,7 +836,8 @@ mod git_bridge_tests {
 
     #[test]
     fn probe_keeps_paths_with_spaces() {
-        let state = parse_git_probe("@@safe\n/home/user/My Projects\n@@name\n");
+        let state = parse_git_probe("@@git\nyes\n@@safe\n/home/user/My Projects\n@@name\n");
+        assert!(state.has_git);
         assert_eq!(state.safe_directories, ["/home/user/My Projects"]);
     }
 

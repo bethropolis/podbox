@@ -346,7 +346,7 @@ Controls which host resources are shared with the container.
 | `sync_icons` | bool | `true` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
 | `sync_themes` | bool | `true` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
-| `git_identity` | bool | `true` | Add mounted paths to the container user's Git `safe.directory` and use host Git identity only when container identity is unset |
+| `git_identity` | bool | `true` | Add mounted paths to the container user's Git `safe.directory` and use host Git identity only when container identity is unset. Requires `git` in the image — podbox never installs it, so this is a no-op on images that do not bake it |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
