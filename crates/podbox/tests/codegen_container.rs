@@ -46,12 +46,22 @@ fn quadlet_container_has_read_only_rootfs() {
     assert!(q.contains("ReadOnly=true"));
 }
 #[test]
-fn quadlet_container_has_cpu_quota() {
+fn quadlet_container_has_cpu_limit() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("CpuQuota="));
-    // full.toml has cpus = "4.0" → 400000
-    assert!(q.contains("CpuQuota=400000"));
+    // Quadlet has no CpuQuota key; the generator rejects the unit outright, so
+    // the limit has to be passed through to podman. full.toml has cpus = "4.0".
+    assert!(q.contains("PodmanArgs=--cpus=4"));
+    assert!(!q.contains("CpuQuota"));
+}
+
+#[test]
+fn quadlet_container_cpu_limit_keeps_fractions() {
+    let mut config = load_config("minimal.toml");
+    config.container.cpus = Some("0.5".into());
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    // A period-based quota cannot express a fraction of a CPU; --cpus can.
+    assert!(q.contains("PodmanArgs=--cpus=0.5"));
 }
 
 #[test]

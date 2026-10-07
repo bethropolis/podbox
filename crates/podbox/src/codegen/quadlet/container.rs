@@ -84,10 +84,12 @@ pub(super) fn emit_container_image(
         lines.push(format!("Memory={mem}"));
     }
     if let Some(ref cpus) = config.container.cpus {
+        // Quadlet has no `CpuQuota` key: the quadlet-generator rejects the
+        // whole unit as "unsupported key", so the container silently never
+        // starts. CPU limits go through `--cpus`, which also takes fractions
+        // (`0.5`) that a period-based quota cannot express.
         if let Ok(v) = cpus.parse::<f64>() {
-            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let quota = (v * 100_000.0) as u64;
-            lines.push(format!("CpuQuota={quota}"));
+            lines.push(format!("PodmanArgs=--cpus={v}"));
         }
     }
     if config.security.read_only_rootfs {
