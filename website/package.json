@@ -11,6 +11,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check:studio": "bun scripts/check-studio-parity.ts",
+    "typecheck": "bunx tsc@5.9 --noEmit -p tsconfig.json",
     "astro": "astro",
     "dev:fresh": "rm -rf node_modules/.vite && bun run dev"
   },
@@ -31,5 +32,8 @@
   },
   "allowScripts": {
     "esbuild": true
+  },
+  "devDependencies": {
+    "typescript": "5.9"
   }
 }

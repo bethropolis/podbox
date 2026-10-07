@@ -28,6 +28,19 @@ jobs:
       # stay out of the no-default build on wasm32-unknown-unknown.
       - run: cargo check -p podbox-cli --lib --no-default-features --target wasm32-unknown-unknown
 
+  website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # Nothing typechecked the Studio before, so type errors accumulated
+      # unnoticed; `check:studio` alone only exercises the schema layer.
+      - run: bun run typecheck
+      - run: bun run check:studio
+
   build:
     needs: check
     runs-on: ubuntu-latest
