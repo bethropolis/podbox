@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::os::fd::{AsFd, AsRawFd};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -147,6 +147,135 @@ fn git_mount_paths(
     paths
 }
 
+/// Container-side git state, gathered in a single `podman exec`.
+///
+/// Every field used to cost its own round-trip: `git config --get-all
+/// safe.directory`, `git config --get user.name`, `git config --get
+/// user.email`, and a `printenv` per GIT_* key. At ~0.45s per podman call
+/// that made a plain `podbox exec true` spend most of its time asking git
+/// questions it already knew the answer to.
+struct GitBridgeState {
+    safe_directories: Vec<String>,
+    has_name: bool,
+    has_email: bool,
+    env_set: std::collections::HashSet<String>,
+}
+
+/// One exec that prints the container's whole git identity state.
+///
+/// Sections are delimited by `@@key` markers so values containing newlines
+/// stay unambiguous. `sh` is present in every base image podbox builds for.
+const GIT_PROBE: &str = r#"printf '@@safe\n'; git config --global --get-all safe.directory 2>/dev/null; printf '@@name\n'; git config --global --get user.name 2>/dev/null; printf '@@email\n'; git config --global --get user.email 2>/dev/null; printf '@@env\n'; env | grep -E '^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL)='"#;
+
+/// Parse [`GIT_PROBE`] output.
+fn parse_git_probe(stdout: &str) -> GitBridgeState {
+    let mut safe_directories = Vec::new();
+    let mut has_name = false;
+    let mut has_email = false;
+    let mut env_set = std::collections::HashSet::new();
+    let mut section = String::new();
+
+    for line in stdout.lines() {
+        match line.trim_end() {
+            "@@safe" => section = "safe".into(),
+            "@@name" => section = "name".into(),
+            "@@email" => section = "email".into(),
+            "@@env" => section = "env".into(),
+            _ => match section.as_str() {
+                "safe" => safe_directories.push(line.to_string()),
+                "name" => has_name = !line.trim().is_empty(),
+                "email" => has_email = !line.trim().is_empty(),
+                "env" => {
+                    if let Some((key, value)) = line.split_once('=') {
+                        if !value.trim().is_empty() {
+                            env_set.insert(key.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+
+    GitBridgeState {
+        safe_directories,
+        has_name,
+        has_email,
+        env_set,
+    }
+}
+
+fn probe_git_bridge(name: &str, git_user: &str) -> Option<GitBridgeState> {
+    let command = podman_exec_output(name, git_user, &["sh", "-c", GIT_PROBE])?;
+    Some(parse_git_probe(&command))
+}
+
+/// Add every missing `safe.directory` in one exec rather than one per path.
+///
+/// `git config --add` runs in a loop inside the container, so a first-time
+/// `podbox enter` in a project directory costs a single round-trip instead of
+/// one per mount plus the working directory.
+fn add_safe_directories(name: &str, git_user: &str, paths: &[String]) {
+    if paths.is_empty() {
+        return;
+    }
+    let script = "for p in \"$@\"; do git config --global --add safe.directory \"$p\"; done";
+    let mut command: Vec<&str> = vec!["sh", "-c", script, "podbox-safe"];
+    command.extend(paths.iter().map(String::as_str));
+    let _ = podman_exec_output(name, git_user, &command);
+}
+
+/// What the last bridge sync decided, so a repeat exec can reuse it.
+#[derive(serde::Deserialize, serde::Serialize, Default)]
+struct GitBridgeStamp {
+    /// Container id the sync ran against; a recreate invalidates it.
+    container_id: String,
+    /// `git_mount_paths` the sync covered.
+    paths: Vec<String>,
+    /// `--env=KEY=VALUE` arguments the sync decided to inject.
+    identity_env: Vec<String>,
+}
+
+/// `~/.local/state/podbox/<name>/git-bridge.json`
+fn git_bridge_stamp_path(name: &str) -> PathBuf {
+    dirs::state_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.local/state"))
+        .join("podbox")
+        .join(name)
+        .join("git-bridge.json")
+}
+
+/// True when a previous run already synced exactly this container and these
+/// paths, so every probe would return the same answer.
+fn git_bridge_is_current(
+    stamp: &GitBridgeStamp,
+    container_id: Option<&str>,
+    paths: &[String],
+) -> bool {
+    let Some(id) = container_id else {
+        return false;
+    };
+    !id.is_empty() && stamp.container_id == id && stamp.paths == paths
+}
+
+fn read_git_bridge_stamp(name: &str) -> Option<GitBridgeStamp> {
+    let raw = std::fs::read_to_string(git_bridge_stamp_path(name)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn write_git_bridge_stamp(name: &str, stamp: &GitBridgeStamp) {
+    let path = git_bridge_stamp_path(name);
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    if let Ok(json) = serde_json::to_string(stamp) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
 fn prepare_git_bridge(
     ctx: RunContext<'_>,
     git_user: &str,
@@ -164,39 +293,76 @@ fn prepare_git_bridge(
     if !config.integration.git_identity {
         return;
     }
-    let mut identity_args = Vec::new();
-    if let Some(existing) = podman_exec_output(
-        name,
-        git_user,
-        &["git", "config", "--global", "--get-all", "safe.directory"],
-    ) {
-        for path in git_mount_paths(config, xdg, here, &env.username) {
-            if !existing.lines().any(|entry| entry == path) {
-                let _ = podman_exec_output(
-                    name,
-                    git_user,
-                    &[
-                        "git",
-                        "config",
-                        "--global",
-                        "--add",
-                        "safe.directory",
-                        &path,
-                    ],
-                );
-            }
+    let paths = git_mount_paths(config, xdg, here, &env.username);
+    let container_id = podbox::podman::seen_container_id(name);
+
+    // Fast path: the container has not been recreated and the mount set is
+    // unchanged, so the recorded decision is still valid. This is what keeps a
+    // warm `podbox exec` down to the exec itself.
+    let identity_env: Vec<String> = match read_git_bridge_stamp(name) {
+        Some(stamp) if git_bridge_is_current(&stamp, container_id.as_deref(), &paths) => {
+            stamp.identity_env
         }
+        _ => {
+            let identity_env = sync_git_bridge(name, git_user, &paths, config, explicit);
+            write_git_bridge_stamp(
+                name,
+                &GitBridgeStamp {
+                    container_id: container_id.clone().unwrap_or_default(),
+                    paths: paths.clone(),
+                    identity_env: identity_env.clone(),
+                },
+            );
+            identity_env
+        }
+    };
+
+    if identity_env.is_empty() {
+        return;
     }
+    let identity_args: Vec<OsString> = identity_env.iter().map(OsString::from).collect();
+    if let Some(index) = args.iter().position(|arg| arg == name) {
+        args.splice(index..index, identity_args);
+    }
+}
+
+/// The original per-exec logic, with the round-trips collapsed: one probe
+/// exec, at most one exec to write the missing `safe.directory` entries.
+fn sync_git_bridge(
+    name: &str,
+    git_user: &str,
+    paths: &[String],
+    config: &Config,
+    explicit: &[String],
+) -> Vec<String> {
+    let mut identity_env = Vec::new();
+    let Some(state) = probe_git_bridge(name, git_user) else {
+        return identity_env;
+    };
+
+    let missing: Vec<String> = paths
+        .iter()
+        .filter(|path| !state.safe_directories.contains(path))
+        .cloned()
+        .collect();
+    add_safe_directories(name, git_user, &missing);
+
     let explicit_keys: std::collections::HashSet<&str> = explicit
         .iter()
         .filter_map(|entry| entry.split_once('=').map(|(key, _)| key))
         .collect();
-    for (git_key, env_keys) in [
-        ("user.name", ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]),
-        ("user.email", ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"]),
+    for (configured, git_key, env_keys) in [
+        (
+            state.has_name,
+            "user.name",
+            ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"],
+        ),
+        (
+            state.has_email,
+            "user.email",
+            ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"],
+        ),
     ] {
-        let configured = podman_exec_output(name, git_user, &["git", "config", "--get", git_key])
-            .is_some_and(|v| !v.is_empty());
         if configured {
             continue;
         }
@@ -214,8 +380,7 @@ fn prepare_git_bridge(
             continue;
         }
         for env_key in env_keys {
-            let configured_env = podman_exec_output(name, git_user, &["printenv", env_key])
-                .is_some_and(|value| !value.is_empty());
+            let configured_env = state.env_set.contains(env_key);
             let forwarded = std::env::var_os(env_key).is_some()
                 && config.container.env.forward.iter().any(|pattern| {
                     pattern
@@ -229,12 +394,10 @@ fn prepare_git_bridge(
             {
                 continue;
             }
-            identity_args.push(OsString::from(format!("--env={env_key}={value}")));
+            identity_env.push(format!("--env={env_key}={value}"));
         }
     }
-    if let Some(index) = args.iter().position(|arg| arg == name) {
-        args.splice(index..index, identity_args);
-    }
+    identity_env
 }
 
 /// Spawn a background watchdog that terminates the `podman exec` client when the
@@ -595,5 +758,81 @@ mod workdir_tests {
         assert_eq!(args[0].to_string_lossy(), "--env=TOKEN=a=b");
         assert!(append_env_args(&mut Vec::new(), &["BAD-NAME=x".into()]).is_err());
         assert!(append_env_args(&mut Vec::new(), &["MISSING_VALUE".into()]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod git_bridge_tests {
+    use super::{GitBridgeStamp, git_bridge_is_current, parse_git_probe};
+
+    #[test]
+    fn probe_reads_sections() {
+        let state = parse_git_probe(
+            "@@safe\n/home/user\n/home/user/Projects\n@@name\nbet\n@@email\n\n@@env\n\
+             GIT_AUTHOR_NAME=bet\nGIT_COMMITTER_NAME=\nGIT_AUTHOR_EMAIL=bet@host\n",
+        );
+        assert_eq!(
+            state.safe_directories,
+            ["/home/user", "/home/user/Projects"]
+        );
+        assert!(state.has_name);
+        assert!(!state.has_email, "empty user.email counts as unset");
+        assert!(state.env_set.contains("GIT_AUTHOR_NAME"));
+        assert!(!state.env_set.contains("GIT_COMMITTER_NAME"));
+        assert!(state.env_set.contains("GIT_AUTHOR_EMAIL"));
+    }
+
+    #[test]
+    fn probe_handles_empty_output() {
+        // A container without git configured still has to parse.
+        let state = parse_git_probe("");
+        assert!(state.safe_directories.is_empty());
+        assert!(!state.has_name);
+        assert!(!state.has_email);
+        assert!(state.env_set.is_empty());
+    }
+
+    #[test]
+    fn probe_keeps_paths_with_spaces() {
+        let state = parse_git_probe("@@safe\n/home/user/My Projects\n@@name\n");
+        assert_eq!(state.safe_directories, ["/home/user/My Projects"]);
+    }
+
+    fn stamp(id: &str, paths: &[&str]) -> GitBridgeStamp {
+        GitBridgeStamp {
+            container_id: id.to_string(),
+            paths: paths.iter().map(|p| (*p).to_string()).collect(),
+            identity_env: vec!["--env=GIT_AUTHOR_NAME=bet".to_string()],
+        }
+    }
+
+    #[test]
+    fn stamp_is_reused_for_the_same_container_and_paths() {
+        let s = stamp("abc123", &["/home/user"]);
+        assert!(git_bridge_is_current(
+            &s,
+            Some("abc123"),
+            &["/home/user".into()]
+        ));
+    }
+
+    #[test]
+    fn stamp_is_invalidated_by_recreate_and_new_paths() {
+        let s = stamp("abc123", &["/home/user"]);
+        // Recreated container: same name, new id.
+        assert!(!git_bridge_is_current(
+            &s,
+            Some("def456"),
+            &["/home/user".into()]
+        ));
+        // Entering a new working directory adds a safe.directory path.
+        assert!(!git_bridge_is_current(
+            &s,
+            Some("abc123"),
+            &["/home/user".into(), "/home/user/Projects".into()]
+        ));
+        // No id recorded (podman could not be queried): must re-probe.
+        assert!(!git_bridge_is_current(&s, None, &["/home/user".into()]));
+        assert!(!git_bridge_is_current(&s, Some(""), &["/home/user".into()]));
     }
 }

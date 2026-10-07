@@ -209,6 +209,35 @@ pub enum ContainerState {
     Missing,
 }
 
+/// Container ids seen by the most recent [`query_state`] call, keyed by name.
+///
+/// `query_state` already runs `podman inspect`, so widening its format to
+/// also return `.Id` costs nothing while giving callers a cheap way to tell
+/// "same container" from "recreated since last time" without another
+/// round-trip. Only the runtime's git bridge reads this.
+static SEEN_CONTAINER_IDS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::OnceLock::new();
+
+fn seen_container_ids() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
+    SEEN_CONTAINER_IDS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Container id recorded by the last successful [`query_state`] for `name`.
+///
+/// `None` when `query_state` has not run for this container in this process
+/// (or podman could not be queried), so callers must treat it as "unknown"
+/// rather than "unchanged".
+pub fn seen_container_id(name: &str) -> Option<String> {
+    seen_container_ids().lock().ok()?.get(name).cloned()
+}
+
+fn record_container_id(name: &str, id: &str) {
+    if let Ok(mut map) = seen_container_ids().lock() {
+        map.insert(name.to_string(), id.to_string());
+    }
+}
+
 /// Check whether a local image tag exists.
 pub fn image_exists(tag: &str) -> anyhow::Result<bool> {
     let output = std::process::Command::new("podman")
@@ -250,7 +279,7 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
             "--type",
             "container",
             "--format",
-            "{{.State.Status}}",
+            "{{.State.Status}} {{.Id}}",
             name,
         ])
         .output()?;
@@ -312,7 +341,15 @@ pub fn query_state(name: &str) -> anyhow::Result<ContainerState> {
     let stdout = String::from_utf8_lossy(&output.stdout)
         .trim()
         .to_lowercase();
-    match stdout.as_str() {
+    // `{{.State.Status}} {{.Id}}` — keep the id for `seen_container_id`.
+    let mut fields = stdout.split_whitespace();
+    let status = fields.next().unwrap_or_default().to_string();
+    if let Some(id) = fields.next() {
+        if !id.is_empty() && id != "unknown" {
+            record_container_id(name, id);
+        }
+    }
+    match status.as_str() {
         "running" => Ok(ContainerState::Running),
         "stopped" | "exited" => Ok(ContainerState::Stopped),
         _ => Ok(ContainerState::Stopped),
