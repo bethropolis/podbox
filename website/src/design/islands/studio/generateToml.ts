@@ -6,6 +6,7 @@
 // appear exactly when the user configures them.
 
 import type { StudioValues } from './useStudioState';
+import { isBareSecret } from './types';
 import {
   FIELDS,
   CACHE_ORDER,
@@ -30,6 +31,7 @@ const TABLE_ORDER = [
   'security',
   'network',
   'integration',
+  'integration.hardware',
   'integration.host_exec',
   'integration.xdg_dirs',
   'integration.export',
@@ -74,7 +76,16 @@ function customLines(s: StudioValues, table: string): string[] {
     case 'container': {
       const valid = s.envVars.filter((e) => e.key.trim());
       if (valid.length === 0) return [];
-      return [`env = {`, ...valid.map((e) => `  ${e.key} = "${e.value}",`), `}`];
+      // Inline tables must stay on one line: a multi-line `env = {` is not
+      // valid TOML and the engine rejects the whole file. `forward` lives in
+      // the same table — the engine flattens the string entries and names
+      // this one explicitly.
+      const pairs = valid.map((e) => `${e.key} = "${e.value}"`);
+      const forward = s.envForward.map((f) => f.trim()).filter(Boolean);
+      if (forward.length > 0) {
+        pairs.push(`forward = [${forward.map((f) => `"${f}"`).join(', ')}]`);
+      }
+      return pairs.length === 0 ? [] : [`env = { ${pairs.join(', ')} }`];
     }
     case 'container.mounts': {
       const valid = s.extraMounts.filter((m) => m.host.trim() && m.guest.trim());
@@ -112,6 +123,25 @@ function customLines(s: StudioValues, table: string): string[] {
       const valid = s.hostExecList.filter((e) => e.alias.trim() && e.path.trim());
       if (valid.length > 0) {
         lines.push(`allowlist = { ${valid.map((e) => `${e.alias} = "${e.path}"`).join(', ')} }`);
+      }
+      return lines;
+    }
+    case 'security': {
+      // `secrets` is a list of strings or a list of tables, never both, so the
+      // shorthand form is only usable when every entry is bare.
+      const valid = s.secrets.filter((sec) => sec.name.trim());
+      if (valid.length === 0) return [];
+      if (valid.every(isBareSecret)) {
+        return [`secrets = [${valid.map((sec) => `"${sec.name.trim()}"`).join(', ')}]`];
+      }
+      const lines: string[] = [];
+      for (const sec of valid) {
+        lines.push(`[[${table}.secrets]]`);
+        lines.push(`name = "${sec.name.trim()}"`);
+        if (sec.secretType !== 'env') lines.push(`type = "${sec.secretType}"`);
+        if (sec.source !== 'podman') lines.push(`source = "${sec.source}"`);
+        if (sec.target.trim()) lines.push(`target = "${sec.target.trim()}"`);
+        if (sec.mode.trim()) lines.push(`mode = "${sec.mode.trim()}"`);
       }
       return lines;
     }

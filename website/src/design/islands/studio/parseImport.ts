@@ -5,7 +5,7 @@
 // readers below. Unknown keys are ignored; missing keys keep current state.
 
 import type { StudioValues } from './useStudioState';
-import type { MountItem, EnvVarItem, HostExecItem, ServiceItem } from './types';
+import type { MountItem, EnvVarItem, HostExecItem, SecretItem, ServiceItem } from './types';
 import { FIELDS, CACHE_ORDER, getPath, coerceScalar } from './schema';
 
 type Patch = Partial<StudioValues>;
@@ -30,10 +30,35 @@ function parseMounts(list: string[] | undefined): MountItem[] | undefined {
 
 function parseEnv(rec: unknown): EnvVarItem[] | undefined {
   if (!rec || typeof rec !== 'object') return undefined;
-  return Object.entries(rec as Record<string, unknown>).map(([key, value]) => ({
-    key,
-    value: typeof value === 'string' ? value : String(value ?? ''),
-  }));
+  return Object.entries(rec as Record<string, unknown>)
+    // `forward` is a list in the same table, not a KEY=value pair.
+    .filter(([key, value]) => key !== 'forward' && typeof value === 'string')
+    .map(([key, value]) => ({ key, value: value as string }));
+}
+
+/** `secrets = ["a"]` or `[[security.secrets]]` — both land in the same list. */
+function parseSecrets(rec: unknown): SecretItem[] | undefined {
+  if (!Array.isArray(rec)) return undefined;
+  const out: SecretItem[] = [];
+  for (const entry of rec) {
+    if (typeof entry === 'string') {
+      if (entry.trim()) out.push({ name: entry, secretType: 'env', target: '', mode: '', source: 'podman' });
+      continue;
+    }
+    if (entry && typeof entry === 'object') {
+      const t = entry as Record<string, unknown>;
+      const name = str(t.name);
+      if (!name) continue;
+      out.push({
+        name,
+        secretType: t.type === 'mount' ? 'mount' : 'env',
+        target: str(t.target) ?? '',
+        mode: str(t.mode) ?? '',
+        source: t.source === 'systemd' ? 'systemd' : 'podman',
+      });
+    }
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function parseAllowlist(rec: unknown): HostExecItem[] | undefined {
@@ -138,8 +163,14 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
   // Legacy flat `mounts` list.
   const mounts = parseMounts(strArr(mountsObj?.extra) ?? strArr(container.mounts));
   if (mounts) patch.extraMounts = mounts;
+  const secrets = parseSecrets(sec('security').secrets);
+  if (secrets) patch.secrets = secrets;
+
   const env = parseEnv(container.env);
   if (env) patch.envVars = env;
+  const envRec = container.env as Record<string, unknown> | undefined;
+  const forward = strArr(envRec?.forward);
+  if (forward) patch.envForward = forward;
   const services = parseServices(container.services);
   if (services) patch.services = services;
 

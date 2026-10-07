@@ -5,12 +5,8 @@ import {
   Copy,
   Download,
   FileCode2,
-  Flame,
-  Globe,
-  Lock,
   Maximize2,
   Minimize2,
-  Monitor,
   RotateCcw,
   Save,
   Sparkles,
@@ -20,7 +16,7 @@ import {
 import { withBase } from '../../base';
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
-import { presetPatch, defaultPatch } from './presets';
+import { PRESETS, defaultPatch, presetPatch, type PresetId } from './presets';
 import { StudioImport } from './StudioImport';
 
 interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession'>; toml: string; quadlet: string; containerfile: string | null; }
@@ -33,7 +29,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
   // Fullscreen is a workbench, not a landing page: drop to a single slim
   // toolbar row with icon-only actions.
   const iconOnly = isFullscreen;
-  const onPreset = (p: 'rust' | 'arch-gui' | 'fullstack' | 'minimal') => {
+  const onPreset = (p: PresetId) => {
     st.applyPatch(presetPatch(p));
     setShowPresetMenu(false);
   };
@@ -103,27 +99,33 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
               className="fixed inset-0 z-40"
               onClick={() => setShowPresetMenu(false)}
             />
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-52 rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl p-1 text-xs font-sans animate-fadeIn">
-              {([
-                { id: 'rust', label: 'Rust Dev', Icon: Flame, iconColor: 'text-[var(--accent-peach)]' },
-                { id: 'arch-gui', label: 'Arch GUI', Icon: Monitor, iconColor: 'text-[var(--accent-blue)]' },
-                { id: 'fullstack', label: 'Full-Stack', Icon: Globe, iconColor: 'text-[var(--accent-green)]' },
-                { id: 'minimal', label: 'Hardened', Icon: Lock, iconColor: 'text-[var(--accent-red)]' },
-              ] as const).map(({ id, label, Icon, iconColor }) => (
+            <div className="absolute left-0 top-full mt-1.5 z-50 w-64 rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl p-1 text-xs font-sans animate-fadeIn">
+              {PRESETS.map(({ id, label, blurb, icon: Icon, accent }) => (
                 <button
                   key={id}
                   onClick={() => onPreset(id)}
-                  className={`w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] flex items-center gap-2 cursor-pointer ${
+                  className={`w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] flex items-start gap-2.5 cursor-pointer ${
                     activePreset === id
-                      ? 'text-[var(--accent-mauve)] font-bold'
+                      ? 'text-[var(--accent-mauve)]'
                       : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${iconColor}`} />
-                  <span>{label}</span>
-                  {activePreset === id && <span className="ml-auto">✓</span>}
+                  <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${accent}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className={`flex items-center gap-1.5 ${activePreset === id ? 'font-bold' : 'font-medium'}`}>
+                      {label}
+                      {activePreset === id && <span aria-hidden>✓</span>}
+                    </span>
+                    <span className="block text-[10px] leading-snug text-[var(--text-muted)] font-normal">
+                      {blurb}
+                    </span>
+                  </span>
                 </button>
               ))}
+              <p className="px-3 py-2 text-[10px] leading-snug text-[var(--text-muted)] border-t border-[var(--border)]">
+                A preset replaces the whole configuration, so nothing carries over from your
+                current session.
+              </p>
             </div>
           </>
         )}

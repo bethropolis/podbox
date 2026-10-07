@@ -7,16 +7,17 @@ import {
 import {
   StudioInput,
   StudioSelect,
+  StudioTagInput,
   STUDIO_FIELD,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { SHELL_OPTIONS, SERVICE_RESTART_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type ContainerPanelProps = Pick<StudioState, 'containerCpus' | 'containerCpuWeight' | 'containerHome' | 'containerMemory' | 'containerName' | 'containerShell' | 'containerSlice' | 'handleContainerNameChange' | 'services' | 'setContainerCpus' | 'setContainerCpuWeight' | 'setContainerHome' | 'setContainerMemory' | 'setContainerShell' | 'setContainerSlice' | 'setServices'>;
+type ContainerPanelProps = Pick<StudioState, 'containerCpus' | 'containerCpuWeight' | 'containerHome' | 'containerMemory' | 'containerName' | 'containerShell' | 'containerSlice' | 'envForward' | 'envVars' | 'handleContainerNameChange' | 'services' | 'setContainerCpus' | 'setContainerCpuWeight' | 'setContainerHome' | 'setContainerMemory' | 'setContainerShell' | 'setContainerSlice' | 'setEnvForward' | 'setEnvVars' | 'setServices'>;
 
 export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; errorMap?: Record<string, string> }) {
-  const { containerCpus, containerCpuWeight, containerHome, containerMemory, containerName, containerShell, containerSlice, handleContainerNameChange, services, setContainerCpus, setContainerCpuWeight, setContainerHome, setContainerMemory, setContainerShell, setContainerSlice, setServices } = st;
+  const { containerCpus, containerCpuWeight, containerHome, containerMemory, containerName, containerShell, containerSlice, envForward, envVars, handleContainerNameChange, services, setContainerCpus, setContainerCpuWeight, setContainerHome, setContainerMemory, setContainerShell, setContainerSlice, setEnvForward, setEnvVars, setServices } = st;
   const err = (field: string) => errorMap?.[field];
   return (
 <div className="space-y-5 animate-fadeIn">
@@ -166,6 +167,93 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
       max={10000}
       id="studio-input-container-cpu-weight"
       error={err('container.cpu_weight')}
+    />
+  </div>
+
+  {/* Environment variables */}
+  <div className="space-y-3 pt-2 border-t border-[var(--border)]">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center">
+        <span className="text-xs font-medium text-[var(--text-subtext)]">Environment Variables</span>
+        <StudioTooltip
+          section="[container.env]"
+          title='RUST_LOG = "debug"'
+          description="Variables baked into the container: emitted as Environment= lines in the unit, so they are set on every start."
+          quadlet="Environment=RUST_LOG=debug"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => setEnvVars([...envVars, { key: '', value: '' }])}
+        className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
+      >
+        <Plus className="w-3 h-3" />
+        <span>Add Variable</span>
+      </button>
+    </div>
+
+    <div className="space-y-2">
+      {envVars.map((v, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={v.key}
+            aria-label={`Environment variable ${idx + 1} name`}
+            spellCheck={false}
+            onChange={(e) => {
+              const next = [...envVars];
+              next[idx] = { ...next[idx], key: e.target.value };
+              setEnvVars(next);
+            }}
+            placeholder="VARIABLE"
+            className={`${STUDIO_FIELD} w-40 shrink-0`}
+          />
+          <span className="text-[var(--text-muted)] text-xs font-mono">=</span>
+          <input
+            type="text"
+            value={v.value}
+            aria-label={`Environment variable ${idx + 1} value`}
+            spellCheck={false}
+            onChange={(e) => {
+              const next = [...envVars];
+              next[idx] = { ...next[idx], value: e.target.value };
+              setEnvVars(next);
+            }}
+            placeholder="value"
+            className={`${STUDIO_FIELD} flex-1`}
+          />
+          <button
+            type="button"
+            onClick={() => setEnvVars(envVars.filter((_, i) => i !== idx))}
+            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer shrink-0"
+            title={`Remove ${v.key || 'variable'}`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      {envVars.length === 0 && (
+        <p className="text-[11px] text-[var(--text-muted)] italic">
+          No variables — the container inherits only podbox's own environment.
+        </p>
+      )}
+    </div>
+
+    <StudioTagInput
+      label={
+        <div className="flex items-center">
+          <span>Forward From Host</span>
+          <StudioTooltip
+            section="[container.env]"
+            title='forward = ["SSH_AUTH_SOCK", "AWS_*"]'
+            description="Host variables copied in when you enter, exec or run — unlike the pairs above, these are read from your shell at that moment, so tokens and agent sockets stay fresh. An exact name or a PREFIX_* pattern; a pattern that matches nothing is skipped."
+          />
+        </div>
+      }
+      tags={envForward}
+      onChange={setEnvForward}
+      placeholder="SSH_AUTH_SOCK, AWS_*, ..."
+      helperText="Forwarded on every enter, exec and run. Never written to the image."
     />
   </div>
 

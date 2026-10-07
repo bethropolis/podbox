@@ -1,21 +1,30 @@
 import React from 'react';
 import {
+  Plus,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import {
   StudioInput,
   StudioSelect,
   StudioSwitch,
   StudioTagInput,
+  STUDIO_FIELD,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { CAP_PRESET_OPTIONS, USERNS_OPTIONS } from '../schema';
+import type { SecretItem } from '../types';
+import {
+  CAP_PRESET_OPTIONS,
+  SECRET_SOURCE_OPTIONS,
+  SECRET_TYPE_OPTIONS,
+  USERNS_OPTIONS,
+} from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type SecurityPanelProps = Pick<StudioState, 'apparmor' | 'capPreset' | 'extraCapAddList' | 'noNewPrivileges' | 'readOnlyRootfs' | 'secLabelDisable' | 'seccomp' | 'setApparmor' | 'setCapPreset' | 'setExtraCapAddList' | 'setNoNewPrivileges' | 'setReadOnlyRootfs' | 'setSecLabelDisable' | 'setSeccomp' | 'setUsernsMode' | 'usernsMode'>;
+type SecurityPanelProps = Pick<StudioState, 'apparmor' | 'capPreset' | 'extraCapAddList' | 'noNewPrivileges' | 'readOnlyRootfs' | 'secLabelDisable' | 'seccomp' | 'secrets' | 'setApparmor' | 'setCapPreset' | 'setExtraCapAddList' | 'setNoNewPrivileges' | 'setReadOnlyRootfs' | 'setSecLabelDisable' | 'setSeccomp' | 'setSecrets' | 'setUsernsMode' | 'usernsMode'>;
 
 export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
-  const { apparmor, capPreset, extraCapAddList, noNewPrivileges, readOnlyRootfs, seccomp, secLabelDisable, setApparmor, setCapPreset, setExtraCapAddList, setNoNewPrivileges, setReadOnlyRootfs, setSecLabelDisable, setSeccomp, setUsernsMode, usernsMode } = st;
+  const { apparmor, capPreset, extraCapAddList, secrets, noNewPrivileges, readOnlyRootfs, seccomp, secLabelDisable, setApparmor, setCapPreset, setExtraCapAddList, setSecrets, setNoNewPrivileges, setReadOnlyRootfs, setSecLabelDisable, setSeccomp, setUsernsMode, usernsMode } = st;
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -176,6 +185,103 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
       onChange={setExtraCapAddList}
       placeholder="e.g. SYS_PTRACE, NET_BIND_SERVICE"
     />
+  </div>
+
+  {/* Podman / systemd secrets */}
+  <div className="space-y-3 pt-2 border-t border-[var(--border)]">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center">
+        <span className="text-xs font-medium text-[var(--text-subtext)]">Secrets</span>
+        <StudioTooltip
+          section="[security].secrets"
+          title='secrets = ["openai_key"]'
+          description="Hand the container a value that must never be baked into the image or typed on a command line. A bare name reads a `podman secret` and exposes it as an environment variable; switch the type to mount it as a file instead, or take it from a systemd credential."
+          quadlet="Secret=openai_key,type=env,target=openai_key"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() =>
+          setSecrets([...secrets, { name: '', secretType: 'env', target: '', mode: '', source: 'podman' }])
+        }
+        className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
+      >
+        <Plus className="w-3 h-3" />
+        <span>Add Secret</span>
+      </button>
+    </div>
+
+    <div className="space-y-2">
+      {secrets.map((sec, idx) => {
+        const update = (patch: Partial<SecretItem>) => {
+          const next = [...secrets];
+          next[idx] = { ...next[idx], ...patch };
+          setSecrets(next);
+        };
+        return (
+          <div key={idx} className="space-y-2 rounded-[2px] border border-[var(--border)] bg-[var(--bg-mantle)] p-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={sec.name}
+                aria-label={`Secret ${idx + 1} name`}
+                spellCheck={false}
+                onChange={(e) => update({ name: e.target.value })}
+                placeholder="podman secret name"
+                className={`${STUDIO_FIELD} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => setSecrets(secrets.filter((_, i) => i !== idx))}
+                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer shrink-0"
+                title={`Remove ${sec.name || 'secret'}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {/* A bare entry is emitted as `secrets = ["name"]`; these options
+                are what switches it to the detailed form. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <StudioSelect
+                value={sec.secretType}
+                onChange={(v) => update({ secretType: v as SecretItem['secretType'] })}
+                options={SECRET_TYPE_OPTIONS}
+              />
+              <StudioSelect
+                value={sec.source}
+                onChange={(v) => update({ source: v as SecretItem['source'] })}
+                options={SECRET_SOURCE_OPTIONS}
+              />
+              <input
+                type="text"
+                value={sec.target}
+                aria-label={`Secret ${idx + 1} target`}
+                spellCheck={false}
+                onChange={(e) => update({ target: e.target.value })}
+                placeholder="target (default: name)"
+                className={`${STUDIO_FIELD} px-2 py-1.5 text-xs`}
+              />
+            </div>
+            {sec.secretType === 'mount' && (
+              <input
+                type="text"
+                value={sec.mode}
+                aria-label={`Secret ${idx + 1} mode`}
+                spellCheck={false}
+                onChange={(e) => update({ mode: e.target.value })}
+                placeholder="mode (e.g. 0400)"
+                className={`${STUDIO_FIELD} w-32`}
+              />
+            )}
+          </div>
+        );
+      })}
+      {secrets.length === 0 && (
+        <p className="text-[11px] text-[var(--text-muted)] italic">
+          No secrets — API keys must be baked into the image or passed by hand.
+        </p>
+      )}
+    </div>
   </div>
 </div>
   );

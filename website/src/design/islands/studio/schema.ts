@@ -9,7 +9,7 @@
 // from this module instead of hardcoding them. `bun run check:studio`
 // guards the data layer against drift.
 
-import type { EnvVarItem, HostExecItem, MountItem, ServiceItem } from './types';
+import type { EnvVarItem, HostExecItem, MountItem, SecretItem, ServiceItem } from './types';
 
 // ── scalar field kinds ────────────────────────────────────────────────────
 
@@ -108,6 +108,16 @@ export const NETWORK_MODE_OPTIONS: SelectOption[] = [
   { value: 'host', label: 'host (Direct host network stack)' },
   { value: 'bridge', label: 'bridge (Podman default CNI bridge)' },
   { value: 'none', label: 'none (Completely offline / airgapped)' },
+];
+
+export const SECRET_TYPE_OPTIONS: SelectOption[] = [
+  { value: 'env', label: 'env', sublabel: 'environment variable' },
+  { value: 'mount', label: 'mount', sublabel: 'file in the container' },
+];
+
+export const SECRET_SOURCE_OPTIONS: SelectOption[] = [
+  { value: 'podman', label: 'podman secret', sublabel: 'podman secret show' },
+  { value: 'systemd', label: 'systemd', sublabel: 'LoadCredential' },
 ];
 
 export const USERNS_OPTIONS: SelectOption[] = [
@@ -262,6 +272,8 @@ export interface StudioDefaults {
   containerReloadCmd: string;
   extraMounts: MountItem[];
   envVars: EnvVarItem[];
+  /** `[container.env].forward` — host vars injected at enter/exec/run. */
+  envForward: string[];
   services: ServiceItem[];
   apparmor: string;
   seccomp: string;
@@ -289,6 +301,14 @@ export interface StudioDefaults {
   intGpgAgent: boolean;
   hostExecEnabled: boolean;
   hostExecList: HostExecItem[];
+  // [integration.hardware] — host device passthrough
+  hwKvm: boolean;
+  hwJoystick: boolean;
+  hwWebcam: boolean;
+  hwSerial: boolean;
+  hwYubikey: boolean;
+  /** [security].secrets */
+  secrets: SecretItem[];
   xdgDocuments: XdgDirMode;
   xdgDownloads: XdgDirMode;
   xdgPictures: XdgDirMode;
@@ -312,6 +332,19 @@ export interface StudioDefaults {
   waylandFirewall: boolean;
   waylandBlockedList: string[];
 }
+
+/**
+ * Keys that describe the view rather than the configuration. Excluded from
+ * the saved session and from a preset/reset, so neither persists "fullscreen"
+ * or reopens a dropdown.
+ */
+export const UI_ONLY_KEYS = [
+  'isFullscreen',
+  'activeCategory',
+  'activeView',
+  'copied',
+  'showExportMenu',
+] as const;
 
 export const STUDIO_DEFAULTS: StudioDefaults = {
   // view state
@@ -344,7 +377,7 @@ export const STUDIO_DEFAULTS: StudioDefaults = {
   // [container]
   containerName: 'dev-box',
   containerHome: '~/containers/dev-box',
-  containerShell: 'bash',
+  containerShell: 'fish',
   containerMemory: '4G',
   containerCpus: '2.0',
   containerSlice: 'podbox.slice',
@@ -354,6 +387,7 @@ export const STUDIO_DEFAULTS: StudioDefaults = {
 // rows with a blank side, so the placeholder never becomes a real mount.
 extraMounts: [{ host: '', guest: '', mode: 'z' }],
   envVars: [],
+  envForward: [],
   services: [],
   // [security]
   apparmor: '',
@@ -384,6 +418,12 @@ extraMounts: [{ host: '', guest: '', mode: 'z' }],
   intGpgAgent: false,
   hostExecEnabled: false,
   hostExecList: [],
+  hwKvm: false,
+  hwJoystick: false,
+  hwWebcam: false,
+  hwSerial: false,
+  hwYubikey: false,
+  secrets: [],
   xdgDocuments: 'off',
   xdgDownloads: 'off',
   xdgPictures: 'off',
@@ -408,7 +448,9 @@ extraMounts: [{ host: '', guest: '', mode: 'z' }],
   dbusTalkList: [],
   dbusOwnList: [],
   // [wayland]
-  waylandFirewall: false,
+  // podbox enables the firewall by default, so the Studio default matches and
+  // the key is only written when someone actually turns it off.
+  waylandFirewall: true,
   waylandBlockedList: [],
 };
 
@@ -429,7 +471,9 @@ export const FIELDS: FieldDef[] = [
   // [container]
   { stateKey: 'containerName', tomlPath: 'container.name', kind: 'string', def: '', emit: 'always' },
   { stateKey: 'containerHome', tomlPath: 'container.home', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'containerShell', tomlPath: 'container.shell', kind: 'string', def: '', emit: 'non-empty' },
+  // 'fish' is podbox's own default, so it is never written out; a different
+  // shell is an intentional override and gets emitted.
+  { stateKey: 'containerShell', tomlPath: 'container.shell', kind: 'string', def: 'fish', emit: 'non-default' },
   { stateKey: 'containerMemory', tomlPath: 'container.memory', kind: 'string', def: '', emit: 'non-empty' },
   { stateKey: 'containerCpus', tomlPath: 'container.cpus', kind: 'string', def: '', emit: 'non-empty' },
   { stateKey: 'containerSlice', tomlPath: 'container.slice', kind: 'string', def: 'podbox.slice', emit: 'non-default' },
@@ -466,6 +510,12 @@ export const FIELDS: FieldDef[] = [
   { stateKey: 'intSyncThemes', tomlPath: 'integration.sync_themes', kind: 'boolean', def: false, emit: 'is-false' },
   { stateKey: 'intSshAgent', tomlPath: 'integration.ssh_agent', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intGpgAgent', tomlPath: 'integration.gpg_agent', kind: 'boolean', def: false, emit: 'is-true' },
+  // [integration.hardware]
+  { stateKey: 'hwKvm', tomlPath: 'integration.hardware.kvm', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'hwJoystick', tomlPath: 'integration.hardware.joystick', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'hwWebcam', tomlPath: 'integration.hardware.webcam', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'hwSerial', tomlPath: 'integration.hardware.serial', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'hwYubikey', tomlPath: 'integration.hardware.yubikey', kind: 'boolean', def: false, emit: 'is-true' },
   // [integration.xdg_dirs]
   { stateKey: 'xdgDocuments', tomlPath: 'integration.xdg_dirs.documents', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
   { stateKey: 'xdgDownloads', tomlPath: 'integration.xdg_dirs.downloads', kind: 'xdg-dir', def: 'off', emit: 'non-default' },

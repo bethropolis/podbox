@@ -18,10 +18,10 @@ import {
 } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
+type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
 export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; errorMap?: Record<string, string> }) {
-  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
+  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
   const err = (field: string) => errorMap?.[field];
   const XDG_DIRS = [
     { id: 'documents', label: 'Documents', mode: xdgDocuments, setter: setXdgDocuments },
@@ -345,6 +345,96 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
     <p className="text-[11px] text-[var(--text-muted)]">
       Click a directory to cycle: off &rarr; read-only &rarr; read-write.
     </p>
+  </div>
+
+  {/* Host hardware passthrough */}
+  <div className="pt-2 border-t border-[var(--border)] space-y-3">
+    <div className="flex items-center">
+      <span className="text-xs font-medium text-[var(--text-subtext)]">Hardware Passthrough</span>
+      <StudioTooltip
+        section="[integration.hardware]"
+        title="kvm = true"
+        description="Hand specific host devices to the container. Containers have no /dev of their own, so a webcam, a joystick, a YubiKey or /dev/kvm is simply absent until you pass it through here. Each device that the host does not have is skipped rather than failing the start."
+        quadlet="AddDevice=-/dev/kvm"
+      />
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <StudioSwitch
+        id="hw-webcam"
+        checked={hwWebcam}
+        onChange={setHwWebcam}
+        label={
+          <div className="flex items-center">
+            <span>Webcam</span>
+            <StudioTooltip
+              section="[integration.hardware]"
+              title="webcam = true"
+              description="Passes through /dev/video* and /dev/media*, so container apps (Zoom, OBS, OpenCV) can see the camera."
+            />
+          </div>
+        }
+      />
+      <StudioSwitch
+        id="hw-joystick"
+        checked={hwJoystick}
+        onChange={setHwJoystick}
+        label={
+          <div className="flex items-center">
+            <span>Joystick / Gamepad</span>
+            <StudioTooltip
+              section="[integration.hardware]"
+              title="joystick = true"
+              description="Passes through /dev/input and /dev/uinput, which covers gamepads, joysticks and emulated input devices."
+            />
+          </div>
+        }
+      />
+      <StudioSwitch
+        id="hw-yubikey"
+        checked={hwYubikey}
+        onChange={setHwYubikey}
+        label={
+          <div className="flex items-center">
+            <span>YubiKey / Smartcard</span>
+            <StudioTooltip
+              section="[integration.hardware]"
+              title="yubikey = true"
+              description="Passes through the pcscd socket and /dev/hidraw*, so a YubiKey or smartcard works inside the container for git signing and 2FA."
+            />
+          </div>
+        }
+      />
+      <StudioSwitch
+        id="hw-serial"
+        checked={hwSerial}
+        onChange={setHwSerial}
+        label={
+          <div className="flex items-center">
+            <span>Serial / USB MCU</span>
+            <StudioTooltip
+              section="[integration.hardware]"
+              title="serial = true"
+              description="Passes through /dev/ttyUSB* and /dev/ttyACM*, for microcontrollers and serial adapters."
+            />
+          </div>
+        }
+      />
+      <StudioSwitch
+        id="hw-kvm"
+        checked={hwKvm}
+        onChange={setHwKvm}
+        label={
+          <div className="flex items-center">
+            <span>KVM</span>
+            <StudioTooltip
+              section="[integration.hardware]"
+              title="kvm = true"
+              description="Passes through /dev/kvm so nested virtualisation works — Android emulators, nested VMs, libvirt guests."
+            />
+          </div>
+        }
+      />
+    </div>
   </div>
 
   {/* Host exec */}

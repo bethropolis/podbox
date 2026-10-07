@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import type { MountItem, EnvVarItem, HostExecItem, ServiceItem } from './types';
-import { STUDIO_DEFAULTS } from './schema';
+import type { MountItem, EnvVarItem, HostExecItem, SecretItem, ServiceItem } from './types';
+import { STUDIO_DEFAULTS, UI_ONLY_KEYS } from './schema';
 
 // Bump the suffix when the value shape changes; older payloads are then
 // ignored instead of half-applying stale keys.
@@ -71,6 +71,7 @@ const [containerCpuWeight, setContainerCpuWeight] = useState(STUDIO_DEFAULTS.con
 const [containerReloadCmd, setContainerReloadCmd] = useState(STUDIO_DEFAULTS.containerReloadCmd);
 const [extraMounts, setExtraMounts] = useState<MountItem[]>(STUDIO_DEFAULTS.extraMounts);
 const [envVars, setEnvVars] = useState<EnvVarItem[]>(STUDIO_DEFAULTS.envVars);
+const [envForward, setEnvForward] = useState<string[]>(STUDIO_DEFAULTS.envForward);
 const [services, setServices] = useState<ServiceItem[]>(STUDIO_DEFAULTS.services);
 
 // [security]
@@ -106,6 +107,16 @@ const [intGpgAgent, setIntGpgAgent] = useState(STUDIO_DEFAULTS.intGpgAgent);
 // [integration.host_exec]
 const [hostExecEnabled, setHostExecEnabled] = useState(STUDIO_DEFAULTS.hostExecEnabled);
 const [hostExecList, setHostExecList] = useState<HostExecItem[]>(STUDIO_DEFAULTS.hostExecList);
+
+// [integration.hardware]
+const [hwKvm, setHwKvm] = useState(STUDIO_DEFAULTS.hwKvm);
+const [hwJoystick, setHwJoystick] = useState(STUDIO_DEFAULTS.hwJoystick);
+const [hwWebcam, setHwWebcam] = useState(STUDIO_DEFAULTS.hwWebcam);
+const [hwSerial, setHwSerial] = useState(STUDIO_DEFAULTS.hwSerial);
+const [hwYubikey, setHwYubikey] = useState(STUDIO_DEFAULTS.hwYubikey);
+
+// [security].secrets
+const [secrets, setSecrets] = useState<SecretItem[]>(STUDIO_DEFAULTS.secrets);
 
 // [integration.xdg_dirs]
 const [xdgDocuments, setXdgDocuments] = useState(STUDIO_DEFAULTS.xdgDocuments);
@@ -172,10 +183,10 @@ const handleContainerNameChange = (val: string) => {
   const applyPatch = (patch: Record<string, any>) => {
     for (const [k, v] of Object.entries(patch)) setters[k]?.(v as never);
   };
-  const values = { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, dotfilesSource, dotfilesTarget, dotfilesCloneOn, dotfilesInstall, sharedCaches, hostCaches, containerName, containerHome, containerShell, containerMemory, containerCpus, containerSlice, containerCpuWeight, containerReloadCmd, extraMounts, envVars, services, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, netOffline, portMappingsList, intGitIdentity, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeAutoCheckpoint, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList };
+  const values = { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, dotfilesSource, dotfilesTarget, dotfilesCloneOn, dotfilesInstall, sharedCaches, hostCaches, containerName, containerHome, containerShell, containerMemory, containerCpus, containerSlice, containerCpuWeight, containerReloadCmd, extraMounts, envVars, envForward, services, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, netOffline, portMappingsList, intGitIdentity, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, hwKvm, hwJoystick, hwWebcam, hwSerial, hwYubikey, secrets, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeAutoCheckpoint, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList };
   // Persist only configuration, never view state (a reload should not
   // re-open the fullscreen editor or a dropdown).
-  const UI_ONLY = new Set(['isFullscreen', 'activeCategory', 'activeView', 'copied', 'showExportMenu']);
+  const UI_ONLY = new Set<string>(UI_ONLY_KEYS);
   const persistable = Object.fromEntries(
     Object.entries(values).filter(([k]) => !UI_ONLY.has(k))
   ) as Record<string, any>;
@@ -231,7 +242,7 @@ const handleContainerNameChange = (val: string) => {
     setHasRestoredSession(false);
   };
 
-  return { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, dotfilesSource, dotfilesTarget, dotfilesCloneOn, dotfilesInstall, sharedCaches, hostCaches, containerName, containerHome, containerShell, containerMemory, containerCpus, containerSlice, containerCpuWeight, containerReloadCmd, extraMounts, envVars, services, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, netOffline, portMappingsList, intGitIdentity, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeAutoCheckpoint, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList, setIsFullscreen, setActiveCategory, setActiveView, setCopied, setShowExportMenu, setActivePreset, setImageType, setSelectedPresetDistro, setCustomImageBase, setImageName, setImagePrebuiltRef, setPullRetry, setPullRetryDelay, setPackagesInstallList, setPackagesRemoveList, setPackageManager, setRunCommands, setDotfilesSource, setDotfilesTarget, setDotfilesCloneOn, setDotfilesInstall, setSharedCaches, setHostCaches, setContainerName, setContainerHome, setContainerShell, setContainerMemory, setContainerCpus, setContainerSlice, setContainerCpuWeight, setContainerReloadCmd, setExtraMounts, setEnvVars, setServices, setApparmor, setSeccomp, setSecLabelDisable, setNoNewPrivileges, setReadOnlyRootfs, setUsernsMode, setCapPreset, setExtraCapAddList, setNetMode, setNetOffline, setPortMappingsList, setIntGitIdentity, setIntWayland, setIntAudio, setIntGpu, setIntDbus, setIntNotify, setIntXdgOpen, setIntClipboard, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntSshAgent, setIntGpgAgent, setHostExecEnabled, setHostExecList, setXdgDocuments, setXdgDownloads, setXdgPictures, setXdgMusic, setXdgVideos, setXdgDesktop, setXdgProjects, setExportAppsList, setExportBinsList, setLifeQuadlet, setLifeAutostart, setLifeOnStop, setLifeAutoUpdate, setLifeAutoCheckpoint, setLifeIdleTimeout, setSysRequires, setSysAfter, setDbusPreset, setDbusTalkList, setDbusOwnList, setWaylandFirewall, setWaylandBlockedList, handleContainerNameChange, applyPatch, values, setters, hasRestoredSession, clearSavedSession };
+  return { isFullscreen, activeCategory, activeView, copied, showExportMenu, activePreset, imageType, selectedPresetDistro, customImageBase, imageName, imagePrebuiltRef, pullRetry, pullRetryDelay, packagesInstallList, packagesRemoveList, packageManager, runCommands, dotfilesSource, dotfilesTarget, dotfilesCloneOn, dotfilesInstall, sharedCaches, hostCaches, containerName, containerHome, containerShell, containerMemory, containerCpus, containerSlice, containerCpuWeight, containerReloadCmd, extraMounts, envVars, envForward, services, apparmor, seccomp, secLabelDisable, noNewPrivileges, readOnlyRootfs, usernsMode, capPreset, extraCapAddList, netMode, netOffline, portMappingsList, intGitIdentity, intWayland, intAudio, intGpu, intDbus, intNotify, intXdgOpen, intClipboard, intSyncFonts, intSyncIcons, intSyncThemes, intSshAgent, intGpgAgent, hostExecEnabled, hostExecList, xdgDocuments, xdgDownloads, xdgPictures, xdgMusic, xdgVideos, xdgDesktop, xdgProjects, exportAppsList, exportBinsList, secrets, hwKvm, hwJoystick, hwWebcam, hwSerial, hwYubikey, lifeQuadlet, lifeAutostart, lifeOnStop, lifeAutoUpdate, lifeAutoCheckpoint, lifeIdleTimeout, sysRequires, sysAfter, dbusPreset, dbusTalkList, dbusOwnList, waylandFirewall, waylandBlockedList, setIsFullscreen, setActiveCategory, setActiveView, setCopied, setShowExportMenu, setActivePreset, setImageType, setSelectedPresetDistro, setCustomImageBase, setImageName, setImagePrebuiltRef, setPullRetry, setPullRetryDelay, setPackagesInstallList, setPackagesRemoveList, setPackageManager, setRunCommands, setDotfilesSource, setDotfilesTarget, setDotfilesCloneOn, setDotfilesInstall, setSharedCaches, setHostCaches, setContainerName, setContainerHome, setContainerShell, setContainerMemory, setContainerCpus, setContainerSlice, setContainerCpuWeight, setContainerReloadCmd, setExtraMounts, setEnvVars, setEnvForward, setServices, setApparmor, setSeccomp, setSecLabelDisable, setNoNewPrivileges, setReadOnlyRootfs, setUsernsMode, setCapPreset, setExtraCapAddList, setNetMode, setNetOffline, setPortMappingsList, setIntGitIdentity, setIntWayland, setIntAudio, setIntGpu, setIntDbus, setIntNotify, setIntXdgOpen, setIntClipboard, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntSshAgent, setIntGpgAgent, setHostExecEnabled, setHostExecList, setHwKvm, setHwJoystick, setHwWebcam, setHwSerial, setHwYubikey, setSecrets, setXdgDocuments, setXdgDownloads, setXdgPictures, setXdgMusic, setXdgVideos, setXdgDesktop, setXdgProjects, setExportAppsList, setExportBinsList, setLifeQuadlet, setLifeAutostart, setLifeOnStop, setLifeAutoUpdate, setLifeAutoCheckpoint, setLifeIdleTimeout, setSysRequires, setSysAfter, setDbusPreset, setDbusTalkList, setDbusOwnList, setWaylandFirewall, setWaylandBlockedList, handleContainerNameChange, applyPatch, values, setters, hasRestoredSession, clearSavedSession };
 }
 
 export type StudioState = ReturnType<typeof useStudioState>;
