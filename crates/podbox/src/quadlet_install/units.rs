@@ -11,6 +11,22 @@ use crate::systemd;
 
 use super::paths::quadlet_dir;
 
+/// Filenames of the custom units podbox writes beside the Quadlet files.
+///
+/// Shared by the writer and by `uninstall` so the two cannot drift. Note the
+/// mixed separators: systemd's own suffix is dotted (`<name>.socket`), while
+/// the multi-word units are joined with hyphens (`<name>-host.service`) — a
+/// `format!("{name}.host.service")` matches nothing, which is how `podbox
+/// disable` ended up orphaning the host and compositor units on every run.
+pub fn custom_unit_filenames(name: &str) -> Vec<String> {
+    vec![
+        format!("{name}.socket"),
+        format!("{name}-host.service"),
+        format!("{name}-proxy.service"),
+        format!("{name}-compositor.service"),
+    ]
+}
+
 /// Write custom systemd units (socket, host-service, optional dbus-proxy
 /// and compositor) to sdir.
 fn write_custom_units(
@@ -21,17 +37,15 @@ fn write_custom_units(
     dbus_proxy_content: Option<&str>,
     compositor_service_content: Option<&str>,
 ) -> Result<()> {
+    let files = custom_unit_filenames(name);
     std::fs::create_dir_all(sdir)?;
-    std::fs::write(sdir.join(format!("{name}.socket")), socket_content)?;
-    std::fs::write(
-        sdir.join(format!("{name}-host.service")),
-        host_service_content,
-    )?;
+    std::fs::write(sdir.join(&files[0]), socket_content)?;
+    std::fs::write(sdir.join(&files[1]), host_service_content)?;
     if let Some(proxy) = dbus_proxy_content {
-        std::fs::write(sdir.join(format!("{name}-proxy.service")), proxy)?;
+        std::fs::write(sdir.join(&files[2]), proxy)?;
     }
     if let Some(comp) = compositor_service_content {
-        std::fs::write(sdir.join(format!("{name}-compositor.service")), comp)?;
+        std::fs::write(sdir.join(&files[3]), comp)?;
     }
     write_clean_stop_dropin(name, sdir)?;
     Ok(())
@@ -188,5 +202,56 @@ pub(crate) fn remove_application_dir(name: &str) {
     let app_dir = quadlet_dir().join(name);
     if app_dir.is_dir() {
         let _ = std::fs::remove_dir_all(&app_dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `podbox disable` used to build names like `<name>.host.service` while
+    /// the installer wrote `<name>-host.service`, so every disable orphaned the
+    /// host, proxy and compositor units. Both sides now share this list.
+    #[test]
+    fn uninstall_filenames_match_what_install_writes() {
+        assert_eq!(
+            custom_unit_filenames("dev"),
+            vec![
+                "dev.socket",
+                "dev-host.service",
+                "dev-proxy.service",
+                "dev-compositor.service",
+            ]
+        );
+    }
+
+    #[test]
+    fn every_written_unit_is_in_the_removal_list() {
+        let dir =
+            std::env::temp_dir().join(format!("podbox-units-{}-{}", std::process::id(), "written"));
+        let _ = std::fs::remove_dir_all(&dir);
+        write_custom_units("dev", &dir, "sock", "host", Some("proxy"), Some("comp")).unwrap();
+
+        let removable = custom_unit_filenames("dev");
+        for file in &removable {
+            let path = dir.join(file);
+            assert!(path.exists(), "{file} was written but is not removable");
+        }
+        // The drop-in directory is removed separately by `uninstall`.
+        assert!(dir.join("dev.service.d").is_dir());
+
+        // Simulate the uninstall loop: everything it removes is really there.
+        for file in &removable {
+            std::fs::remove_file(dir.join(file)).unwrap();
+        }
+        assert_eq!(
+            std::fs::read_dir(&dir)
+                .unwrap()
+                .filter(|e| e.as_ref().unwrap().path().is_file())
+                .count(),
+            0,
+            "uninstall would leave files behind"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

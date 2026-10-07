@@ -235,14 +235,10 @@ pub fn uninstall(name: &str) -> Result<()> {
         remove_application_dir(name);
     }
 
-    // Remove custom systemd units
-    for unit in [
-        "socket",
-        "host.service",
-        "proxy.service",
-        "compositor.service",
-    ] {
-        let path = sdir.join(format!("{name}.{unit}"));
+    // Remove custom systemd units. Driven by the same filename list the
+    // installer writes, so a unit cannot be created but not removed.
+    for file in units::custom_unit_filenames(name) {
+        let path = sdir.join(&file);
         if path.exists() {
             std::fs::remove_file(&path)?;
         }
