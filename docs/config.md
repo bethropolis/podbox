@@ -58,7 +58,7 @@ commands = ["dnf clean all"]
 | `home` | string | *required* | Host path for isolated home (`~` expands) |
 | `shell` | string | `"fish"` | Default login shell inside the container |
 | `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
-| `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Converted to `CpuQuota=` in Quadlet |
+| `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Passed through to Podman as `--cpus` |
 | `slice` | string | `"podbox.slice"` | systemd slice for the container service |
 | `cpu_weight` | integer | `200` | systemd CPU contention weight (1–10000) |
 | `reload_cmd` | string | — | Command run on config reload. Passed as `ReloadCmd=` in Quadlet |
@@ -150,6 +150,47 @@ configured image name matches a built-in profile.
 | `userns` | string | — | User namespace mode override. Defaults to `"keep-id"`. Supported: `"keep-id"`, `"nomap"`, `"private"` |
 | `cap_preset` | string | `"default"` | Capability preset. Options: `"none"`, `"default"`, `"monitoring"`, `"admin"`. Adds a predefined set of `--cap-add` entries alongside any `cap_add` list below |
 | `cap_add` | string[] | `[]` | Extra Linux capabilities to add (e.g. `["SYS_ADMIN"]`). Combined with `cap_preset` caps |
+| `secrets` | table[] | `[]` | Secrets passed to the container without baking them into the image (see below) |
+
+### `[security].secrets`
+
+Each entry hands the container a value that should never end up in a layer or
+on a command line. The bare string form reads a `podman secret` and exposes it
+as an environment variable of the same name:
+
+```toml
+[security]
+secrets = ["openai_key"]              # Secret=openai_key,type=env,target=openai_key
+```
+
+Use the detailed form when you need a different target, a file instead of a
+variable, a mode, or a systemd credential as the source:
+
+```toml
+[[security.secrets]]
+name = "aws_creds"
+type = "mount"                        # env (default) or mount
+target = "/run/secrets/aws"           # destination name inside the container
+mode = "0400"
+
+[[security.secrets]]
+name = "gh_token"
+source = "systemd"                    # podman (default) or systemd
+target = "GH_TOKEN"                   # Environment=GH_TOKEN=%d/gh_token
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `name` | string | *required* | Secret name to read |
+| `type` | string | `"env"` | `env` (environment variable) or `mount` (file in the container) |
+| `target` | string | secret name | Destination name inside the container |
+| `mode` | string | — | File mode for `mount` secrets |
+| `source` | string | `"podman"` | `podman` reads `podman secret`; `systemd` reads a systemd credential |
+
+A config mixes the two forms never: if every entry is bare, `secrets` is a list
+of strings; if any entry sets `type`, `target`, `mode` or `source`, the whole
+list is written as tables. `podbox doctor` verifies the referenced secrets
+exist.
 
 ```toml
 [security]
@@ -317,6 +358,29 @@ Controls which host resources are shared with the container.
 | `true` | Enable `/dev/dri` (Intel/AMD) |
 | `false` | Disable all GPU passthrough |
 | `"nvidia"` | Enable `/dev/dri` + NVIDIA device nodes |
+
+### `[integration.hardware]`
+
+Host device passthrough. A container has no devices of its own, so anything
+hardware — a camera, a gamepad, a YubiKey, `/dev/kvm` — is simply absent until
+you pass it through here. Each device is emitted as an optional `AddDevice=-…`,
+so a host that lacks it is skipped rather than failing the start.
+
+| Key | Type | Default | Passed through |
+|-----|------|---------|----------------|
+| `kvm` | bool | `false` | `/dev/kvm` — nested virtualisation, Android emulators |
+| `joystick` | bool | `false` | `/dev/input`, `/dev/uinput` — gamepads and joysticks |
+| `webcam` | bool | `false` | `/dev/video*`, `/dev/media*` |
+| `serial` | bool | `false` | `/dev/ttyUSB*`, `/dev/ttyACM*` — microcontrollers |
+| `yubikey` | bool | `false` | `pcscd` socket and `/dev/hidraw*` — smartcards, 2FA |
+
+```toml
+[integration.hardware]
+webcam = true
+kvm = true
+```
+
+`podbox doctor` reports when the host is missing a device these would need.
 
 ### `[integration.host_exec]`
 
@@ -534,6 +598,12 @@ no_new_privileges = true        # Block setuid escalation (sudo, su, AUR helpers
 read_only_rootfs = false        # Make rootfs read-only (requires writable volumes)
 userns = "keep-id"              # UserNS mode: keep-id, nomap, private (omitted = keep-id)
 cap_add = ["SYS_PTRACE"]        # Extra Linux capabilities (omitted = none)
+secrets = ["openai_key"]        # Podman secrets; no value ever lands in the image
+
+# [[security.secrets]]         # detailed form when you need type/target/mode
+# name = "aws_creds"
+# type = "mount"
+# mode = "0400"
 
 # ── Network ────────────────────────────────────────────
 [network]
@@ -554,6 +624,10 @@ gpg_agent   = false             # Forward GPG agent
 sync_fonts  = true              # Sync ~/.fonts / ~/.local/share/fonts (ro)
 sync_icons  = true              # Sync ~/.icons / ~/.local/share/icons (ro)
 sync_themes = true              # Sync ~/.themes / ~/.local/share/themes (ro)
+
+[integration.hardware]         # Host device passthrough (all opt-in)
+webcam = false
+kvm = false
 
 [integration.host_exec]
 enabled = false

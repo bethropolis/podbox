@@ -71,7 +71,7 @@ Four Quadlet/systemd unit files are generated per container:
 | `SeccompProfile` | From `security.seccomp` | Seccomp profile (conditional, e.g. `"default"`, `"unconfined"`) |
 | `NoNewPrivileges` | `true` | Emitted when `security.no_new_privileges = true` (default). Set `false` to allow `sudo`, `su`, AUR helpers. |
 | `Memory` | From `container.memory` | Memory limit (conditional, e.g. `"4G"`) |
-| `CpuQuota` | From `container.cpus` × 100000µs | CPU quota (conditional, e.g. `"2.0"` → `CpuQuota=200000`) |
+| `PodmanArgs=--cpus=` | From `container.cpus` | CPU limit (conditional, e.g. `"0.5"` → `--cpus=0.5`; Quadlet has no `CpuQuota` key) |
 | `ReadOnly` | `true` | Read-only rootfs (conditional on `security.read_only_rootfs`) |
 | `AppArmorProfile` | From `security.apparmor` | AppArmor profile (conditional, e.g. `"unconfined"`) |
 | `AddDevice` | `/dev/dri` | GPU (conditional on `gpu=true` or `gpu="auto"` with DRI present) |

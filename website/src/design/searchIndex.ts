@@ -243,6 +243,11 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 2
       },
       {
+        "id": "securitysecrets",
+        "text": "[security].secrets",
+        "level": 3
+      },
+      {
         "id": "network",
         "text": "[network]",
         "level": 2
@@ -265,6 +270,11 @@ export const SEARCH_DOCS: SearchDoc[] = [
       {
         "id": "gpumode-values",
         "text": "GpuMode values",
+        "level": 3
+      },
+      {
+        "id": "integrationhardware",
+        "text": "[integration.hardware]",
         "level": 3
       },
       {
