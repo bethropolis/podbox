@@ -110,7 +110,10 @@ impl DistroFamily {
         pkgs
     }
 
-    fn shell_packages(&self, shell_path: &str) -> Vec<String> {
+    /// Packages needed to provide `shell_path` (accepts `fish` or
+    /// `/usr/bin/fish`). Public because the image has to contain the shell the
+    /// container runs, not just the host's.
+    pub fn shell_packages(&self, shell_path: &str) -> Vec<String> {
         let shell_name = shell_path.split('/').next_back().unwrap_or("");
         let mut pkgs = Vec::new();
 
