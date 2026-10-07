@@ -6,6 +6,12 @@ interface TerminalCodeBlockProps {
   language?: string;
   filename?: string;
   showLineNumbers?: boolean;
+  /**
+   * Drop the terminal-window framing (title bar, traffic lights, outer
+   * margin) and render only the code. Callers that already provide their own
+   * heading or tab bar use this so the code is not boxed inside a box.
+   */
+  bare?: boolean;
 }
 
 export function TerminalCodeBlock({
@@ -13,6 +19,7 @@ export function TerminalCodeBlock({
   language = 'bash',
   filename,
   showLineNumbers = false,
+  bare = false,
 }: TerminalCodeBlockProps) {
   // Copy is handled by a single delegated document listener (see
   // SiteLayout copy script): the button carries the payload in data-code,
@@ -73,6 +80,52 @@ export function TerminalCodeBlock({
 
   const lines = cleanCode.split('\n');
 
+  const copyButton = (positionClass = '') => (
+    <button
+      type="button"
+      data-copy-btn
+      data-code={cleanCode}
+      className={`flex items-center gap-1.5 px-2 py-1 text-xs font-mono text-[var(--text-subtext)] hover:text-[var(--accent-mauve)] hover:bg-[var(--bg-surface0)] rounded-[2px] transition-colors cursor-pointer ${positionClass}`}
+      title="Copy code to clipboard"
+      aria-label="Copy code to clipboard"
+    >
+      <Copy className="w-3.5 h-3.5" data-copy-icon />
+      <span className="text-[11px]" data-copy-label>copy</span>
+    </button>
+  );
+
+  const codeBody = (
+    <div className={`overflow-x-auto text-[13px] leading-relaxed font-mono ${bare ? 'p-4 sm:p-5' : 'p-3.5'}`}>
+      <pre className="m-0 p-0 font-mono">
+        <code>
+          {lines.map((line, idx) => (
+            <div key={idx} className="table-row">
+              {showLineNumbers && (
+                <span className="table-cell pr-4 text-right select-none text-[var(--text-muted)] opacity-50 text-xs">
+                  {idx + 1}
+                </span>
+              )}
+              <span className="table-cell break-all">
+                {highlightLine(line, language)}
+              </span>
+            </div>
+          ))}
+        </code>
+      </pre>
+    </div>
+  );
+
+  if (bare) {
+    // No title bar: the caller labels the block. The copy button stays, pinned
+    // to the top-right so the panel keeps its one useful affordance.
+    return (
+      <div className="relative">
+        {copyButton('absolute top-2.5 right-2.5 z-10')}
+        {codeBody}
+      </div>
+    );
+  }
+
   return (
     <div className="my-4 rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden shadow-sm">
       {/* Titlebar Chrome */}
@@ -95,38 +148,11 @@ export function TerminalCodeBlock({
           )}
         </div>
 
-        <button
-          type="button"
-          data-copy-btn
-          data-code={cleanCode}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs font-mono text-[var(--text-subtext)] hover:text-[var(--accent-mauve)] hover:bg-[var(--bg-surface0)] rounded-[2px] transition-colors cursor-pointer"
-          title="Copy code to clipboard"
-          aria-label="Copy code to clipboard"
-        >
-          <Copy className="w-3.5 h-3.5" data-copy-icon />
-          <span className="text-[11px]" data-copy-label>copy</span>
-        </button>
+        {copyButton()}
       </div>
 
       {/* Code body */}
-      <div className="p-3.5 overflow-x-auto text-[13px] leading-relaxed font-mono">
-        <pre className="m-0 p-0 font-mono">
-          <code>
-            {lines.map((line, idx) => (
-              <div key={idx} className="table-row">
-                {showLineNumbers && (
-                  <span className="table-cell pr-4 text-right select-none text-[var(--text-muted)] opacity-50 text-xs">
-                    {idx + 1}
-                  </span>
-                )}
-                <span className="table-cell break-all">
-                  {highlightLine(line, language)}
-                </span>
-              </div>
-            ))}
-          </code>
-        </pre>
-      </div>
+      {codeBody}
     </div>
   );
 }

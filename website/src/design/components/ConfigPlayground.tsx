@@ -3,16 +3,8 @@ import { TerminalCodeBlock } from './TerminalCodeBlock';
 import { StudioSwitch } from './StudioControls';
 import { StudioTooltip } from './StudioTooltip';
 import {
-  Boxes,
-  Cpu,
-  Check,
   ArrowRight,
-  ExternalLink,
   Sparkles,
-  Monitor,
-  Volume2,
-  FolderSync,
-  Radio,
   SlidersHorizontal,
   FileCode2,
   Terminal
@@ -23,6 +15,34 @@ import { generatePlaygroundToml, generatePlaygroundQuadlet, type PlaygroundConfi
 
 interface ConfigPlaygroundProps {
   // Navigation is plain MPA links; no callback props cross the Astro boundary.
+}
+
+const GPU_CHOICES = [
+  { value: 'auto' as const, label: 'Auto' },
+  { value: 'nvidia' as const, label: 'NVIDIA' },
+  { value: 'off' as const, label: 'None' },
+];
+
+// One shared input style so the controls read as a single form rather than a
+// pile of differently-weighted widgets.
+const inputClass =
+  'w-full px-3 py-2 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30 transition-colors';
+
+function groupLabel(children: React.ReactNode) {
+  return (
+    <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wider font-mono font-bold">
+      {children}
+    </span>
+  );
+}
+
+function fieldLabel(label: string, title: string, description: string) {
+  return (
+    <div className="flex items-center">
+      <span className="text-[var(--text-primary)] text-sm font-medium">{label}</span>
+      <StudioTooltip title={title} description={description} />
+    </div>
+  );
 }
 
 export function ConfigPlayground(_props: ConfigPlaygroundProps) {
@@ -38,44 +58,25 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
   const [activeView, setActiveView] = useState<'toml' | 'quadlet'>('toml');
 
   const config: PlaygroundConfig = { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects, packages };
+  const code = activeView === 'toml' ? generatePlaygroundToml(config) : generatePlaygroundQuadlet(config);
+
+  const tabs = [
+    { id: 'toml' as const, label: 'podbox.toml', note: 'what you write', icon: FileCode2 },
+    { id: 'quadlet' as const, label: `${name}.container`, note: 'what podbox runs', icon: Terminal },
+  ];
 
   return (
-    <div className="w-full bg-[var(--bg-mantle)] border border-[var(--border)] rounded-[3px] overflow-hidden shadow-lg font-sans">
-      {/* Chrome Header Bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-crust)] border-b border-[var(--border)]">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[var(--accent-red)]/70 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[var(--accent-yellow)]/70 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[var(--accent-green)]/70 inline-block" />
+    <div className="w-full border border-[var(--border)] rounded-[3px] bg-[var(--bg-mantle)] overflow-hidden font-sans">
+      <div className="grid grid-cols-1 lg:grid-cols-2">
+        {/* Controls */}
+        <div className="p-5 sm:p-7 space-y-7">
+          <div className="space-y-5">
+            {groupLabel('The basics')}
+            <div className="h-px bg-[var(--border)]" />
           </div>
-          <span className="text-xs font-mono text-[var(--text-subtext)] ml-2 flex items-center gap-1.5">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />
-            <span>quick-config // podbox.toml</span>
-          </span>
-        </div>
 
-        <a
-          href={withBase('/studio')}
-          className="flex items-center gap-1.5 text-xs text-[var(--accent-mauve)] hover:text-white font-medium cursor-pointer transition-colors"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Open Full Studio</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </a>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[var(--border)]">
-        {/* Controls Column (5 cols) */}
-        <div className="lg:col-span-5 p-4 sm:p-5 space-y-4 text-xs">
-          <div className="space-y-1.5">
-            <div className="flex items-center">
-              <span className="text-[var(--text-subtext)] font-medium">Container Name</span>
-              <StudioTooltip
-                title="name = &quot;dev-box&quot;"
-                description="Identifier for container and Quadlet unit file."
-              />
-            </div>
+          <div className="space-y-2">
+            {fieldLabel('Name', 'name = "dev-box"', 'Names the container, its home folder and its systemd unit.')}
             <input
               type="text"
               value={name}
@@ -83,26 +84,24 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
               onChange={(e) =>
                 setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
               }
-              className="w-full px-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30 transition-all"
-              placeholder="e.g. dev-box"
+              className={inputClass}
+              placeholder="dev-box"
             />
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Used for the container, its folder and its systemd unit.
+            </p>
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center">
-              <span className="text-[var(--text-subtext)] font-medium">Base Distribution</span>
-              <StudioTooltip
-                title="base = &quot;fedora:44&quot;"
-                description="Verified upstream OCI base image."
-              />
-            </div>
+          <div className="space-y-2">
+            {fieldLabel('Base image', 'base = "fedora:44"', 'The image your container starts from.')}
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
               {(['fedora', 'arch', 'ubuntu', 'debian', 'custom'] as const).map((d) => (
                 <button
                   key={d}
                   onClick={() => setDistro(d)}
                   type="button"
-                  className={`px-2 py-1.5 rounded-[2px] border text-center cursor-pointer capitalize font-mono text-[11px] transition-all ${
+                  aria-pressed={distro === d}
+                  className={`px-2 py-2 rounded-[2px] border text-center cursor-pointer capitalize font-mono text-xs transition-colors ${
                     distro === d
                       ? 'border-[var(--accent-mauve)] bg-[var(--accent-mauve)]/10 text-[var(--accent-mauve)] font-bold'
                       : 'border-[var(--border)] bg-[var(--bg-base)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
@@ -114,176 +113,145 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             </div>
 
             {distro === 'custom' && (
-              <div className="pt-1.5">
-                <input
-                  type="text"
-                  value={customImage}
-                  aria-label="Custom image reference"
-                  onChange={(e) => setCustomImage(e.target.value)}
-                  placeholder="e.g. ghcr.io/org/custom:latest"
-                  className="w-full px-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] text-[var(--text-primary)] text-xs font-mono focus:outline-none focus:border-[var(--accent-mauve)]"
-                />
-              </div>
+              <input
+                type="text"
+                value={customImage}
+                aria-label="Custom image reference"
+                onChange={(e) => setCustomImage(e.target.value)}
+                placeholder="ghcr.io/org/custom:latest"
+                className={inputClass}
+              />
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center">
-              <span className="text-[var(--text-subtext)] font-medium">Baked Packages</span>
-              <StudioTooltip
-                title="packages = [...]"
-                description="Comma-separated package list baked into rootfs."
-              />
-            </div>
+          <div className="space-y-2">
+            {fieldLabel('Packages to install', 'packages = [...]', 'Installed into the image at build time.')}
             <input
               type="text"
               value={packages}
-              aria-label="Baked packages, comma-separated"
+              aria-label="Packages to install, comma-separated"
               onChange={(e) => setPackages(e.target.value)}
-              className="w-full px-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-mauve)] focus:ring-1 focus:ring-[var(--accent-mauve)]/30 transition-all"
+              className={inputClass}
+            />
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Baked into the image, separated by commas.
+            </p>
+          </div>
+
+          <div className="space-y-5">
+            {groupLabel('What the container can use')}
+            <div className="h-px bg-[var(--border)]" />
+          </div>
+
+          <div className="space-y-2.5">
+            <StudioSwitch
+              id="play-wayland"
+              checked={wayland}
+              onChange={setWayland}
+              label={<span>Your display</span>}
+              description="GUI apps draw straight to your screen."
+            />
+
+            <StudioSwitch
+              id="play-pipewire"
+              checked={pipewire}
+              onChange={setPipewire}
+              label={<span>Sound</span>}
+              description="Plays and records audio through the host."
+            />
+
+            <StudioSwitch
+              id="play-projects"
+              checked={shareProjects}
+              onChange={setShareProjects}
+              label={<span>Your projects folder</span>}
+              description="Mounts ~/Projects so your code is right there."
+            />
+
+            <StudioSwitch
+              id="play-dbus"
+              checked={dbusNotifications}
+              onChange={setDbusNotifications}
+              label={<span>Notifications</span>}
+              description="Desktop alerts from inside the container."
             />
           </div>
 
-          {/* Subsystems Switch Toggles */}
-          <div className="space-y-2 pt-2 border-t border-[var(--border)]">
-            <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wider font-mono font-bold block">
-              Subsystems &amp; Isolation
-            </span>
-
-            <div className="space-y-2">
-              <StudioSwitch
-                id="play-wayland"
-                checked={wayland}
-                onChange={setWayland}
-                label={
-                  <div className="flex items-center">
-                    <span>Wayland Display Socket</span>
-                    <StudioTooltip
-                      title="wayland = true"
-                      description="Direct compositor passthrough for GUI tools."
-                    />
-                  </div>
-                }
-              />
-
-              <StudioSwitch
-                id="play-pipewire"
-                checked={pipewire}
-                onChange={setPipewire}
-                label={
-                  <div className="flex items-center">
-                    <span>PipeWire Audio</span>
-                    <StudioTooltip
-                      title="audio = true"
-                      description="Low latency host audio capture & playback."
-                    />
-                  </div>
-                }
-              />
-
-              <StudioSwitch
-                id="play-projects"
-                checked={shareProjects}
-                onChange={setShareProjects}
-                label={
-                  <div className="flex items-center">
-                    <span>Mount ~/Projects</span>
-                    <StudioTooltip
-                      title="projects = true"
-                      description="Mounts host ~/Projects with SELinux :z flag."
-                    />
-                  </div>
-                }
-              />
-
-              <StudioSwitch
-                id="play-dbus"
-                checked={dbusNotifications}
-                onChange={setDbusNotifications}
-                label={
-                  <div className="flex items-center">
-                    <span>Desktop Notifications</span>
-                    <StudioTooltip
-                      title="dbus = true"
-                      description="xdg-dbus-proxy filtered alerts."
-                    />
-                  </div>
-                }
-              />
-            </div>
+          <div className="space-y-5">
+            {groupLabel('Graphics')}
+            <div className="h-px bg-[var(--border)]" />
           </div>
 
-          {/* GPU Acceleration Selector */}
-          <div className="space-y-1.5 pt-1">
-            <div className="flex items-center">
-              <span className="text-[var(--text-subtext)] font-medium">GPU Acceleration</span>
-              <StudioTooltip
-                title="gpu = &quot;auto&quot;"
-                description="DRI /dev/dri hardware rendering passthrough."
-              />
-            </div>
+          <div className="space-y-2">
+            {fieldLabel('GPU access', 'gpu = "auto"', 'Passes the graphics card through to the container.')}
             <div className="grid grid-cols-3 gap-1.5">
-              {(['auto', 'nvidia', 'off'] as const).map((g) => (
+              {GPU_CHOICES.map(({ value, label }) => (
                 <button
-                  key={g}
-                  onClick={() => setGpu(g)}
+                  key={value}
+                  onClick={() => setGpu(value)}
                   type="button"
-                  className={`px-2 py-1.5 text-center font-mono rounded-[2px] border cursor-pointer uppercase text-[11px] transition-all ${
-                    gpu === g
+                  aria-pressed={gpu === value}
+                  className={`px-2 py-2 text-center rounded-[2px] border cursor-pointer text-xs transition-colors ${
+                    gpu === value
                       ? 'border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--accent-blue)] font-bold'
                       : 'border-[var(--border)] bg-[var(--bg-base)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
                   }`}
                 >
-                  {g}
+                  {label}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Live Output Column (7 cols) */}
-        <div className="lg:col-span-7 bg-[var(--bg-base)] flex flex-col">
-          {/* View Mode Switcher */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-crust)]">
-            <div className="flex items-center gap-1 font-mono text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveView('toml')}
-                className={`px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  activeView === 'toml'
-                    ? 'bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-bold'
-                    : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]'
-                }`}
-              >
-                <FileCode2 className="w-3.5 h-3.5" />
-                <span>podbox.toml</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveView('quadlet')}
-                className={`px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  activeView === 'quadlet'
-                    ? 'bg-[var(--accent-peach)] text-[var(--bg-crust)] font-bold'
-                    : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]'
-                }`}
-              >
-                <Terminal className="w-3.5 h-3.5" />
-                <span>{name}.container</span>
-              </button>
+        {/* Output */}
+        <div className="lg:border-l border-[var(--border)] bg-[var(--bg-base)] flex flex-col">
+          <div className="flex items-center justify-between gap-3 px-5 sm:px-7 py-4 border-b border-[var(--border)]">
+            <div className="flex items-center gap-2 text-sm">
+              <SlidersHorizontal className="w-4 h-4 text-[var(--accent-green)] shrink-0" />
+              <span className="text-[var(--text-primary)] font-medium">Your config</span>
             </div>
-
-            <span className="text-[11px] font-mono text-[var(--text-muted)]">
-              {activeView === 'toml' ? 'Declarative' : 'Systemd Quadlet'}
-            </span>
+            <a
+              href={withBase('/studio')}
+              className="flex items-center gap-1.5 text-xs text-[var(--accent-mauve)] hover:text-white font-medium cursor-pointer transition-colors whitespace-nowrap"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Open in Studio</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
           </div>
 
-          {/* Rendered Syntax Block */}
-          <div className="flex-1 p-2">
-            <TerminalCodeBlock
-              code={activeView === 'toml' ? generatePlaygroundToml(config) : generatePlaygroundQuadlet(config)}
-              language={activeView === 'toml' ? 'toml' : 'ini'}
-            />
+          {/* File tabs */}
+          <div className="flex items-stretch gap-1 px-5 sm:px-7 pt-4" role="tablist">
+            {tabs.map(({ id, label, note, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={activeView === id}
+                onClick={() => setActiveView(id)}
+                className={`flex flex-col gap-0.5 px-3.5 py-2.5 rounded-t-[3px] border border-b-0 text-left cursor-pointer transition-colors ${
+                  activeView === id
+                    ? 'bg-[var(--bg-mantle)] border-[var(--border)]'
+                    : 'bg-transparent border-transparent hover:bg-[var(--bg-mantle)]/50'
+                }`}
+              >
+                <span
+                  className={`flex items-center gap-1.5 font-mono text-xs ${
+                    activeView === id ? 'text-[var(--accent-mauve)]' : 'text-[var(--text-subtext)]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  {label}
+                </span>
+                <span className="text-[11px] text-[var(--text-muted)]">{note}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Code sits directly in the panel body, no window inside a window */}
+          <div className="flex-1 border-t border-[var(--border)]">
+            <TerminalCodeBlock code={code} language={activeView === 'toml' ? 'toml' : 'ini'} bare />
           </div>
         </div>
       </div>
