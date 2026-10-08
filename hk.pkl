@@ -1,0 +1,41 @@
+amends "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Builtins.pkl"
+// Using a coding agent? See https://hk.jdx.dev/agents
+
+// Auto-generated: never linted, only produced by builds or sync scripts.
+exclude = List(
+    "target",
+    "dist",
+    "website/dist",
+    "website/node_modules",
+    "website/src/content/docs",
+    "website/src/design/searchIndex.ts",
+    "website/public/assets",
+    "website/public/install.sh",
+    "website/public/og-image.png"
+)
+
+local linters = new Mapping {
+    ["cargo_fmt"] = Builtins.cargo_fmt
+    ["shellcheck"] = Builtins.shellcheck
+    ["trailing_whitespace"] = Builtins.trailing_whitespace
+    ["check_merge_conflict"] = Builtins.check_merge_conflict
+    ["check_added_large_files"] = Builtins.check_added_large_files
+    ["detect_private_key"] = Builtins.detect_private_key
+}
+
+steps = linters
+
+hooks {
+    // Slow whole-workspace checks: clippy instead of the full `just check`
+    // (tests stay in CI; clippy alone is the push gate). version-check
+    // warns when Cargo.toml drifts from the latest tag — never blocks.
+    ["pre-push"] {
+        steps {
+            ["cargo_clippy"] = Builtins.cargo_clippy
+            ["version-check"] {
+                check = "scripts/version-check.sh"
+            }
+        }
+    }
+}

@@ -30,6 +30,10 @@ jobs:
 
   website:
     runs-on: ubuntu-latest
+    defaults:
+      # The package.json and bun.lock live in website/, not the repo root.
+      run:
+        working-directory: website
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
