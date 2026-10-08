@@ -40,6 +40,9 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      # Generates .astro/types.d.ts (gitignored) so astro:content and
+      # import.meta.env resolve during typecheck on fresh checkouts.
+      - run: bun run astro sync
       # Nothing typechecked the Studio before, so type errors accumulated
       # unnoticed; `check:studio` alone only exercises the schema layer.
       - run: bun run typecheck
