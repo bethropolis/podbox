@@ -4,8 +4,6 @@ description: podbox CLI reference — every command grouped by workflow, contain
 
 # CLI reference
 
-Groups, name resolution, exit codes, JSON output, and shell completion.
-
 ## Command groups
 
 | Group | Commands |
@@ -20,13 +18,12 @@ Groups, name resolution, exit codes, JSON output, and shell completion.
 | Dotfiles | `dotfiles sync`, `dotfiles status` |
 | Storage | `cache list`, `cache prune` |
 
-Systemd internals (`serve`, `compositor`, `__complete-names`,
-`internal-stdin-watchdog`) are hidden but callable; Quadlet units depend on
-the first two.
+`serve`, `compositor`, `__complete-names`, and `internal-stdin-watchdog`
+are hidden systemd plumbing — callable, but not for daily use.
 
 ## Naming a container
 
-Every container command resolves its target the same way:
+Every command resolves its target the same way:
 
 1. positional `NAME`
 2. `-C NAME`
@@ -34,26 +31,20 @@ Every container command resolves its target the same way:
 4. active context (`podbox use`)
 5. single config in the config dir / local `.podbox.toml`
 
-`exec` and `run` also accept a podman-style leading name
-(`podbox exec myenv ls`). It is treated as the container only when it matches
-a known config **and** more arguments follow, so `podbox exec -- ls` and a
-bare `podbox exec fedora` behave as before. An explicit `-C` always wins.
+A leading name works podman-style too (`podbox exec myenv ls`), but only
+for a known config with more arguments after it. Explicit `-C` always wins.
 
-`enter` and `exec` accept `--here` to translate the host current directory to
-an already-mounted container path. If it is not covered by the isolated home,
-an extra mount, or an enabled XDG mount, the command fails and tells you how to
-add a mount; Podbox never injects a mount into a running container. `enter`,
-`exec`, and `run` accept repeatable `-e KEY=VALUE` overrides. Host variables are
-forwarded only when named by `[container.env].forward`; explicit overrides win.
+| Flag | What it does |
+|------|--------------|
+| `--here` (`enter`, `exec`) | Start in the container-side twin of your current dir. Only for already-mounted paths — otherwise the error tells you which mount to add. Never sneaks a mount into a running container. |
+| `-e KEY=VALUE` (repeatable; `enter`, `exec`, `run`) | Override env. Host vars cross over only when `[container.env].forward` names them; explicit `-e` wins over both. |
 
-`network.offline = true` is a persistent container-wide setting that generates
-`Network=none`. It cannot be toggled for one `exec` into an already-running
-container.
+Two settings have no per-command override:
 
-With `[lifecycle].auto_checkpoint = true`, update and `build --rebuild` tag the
-current image as `checkpoint-prev` before mutation. `podbox rollback [NAME]`
-points the active Quadlet at that image and restarts the container; the home
-volume and definition file are left alone.
+- `network.offline = true` is container-wide and persistent.
+- With `[lifecycle].auto_checkpoint = true`, `update` and `build --rebuild`
+  tag the current image as `checkpoint-prev` first; `podbox rollback [NAME]`
+  points the Quadlet back at it. Home dir and config untouched.
 
 ## Exit codes
 
@@ -69,22 +60,20 @@ volume and definition file are left alone.
 
 ## JSON output
 
-Read commands accept `--output json` and print nothing else on stdout:
+Read commands take `--output json` and print nothing else on stdout:
 
 - `list`: `{"containers": [{"name","status","autostart","active"}]}`
 - `status`: `{"name","status","installed"}`
 - `snapshot list`: `{"snapshots": [{"tag","created","image"}]}`
 - `history`: `{"history": [{"timestamp","name","action","detail"}]}`
 
-`status` vocabulary is shared with `list`:
-`running | stopped | failed | unbuilt`. The extra boolean `installed` reports
-whether Quadlet files exist for an unbuilt container (formerly expressed as
-"not built" vs "not installed").
+Status values: `running | stopped | failed | unbuilt`. `installed` says
+whether Quadlet files exist for an unbuilt container.
 
 ## History
 
-Lifecycle commands append to `~/.local/state/podbox/history.log` on success;
-recording is best-effort and never fails the command.
+Lifecycle commands log to `~/.local/state/podbox/history.log` on success.
+Best-effort — logging never fails the command.
 
 ```bash
 podbox history              # newest first, all containers (default 25)
@@ -92,7 +81,7 @@ podbox history myenv        # one container
 podbox history --limit 0    # no limit; --output json for scripting
 ```
 
-Actions recorded: `create`, `build`, `enable`, `disable`, `start`, `stop`,
+Recorded: `create`, `build`, `enable`, `disable`, `start`, `stop`,
 `update`, `remove`, `recover`.
 
 ## Shell completion
@@ -103,24 +92,19 @@ podbox completions zsh  > "${fpath[1]}/_podbox"
 podbox completions fish > ~/.config/fish/completions/podbox.fish
 ```
 
-The generated scripts include dynamic container-name completion (fed by
-`podbox __complete-names`, which prints config stems) for **bash**, **zsh**,
-and **fish**: names complete after name-taking subcommands and as `-C/--container`
-values. Missing configs yield no candidates — completion never errors.
+Names complete after name-taking subcommands and as `-C` values, for
+**bash**, **zsh**, and **fish**. No configs, no candidates — completion
+never errors.
 
-### Fish daily-driver abbreviations
+<details>
+<summary>Fish abbreviations</summary>
 
-`podbox completions fish --abbrs` appends opt-in `abbr` shorthand to the
-completion stream. This is **only** fish and **only** when the flag is given,
-so a piped default script is unchanged:
+`podbox completions fish --abbrs` appends opt-in `abbr` shorthand (fish
+only — ignored for bash/zsh):
 
 ```fish
 podbox completions fish --abbrs | source
 ```
-
-`abbr` definitions expand a short token on typing (they are loaded in your
-session, not the completion script). Supported tokens expand `pb*` to the
-full command:
 
 | Token | Expands to | | Token | Expands to |
 |-------|------------|--|-------|------------|
@@ -131,4 +115,4 @@ full command:
 | `pbe` | `podbox enter` | | `pbx` | `podbox exec --` |
 | `pbl` | `podbox list` | | `pbr` | `podbox recover` |
 
-`--abbrs` is ignored for `bash` and `zsh`.
+</details>

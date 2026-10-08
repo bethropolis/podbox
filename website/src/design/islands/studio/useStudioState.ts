@@ -43,9 +43,7 @@ const [imageName, setImageName] = useState(STUDIO_DEFAULTS.imageName);
 const [imagePrebuiltRef, setImagePrebuiltRef] = useState(STUDIO_DEFAULTS.imagePrebuiltRef);
 const [pullRetry, setPullRetry] = useState(STUDIO_DEFAULTS.pullRetry);
 const [pullRetryDelay, setPullRetryDelay] = useState(STUDIO_DEFAULTS.pullRetryDelay);
-const [packagesInstallList, setPackagesInstallList] = useState<string[]>([
-  'git',
-]);
+const [packagesInstallList, setPackagesInstallList] = useState<string[]>(STUDIO_DEFAULTS.packagesInstallList);
 const [packagesRemoveList, setPackagesRemoveList] = useState<string[]>(STUDIO_DEFAULTS.packagesRemoveList);
 const [packageManager, setPackageManager] = useState<string>(STUDIO_DEFAULTS.packageManager);
 const [runCommands, setRunCommands] = useState<string[]>(STUDIO_DEFAULTS.runCommands);

@@ -106,7 +106,11 @@ export function TerminalCodeBlock({
                 </span>
               )}
               <span className="table-cell break-all">
-                {highlightLine(line, language)}
+                {/* A blank line rendered as-is produces no line box, so the
+                    row collapses to zero height and the gap disappears from
+                    the code while still being present in the copied text. A
+                    non-breaking space keeps the line box. */}
+                {line.trim() === '' ? '\u00A0' : highlightLine(line, language)}
               </span>
             </div>
           ))}
@@ -128,14 +132,10 @@ export function TerminalCodeBlock({
 
   return (
     <div className="my-4 rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden shadow-sm">
-      {/* Titlebar Chrome */}
+      {/* Label bar: filename or language plus copy. No traffic-light dots —
+          they are decoration on every snippet and add up fast on long pages. */}
       <div className="flex items-center justify-between px-3.5 py-2 border-b border-[var(--border)] bg-[var(--bg-crust)]/80 select-none">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 mr-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f38ba8]/90 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f9e2af]/90 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#a6e3a1]/90 inline-block" />
-          </div>
           {filename ? (
             <span className="text-xs font-mono text-[var(--text-subtext)] flex items-center gap-1.5">
               <Terminal className="w-3 h-3 text-[var(--accent-mauve)]" />

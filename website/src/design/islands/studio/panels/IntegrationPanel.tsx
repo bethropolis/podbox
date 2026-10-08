@@ -70,7 +70,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Seamless Linux desktop passthrough: Wayland display socket, PipeWire audio, DRI GPU acceleration, and desktop sharing.
+      Share Wayland, audio, GPU, and desktop features with the host.
     </p>
   </div>
 
@@ -85,12 +85,12 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration]"
             title="wayland = true"
-            description="Passes through WAYLAND_DISPLAY and mounts /run/user/1000/wayland-0 so GUI apps render natively on host compositor."
+            description="GUI apps show up on your desktop."
             quadlet="Volume=/run/user/%U/wayland-0:/run/user/1000/wayland-0:ro"
           />
         </div>
       }
-      description="Run graphical Wayland applications on host compositor"
+      description="GUI apps on your desktop"
     />
 
     <StudioSwitch
@@ -103,12 +103,12 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration]"
             title="audio = true"
-            description="Mounts /run/user/1000/pipewire-0 and pulse sockets for low-latency host audio playback and capture."
+            description="Sound in and out of the container."
             quadlet="Volume=/run/user/%U/pipewire-0:/run/user/1000/pipewire-0:ro"
           />
         </div>
       }
-      description="Full host audio playback and microphone capture"
+      description="Sound and microphone"
     />
 
     <StudioSwitch
@@ -121,11 +121,11 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration]"
             title="dbus = true"
-            description="Spawns an xdg-dbus-proxy filtering access to notifications, portals, and media controls without exposing system bus."
+            description="Filtered access to notifications and portals — never the whole bus."
           />
         </div>
       }
-      description="xdg-dbus-proxy filtered session bus communication"
+      description="Filtered desktop messaging"
     />
 
     <StudioSwitch
@@ -138,11 +138,11 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration]"
             title="notify = true"
-            description="Allows container utilities (e.g. notify-send) to pop desktop notifications onto host screen."
+            description="notify-send pops up on your desktop."
           />
         </div>
       }
-      description="Forward notify-send alerts to host notification server"
+      description="Alerts on your desktop"
     />
 
     <StudioSwitch
@@ -172,11 +172,11 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration]"
             title="ssh_agent = true"
-            description="Mounts SSH_AUTH_SOCK into container so git operations can use host SSH keys without copying private keys."
+            description="Git uses your host SSH keys. Keys never enter the container."
           />
         </div>
       }
-      description="Use host SSH keys for git clone/push securely"
+      description="Git with your host keys"
     />
   </div>
 
@@ -188,7 +188,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration]"
             title="gpu = &quot;auto&quot; | &quot;nvidia&quot; | true | false"
-            description="Direct rendering infrastructure (/dev/dri) passthrough for Vulkan, OpenGL, and compute workloads."
+            description="GPU for games, Vulkan, and compute."
             quadlet="Device=/dev/dri"
           />
         </div>
@@ -215,7 +215,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration]"
               title="sync_themes = true"
-              description="Bind-mount ~/.themes so GTK and Qt apps inside the container pick up your host theme instead of shipping a default."
+              description="Container apps use your host theme."
               quadlet="Volume=%h/.themes:/home/user/.themes:ro"
             />
           </div>
@@ -231,7 +231,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration]"
               title="sync_icons = true"
-              description="Bind-mount ~/.icons, including hicolor, so icon themes match the host desktop."
+              description="Icons match your desktop."
               quadlet="Volume=%h/.icons:/home/user/.icons:ro"
             />
           </div>
@@ -247,7 +247,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration]"
               title="sync_fonts = true"
-              description="Bind-mount ~/.fonts and ~/.local/share/fonts so documents and terminal apps render with your installed fonts."
+              description="Documents and terminals use your installed fonts."
               quadlet="Volume=%h/.fonts:/home/user/.fonts:ro"
             />
           </div>
@@ -263,7 +263,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration]"
               title="git_identity = true"
-              description="Mount ~/.gitconfig and ~/.git-credentials so commits are authored as you and pushes authenticate with your existing credentials."
+              description="Commits authored as you; pushes use your credentials."
               quadlet="Volume=%h/.gitconfig:/home/user/.gitconfig:ro"
             />
           </div>
@@ -279,7 +279,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration]"
               title="gpg_agent = true"
-              description="Mount the host gpg-agent socket so commit signing and other signing operations work without importing private keys."
+              description="Sign commits without importing keys."
             />
           </div>
         }
@@ -294,7 +294,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration]"
               title="xdg_open = true"
-              description="Lets a container app hand a URL or file path back to the host opener, the way a browser's Open With does."
+              description="Links open in your host browser."
             />
           </div>
         }
@@ -309,7 +309,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       <StudioTooltip
         section="[integration.xdg_dirs]"
         title='projects = { enabled = true, read_write = true }'
-        description="Bind-mount the matching host XDG user directory into the container, so files you open or save land in the same place as on the host. Each one is off, read-only (the default when enabled), or read-write; read-write needs the detailed table form, so podbox emits it only when you ask for it."
+        description="Mount the matching host folder (Documents, Downloads, …) so saved files land in the same place. Click a directory to cycle: off, read-only, read-write."
         quadlet="Volume=%h/Documents:/home/user/Documents:z"
       />
     </div>
@@ -354,7 +354,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       <StudioTooltip
         section="[integration.hardware]"
         title="kvm = true"
-        description="Hand specific host devices to the container. Containers have no /dev of their own, so a webcam, a joystick, a YubiKey or /dev/kvm is simply absent until you pass it through here. Each device that the host does not have is skipped rather than failing the start."
+        description="Hand host devices (webcam, gamepad, YubiKey, /dev/kvm) to the container. A device the host lacks is skipped, never fatal."
         quadlet="AddDevice=-/dev/kvm"
       />
     </div>
@@ -369,7 +369,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration.hardware]"
               title="webcam = true"
-              description="Passes through /dev/video* and /dev/media*, so container apps (Zoom, OBS, OpenCV) can see the camera."
+              description="Camera for Zoom, OBS, OpenCV (/dev/video*)."
             />
           </div>
         }
@@ -384,7 +384,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration.hardware]"
               title="joystick = true"
-              description="Passes through /dev/input and /dev/uinput, which covers gamepads, joysticks and emulated input devices."
+              description="Gamepads and joysticks (/dev/input)."
             />
           </div>
         }
@@ -399,7 +399,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration.hardware]"
               title="yubikey = true"
-              description="Passes through the pcscd socket and /dev/hidraw*, so a YubiKey or smartcard works inside the container for git signing and 2FA."
+              description="YubiKey and smartcards for signing and 2FA."
             />
           </div>
         }
@@ -414,7 +414,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration.hardware]"
               title="serial = true"
-              description="Passes through /dev/ttyUSB* and /dev/ttyACM*, for microcontrollers and serial adapters."
+              description="Microcontrollers and serial adapters (/dev/ttyUSB*)."
             />
           </div>
         }
@@ -429,7 +429,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
             <StudioTooltip
               section="[integration.hardware]"
               title="kvm = true"
-              description="Passes through /dev/kvm so nested virtualisation works — Android emulators, nested VMs, libvirt guests."
+              description="Nested virtualization: emulators, nested VMs."
             />
           </div>
         }
@@ -449,7 +449,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           <StudioTooltip
             section="[integration.host_exec]"
             title="enabled = true"
-            description="Expose host binaries inside the container as filtered shims. Nothing is exposed until you name it in the allowlist below — podbox will not hand the container a blanket pass to your host shell."
+            description="Let the container run host commands you name below. Nothing is exposed until allowlisted — no blanket host access."
             quadlet="Environment=PODBOX_HOST_EXEC_ALLOWLIST=&quot;{...}&quot;"
           />
         </div>
@@ -462,8 +462,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       <div className="flex flex-col gap-2 rounded-[3px] border border-[var(--accent-yellow)]/40 bg-[var(--accent-yellow)]/5 p-2.5">
         <p className="text-[11px] text-[var(--text-subtext)] leading-snug">
           <span className="font-bold text-[var(--accent-yellow)]">Needs an allowlist.</span>{' '}
-          Host execution stays blocked until at least one alias and absolute path pair is
-          filled in below — that pairing is the whole security boundary.
+          Add at least one alias + path pair below to unblock it.
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-tight text-[var(--text-muted)]">
@@ -546,7 +545,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       <StudioTooltip
         section="[integration.export]"
         title="apps = [...]"
-        description="Publish .desktop entries on the host so container apps show up in your launcher with their icons. Apps are desktop entries, bins are plain executables added to your PATH — both keep working after the container stops."
+        description="Container apps show up in your host launcher with icons (apps), or on your PATH as commands (bins). Both survive container stops."
       />
     </div>
     <StudioTagInput

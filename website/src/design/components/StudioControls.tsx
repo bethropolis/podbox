@@ -1,4 +1,4 @@
-import React, { createElement, useId, useState } from 'react';
+import React, { createElement, useEffect, useId, useState } from 'react';
 import { ChevronDown, Plus, X } from 'lucide-react';
 
 /**
@@ -168,6 +168,13 @@ export function StudioSelect({
   helperText,
   error,
 }: StudioSelectProps) {
+  // <selectedcontent> is filled by the browser itself (cloned from the
+  // selected <option>) before React hydrates, so SSR output can never match
+  // the client deterministically — not even with suppressHydrationWarning,
+  // which doesn't cover the race. Render it only after mount: SSR and the
+  // hydration pass agree (nothing there), then the client adds it.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   // Option content is real markup so the closed button can show just the name
   // while the popup shows the sublabel too (see `.sel-*` in global.css).
   // Browsers without `appearance: base-select` flatten this to plain text and
@@ -224,7 +231,8 @@ export function StudioSelect({
               : 'border-[var(--border)] hover:border-[var(--border-focus)] focus:border-[var(--accent-mauve)] focus:shadow-[0_0_0_2px_rgba(203,166,247,0.22)]'
           }`}
         >
-          {createElement('button', null, createElement('selectedcontent'))}
+          {mounted &&
+            createElement('button', null, createElement('selectedcontent'))}
           {body}
         </select>
         {/* Fallback arrow. `appearance: base-select` draws its own via

@@ -1,3 +1,11 @@
 [tools]
 # Builds the podbox-wasm Studio bindings (scripts/build-wasm.sh).
 "github:wasm-bindgen/wasm-pack" = "0.15.0"
+# Website toolchain (bun scripts, astro build, tsc typecheck).
+bun = "1.4.2"
+# Git hooks runner (hk.pkl). Matches the schema version amended there.
+hk = "2.5.0"
+# Used by the hk shellcheck step on scripts/ and .githooks/.
+shellcheck = "0.11.0"
+# Task runner for the Justfile (check/lint/test/build).
+just = "1.58.0"

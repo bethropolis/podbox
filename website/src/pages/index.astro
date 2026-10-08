@@ -33,16 +33,13 @@ const base = import.meta.env.BASE_URL;
     <section id="comparison" class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
       <div class="mb-6">
         <div class="text-xs text-[var(--accent-mauve)] uppercase tracking-wider font-bold mb-2">
-          evaluation // comparison
+          comparison
         </div>
         <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-          podbox vs Distrobox / Toolbox vs Raw Podman
+          podbox, Distrobox, or raw podman
         </h2>
-        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-3xl leading-relaxed">
-          Distrobox mounts your home directory and session bus by default and gets out of the way after that,
-          which is the right approach if you want a container that feels like the host.
-          podbox defaults to the opposite: <span class="text-[var(--text-primary)] font-bold">nothing is shared unless it is in the TOML</span>,
-          and the environment is reproducible from that file rather than whatever state the container happened to drift into.
+        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-xl leading-relaxed">
+          Distrobox shares your home and gets out of the way. podbox shares nothing until you write it down.
         </p>
       </div>
 

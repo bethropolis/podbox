@@ -10,7 +10,7 @@ export const docsNav: NavEntry[] = [
   { slug: 'getting-started', label: 'Getting Started' },
   { slug: 'cli', label: 'CLI Reference' },
   { slug: 'config', label: 'Configuration' },
-  { slug: 'baked-in-packages', label: 'Baked-in Base Packages' },
+  { slug: 'baked-in-packages', label: 'Base packages' },
   { slug: 'architecture', label: 'Architecture' },
   { slug: 'export', label: 'Desktop Integration' },
   { slug: 'guest', label: 'Guest Daemon' },

@@ -23,7 +23,7 @@ export function WaylandPanel({ st }: { st: WaylandPanelProps }) {
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Intercept and filter dangerous Wayland globals (e.g., screencast/keylogger protocols) for enhanced GUI security.
+      Block screen capture and keylogging protocols.
     </p>
   </div>
 
@@ -37,7 +37,7 @@ export function WaylandPanel({ st }: { st: WaylandPanelProps }) {
         <StudioTooltip
           section="[wayland]"
           title="firewall = true"
-          description="Filters wl_registry globals advertised by host compositor to block untrusted apps from taking screenshots or capturing keystrokes."
+          description="Blocks screenshots and keylogging."
         />
       </div>
     }
@@ -51,7 +51,7 @@ export function WaylandPanel({ st }: { st: WaylandPanelProps }) {
         <StudioTooltip
           section="[wayland]"
           title="blocked_interfaces = [...]"
-          description="Specific Wayland global interface strings hidden from container applications."
+          description="Protocol names hidden from container apps."
         />
       </div>
     }

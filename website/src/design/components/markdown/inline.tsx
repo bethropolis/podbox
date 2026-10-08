@@ -13,7 +13,7 @@ export function renderInline(text: string): React.ReactNode[] {
       return (
         <code
           key={index}
-          className="px-1.5 py-0.5 rounded-[2px] bg-[var(--bg-surface0)] text-[var(--accent-mauve)] text-[12.5px] border border-[var(--border)] font-mono"
+          className="px-1.5 py-0.5 rounded-[2px] bg-[var(--bg-surface0)]/60 text-[var(--text-primary)] text-[0.85em] border border-[var(--border)]/60 font-mono"
         >
           {token.text}
         </code>
@@ -28,7 +28,7 @@ export function renderInline(text: string): React.ReactNode[] {
     }
     if (token.type === 'em') {
       return (
-        <em key={index} className="italic text-[var(--accent-peach)]">
+        <em key={index} className="text-[var(--text-subtext)]">
           {renderInline(token.text)}
         </em>
       );
@@ -36,10 +36,12 @@ export function renderInline(text: string): React.ReactNode[] {
     if (token.type === 'link') {
       const { isInternal, url } = cleanMarkdownLink(token.href);
       if (isInternal) {
+        // Bare #anchors stay untouched: withBase would turn them into
+        // `/podbox/#…` and kick the reader back to the site root.
         return (
           <a
             key={index}
-            href={withBase(url)}
+            href={url.startsWith('#') ? url : withBase(url)}
             className="text-[var(--accent-blue)] underline underline-offset-4 decoration-[var(--accent-blue)]/50 hover:decoration-[var(--accent-blue)] transition-colors cursor-pointer"
           >
             {renderInline(token.text)}

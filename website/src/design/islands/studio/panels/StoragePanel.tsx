@@ -74,7 +74,7 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Persistent caches that survive rebuilds, plus extra host bind mounts. Shared caches are podbox-managed named volumes; host caches bind-mount your existing host directories.
+      Caches shared across containers or reused from the host, plus extra folder mounts.
     </p>
   </div>
 
@@ -85,7 +85,7 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
         <StudioTooltip
           section="[storage.shared_caches]"
           title="cargo = true"
-          description="Each cache is off, a podbox-managed volume shared between podbox containers, or a bind mount of the directory that already lives on your host."
+          description="Off, shared between containers, or mounted from your host."
           quadlet="Volume=podbox-cache-cargo:/home/user/.cargo/registry"
         />
       </div>
@@ -133,7 +133,7 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
         <StudioTooltip
           section="[container.mounts]"
           title="extra = [&quot;host:guest:mode&quot;]"
-          description="Bind mounts sharing directory trees between host and guest. Use :z or :Z for SELinux relabeling."
+          description="Extra folders from your host. :z / :Z fixes SELinux labels."
           quadlet="Volume=%h/Projects:/home/user/Projects:z"
         />
       </div>

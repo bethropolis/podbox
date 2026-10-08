@@ -84,11 +84,6 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 2
       },
       {
-        "id": "key-architectural-rules",
-        "text": "Key architectural rules",
-        "level": 3
-      },
-      {
         "id": "exit-codes",
         "text": "Exit Codes",
         "level": 2
@@ -97,33 +92,28 @@ export const SEARCH_DOCS: SearchDoc[] = [
   },
   {
     "id": "baked-in-packages",
-    "title": "Baked-in Base Packages",
+    "title": "Base packages",
     "path": "/docs/baked-in-packages",
-    "description": "How podbox auto-installs a curated set of base packages at image build time, plus locale, timezone, and sudo provisioning.",
+    "description": "Packages podbox installs into custom-built images automatically — base tools, shells, locales, sudo, and timezone.",
     "headings": [
       {
-        "id": "baked-in-base-packages",
-        "text": "Baked-in Base Packages",
+        "id": "base-packages",
+        "text": "Base packages",
         "level": 1
       },
       {
-        "id": "what-gets-installed",
-        "text": "What gets installed",
+        "id": "whats-included",
+        "text": "What's included",
         "level": 2
       },
       {
-        "id": "host-shell-detection",
-        "text": "Host shell detection",
+        "id": "distro-detection",
+        "text": "Distro detection",
         "level": 2
       },
       {
-        "id": "distro-families",
-        "text": "Distro families",
-        "level": 2
-      },
-      {
-        "id": "overriding-or-extending",
-        "text": "Overriding or extending",
+        "id": "add-or-remove-packages",
+        "text": "Add or remove packages",
         "level": 2
       },
       {
@@ -132,13 +122,13 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 2
       },
       {
-        "id": "locale-timezone-sync",
-        "text": "Locale & timezone sync",
+        "id": "locale-and-timezone",
+        "text": "Locale and timezone",
         "level": 2
       },
       {
-        "id": "modern-xdg-theme-icon-font-paths",
-        "text": "Modern XDG theme / icon / font paths",
+        "id": "theme-icon-and-font-paths",
+        "text": "Theme, icon, and font paths",
         "level": 2
       }
     ]
@@ -183,11 +173,6 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "id": "shell-completion",
         "text": "Shell completion",
         "level": 2
-      },
-      {
-        "id": "fish-daily-driver-abbreviations",
-        "text": "Fish daily-driver abbreviations",
-        "level": 3
       }
     ]
   },
@@ -308,9 +293,9 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 2
       },
       {
-        "id": "behavior-matrix",
-        "text": "Behavior matrix",
-        "level": 3
+        "id": "wayland",
+        "text": "[wayland]",
+        "level": 2
       },
       {
         "id": "full-example",
@@ -404,13 +389,13 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 2
       },
       {
-        "id": "step-by-step",
-        "text": "Step-by-step",
+        "id": "how-it-works",
+        "text": "How it works",
         "level": 3
       },
       {
-        "id": "mime-type-handling",
-        "text": "MIME type handling",
+        "id": "mime-types",
+        "text": "MIME types",
         "level": 3
       },
       {
@@ -444,6 +429,11 @@ export const SEARCH_DOCS: SearchDoc[] = [
       {
         "id": "installation",
         "text": "Installation",
+        "level": 2
+      },
+      {
+        "id": "before-you-start",
+        "text": "Before you start",
         "level": 2
       },
       {
@@ -650,29 +640,24 @@ export const SEARCH_DOCS: SearchDoc[] = [
   },
   {
     "id": "guest",
-    "title": "Guest Daemon Architecture",
+    "title": "Guest daemon",
     "path": "/docs/guest",
     "description": "podbox-guest daemon internals — startup sequence, event loop, socket protocol, and interceptors for notifications, clipboard, xdg-open, and host-exec.",
     "headings": [
       {
-        "id": "guest-daemon-architecture",
-        "text": "Guest Daemon Architecture",
+        "id": "guest-daemon",
+        "text": "Guest daemon",
         "level": 1
       },
       {
-        "id": "entry-point-entryrs",
-        "text": "Entry Point (entry.rs)",
+        "id": "entry-point",
+        "text": "Entry point",
         "level": 2
       },
       {
-        "id": "daemon-lifecycle-daemonrs",
-        "text": "Daemon Lifecycle (daemon.rs)",
+        "id": "daemon-startup",
+        "text": "Daemon startup",
         "level": 2
-      },
-      {
-        "id": "startup-sequence",
-        "text": "Startup sequence",
-        "level": 3
       },
       {
         "id": "event-loop",
@@ -681,13 +666,8 @@ export const SEARCH_DOCS: SearchDoc[] = [
       },
       {
         "id": "socket-protocol",
-        "text": "Socket Protocol",
+        "text": "Socket protocol",
         "level": 2
-      },
-      {
-        "id": "handshake",
-        "text": "Handshake",
-        "level": 3
       },
       {
         "id": "interceptors",
@@ -697,16 +677,6 @@ export const SEARCH_DOCS: SearchDoc[] = [
       {
         "id": "symlink-dispatch",
         "text": "Symlink dispatch",
-        "level": 3
-      },
-      {
-        "id": "path-injection",
-        "text": "PATH injection",
-        "level": 3
-      },
-      {
-        "id": "interceptor-types",
-        "text": "Interceptor types",
         "level": 3
       },
       {
@@ -735,11 +705,6 @@ export const SEARCH_DOCS: SearchDoc[] = [
       {
         "id": "reference",
         "text": "Reference",
-        "level": 2
-      },
-      {
-        "id": "developer",
-        "text": "Developer",
         "level": 2
       },
       {
@@ -792,7 +757,7 @@ export const SEARCH_DOCS: SearchDoc[] = [
       },
       {
         "id": "notify-actions",
-        "text": "Notify Actions",
+        "text": "Notify actions",
         "level": 2
       },
       {
@@ -804,13 +769,13 @@ export const SEARCH_DOCS: SearchDoc[] = [
   },
   {
     "id": "quadlet",
-    "title": "Quadlet Keys Used",
+    "title": "Quadlet reference",
     "path": "/docs/quadlet",
     "description": "Reference for the systemd Quadlet units generated by podbox — .container, .build, .socket, and companion .service files with all supported keys.",
     "headings": [
       {
-        "id": "quadlet-keys-used",
-        "text": "Quadlet Keys Used",
+        "id": "quadlet-reference",
+        "text": "Quadlet reference",
         "level": 1
       },
       {
@@ -899,7 +864,7 @@ export const SEARCH_DOCS: SearchDoc[] = [
     "id": "troubleshooting",
     "title": "Troubleshooting",
     "path": "/docs/troubleshooting",
-    "description": "Common podbox issues — container startup, D-Bus proxy, Wayland, interceptors, UID mapping, SSH agent forwarding, build failures, and shell hangs.",
+    "description": "Fix common podbox issues — find your symptom, run the fix.",
     "headings": [
       {
         "id": "troubleshooting",
@@ -907,54 +872,54 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 1
       },
       {
-        "id": "quick-recovery-podbox-recover",
-        "text": "Quick recovery: podbox recover",
-        "level": 3
+        "id": "quick-recovery",
+        "text": "Quick recovery",
+        "level": 2
       },
       {
         "id": "container-wont-start",
         "text": "Container won't start",
-        "level": 3
+        "level": 2
       },
       {
         "id": "d-bus-proxy-fails-or-container-hangs-on-startup",
         "text": "D-Bus proxy fails or container hangs on startup",
-        "level": 3
+        "level": 2
       },
       {
         "id": "gui-apps-dont-appear-wayland-socket-errors",
         "text": "GUI apps don't appear / Wayland socket errors",
-        "level": 3
+        "level": 2
       },
       {
-        "id": "interceptors-not-working-notify-send-xdg-open-clipboard-host-exec",
-        "text": "Interceptors not working (notify-send, xdg-open, clipboard, host-exec)",
-        "level": 3
+        "id": "interceptors-not-working",
+        "text": "Interceptors not working",
+        "level": 2
       },
       {
-        "id": "uid-mismatch-or-permission-errors-inside-bind-mounts",
-        "text": "UID mismatch or permission errors inside bind mounts",
-        "level": 3
+        "id": "uid-mismatch-or-permission-errors",
+        "text": "UID mismatch or permission errors",
+        "level": 2
       },
       {
         "id": "ssh-agent-not-forwarding",
         "text": "SSH agent not forwarding",
-        "level": 3
+        "level": 2
       },
       {
         "id": "build-fails-or-produces-a-stale-image",
         "text": "Build fails or produces a stale image",
-        "level": 3
+        "level": 2
       },
       {
         "id": "container-starts-but-podbox-shell-hangs",
         "text": "Container starts but podbox shell hangs",
-        "level": 3
+        "level": 2
       },
       {
         "id": "commands-target-the-wrong-container",
         "text": "Commands target the wrong container",
-        "level": 3
+        "level": 2
       }
     ]
   }

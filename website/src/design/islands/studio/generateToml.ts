@@ -114,7 +114,10 @@ function customLines(s: StudioValues, table: string): string[] {
       return cacheLines(s.hostCaches);
     case 'integration': {
       // gpu accepts bare bools or "auto"/"nvidia" strings in the schema.
+      // "auto" is the engine default — like every other default, it is not
+      // written out.
       const g = s.intGpu;
+      if (g === 'auto') return [];
       return [`gpu = ${g === 'true' || g === 'false' ? g : `"${g}"`}`];
     }
     case 'integration.host_exec': {

@@ -4,9 +4,8 @@ description: Export apps and binaries from podbox containers to your host deskto
 
 # Desktop Integration (Export)
 
-`podbox` can expose applications and binaries from inside the container to the host desktop — generating `.desktop` files, extracting icons, and creating shell shims.
-
----
+Put container apps on your host — desktop entries with icons in your launcher,
+and container tools on your `PATH` as small shell shims.
 
 ## Commands
 
@@ -23,8 +22,6 @@ apps = ["gedit", "nautilus"]
 bins = ["rg", "gcc"]
 ```
 
----
-
 ## App Export
 
 `podbox export app` extracts a desktop application from the container and makes it launchable from the host.
@@ -32,11 +29,10 @@ bins = ["rg", "gcc"]
 !!! info ""
     The container must be running to export an app — `podbox export app` uses `podman exec` to read the `.desktop` file from inside the container. Start the container first if it is stopped.
 
-### Step-by-step
+### How it works
 
-1. **Read the `.desktop` file** from the container at `/usr/share/applications/<name>.desktop` via `podman exec`.
-
-2. **Rewrite the `Exec=` line** so launching the desktop entry runs through `podbox exec` inside the container:
+1. Reads `/usr/share/applications/<name>.desktop` from the running container.
+2. Rewrites `Exec=` to route through podbox (everything else preserved):
 
     ```ini
     Exec=gedit %F
@@ -45,40 +41,26 @@ bins = ["rg", "gcc"]
     ```
     Exec=podbox --container "myenv" exec -- gedit %F
     ```
+3. Copies the first matching icon to
+   `~/.local/share/icons/podbox/<container>/<name>.<ext>`.
+4. Writes `~/.local/share/applications/podbox-<container>-<name>.desktop`.
+5. Runs `update-desktop-database` (a failure only warns).
 
-    The `--container` flag pins the target container. If you set an active context with `podbox use myenv`, you can also run `podbox exec -- gedit %F` directly.
+<details>
+<summary>Icon search paths</summary>
 
-    All other keys (`Name=`, `Icon=`, `MimeType=`, etc.) are preserved unchanged.
+```
+/usr/share/icons/hicolor/{48,64,128,256}x{48,64,128,256}/apps/<name>.png
+/usr/share/icons/hicolor/scalable/apps/<name>.svg
+```
 
-3. **Extract the icon** by trying common paths inside the container:
+</details>
 
-    ```
-    /usr/share/icons/hicolor/{48,64,128,256}x{48,64,128,256}/apps/<name>.png
-    /usr/share/icons/hicolor/scalable/apps/<name>.svg
-    ```
+### MIME types
 
-    The first match is copied to:
-
-    ```
-    ~/.local/share/icons/podbox/<container>/<name>.<ext>
-    ```
-
-4. **Write the `.desktop` file** to:
-
-    ```
-    ~/.local/share/applications/podbox-<container>-<name>.desktop
-    ```
-
-5. **Run `update-desktop-database`** on the applications directory (failure is non-fatal; a warning is printed).
-
-### MIME type handling
-
-`MimeType=` lines in the original `.desktop` file are preserved as-is. The host desktop environment registers the container app as a handler for those MIME types. When a user opens a file of that type, the rewritten `Exec=` line dispatches through `podbox exec`.
-
-!!! info ""
-    MIME registration is handled entirely by the host desktop environment via the standard `.desktop` file mechanism — no additional configuration is needed.
-
----
+`MimeType=` lines carry over unchanged — your desktop registers the
+container app as a handler, and opening such a file dispatches through the
+rewritten `Exec=`. No extra setup.
 
 ## Binary Export
 
@@ -93,25 +75,18 @@ A script is written to `~/.local/bin/<name>`:
 exec podbox --container "<name>" run "<bin>" "$@"
 ```
 
-The `--container` flag ensures the shim always targets the right container regardless of the active context. For day-to-day use, `podbox use <name>` then `podbox exec -- <bin>` avoids the `--container` flag.
-
-The shim is executable (`chmod 755`). If `~/.local/bin` is on the user's `PATH` — which most distributions add by default — the binary appears as if installed locally.
-
----
+The `--container` flag pins the target regardless of active context.
+If `~/.local/bin` is on your `PATH` (most distros do this), the binary
+just works.
 
 ## Cleanup
-
-Remove exported files for a container by running:
 
 ```bash
 podbox export clean
 ```
 
-This removes:
-
-- All `~/.local/share/applications/podbox-<container>-*.desktop` files
-- The `~/.local/share/icons/podbox/<container>/` directory tree
-- Any shims in `~/.local/bin/` whose content references the container name
+Removes the container's `.desktop` files, its icon dir, and any
+`~/.local/bin` shims referencing it.
 
 !!! warning ""
-    `podbox remove` does **not** automatically call unexport. Run `podbox export` commands or call `unexport_all` separately before removing the container.
+    `podbox remove` doesn't unexport. Clean up before removing the container.

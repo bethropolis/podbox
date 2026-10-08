@@ -53,7 +53,7 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
               setError('');
             }}
             spellCheck={false}
-            placeholder={'[image]\npreset = "fedora:44"\n\n[container]\nname = "dev-box"'}
+            placeholder={'[image]\nbase = "fedora:44"\n\n[container]\nname = "dev"'}
             rows={12}
             className="w-full rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] p-3 font-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)] resize-y"
           />

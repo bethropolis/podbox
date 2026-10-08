@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Cpu,
   FileCode,
   Shield,
   Radio,
@@ -36,72 +35,60 @@ export function HowItWorksSection(_props: HowItWorksSectionProps) {
     <section id="architecture" className="w-full my-12 font-mono">
       {/* Section Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-2 text-xs text-[var(--accent-blue)] uppercase tracking-wider font-bold mb-2">
-          <Cpu className="w-4 h-4" />
-          <span>internals // architecture-visualizer</span>
+        <div className="text-xs text-[var(--accent-blue)] uppercase tracking-wider font-bold mb-2">
+          how it works
         </div>
         <div>
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-            How podbox works: Build-time & Runtime
+            How it works
           </h2>
           <p className="mt-2 text-sm text-[var(--text-subtext)] max-w-2xl leading-relaxed">
-            Explore the lifecycle stages below. Click any node to inspect its internal mechanics.
+            Click any box to see what that part does.
           </p>
         </div>
       </div>
 
       {/* Main Visualizer Container */}
-      <div className="rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden shadow-lg">
-        {/* Terminal Chrome Bar with View Switchers */}
-        <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-[var(--bg-crust)] border-b border-[var(--border)] gap-2">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#f38ba8]/80 inline-block" />
-              <span className="w-2.5 h-2.5 rounded-full bg-[#f9e2af]/80 inline-block" />
-              <span className="w-2.5 h-2.5 rounded-full bg-[#a6e3a1]/80 inline-block" />
-            </div>
-            <span className="text-xs text-[var(--text-subtext)] font-semibold uppercase tracking-wider">
-              arch-pipeline // {activeTab}.svg
-            </span>
-          </div>
-
-          {/* View Tab Buttons */}
+      <div className="rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden">
+        {/* View switcher. No fake window chrome: a decorative title bar above a
+            diagram the reader is meant to look at, not a terminal. */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
           <div className="inline-flex rounded-[2px] p-0.5 bg-[var(--bg-base)] border border-[var(--border)] text-xs">
             <button
               onClick={() => handleTabChange('build')}
               type="button"
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[2px] transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer ${
                 activeTab === 'build'
                   ? 'bg-[var(--accent-mauve)] text-[#11111b] font-bold'
                   : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
               }`}
             >
               <FileCode className="w-3.5 h-3.5" />
-              <span>Phase 1: Build-Time</span>
+              <span>Build time</span>
             </button>
             <button
               onClick={() => handleTabChange('runtime')}
               type="button"
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[2px] transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer ${
                 activeTab === 'runtime'
                   ? 'bg-[var(--accent-blue)] text-[#11111b] font-bold'
                   : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Shield className="w-3.5 h-3.5" />
-              <span>Phase 2: Runtime IPC</span>
+              <span>While it runs</span>
             </button>
             <button
               onClick={() => handleTabChange('protocol')}
               type="button"
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[2px] transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer ${
                 activeTab === 'protocol'
                   ? 'bg-[var(--accent-peach)] text-[#11111b] font-bold'
                   : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Radio className="w-3.5 h-3.5" />
-              <span>Socket Protocol</span>
+              <span>Messages</span>
             </button>
           </div>
         </div>

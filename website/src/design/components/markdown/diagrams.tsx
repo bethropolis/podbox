@@ -12,6 +12,7 @@ const DIAGRAMS: Record<string, string> = {
   'socket_protocol': 'Host-guest socket protocol',
   'runtime_flow': 'Runtime flow',
   'how_it_works': 'How podbox works',
+  'wire_format': 'Message wire format',
 };
 
 export function diagramSwap(text: string): { src: string; alt: string } | 'logo' | null {

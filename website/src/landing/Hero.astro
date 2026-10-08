@@ -46,14 +46,6 @@ try {
 ---
 
 <section class="relative max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-18 pb-16">
-  {/* Subtle version tag */}
-  <div class="inline-flex items-center gap-2 px-2.5 py-1 mb-6 rounded-[2px] border border-[var(--border)]/60 font-mono text-[11px] text-[var(--text-muted)] select-none">
-    <span class="text-[var(--accent-green)]">$</span>
-    <span>podbox --version</span>
-    <span class="opacity-50">→</span>
-    <span class="text-[var(--text-subtext)]">v{VERSION}</span>
-  </div>
-
   {/* Real Tagline with Blinking Cursor */}
   <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text-primary)] leading-[1.15] mb-6">
     Define once. Run anywhere.
@@ -62,37 +54,30 @@ try {
   </h1>
 
   {/* Authentic Description */}
-  <p class="text-base sm:text-lg text-[var(--text-subtext)] leading-relaxed max-w-3xl mb-8">
-    podbox is a declarative container environment manager for Linux. You write a TOML file,
-    podbox turns it into an OCI image and a set of systemd Quadlet units, and from then on systemd
-    owns the lifecycle: autostart, restart, socket activation, all of it.
-    No background service of podbox&apos;s own running on your machine.
+  <p class="text-base sm:text-lg text-[var(--text-subtext)] leading-relaxed max-w-3xl mb-6">
+    You write a TOML file. podbox turns it into an image and a set of systemd units, and from
+    then on systemd does the rest. Nothing of podbox keeps running on your machine.
   </p>
 
-  {/* Badges Row from README */}
-  <div class="flex flex-wrap items-center gap-2.5 mb-10 select-none">
-    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
-      <span class="text-[var(--text-muted)]">Version:</span>
-      <span class="text-[var(--accent-blue)] font-bold">v{VERSION}</span>
-    </div>
+  {/* Facts */}
+  <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mb-10 select-none text-xs">
+    <span class="text-[var(--text-muted)]">
+      Version <span class="text-[var(--accent-blue)] font-bold ml-1">v{VERSION}</span>
+    </span>
     <a
       href="https://github.com/bethropolis/podbox/actions/workflows/ci.yml"
       target="_blank"
       rel="noopener noreferrer"
-      class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs hover:bg-[var(--bg-surface0)] transition-colors"
+      class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
     >
-      <span class="w-2 h-2 rounded-full inline-block" style={`background: ${ciColor}`}></span>
-      <span class="text-[var(--text-muted)]">CI:</span>
-      <span class="font-bold" style={`color: ${ciColor}`}>{ciStatus}</span>
+      CI <span class="font-bold ml-1" style={`color: ${ciColor}`}>{ciStatus}</span>
     </a>
-    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
-      <span class="text-[var(--text-muted)]">License:</span>
-      <span class="text-[var(--accent-mauve)] font-bold">MIT</span>
-    </div>
-    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs">
-      <span class="text-[var(--text-muted)]">Platform:</span>
-      <span class="text-[var(--accent-peach)] font-bold">Linux (rootless)</span>
-    </div>
+    <span class="text-[var(--text-muted)]">
+      License <span class="text-[var(--accent-mauve)] font-bold ml-1">MIT</span>
+    </span>
+    <span class="text-[var(--text-muted)]">
+      Platform <span class="text-[var(--accent-peach)] font-bold ml-1">Linux, rootless</span>
+    </span>
   </div>
 
   {/* CTAs */}

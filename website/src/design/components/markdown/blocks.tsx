@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Token, Tokens } from 'marked';
-import { Hash } from 'lucide-react';
+import { ChevronDown, Hash } from 'lucide-react';
 import { TerminalCodeBlock } from '../TerminalCodeBlock';
 import { Admonition } from '../Admonition';
 import { renderInline } from './inline';
@@ -8,6 +8,7 @@ import { diagramSwap, DiagramFigure, LogoFigure } from './diagrams';
 import { slugify } from './links';
 
 export type AdmonitionToken = Token & { admType: string; admTitle: string; admInner: Token[] };
+export type DetailsToken = Token & { detSummary: string; detInner: Token[] };
 
 export function renderToken(token: Token, index: number): React.ReactNode {
   if ((token as any).type === 'admonition') {
@@ -16,6 +17,23 @@ export function renderToken(token: Token, index: number): React.ReactNode {
       <Admonition key={index} type={adm.admType as any} title={adm.admTitle}>
         {adm.admInner.map((t, idx) => renderToken(t, idx))}
       </Admonition>
+    );
+  }
+  if ((token as any).type === 'details') {
+    const det = token as DetailsToken;
+    return (
+      <details
+        key={index}
+        className="my-4 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] group"
+      >
+        <summary className="px-4 py-3 text-sm text-[var(--text-primary)] cursor-pointer list-none flex items-center gap-2 hover:text-[var(--accent-mauve)] transition-colors [&::-webkit-details-marker]:hidden">
+          <ChevronDown className="w-4 h-4 text-[var(--text-muted)] shrink-0 transition-transform group-open:rotate-180" />
+          <span>{renderInline(det.detSummary)}</span>
+        </summary>
+        <div className="px-4 pb-2 pt-1 border-t border-[var(--border)]">
+          {det.detInner.map((t, idx) => renderToken(t, idx))}
+        </div>
+      </details>
     );
   }
   switch (token.type) {
@@ -46,12 +64,9 @@ export function renderToken(token: Token, index: number): React.ReactNode {
           <h2
             key={index}
             id={id}
-            className="group text-xl sm:text-2xl font-bold text-[var(--text-primary)] mt-8 mb-3 pb-1 border-b border-[var(--border)]/70 flex items-center justify-between"
+            className="group text-xl sm:text-2xl font-bold text-[var(--text-primary)] mt-10 mb-3 pb-2 border-b border-[var(--border)]/70 flex items-center justify-between"
           >
-            <span className="flex items-center gap-2">
-              <span className="text-[var(--accent-mauve)] text-base select-none">#</span>
-              {headingContent}
-            </span>
+            <span>{headingContent}</span>
             <a
               href={`#${id}`}
               className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--accent-mauve)] transition-opacity"
@@ -67,12 +82,9 @@ export function renderToken(token: Token, index: number): React.ReactNode {
           <h3
             key={index}
             id={id}
-            className="group text-base sm:text-lg font-bold text-[var(--text-primary)] mt-6 mb-2 flex items-center justify-between"
+            className="group text-base sm:text-lg font-bold text-[var(--text-primary)] mt-8 mb-2 flex items-center justify-between"
           >
-            <span className="flex items-center gap-2">
-              <span className="text-[var(--accent-blue)] text-sm select-none">##</span>
-              {headingContent}
-            </span>
+            <span>{headingContent}</span>
             <a
               href={`#${id}`}
               className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--accent-mauve)] transition-opacity"
@@ -109,7 +121,7 @@ export function renderToken(token: Token, index: number): React.ReactNode {
       return (
         <p
           key={index}
-          className="my-3 text-sm sm:text-[14px] leading-relaxed text-[var(--text-primary)]"
+          className="my-3 text-[15px] leading-7 text-[var(--text-subtext)]"
         >
           {renderInline(token.text)}
         </p>
@@ -184,12 +196,12 @@ export function renderToken(token: Token, index: number): React.ReactNode {
       return (
         <ul
           key={index}
-          className={`my-3 space-y-1.5 text-sm sm:text-[14px] text-[var(--text-primary)] ${
+          className={`my-3 space-y-1.5 text-[15px] text-[var(--text-subtext)] ${
             listToken.ordered ? 'list-decimal' : 'list-disc'
-          } pl-6 leading-relaxed`}
+          } pl-6 leading-7`}
         >
           {listToken.items.map((item, itemIdx) => (
-            <li key={itemIdx} className="leading-relaxed">
+            <li key={itemIdx} className="leading-7">
               {renderInline(item.text)}
             </li>
           ))}

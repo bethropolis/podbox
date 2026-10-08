@@ -8,14 +8,12 @@ description: podbox host-guest Unix socket protocol — wire format, handshake, 
 
 Length-prefixed JSON over a Unix stream socket:
 
-```
-┌─────────────────────────┬──────────────────────────────┐
-│  4 bytes (big-endian)   │  N bytes (UTF-8 JSON)        │
-│  payload length = N     │                              │
-└─────────────────────────┴──────────────────────────────┘
-```
-
----
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/wire_format.svg">
+    <img src="assets/wire_format.svg" alt="Message wire format" width="100%" style="max-width: 820px;">
+  </picture>
+</p>
 
 ## Socket Location
 
@@ -25,8 +23,6 @@ Length-prefixed JSON over a Unix stream socket:
 | Local guest socket | `/run/podbox/guest-<name>.sock` | `podbox-guest --daemon` |
 
 The host socket is created by systemd before the container starts and persists across restarts. The guest socket is used by interceptor processes to communicate with the local daemon.
-
----
 
 ## Handshake
 
@@ -52,11 +48,9 @@ The host socket is created by systemd before the container starts and persists a
 }
 ```
 
-The handshake establishes which capabilities the host allows and conveys the
-configured idle timeout (`0` = disabled). The guest daemon only installs
-interceptor symlinks for accepted capabilities.
-
----
+The handshake decides which capabilities the guest may use
+(`0` timeout = disabled). The guest only installs interceptor symlinks for
+accepted ones.
 
 ## Message Types
 
@@ -88,11 +82,11 @@ interceptor symlinks for accepted capabilities.
 | `check_idle` | — |
 | `shutdown` | — |
 
----
+## Notify actions
 
-## Notify Actions
-
-When present, `actions` is an array of objects with a `key` and `label`:
+`actions` is an optional array of `{key, label}`. The host replies with
+`notify_action_result` carrying the `notification_id` and the chosen
+`action_key`.
 
 ```json
 {
@@ -106,16 +100,12 @@ When present, `actions` is an array of objects with a `key` and `label`:
 }
 ```
 
-The host sends `notify_action_result` with the `notification_id` and user-selected `action_key` back to the guest.
-
-!!! info ""
-    The `actions` and `app_name` fields use `#[serde(default)]` for backward compatibility with older guest binaries that do not send them.
-
----
+Older guests omit `actions`/`app_name` — both default empty server-side.
 
 ## Capabilities
 
-Each capability corresponds to an interceptor symlink installed by the guest daemon:
+One interceptor symlink per capability. Rejected ones are skipped silently —
+no symlink, no retries.
 
 | Capability | Interceptor | Description |
 |------------|-------------|-------------|
@@ -123,6 +113,3 @@ Each capability corresponds to an interceptor symlink installed by the guest dae
 | `xdg_open` | `xdg-open` | URI opening via host |
 | `clipboard` | `podbox-clipboard` | Clipboard sharing |
 | `host_exec` | `host-exec` | Execute commands on host |
-
-!!! info ""
-    Capabilities not accepted during handshake are silently skipped — no symlink is created and the guest does not attempt to use them.

@@ -29,7 +29,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Define the upstream base OS or OCI image, baked packages, and Containerfile RUN steps.
+      Define the base OS or image, packages baked into it, and extra build steps.
     </p>
   </div>
 
@@ -40,7 +40,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
       <StudioTooltip
         section="[image]"
         title="preset vs base"
-        description="Choose from curated tested distributions (Fedora, Ubuntu, Arch, Alpine, Debian) or specify any OCI image URI from ghcr.io or docker.io."
+        description="Tested distros, or any image URI."
         quadlet="FROM <base-image>"
       />
     </div>
@@ -78,7 +78,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
           <StudioTooltip
             section="[image]"
             title="preset = &quot;distro:tag&quot;"
-            description="podbox automatically handles package manager configuration, baked-in guest interceptors, and user IDs for verified distributions."
+            description="Package manager and user setup handled for you."
           />
         </div>
       }
@@ -114,7 +114,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
         <StudioTooltip
           section="[image]"
           title="packages = [&quot;pkg1&quot;, &quot;pkg2&quot;]"
-          description="Packages to bake directly into the OCI image at build time using the distribution's native package manager."
+          description="Baked into the image at build time."
         />
       </div>
     }
@@ -132,7 +132,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
         <StudioTooltip
           section="[image]"
           title="remove_packages = [...]"
-          description="Unwanted stock packages purged during image synthesis to reduce size."
+          description="Stock packages to strip out."
         />
       </div>
     }
@@ -150,7 +150,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
           <StudioTooltip
             section="[image]"
             title="package_manager = &quot;auto&quot;"
-            description="Force package manager binary (dnf, apt, pacman, apk) or let podbox detect automatically from base OS."
+            description="Or let podbox detect it from the base image."
           />
         </div>
       }
@@ -166,7 +166,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
           <StudioTooltip
             section="[image]"
             title="pull_retry = 3"
-            description="Number of times podman will retry pulling layers over flaky networks."
+            description="Pull retries on flaky networks."
           />
         </div>
       }
@@ -186,7 +186,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
         <StudioTooltip
           section="[image.run]"
           title='commands = ["cmd1", "cmd2"]'
-          description="Custom shell commands executed inside the build container to configure dotfiles, compilers, or custom software. Each entry becomes one Containerfile RUN layer."
+          description="Each entry becomes one image layer, applied top to bottom."
           quadlet="RUN <command>"
         />
       </div>
@@ -200,13 +200,22 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
       </button>
     </div>
 
-    {runCommands.length === 0 ? (
-      <p className="text-[11px] text-[var(--text-muted)] italic">
-        No custom RUN steps — the image is built from its packages alone.
-      </p>
-    ) : (
-      <div className="space-y-1.5">
-        {runCommands.map((cmd, idx) => (
+    {/* Always show at least one row: a blank starter when the list is
+        empty. Blank rows never reach the TOML, so this is purely an
+        invitation to type — the section reads as missing otherwise. */}
+    <div className="space-y-1.5">
+      {(runCommands.length > 0 ? runCommands : ['']).map((cmd, idx) => {
+        const isStarter = runCommands.length === 0;
+        const commit = (val: string) => {
+          if (isStarter) {
+            setRunCommands([val]);
+            return;
+          }
+          const next = [...runCommands];
+          next[idx] = val;
+          setRunCommands(next);
+        };
+        return (
           <div key={idx} className="flex items-center gap-2">
             <span className="w-3 shrink-0 text-right text-[11px] font-mono text-[var(--text-muted)]/50 select-none">
               {idx + 1}
@@ -216,33 +225,36 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
               value={cmd}
               aria-label={`RUN command ${idx + 1}`}
               spellCheck={false}
-              onChange={(e) => {
-                const next = [...runCommands];
-                next[idx] = e.target.value;
-                setRunCommands(next);
-              }}
+              placeholder={isStarter ? 'Type a RUN command to add it...' : 'e.g. npm install -g pnpm'}
+              onChange={(e) => commit(e.target.value)}
               onKeyDown={(e) => {
                 // Enter adds the next layer instead of submitting the form.
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  setRunCommands([...runCommands.slice(0, idx + 1), '', ...runCommands.slice(idx + 1)]);
+                  if (isStarter) {
+                    const v = e.currentTarget.value;
+                    setRunCommands(v.trim() ? [v, ''] : ['']);
+                  } else {
+                    setRunCommands([...runCommands.slice(0, idx + 1), '', ...runCommands.slice(idx + 1)]);
+                  }
                 }
               }}
-              placeholder="e.g. dnf clean all"
               className={`${STUDIO_FIELD} flex-1`}
             />
-            <button
-              type="button"
-              onClick={() => setRunCommands(runCommands.filter((_, i) => i !== idx))}
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer shrink-0"
-              title={`Remove RUN command ${idx + 1}`}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {!isStarter && (
+              <button
+                type="button"
+                onClick={() => setRunCommands(runCommands.filter((_, i) => i !== idx))}
+                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer shrink-0"
+                title={`Remove RUN command ${idx + 1}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
-        ))}
-      </div>
-    )}
+        );
+      })}
+    </div>
 
     <p className="text-[11px] font-mono text-[var(--text-muted)]">
       {runCommands.filter((c) => c.trim()).length} RUN layer

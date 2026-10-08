@@ -1,134 +1,156 @@
 ---
-description: Common podbox issues — container startup, D-Bus proxy, Wayland, interceptors, UID mapping, SSH agent forwarding, build failures, and shell hangs.
+description: Fix common podbox issues — find your symptom, run the fix.
 ---
 
 # Troubleshooting
 
-Running `podbox doctor` first is recommended — it checks the most common issues automatically and explains what to fix.
-
-### Quick recovery: `podbox recover`
-
-If a container won't start, run:
-
 ```bash
-podbox recover [NAME]        # guided, idempotent steps; --yes skips prompts
+podbox doctor         # diagnoses most issues, explains the fix
+podbox doctor --fix   # offers to fix them
 ```
 
-It walks four safe steps — systemd daemon-reload + reset-failed, Quadlet
-reinstall, image rebuild (only when missing), then stop/start — confirming
-each on a TTY. It **never** deletes your container home or config; only
-`podbox remove --all` does that.
+| Symptom | Fix |
+|---------|-----|
+| Container won't start | [Container won't start](#container-wont-start) |
+| Hangs on startup | [D-Bus proxy](#d-bus-proxy-fails-or-container-hangs-on-startup) |
+| GUI apps don't appear | [Wayland socket](#gui-apps-dont-appear-wayland-socket-errors) |
+| `notify-send`, `xdg-open`, clipboard dead | [Interceptors](#interceptors-not-working) |
+| Permission errors in mounted dirs | [UID mismatch](#uid-mismatch-or-permission-errors) |
+| SSH agent not forwarded | [SSH agent](#ssh-agent-not-forwarding) |
+| Stale image or failed build | [Build](#build-fails-or-produces-a-stale-image) |
+| `podbox shell` hangs | [Shell missing](#container-starts-but-podbox-shell-hangs) |
+| Commands hit the wrong container | [Targeting](#commands-target-the-wrong-container) |
 
-`podbox doctor` output is grouped into **Host / Container / Integration** and
-ends with a plain-language **Host exposure** summary (network mode, D-Bus talk
-list, clipboard, agents, host-exec allowlist, extra mounts) so you can audit
-what a container can reach. `--fix` offers to repair Wayland socket ownership,
-enable linger when autostart is on, remove stale sockets, and delete dead
-exported launchers/shims — each confirmed interactively. `doctor` exits
-non-zero when any check fails, so it can gate scripts.
+## Quick recovery
 
----
+Won't start? Run this first:
 
-### Container won't start
+```bash
+podbox recover [NAME]        # guided fix; --yes skips prompts
+```
+
+Safe and idempotent: reloads systemd, reinstalls Quadlets, rebuilds the
+image only if missing, then restarts. Never touches your home or config —
+only `podbox remove --all` deletes those.
+
+<details>
+<summary>What doctor and recover actually do</summary>
+
+`podbox doctor` groups checks into **Host / Container / Integration** and
+ends with a plain-language **Host exposure** summary (network mode, D-Bus
+rules, clipboard, agents, host-exec allowlist, extra mounts). Exits non-zero
+when anything fails, so scripts can gate on it.
+
+`podbox recover` walks four steps — daemon-reload + reset-failed, Quadlet
+reinstall, image rebuild (only when missing), stop/start — confirming each
+on a TTY.
+
+</details>
+
+## Container won't start
 
 ```bash
 podman ps -a --filter name=<name>      # check container state
-podbox logs                             # check container output
-podbox start                            # start via podman directly
+podbox logs                            # container output
+podbox enable --dry-run                # inspect Quadlets without writing
+podbox enable                          # safe to re-run (uses --replace)
 ```
 
-If the container fails immediately after `podbox enable`, the Quadlet file may be malformed. Run `podbox enable --dry-run` to inspect the generated files without writing them. Re-running `podbox enable` is safe — it uses `--replace` to overwrite existing Quadlet files idempotently.
+If Quadlets are installed, also:
 
-For systemd-level diagnostics (if Quadlet was installed):
 ```bash
 systemctl --user status <name>.service
 ```
 
----
+## D-Bus proxy fails or container hangs on startup
 
-### D-Bus proxy fails or container hangs on startup
-
-`xdg-dbus-proxy` is missing or not on `PATH`. Install it from your distro's package manager (`xdg-dbus-proxy` on most distros). Alternatively, set `dbus = false` under `[integration]` if you don't need D-Bus access.
+`xdg-dbus-proxy` is missing. Install it, or turn D-Bus off:
 
 ```bash
-which xdg-dbus-proxy   # should return a path
+which xdg-dbus-proxy   # should print a path
 ```
 
----
+```toml
+[integration]
+dbus = false           # if you don't need D-Bus
+```
 
-### GUI apps don't appear / Wayland socket errors
+## GUI apps don't appear / Wayland socket errors
 
-Verify `$WAYLAND_DISPLAY` is set on the host before starting the container. The socket is resolved at `podbox enable` time — if it changed after a reboot, re-run `podbox enable` (safe to re-run, uses `--replace`) to regenerate the Quadlet with the correct socket path.
+The socket path is baked in at `podbox enable` time. If it changed (e.g.
+after a reboot), regenerate:
 
 ```bash
-echo $WAYLAND_DISPLAY                    # should be wayland-0 or similar
+echo $WAYLAND_DISPLAY                    # should print wayland-0 or similar
 podbox enable                            # regenerate Quadlets (idempotent)
 podbox stop && podbox start
 ```
 
----
+## Interceptors not working
 
-### Interceptors not working (notify-send, xdg-open, clipboard, host-exec)
-
-The `podbox-guest` daemon connects to the host socket on container startup. If it can't connect, interceptors are silently skipped.
+`notify-send`, `xdg-open`, clipboard, and host-exec all go through the
+guest daemon. If it can't reach the host socket, they're silently skipped.
 
 ```bash
-podbox exec -- ps aux | grep podbox-guest       # check daemon running
-podbox exec -- echo $PATH                       # check /run/podbox/bin
+podbox exec -- ps aux | grep podbox-guest       # daemon running?
+podbox exec -- echo $PATH                       # should include /run/podbox/bin
+podbox exec -- cat /etc/environment.d/podbox.conf   # PATH injection file
 ```
 
-If the daemon is running but `PATH` is wrong, the `/etc/environment.d/podbox.conf` file may not have been written — check with `podbox exec -- cat /etc/environment.d/podbox.conf`.
+## UID mismatch or permission errors
 
----
+Host UID 1000 maps to container UID 999 (`UserNS=keep-id`, shifted by 1).
 
-### UID mismatch or permission errors inside bind mounts
+- Never `chown` a bind-mounted dir from inside the container — it changes
+  ownership on the host too.
+- Files owned by `nobody`? The mount predates the UID mapping. Stop the
+  container, fix ownership on the host, start again.
 
-`UserNS=keep-id` maps your host UID into the container with a shift of 1 (host UID 1000 → container UID 999). Do not run `chown` on bind-mounted directories from inside the container — it will change ownership on the host through the idmapped mount.
+## SSH agent not forwarding
 
-If files appear owned by `nobody` inside the container, the mount was created before the UID mapping was set up. Stop the container, check the volume path exists on the host with the correct ownership, then start again.
+Needs Podman ≥ 5.6 and:
 
----
-
-### SSH agent not forwarding
-
-SSH agent forwarding requires Podman >= 5.6 and `ssh_agent = true` in `[integration]`. Verify both:
+```toml
+[integration]
+ssh_agent = true
+```
 
 ```bash
 podbox doctor                             # checks Podman version
 grep ssh_agent ~/.config/podbox/<name>.toml
 ```
 
-If you're on Podman 5.5, the socket path is baked at `podbox enable` time. If `$SSH_AUTH_SOCK` changed since then (e.g. new login session), re-run `podbox disable && podbox enable`.
+On Podman 5.5 the socket path is baked at `enable` time — if `$SSH_AUTH_SOCK`
+changed since (e.g. new login), re-run `podbox disable && podbox enable`.
 
----
-
-### Build fails or produces a stale image
-
-Run `podbox build --rebuild` to force a full rebuild from scratch, bypassing the lock file. If the build context is corrupted:
+## Build fails or produces a stale image
 
 ```bash
-rm -rf ~/.local/share/podbox/<name>/     # clear build context
 podbox build --rebuild
 ```
 
-For non-prebuilt containers, the Containerfile is auto-generated from your TOML config. If packages or run commands changed after first build, `podbox build` picks them up automatically — no manual Containerfile editing needed.
-
----
-
-### Container starts but `podbox shell` hangs
-
-The shell binary specified in `container.shell` may not be installed in the image. Check your `image.packages.install` list includes the shell package, then run `podbox build --rebuild`.
-
----
-
-### Commands target the wrong container
-
-podbox resolves the target container in this order: positional `[NAME]` → `-C` flag → `PODBOX_CONTAINER` env → active context (`~/.config/podbox/.active`) → interactive picker → single config → embedded default.
+Still broken? Clear the build context and rebuild:
 
 ```bash
-podbox use                  # show current active context
-podbox use <name>           # set it
-podbox use --clear          # clear it (fall back to auto-detection)
+rm -rf ~/.local/share/podbox/<name>/
+podbox build --rebuild
 ```
 
-If a bare `podbox status` shows the wrong container, check your active context with `podbox use` and reset it if needed.
+Custom-build Containerfiles regenerate from TOML on every build — package
+and `run.commands` changes are picked up automatically.
+
+## Container starts but `podbox shell` hangs
+
+The shell in `container.shell` isn't installed in the image. Add it to
+`[image.packages].install`, then `podbox build --rebuild`.
+
+## Commands target the wrong container
+
+Resolution order: positional `[NAME]` → `-C` → `$PODBOX_CONTAINER` →
+active context → picker → single config → embedded default.
+
+```bash
+podbox use                  # show current context
+podbox use <name>           # set it
+podbox use --clear          # clear it
+```

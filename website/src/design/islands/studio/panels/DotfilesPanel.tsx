@@ -37,7 +37,7 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
         <StudioTooltip
           section="[dotfiles]"
           title='source = "host:~/.dotfiles"'
-          description="Where the files come from. A host: directory is copied into your container home, the same place the container's own files live; an https:// git URL is cloned there instead. Either way you end up with real files inside the container — it is a copy, not a live mount, so host edits show up on the next podbox dotfiles sync."
+          description="Where the files come from. A host: directory is copied in; an https:// git URL is cloned. Either way it's a copy, not a live mount — host edits arrive on the next dotfiles sync."
           quadlet="Volume=%h/containers/dev/.dotfiles:/home/user/.dotfiles"
         />
       </div>
@@ -57,7 +57,7 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
           <StudioTooltip
             section="[dotfiles]"
             title='target = "~/.dotfiles"'
-            description="Where the files land inside the container home, which on the host is ~/containers/<name>. Must stay inside that home. Defaults to ~/.dotfiles — point it elsewhere if your setup expects stow or chezmoi to own a specific layout."
+            description="Where the files land inside the container home. Must stay inside it. Defaults to ~/.dotfiles."
           />
         </div>
       }
@@ -75,7 +75,7 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
           <StudioTooltip
             section="[dotfiles]"
             title='clone_on = "host"'
-            description="Where a git source gets cloned. On the host, podbox runs git itself, so your SSH agent, credential helpers and ~/.gitconfig are already in play — private repos clone without putting a key in the image, and the checkout is cached and reused. Inside the container the clone happens in the image instead, which leaves the host untouched but needs its own credentials. Ignored for host: sources, which are always copied from the host."
+            description="Where a git source gets cloned. Host reuses your SSH agent and credentials (private repos just work); container keeps the host untouched but needs its own credentials. Ignored for host: sources."
           />
         </div>
       }
@@ -93,7 +93,7 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
         <StudioTooltip
           section="[dotfiles]"
           title='install = "./install.sh"'
-          description="Run once inside the container after the files land, from the target directory. This is where stow, chezmoi apply, or your own install.sh goes. It gets PODBOX_DOTFILES_DIR and friends as environment variables. Leave empty if the files are already usable as-is."
+          description="Runs once inside the container after the files land, from the target directory — e.g. stow, chezmoi apply, or ./install.sh. Leave empty if the files work as-is."
         />
       </div>
     }

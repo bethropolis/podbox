@@ -66,10 +66,13 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
   ];
 
   return (
-    <div className="w-full border border-[var(--border)] rounded-[3px] bg-[var(--bg-mantle)] overflow-hidden font-sans">
-      <div className="grid grid-cols-1 lg:grid-cols-2">
+    /* Two independent, top-aligned boxes rather than one shared frame. A
+       shared frame forces both columns to the same height, which left the
+       editor stretched around 20 lines of TOML with a large dead area under
+       it; the output now hugs its code and follows the form down the page. */
+    <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-5 items-start font-sans">
         {/* Controls */}
-        <div className="p-5 sm:p-7 space-y-7">
+        <div className="border border-[var(--border)] rounded-[3px] bg-[var(--bg-mantle)] p-5 sm:p-7 space-y-7">
           <div className="space-y-5">
             {groupLabel('The basics')}
             <div className="h-px bg-[var(--border)]" />
@@ -205,8 +208,8 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
         </div>
 
         {/* Output */}
-        <div className="lg:border-l border-[var(--border)] bg-[var(--bg-base)] flex flex-col">
-          <div className="flex items-center justify-between gap-3 px-5 sm:px-7 py-4 border-b border-[var(--border)]">
+        <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] border border-[var(--border)] rounded-[3px] bg-[var(--bg-base)] flex flex-col overflow-hidden">
+          <div className="shrink-0 flex items-center justify-between gap-3 px-5 sm:px-6 py-3.5 border-b border-[var(--border)]">
             <div className="flex items-center gap-2 text-sm">
               <SlidersHorizontal className="w-4 h-4 text-[var(--accent-green)] shrink-0" />
               <span className="text-[var(--text-primary)] font-medium">Your config</span>
@@ -222,7 +225,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
           </div>
 
           {/* File tabs */}
-          <div className="flex items-stretch gap-1 px-5 sm:px-7 pt-4" role="tablist">
+          <div className="shrink-0 flex items-end gap-1 px-5 sm:px-6 pt-3 border-b border-[var(--border)]" role="tablist">
             {tabs.map(({ id, label, note, icon: Icon }) => (
               <button
                 key={id}
@@ -230,10 +233,10 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
                 role="tab"
                 aria-selected={activeView === id}
                 onClick={() => setActiveView(id)}
-                className={`flex flex-col gap-0.5 px-3.5 py-2.5 rounded-t-[3px] border border-b-0 text-left cursor-pointer transition-colors ${
+                className={`flex flex-col gap-0.5 px-3 py-2 -mb-px border-b-2 text-left cursor-pointer transition-colors ${
                   activeView === id
-                    ? 'bg-[var(--bg-mantle)] border-[var(--border)]'
-                    : 'bg-transparent border-transparent hover:bg-[var(--bg-mantle)]/50'
+                    ? 'border-[var(--accent-mauve)]'
+                    : 'border-transparent hover:bg-[var(--bg-mantle)]/60'
                 }`}
               >
                 <span
@@ -249,12 +252,13 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             ))}
           </div>
 
-          {/* Code sits directly in the panel body, no window inside a window */}
-          <div className="flex-1 border-t border-[var(--border)]">
+          {/* Code sits directly in the panel body, no window inside a window. It
+              scrolls inside the panel when a long file would otherwise hang
+              below a short viewport while the panel is pinned. */}
+          <div className="flex-1 min-h-0 overflow-auto">
             <TerminalCodeBlock code={code} language={activeView === 'toml' ? 'toml' : 'ini'} bare />
           </div>
         </div>
-      </div>
     </div>
   );
 }

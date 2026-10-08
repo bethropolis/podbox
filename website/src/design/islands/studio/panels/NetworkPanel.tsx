@@ -26,7 +26,7 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Configure network namespace isolation mode, pasta userspace stack, and published TCP/UDP ports.
+      Network mode and published ports.
     </p>
   </div>
 
@@ -38,7 +38,7 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
           <StudioTooltip
             section="[network]"
             title="mode = &quot;private&quot; | &quot;pasta&quot; | &quot;host&quot;"
-            description="private creates an isolated loopback; pasta provides high-performance userspace NAT; host shares host stack directly."
+            description="private = isolated. pasta = NAT with working networking. host = shares the host stack."
             quadlet="Network=pasta"
           />
         </div>
@@ -55,7 +55,7 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
           <StudioTooltip
             section="[network]"
             title="ports = [&quot;8080:80&quot;, &quot;3000:3000&quot;]"
-            description="Forwards incoming host network ports to listening services inside the container."
+            description="Host ports forwarded into the container."
             quadlet="PublishPort=8080:80"
           />
         </div>
@@ -79,7 +79,7 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
           <StudioTooltip
             section="[network]"
             title="offline = true"
-            description="Hard-disable all networking (overrides mode)."
+            description="No network at all. Overrides the mode above."
           />
         </div>
       }

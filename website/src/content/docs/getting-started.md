@@ -10,11 +10,60 @@ description: Get started with podbox — prebuilt profiles, custom builds, and d
 curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
 ```
 
-Or from source: `git clone https://github.com/bethropolis/podbox && cd podbox && scripts/install.sh`.
+<details>
+<summary>Other install options</summary>
 
-See the [README](../README.md#requirements) for system requirements.
+**mise**
 
----
+```bash
+# Install as a mise tool (Linux only)
+mise use -g github:bethropolis/podbox
+```
+
+**Homebrew**
+
+```bash
+# Homebrew (Linux only)
+brew install bethropolis/homebrew-tap/podbox
+```
+
+**Arch Linux**, via AUR
+
+```bash
+# Arch Linux, via AUR
+paru -S podbox-bin
+```
+
+**From crates.io** (supports prebuilt images only)
+
+```bash
+# From crates.io (supports prebuilt images only)
+cargo install podbox-cli
+```
+
+**Source install** (builds CLI and guest daemon)
+
+```bash
+# Source install (builds CLI & guest daemon)
+git clone https://github.com/bethropolis/podbox
+cd podbox && scripts/install.sh   # installs to ~/.local/bin
+```
+
+The crates.io build supports prebuilt images only. Custom image builds need a full source build.
+
+</details>
+
+## Before you start
+
+podbox needs three things:
+
+- **Podman 5.5 or newer.** Use 5.6+ if you want SSH agent passthrough.
+- **A systemd user session.** podbox hands the container lifecycle to systemd.
+- **Linux with a Wayland compositor.** X11 apps still work through Xwayland.
+
+Optionally, install `xdg-dbus-proxy` to get filtered D-Bus access instead of an open session bus.
+
+If any of that is missing, `podbox doctor` will tell you.
 
 ## Two Ways to Create a Container
 
@@ -22,10 +71,8 @@ podbox supports two workflows depending on how much control you need:
 
 | Method | Use case | How it works |
 |--------|----------|-------------|
-| **Prebuilt** | Quick start, gaming, reproducible | Pull a ready-made image from a registry. Packages and config are baked in — you just create and enter. |
-| **Custom** | Full control, specific packages | Build from a distro base image via Containerfile. You declare everything in the TOML config and podbox generates the rest. |
-
----
+| **Prebuilt** | Trying things out, gaming | Pull a ready-made image. Everything is baked in — just create and enter. |
+| **Custom** | Your own packages and setup | Start from a distro image and declare the rest in TOML. podbox generates the build. |
 
 ## Prebuilt (Quick Start)
 
@@ -40,7 +87,7 @@ They're the fastest way to get a working container.
 | `fedora` | Fedora | Development, general purpose |
 | `dev` | Fedora | Development tooling, focused toolset |
 
-Run `podbox init` to see the full list.
+Run `podbox profile list` to see the full list.
 
 ### Non-interactive
 
@@ -81,8 +128,6 @@ podbox doctor
 2. `podbox create` pulls the prebuilt image, writes Quadlet systemd files, and starts the container
 3. The guest daemon (`podbox-guest`) starts inside and connects to the host for notifications, clipboard, and URI forwarding
 4. The container is running and ready — `podbox enter <name>` drops you into a shell
-
----
 
 ## Custom (Build from Base)
 
@@ -201,8 +246,6 @@ podbox diff myenv --apply
 4. `podbox start` starts the container — the guest daemon connects to the host socket
 5. `podbox enter <name>` opens an interactive shell
 
----
-
 ## Daily Usage
 
 ### Active context
@@ -233,7 +276,7 @@ podbox enter myenv
 podbox shell myenv
 ```
 
-Both work. `enter` is an alias for `shell`.
+Both work. `shell` is an alias for `enter`.
 
 ### Run commands
 
@@ -287,13 +330,16 @@ Commit the current container state and roll back if needed:
 
 ```bash
 # Tag the current state (defaults to timestamp tag)
-podbox snapshot myenv
+podbox snapshot create myenv
 
 # Tag with a custom name
-podbox snapshot myenv --tag before-upgrade
+podbox snapshot create myenv --tag before-upgrade
 
-# Restore to a previous state
-podbox restore myenv before-upgrade
+# List snapshots
+podbox snapshot list myenv
+
+# Restore to a previous state (tag first, then name)
+podbox restore before-upgrade myenv
 ```
 
 ### Path translation
@@ -317,8 +363,6 @@ podbox doctor
 # Auto-fix common issues (Wayland socket ownership, etc.)
 podbox doctor --fix
 ```
-
----
 
 ## Lifecycle Management
 
@@ -413,8 +457,6 @@ podbox edit myenv
 podbox edit myenv --rebuild
 ```
 
----
-
 ## Commands at a Glance
 
 ### Profiles
@@ -428,7 +470,8 @@ podbox edit myenv --rebuild
 
 | Command | Description |
 |---------|-------------|
-| `podbox init` | List available profiles |
+| `podbox init` | Scaffold a config from the default base image (`fedora:44`) |
+| `podbox profile list` | List available profiles (bundled + custom) |
 | `podbox init <image>` | Scaffold a custom config from a base image |
 | `podbox init -i` | Interactive wizard (custom or profile) |
 | `podbox init --profile <name>` | Scaffold from a prebuilt profile |
@@ -456,8 +499,10 @@ podbox edit myenv --rebuild
 | `podbox stop [<name>]` | Stop the container |
 | `podbox remove [<name>] [--all]` | Remove the container (and home with `--all`) |
 | `podbox remove --stale` | Clean up orphaned/failed containers |
-| `podbox snapshot [<name>] [--tag <t>]` | Commit container state as an OCI image |
+| `podbox snapshot create [<name>] [--tag <t>]` | Commit container state as an OCI image |
+| `podbox snapshot list [<name>]` | List snapshots for a container |
 | `podbox restore <tag> [<name>]` | Roll back to a previous snapshot |
+| `podbox rollback [<name>]` | Restore the image captured before the last update or rebuild |
 | `podbox clone <src> <dst>` | Copy a config for a variant |
 | `podbox update [<name>]` | Pull latest image and restart |
 
@@ -490,8 +535,6 @@ podbox edit myenv --rebuild
 | `podbox dotfiles status [<name>]` | Show dotfiles provisioning state |
 
 All commands support `--dry-run` to preview without side effects.
-
----
 
 ## Next Steps
 

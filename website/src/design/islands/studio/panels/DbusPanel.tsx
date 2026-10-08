@@ -24,7 +24,7 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Configure granular D-Bus session bus access rules for desktop portals, notifications, and media keys.
+      Which desktop services the container may talk to.
     </p>
   </div>
 
@@ -36,7 +36,7 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
           <StudioTooltip
             section="[dbus]"
             title="preset = &quot;portal&quot;"
-            description="Preconfigured bus filtering rules matching Flatpak sandbox expectations."
+            description="Rule bundles matching Flatpak expectations."
           />
         </div>
       }
@@ -52,7 +52,7 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
           <StudioTooltip
             section="[dbus]"
             title="talk = [&quot;org.freedesktop.Notifications&quot;]"
-            description="D-Bus bus names the container is permitted to call methods on."
+            description="Services the container may call."
           />
         </div>
       }

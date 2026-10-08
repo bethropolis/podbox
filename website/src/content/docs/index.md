@@ -4,9 +4,9 @@
 
 | Doc | What it covers |
 |-----|---------------|
-| [Quick Start](../README.md) | Install, create a container, essential workflows |
+| [Quick Start](getting-started.md) | Install, create a container, essential workflows |
 | [Configuration Reference](config.md) | All TOML keys, defaults, and examples |
-| [Baked-in Base Packages](baked-in-packages.md) | Auto-installed packages, locale, timezone, sudo |
+| [Base packages](baked-in-packages.md) | Tools, shells, locales preinstalled in custom builds |
 | [Desktop Integration](export.md) | Exporting container apps and binaries to the host |
 | [Container Integration](guest.md) | How the guest daemon bridges notifications, URI opening, clipboard |
 | [D-Bus Proxy](dbus-proxy.md) | Filtered D-Bus access via xdg-dbus-proxy |
@@ -19,13 +19,6 @@
 | [Quadlet Keys](quadlet.md) | Generated systemd unit files |
 | [Host-Guest Protocol](protocol.md) | Wire format and message types |
 | [Exit Codes](architecture.md#exit-codes) | Program exit code meanings |
-
-## Developer
-
-| Doc | What it covers |
-|-----|---------------|
-| [Roadmap](../ROADMAP.md) | Phase plans and scope |
-| [PLAN.md](../PLAN.md) | Implementation plans |
 
 ## Quick Reference
 
@@ -45,4 +38,4 @@ podbox remove --all              # full cleanup
 ```
 
 Most commands accept an optional `<name>` — defaults to the active context.
-See the [README](../README.md) for the full command reference.
+See [cli.md](cli.md) for name resolution, exit codes, and JSON output.

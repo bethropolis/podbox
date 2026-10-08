@@ -35,7 +35,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Configure UserNS mapping, Linux capabilities, SELinux security labels, and rootfs mutability.
+      Isolation settings — capabilities, labels, read-only root.
     </p>
   </div>
 
@@ -50,7 +50,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="security_label_disable = true"
-            description="Permits container processes to access files labeled with unconfined_u, essential for GPU DRI and Wayland sockets."
+            description="Lets the container access unlabelled files. Needed for GPU and Wayland."
             quadlet="SecurityLabelDisable=true"
             security="Disable only when hardware or socket passthrough requires it."
           />
@@ -69,7 +69,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="no_new_privileges = true"
-            description="Prevents processes inside the container from gaining additional privileges via setuid or setgid binaries."
+            description="Blocks setuid/setgid privilege escalation."
             quadlet="NoNewPrivileges=true"
             security="Strongly recommended for all desktop and web environments."
           />
@@ -88,7 +88,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="read_only_rootfs = true"
-            description="Mounts / read-only inside the container. State can only be written to $HOME or explicitly mounted volumes."
+            description="Root filesystem read-only. Only $HOME and mounted volumes stay writable."
             quadlet="ReadOnly=true"
           />
         </div>
@@ -104,7 +104,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
             <StudioTooltip
               section="[security]"
               title="userns = &quot;keep-id&quot;"
-              description="Maps your host UID (1000) directly to container UID (1000) so files created on disk have your host ownership."
+              description="Your host user maps straight through, so files you create keep your ownership."
               quadlet="UserNS=keep-id"
             />
           </div>
@@ -124,7 +124,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="apparmor = &quot;...&quot;"
-            description="AppArmor profile confining the container. Empty means podman default."
+            description="AppArmor profile. Empty = podman default."
           />
         </div>
       }
@@ -141,7 +141,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="seccomp = &quot;...&quot;"
-            description="Seccomp filter profile path or `unconfined`. Empty means podman default."
+            description="Seccomp profile path or unconfined. Empty = podman default."
           />
         </div>
       }
@@ -160,7 +160,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="cap_preset = &quot;default&quot;"
-            description="Preconfigured bundle of Linux capabilities tailored for standard development, strict isolation, or admin tasks."
+            description="Capability bundles: development, strict isolation, or admin."
           />
         </div>
       }
@@ -176,7 +176,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
           <StudioTooltip
             section="[security]"
             title="cap_add = [&quot;SYS_PTRACE&quot;]"
-            description="Specific Linux capabilities to grant to the container processes (e.g. for gdb, perf, or bpftrace)."
+            description="Extra capabilities, e.g. for gdb, perf, or bpftrace."
             quadlet="AddCapability=SYS_PTRACE"
           />
         </div>
@@ -195,7 +195,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
         <StudioTooltip
           section="[security].secrets"
           title='secrets = ["openai_key"]'
-          description="Hand the container a value that must never be baked into the image or typed on a command line. A bare name reads a `podman secret` and exposes it as an environment variable; switch the type to mount it as a file instead, or take it from a systemd credential."
+          description="Secrets the image must never contain. A bare name becomes an env var from podman secret; or mount it as a file, or source a systemd credential."
           quadlet="Secret=openai_key,type=env,target=openai_key"
         />
       </div>
@@ -278,7 +278,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
       })}
       {secrets.length === 0 && (
         <p className="text-[11px] text-[var(--text-muted)] italic">
-          No secrets — API keys must be baked into the image or passed by hand.
+          No secrets yet — add one above instead of baking keys into the image.
         </p>
       )}
     </div>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" width="100%" height="auto">
+  <defs>
+    <linearGradient id="wf-grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="wf-grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#d946ef"/>
+    </linearGradient>
+  </defs>
+  <style>
+    :root {
+      --bg-canvas: #ffffff;
+      --bg-box: #f8fafc;
+      --border-box: #cbd5e1;
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      --line: #94a3b8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-canvas: #0d1117;
+        --bg-box: #161b22;
+        --border-box: #30363d;
+        --text-main: #c9d1d9;
+        --text-sub: #8b949e;
+        --line: #484f58;
+      }
+    }
+    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
+    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
+    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11.5px; fill: var(--text-sub); text-anchor: middle; }
+    .text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: var(--text-main); text-anchor: middle; }
+    .text-offset { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10px; font-weight: 700; fill: var(--text-sub); letter-spacing: 1px; text-anchor: middle; }
+    .accent-1 { fill: url(#wf-grad1); }
+    .accent-2 { fill: url(#wf-grad2); }
+    .tick { stroke: var(--line); stroke-width: 1.5px; }
+  </style>
+  <!-- Byte offsets -->
+  <text class="text-offset" x="140" y="20">BYTES 0–3</text>
+  <text class="text-offset" x="520" y="20">BYTES 4 – N+3</text>
+  <!-- Segment 1: length prefix -->
+  <g transform="translate(30, 30)">
+    <rect class="accent-1" width="220" height="96" rx="8"/>
+    <text class="text-title" x="110" y="30" fill="#ffffff">Length prefix</text>
+    <text class="text-desc" x="110" y="50" fill="#ffffff" opacity="0.85">4 bytes · big-endian</text>
+    <text class="text-mono" x="110" y="74" fill="#ffffff">value = N</text>
+  </g>
+  <!-- Segment 2: payload -->
+  <g transform="translate(260, 30)">
+    <rect class="accent-2" width="530" height="96" rx="8"/>
+    <text class="text-title" x="265" y="30" fill="#ffffff">Payload</text>
+    <text class="text-desc" x="265" y="50" fill="#ffffff" opacity="0.85">N bytes · UTF-8 JSON</text>
+    <text class="text-mono" x="265" y="74" fill="#ffffff">one message</text>
+  </g>
+  <!-- Ticks joining offsets to segments -->
+  <line class="tick" x1="30" y1="24" x2="30" y2="30"/>
+  <line class="tick" x1="250" y1="24" x2="250" y2="30"/>
+  <line class="tick" x1="260" y1="24" x2="260" y2="30"/>
+  <line class="tick" x1="790" y1="24" x2="790" y2="30"/>
+  <!-- Example -->
+  <text class="text-offset" x="410" y="168">EXAMPLE — N = 15</text>
+  <g transform="translate(30, 178)">
+    <rect class="box-bg" width="760" height="92" rx="8"/>
+    <text class="text-mono" x="90" y="38">00  00  00  0F</text>
+    <text class="text-desc" x="90" y="58">15 in hex</text>
+    <line class="tick" x1="200" y1="14" x2="200" y2="78"/>
+    <text class="text-mono" x="495" y="38">{"type":"ping"}</text>
+    <text class="text-desc" x="495" y="58">15 bytes of JSON follow</text>
+  </g>
+</svg>

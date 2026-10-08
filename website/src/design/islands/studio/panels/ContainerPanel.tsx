@@ -29,7 +29,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
       </h2>
     </div>
     <p className="text-xs text-[var(--text-subtext)] mt-1 font-sans">
-      Configure the container name, isolated home directory, interactive shell, CPU/memory quotas, and supervised background services. Volume mounts live under [storage].
+      Name, home folder, shell, resource limits, and background services. Extra mounts live under [storage].
     </p>
   </div>
 
@@ -41,7 +41,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="name = &quot;dev-box&quot;"
-            description="The unique name identifying this environment. Used in systemd unit naming: ~/.config/containers/systemd/<name>.container."
+            description="Names the container, its home folder, and its systemd unit."
             quadlet="ContainerName=podbox-<name>"
           />
         </div>
@@ -60,7 +60,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="home = &quot;~/containers/name&quot;"
-            description="Host path mounted as the container's isolated $HOME. Keeps your host ~ clean from dotfile clutter."
+            description="Isolated home folder. Keeps your real ~ clean."
             quadlet="Volume=%h/containers/<name>:/home/user:rslave,z"
           />
         </div>
@@ -81,7 +81,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="shell = &quot;fish&quot;"
-            description="Default interactive shell spawned upon 'podbox enter <name>'."
+            description="Shell opened by podbox enter."
           />
         </div>
       }
@@ -97,7 +97,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="memory = &quot;4G&quot;"
-            description="Cgroup memory ceiling (e.g., 2G, 8G, 512M). Systemd enforces hard isolation to protect host stability."
+            description="Memory cap, e.g. 4G."
             quadlet="Memory=4G"
           />
         </div>
@@ -116,7 +116,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="cpus = &quot;2.0&quot;"
-            description="Fractional CPU cores allocated to this container (2.0 = 200% cgroup CPU quota)."
+            description="CPU cores, e.g. 2.0. Fractions allowed."
             quadlet="CpuQuota=200%"
           />
         </div>
@@ -137,7 +137,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="slice = &quot;podbox.slice&quot;"
-            description="Systemd slice for this container's service cgroup."
+            description="Systemd slice — which cgroup the container lives in."
           />
         </div>
       }
@@ -155,7 +155,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container]"
             title="cpu_weight = 200"
-            description="Systemd CPU scheduling weight, 1–10000."
+            description="CPU priority when contended, 1–10000."
           />
         </div>
       }
@@ -178,7 +178,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
         <StudioTooltip
           section="[container.env]"
           title='RUST_LOG = "debug"'
-          description="Variables baked into the container: emitted as Environment= lines in the unit, so they are set on every start."
+          description="Always set, on every start. Never written into the image."
           quadlet="Environment=RUST_LOG=debug"
         />
       </div>
@@ -246,7 +246,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <StudioTooltip
             section="[container.env]"
             title='forward = ["SSH_AUTH_SOCK", "AWS_*"]'
-            description="Host variables copied in when you enter, exec or run — unlike the pairs above, these are read from your shell at that moment, so tokens and agent sockets stay fresh. An exact name or a PREFIX_* pattern; a pattern that matches nothing is skipped."
+            description="Host variables copied in on enter, exec, and run — read live from your shell, so tokens stay fresh. Exact names or PREFIX_* patterns."
           />
         </div>
       }
@@ -265,7 +265,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
         <StudioTooltip
           section="[container.services]"
           title='redis = "redis-server --save 60 1"'
-          description="Long-running processes the container should keep alive (databases, queues, dev servers). The podbox guest supervises them: each starts with the container, is restarted on failure, and dies with it. Use the table form when you need an explicit restart policy or a working directory."
+          description="Background processes the guest keeps alive — databases, queues, dev servers. Restarted on failure, die with the container."
           quadlet="Environment=PODBOX_SERVICES_JSON=&quot;{...}&quot;"
         />
       </div>
