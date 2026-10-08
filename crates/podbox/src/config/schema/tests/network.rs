@@ -3,7 +3,7 @@
 use super::super::*;
 
 #[test]
-fn test_network_defaults_to_private() {
+fn test_network_defaults_to_pasta() {
     let toml = r#"
 [image]
 base = "fedora:41"
@@ -13,7 +13,7 @@ name = "env"
 home = "~/env"
 "#;
     let cfg = Config::parse(toml).unwrap();
-    assert_eq!(cfg.network.mode, "private");
+    assert_eq!(cfg.network.mode, "pasta");
     assert!(!cfg.network.offline);
     assert!(cfg.network.ports.is_empty());
 }

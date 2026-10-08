@@ -11,14 +11,13 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 3. `~/.config/podbox/*.toml` (first file, sorted by name)
 4. Embedded default (`fedora:44`, name `podbox`)
 
----
-
 ## `[image]`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `base` | string | *required* | Base container image (e.g. `"fedora:41"`) |
+| `base` | string | *required* | Base container image (e.g. `"fedora:44"`) |
 | `name` | string | *required* | Image tag name (e.g. `"myenv"`) |
+| `image` | string | — | Prebuilt image reference (e.g. `"ghcr.io/user/myenv:latest"`). When set, podbox uses the registry image instead of building from `base` |
 | `pull_retry` | int | `3` | Number of pull retries on failure |
 | `pull_retry_delay` | string | `"5s"` | Delay between pull retries |
 
@@ -26,8 +25,9 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `install` | string[] | `[]` | Packages to install via `dnf install` |
-| `remove` | string[] | `[]` | Packages to remove via `dnf remove` |
+| `install` | string[] | `[]` | Packages to install via the distro package manager |
+| `remove` | string[] | `[]` | Packages to remove |
+| `manager` | string | auto-detected | Package manager override: `dnf`, `apt`, `pacman`, `apk`, `zypper`. Auto-detected from the base image name when omitted |
 
 ### `[image.run]`
 
@@ -37,7 +37,7 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 
 ```toml
 [image]
-base = "fedora:41"
+base = "fedora:44"
 name = "myenv"
 
 [image.packages]
@@ -47,8 +47,6 @@ remove = ["vim-minimal"]
 [image.run]
 commands = ["dnf clean all"]
 ```
-
----
 
 ## `[container]`
 
@@ -95,21 +93,16 @@ redis = "redis-server /etc/redis/redis.conf"
 postgres = { command = "postgres -D /home/user/pgdata", restart = "on-failure" }
 ```
 
-Services are launched and supervised by the background guest daemon (the
-container's actual init remains Podman's init process). Short declarations
-restart on failure; detailed declarations accept `restart = "never"`,
-`"on-failure"`, or `"always"`, plus an `env` table. Logs append to
-`/run/podbox/services/<name>.log`. Service process groups do not count as user
-sessions for idle shutdown.
-
----
+Services run under the guest daemon (the container's init stays Podman's).
+Short form restarts on failure; long form takes `restart = "never"`,
+`"on-failure"`, or `"always"`, plus an `env` table. Logs go to
+`/run/podbox/services/<name>.log`. Services don't block idle shutdown.
 
 ## `[dotfiles]`
 
-Optional one-time dotfiles bootstrap during `podbox create`. Host sources are
-copied into the container's isolated home directory; Git sources are cloned on
-the host by default, so host SSH keys and credentials are used without being
-forwarded into the container.
+One-time dotfiles bootstrap during `podbox create`. Host sources copy into
+the container home; Git sources clone on the host, so your SSH keys stay
+where they are.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -125,18 +118,19 @@ target = "~/.dotfiles"
 install = "./install.sh"
 ```
 
-Provisioning runs once during `create`, never during ordinary starts or enters.
-If creation used `--no-start`, or provisioning failed, run
-`podbox dotfiles sync [name]` to acquire/update the source and run the install
-command. `podbox dotfiles status [name]` reports whether files and the
-completion stamp are present. Dotfiles failures during creation are warnings;
-the container remains usable.
+Runs once during `create` — never on plain starts. If creation used
+`--no-start` or failed halfway: `podbox dotfiles sync [name]` retries,
+`podbox dotfiles status [name]` shows state. Failures are warnings; the
+container still works.
 
-The install command receives `PODBOX=1`, `PODBOX_CONTAINER`, `PODBOX_DISTRO`,
-`PODBOX_HOME`, and `PODBOX_DOTFILES_DIR`. `PODBOX_PROFILE` is set when the
-configured image name matches a built-in profile.
+<details>
+<summary>Environment available to the install command</summary>
 
----
+`PODBOX=1`, `PODBOX_CONTAINER`, `PODBOX_DISTRO`, `PODBOX_HOME`,
+`PODBOX_DOTFILES_DIR`. `PODBOX_PROFILE` is set when the image name matches
+a built-in profile.
+
+</details>
 
 ## `[security]`
 
@@ -154,17 +148,16 @@ configured image name matches a built-in profile.
 
 ### `[security].secrets`
 
-Each entry hands the container a value that should never end up in a layer or
-on a command line. The bare string form reads a `podman secret` and exposes it
-as an environment variable of the same name:
+Values the container needs but the image must never contain. Short form
+reads a `podman secret` and exposes it as a same-named variable:
 
 ```toml
 [security]
 secrets = ["openai_key"]              # Secret=openai_key,type=env,target=openai_key
 ```
 
-Use the detailed form when you need a different target, a file instead of a
-variable, a mode, or a systemd credential as the source:
+Use the long form for a different target, a file instead of a variable,
+a mode, or a systemd credential source:
 
 ```toml
 [[security.secrets]]
@@ -187,10 +180,8 @@ target = "GH_TOKEN"                   # Environment=GH_TOKEN=%d/gh_token
 | `mode` | string | — | File mode for `mount` secrets |
 | `source` | string | `"podman"` | `podman` reads `podman secret`; `systemd` reads a systemd credential |
 
-A config mixes the two forms never: if every entry is bare, `secrets` is a list
-of strings; if any entry sets `type`, `target`, `mode` or `source`, the whole
-list is written as tables. `podbox doctor` verifies the referenced secrets
-exist.
+Don't mix forms: all bare strings, or all tables. `podbox doctor` checks
+the named secrets exist.
 
 ```toml
 [security]
@@ -202,13 +193,11 @@ cap_preset = "monitoring"
 cap_add = ["SYS_ADMIN"]
 ```
 
----
-
 ## `[network]`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mode` | string | `"private"` | Network mode. Supported: `"host"`, `"bridge"`, `"none"`, `"pasta"`, `"slirp4netns"`, `"private"`. Passed as `Network=` in Quadlet. Defaults to `"private"` (loopback only) so the container can't see the host's UNIX sockets and localhost services; `"host"` shares the host network namespace and should be an explicit, considered opt-in. |
+| `mode` | string | `"pasta"` | Network mode: `"host"`, `"bridge"`, `"none"`, `"pasta"`, `"slirp4netns"`, `"private"`. Defaults to `"pasta"` (user-space NAT with working networking). `"private"` is loopback only — no host sockets or localhost services. `"host"` shares the host network — choose it deliberately |
 | `ports` | string[] | `[]` | Port mappings (`"hostPort:containerPort"`). Emitted as `PublishPort=` in Quadlet (ignored in `host` mode) |
 
 ```toml
@@ -218,15 +207,13 @@ ports = ["8080:80", "443:443"]
 offline = false
 ```
 
-`offline = true` forces Quadlet `Network=none` while preserving the selected
-`mode` in the definition. Isolation is container-wide; there is no per-exec
-network override.
+`offline = true` forces `Network=none` while keeping your `mode` in the
+definition. Container-wide only — no per-command override.
 
 ## `[storage.shared_caches]`
 
-All cache sharing is opt-in. Enabled entries mount persistent named Podman
-volumes using user-namespace ownership mapping (`:U`); removing a container
-does not remove those volumes.
+Opt-in caches shared between podbox containers. Removing a container keeps
+its volumes.
 
 ```toml
 [storage.shared_caches]
@@ -258,32 +245,20 @@ container_path = "~/.cache/models"
 | `custom[].name` | string | — | Built-in names are reserved |
 | `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
 
-`cargo` and `rustup` are deliberately scoped: `~/.cargo/bin` and `~/.rustup`
-hold compiler binaries built against one distro's libc, and must not cross
-distro boundaries. Yarn covers the default cache locations for Classic and
-Berry; `podbox cache prune yarn` removes both Yarn volumes. `podbox cache prune
-cargo` removes both Cargo volumes. Use `podbox cache list` to see created
-volumes and attachments, `podbox cache prune NAME` to remove one, and
-`podbox cache prune` to remove all after confirming.
+`cargo` shares only registry + git — `~/.cargo/bin` holds binaries and stays
+per-container. `podbox cache list` shows volumes, `podbox cache prune NAME`
+removes one.
 
-Those volumes are shared between podbox containers only — they know nothing
-about caches on the host. To reuse a cache you already keep on the host, use
-`[storage.host_caches]`, which takes the same keys.
-
----
+These volumes serve containers only. To reuse a cache you already keep on
+the host, use `[storage.host_caches]` below.
 
 ## `[storage.host_caches]`
 
-Also opt-in. These bind-mount a directory that already exists on the host, so
-the container reuses what the host has already downloaded, built or cached.
-Use this for anything you maintain on the host; use `shared_caches` when the
-cache exists only to serve containers.
+Same toggles, different source: a directory you already keep on the host,
+bind-mounted into the container. Use this when the host owns the cache;
+use `shared_caches` when only containers use it.
 
-Same built-ins as `shared_caches` — `cargo`, `npm`, `pnpm`, `pip`, `uv`,
-`yarn`, `bun`, `composer`, `maven`, `gradle`, `ccache`, `go`, `rustup`, `mbx` —
-because a cache is either worth sharing with the host or with other containers,
-and which one should not be a per-tool decision. A built-in is the same
-relative path on both sides.
+Same built-ins as `shared_caches` — same relative path on both sides.
 
 ```toml
 [storage.host_caches]
@@ -304,30 +279,25 @@ container_path = "~/.cache/zig"
 | `custom[].host_path` | string | — | Path on the host, `~/…` or absolute |
 | `custom[].container_path` | string | — | Destination in the container, `~/…` or absolute |
 
-`custom` is the general form: any directory on the host, mounted at any path in
-the container. A Zig cache, a model directory, a download folder — whatever you
-already maintain on the host and would rather not warm twice.
+`custom` mounts any host dir at any container path:
 
-Each entry is emitted as `Volume=%h/.cache/zig:/home/%u/.cache/zig:rw,z`: `%h`
-for the host and `/home/%u` for the container, so the mount stays correct when
-the two usernames differ. There is deliberately no `:U` here, unlike
-`shared_caches`: a host directory is already owned by the host user, and
-`keep-id` makes that the same UID inside the container.
+Mounts stay correct when host and container usernames differ (`%h` on the
+host side, `/home/%u` on the container side). Unlike `shared_caches` there's
+no `:U` remap — the host dir is already yours, and `keep-id` keeps it that
+way inside.
 
-Notes:
+<details>
+<summary>Three things that bite</summary>
 
-- Host and container write to one directory, so any size budget or automatic
-  collection on that store applies to both. A container can evict host entries.
-- Sharing a cache is safe; sharing a build state directory is not. If both
-  sides build the same workspace path simultaneously, the tool that manages
-  target directories — cargo, mbx, whatever it is — will collide. Serialise
-  such builds.
-- A path already claimed by `[container.mounts].extra` is refused: both
-  mechanisms work on their own, but emitting two mounts for one destination
-  would fail inside Podman with an opaque duplicate-mount error. A hand-written
-  `mounts.extra` entry keeps working unchanged.
+- One directory, two writers: a container can evict host cache entries, and
+  any size budget applies to both.
+- Share caches, not build state. Two simultaneous builds of the same
+  workspace (cargo, mbx, …) collide on target dirs — serialise them.
+- A path already in `[container.mounts].extra` is refused. Two mounts for
+  one destination would fail inside Podman with an opaque error. A
+  hand-written `mounts.extra` entry keeps working unchanged.
 
----
+</details>
 
 ## `[integration]`
 
@@ -339,14 +309,14 @@ Controls which host resources are shared with the container.
 | `audio` | bool | `true` | Share PipeWire/PulseAudio sockets |
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
 | `dbus` | bool | `true` | Enable D-Bus session bus access |
-| `notify` | bool | `true` | Desktop notification forwarding |
-| `xdg_open` | bool | `true` | URI opening via host (`xdg-open`) |
-| `clipboard` | bool | `true` | Clipboard sharing |
-| `sync_fonts` | bool | `true` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
-| `sync_icons` | bool | `true` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
-| `sync_themes` | bool | `true` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
+| `notify` | bool | `false` | Desktop notification forwarding |
+| `xdg_open` | bool | `false` | URI opening via host (`xdg-open`) |
+| `clipboard` | bool | `false` | Clipboard sharing |
+| `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
+| `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
+| `sync_themes` | bool | `false` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
-| `git_identity` | bool | `true` | Add mounted paths to the container user's Git `safe.directory` and use host Git identity only when container identity is unset. Requires `git` in the image — podbox never installs it, so this is a no-op on images that do not bake it |
+| `git_identity` | bool | `true` | Bridge host Git identity and `safe.directory` into the container. Needs `git` in the image — podbox never installs it, so this is a no-op without it |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
@@ -361,10 +331,9 @@ Controls which host resources are shared with the container.
 
 ### `[integration.hardware]`
 
-Host device passthrough. A container has no devices of its own, so anything
-hardware — a camera, a gamepad, a YubiKey, `/dev/kvm` — is simply absent until
-you pass it through here. Each device is emitted as an optional `AddDevice=-…`,
-so a host that lacks it is skipped rather than failing the start.
+Device passthrough. The container has no devices until you pass them here.
+Each becomes an optional `AddDevice=-…` — a host without it skips the device
+instead of failing to start.
 
 | Key | Type | Default | Passed through |
 |-----|------|---------|----------------|
@@ -387,7 +356,7 @@ kvm = true
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Allow container to execute commands on the host |
-| `allowlist` | table | (none) | Alias → absolute-path map for allowed commands. When set, only those commands may be run (resolved via the mapped host path, ignoring the guest's `$PATH`). When absent, any command is allowed (legacy mode). |
+| `allowlist` | table | (none) | Allowed commands as alias → path pairs. When set, only those commands may run; when absent, anything may run |
 
 **Example — restrict to `git` and `systemctl`:**
 ```toml
@@ -396,12 +365,12 @@ enabled = true
 allowlist = { git = "/usr/bin/git", systemctl = "/usr/bin/systemctl" }
 ```
 
-**Security note:** Commands run via `execve` directly — never through a shell — so metacharacters cannot cause shell injection. However, the argument filter is a blocklist, and **versatile allowlisted binaries can still be subverted with valid-looking flags**: `git -C /root …`, `git clone --upload-pack=…`, `find -exec …`, `tar --to-command=…`, `python -c …`, or any binary with code-execution flags. The filter also rejects benign arguments containing globs, parentheses, or redirection characters (false positives).
-
-**Guidance:** treat every allowlist entry as granting the guest that binary's full host capability surface.
-
-- Prefer restricted binaries or dedicated wrapper scripts over general-purpose tools (`git`, `python`, `tar`, `find`, shells).
-- A wrapper script pinning the arguments is the safest entry, e.g. one exposing exactly `systemctl --user status <unit>` instead of raw `systemctl`.
+**Security note:** no shell is involved (`execve` directly), so shell
+injection can't happen. But the filter is a blocklist — **an allowlisted
+binary keeps its full host powers** (`git -C /root …`, `find -exec …`,
+`python -c …`). Prefer wrapper scripts that pin the exact arguments over
+general-purpose tools. The filter also rejects harmless arguments containing
+globs or parentheses.
 
 ### `[integration.xdg_dirs]`
 
@@ -450,8 +419,6 @@ apps = ["gedit", "nautilus"]
 bins = ["rg", "gcc"]
 ```
 
----
-
 ## `[lifecycle]`
 
 | Key | Type | Default | Description |
@@ -472,8 +439,6 @@ auto_update  = true
 idle_timeout = "off"
 ```
 
----
-
 ## `[systemd]`
 
 Custom systemd unit dependencies for the generated Quadlet.
@@ -489,15 +454,13 @@ requires = ["postgres.service", "redis.service"]
 after    = ["network-online.target"]
 ```
 
----
-
 ## `[dbus]`
 
 D-Bus access control via `xdg-dbus-proxy`. Requires `integration.dbus = true`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `preset` | string | `""` | Named preset to expand into talk rules. Supported: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. When set, auto-fills `talk` with the preset's service names. Note: portal-family presets never grant `org.freedesktop.portal.*` via `talk` — the portal name is exposed through interface-scoped `--call=`/`--broadcast=` rules for `integration.notify` / `integration.xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
+| `preset` | string | `""` | Preset filling `talk` for you: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. Portal names are never granted via `talk` — they come through interface-scoped rules for `notify` / `xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
 | `talk` | string[] | `[]` | D-Bus services the container can call (two-way). Adding a portal-family name re-grants the full portal surface — a warning is printed |
 | `own` | string[] | `[]` | D-Bus services the container can register on the host bus |
 
@@ -518,17 +481,41 @@ own = [
 ]
 ```
 
-See [dbus-proxy.md](dbus-proxy.md) for details.
+See [dbus-proxy.md](dbus-proxy.md) for the full behavior matrix.
 
-### Behavior matrix
+## `[wayland]`
 
-| `integration.dbus` | `[dbus]` talk/own | Result |
-|--------------------|-------------------|--------|
-| `false` | any | No D-Bus access |
-| `true` | empty (default) | Proxied — `preset = "portal"` applied automatically with interface-scoped portal rules for `notify` / `xdg_open` |
-| `true` | populated | Proxy socket via `xdg-dbus-proxy` with those rules plus interface-scoped portal rules for enabled capabilities |
+The Wayland firewall. A companion service filters which protocol objects the
+container may use — screen capture, virtual input, and input methods are
+blocked unless you allow them.
 
----
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `firewall` | bool | `true` | Filter Wayland protocol access through the compositor proxy |
+| `blocked_interfaces` | string[] | (see below) | Wayland globals to deny. Replaces the default list when set |
+
+```toml
+[wayland]
+firewall = true
+blocked_interfaces = [
+    "zwlr_screencopy_manager_v1",
+    "ext_image_copy_capture_v1",
+]
+```
+
+Setting `blocked_interfaces` replaces the default list entirely — no merging.
+
+<details>
+<summary>Default block list</summary>
+
+Screen capture (`zwlr_screencopy_manager_v1`, `ext_image_copy_capture_v1`),
+window listing (`ext_foreign_toplevel_list_v1`), virtual pointers
+(`zwlr_virtual_pointer_manager_v1`, `zwlr_virtual_pointer_unstable_v1`),
+virtual keyboards and input methods (`zwp_virtual_keyboard_manager_v1`,
+`zwp_input_method_v1`, `zwp_input_method_v2`, `ext_input_method_v1`), and
+fake input (`org_kde_kwin_fake_input`).
+
+</details>
 
 ## Full Example
 
@@ -607,7 +594,7 @@ secrets = ["openai_key"]        # Podman secrets; no value ever lands in the ima
 
 # ── Network ────────────────────────────────────────────
 [network]
-mode = "private"                # host, bridge, none, pasta, slirp4netns, private (default: private)
+mode = "pasta"                  # host, bridge, none, pasta, slirp4netns, private (default: pasta)
 ports = ["8080:80"]             # Port mappings (ignored in host mode)
 
 # ── Integration ────────────────────────────────────────

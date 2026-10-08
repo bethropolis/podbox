@@ -118,9 +118,9 @@ pub fn is_default_security(v: &SecurityConfig) -> bool {
 }
 
 pub fn default_network_mode() -> String {
-    "private".into()
+    "pasta".into()
 }
 
 pub fn is_default_network(v: &NetworkConfig) -> bool {
-    v.mode == "private" && v.ports.is_empty()
+    v.mode == "pasta" && v.ports.is_empty()
 }

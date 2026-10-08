@@ -294,11 +294,11 @@ pub struct IntegrationConfig {
     pub gpu: GpuMode,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub dbus: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub notify: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub xdg_open: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub clipboard: bool,
     #[serde(default, skip_serializing_if = "is_default_host_exec")]
     pub host_exec: HostExecConfig,
@@ -306,11 +306,11 @@ pub struct IntegrationConfig {
     pub ssh_agent: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub gpg_agent: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub sync_fonts: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub sync_icons: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub sync_themes: bool,
     #[serde(default)]
     pub hardware: HardwareConfig,
@@ -328,15 +328,15 @@ impl Default for IntegrationConfig {
             audio: true,
             gpu: GpuMode::Auto,
             dbus: true,
-            notify: true,
-            xdg_open: true,
-            clipboard: true,
+            notify: false,
+            xdg_open: false,
+            clipboard: false,
             host_exec: HostExecConfig::default(),
             ssh_agent: false,
             gpg_agent: false,
-            sync_fonts: true,
-            sync_icons: true,
-            sync_themes: true,
+            sync_fonts: false,
+            sync_icons: false,
+            sync_themes: false,
             hardware: HardwareConfig::default(),
             xdg_dirs: XdgDirConfig::default(),
             export: ExportConfig::default(),

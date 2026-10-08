@@ -24,9 +24,9 @@ home = "~/containers/myenv"
     assert!(cfg.integration.wayland);
     assert!(cfg.integration.audio);
     assert!(cfg.integration.dbus);
-    assert!(cfg.integration.notify);
-    assert!(cfg.integration.xdg_open);
-    assert!(cfg.integration.clipboard);
+    assert!(!cfg.integration.notify);
+    assert!(!cfg.integration.xdg_open);
+    assert!(!cfg.integration.clipboard);
     assert!(!cfg.integration.host_exec.enabled);
     assert!(cfg.integration.host_exec.allowlist.is_none());
     assert!(!cfg.integration.ssh_agent);

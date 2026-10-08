@@ -4,21 +4,13 @@ use super::super::*;
 
 #[test]
 fn test_dbus_config_defaults_empty() {
+    // Desktop capabilities are opt-in: the embedded default enables none of
+    // them, so no proxy units or portal rules are generated.
     let cfg = Config::embedded();
     assert_eq!(cfg.dbus.preset, "portal");
     assert!(cfg.dbus_effective_talk().is_empty());
-    assert!(cfg.use_dbus_proxy());
-    let calls = cfg.dbus_portal_calls();
-    assert!(
-        calls
-            .iter()
-            .any(|r| r.contains("org.freedesktop.portal.Notification.*"))
-    );
-    assert!(
-        calls
-            .iter()
-            .any(|r| r.contains("org.freedesktop.portal.OpenURI.*"))
-    );
+    assert!(cfg.dbus_portal_calls().is_empty());
+    assert!(!cfg.use_dbus_proxy());
 }
 #[test]
 fn test_dbus_portal_dropped_when_caps_disabled() {
