@@ -136,6 +136,7 @@ impl Config {
                 errors.push(format!("container.env: value for {key:?} contains newline"));
             }
         }
+        errors.extend(validate_provision(&self.provision));
         errors.extend(caches::validate_caches(self));
         for (i, pattern) in self.container.env.forward.iter().enumerate() {
             let key = pattern.strip_suffix('*').unwrap_or(pattern);
@@ -280,6 +281,22 @@ impl Config {
             }
         }
 
+        // D-Bus rules without the bus itself are dead config: with
+        // `integration.dbus` off the container gets no D-Bus at all, so talk,
+        // own, or a preset would be silently ignored. Fail fast instead.
+        if !self.integration.dbus
+            && (!self.dbus.talk.is_empty()
+                || !self.dbus.own.is_empty()
+                || (!self.dbus.preset.is_empty() && self.dbus.preset != "none"))
+        {
+            errors.push(
+                "dbus: talk/own/preset rules are set but 'integration.dbus' is false, \
+                 so the container would get no D-Bus at all. Set 'integration.dbus = true' \
+                 to apply them."
+                    .into(),
+            );
+        }
+
         let t = &self.lifecycle.idle_timeout;
         if t != "off" {
             let (digits, suffix) = parse_duration_suffix(t);
@@ -365,4 +382,108 @@ pub fn is_valid_memory(s: &str) -> bool {
 pub fn is_bare_memory_digits(s: &str) -> bool {
     let t = s.trim();
     !t.is_empty() && t.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Parse a provision `timeout` (`30s`, `5m`, `1h`) into seconds.
+/// Returns 0 when invalid or non-positive (callers treat 0 as invalid).
+pub fn parse_provision_timeout_secs(s: &str) -> u64 {
+    let (digits, suffix) = parse_duration_suffix(s);
+    if digits.is_empty() {
+        return 0;
+    }
+    let value: u64 = digits.parse().unwrap_or(0);
+    if value == 0 {
+        return 0;
+    }
+    // Entire string must be digits + single suffix.
+    let trimmed = s.trim();
+    if trimmed.len() != digits.len() + 1 {
+        return 0;
+    }
+    match suffix {
+        Some('s') => value,
+        Some('m') => value.saturating_mul(60),
+        Some('h') => value.saturating_mul(3600),
+        _ => 0,
+    }
+}
+
+fn is_valid_provision_name(s: &str) -> bool {
+    if s.is_empty() || s.len() > 64 {
+        return false;
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
+        return false;
+    }
+    s.chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+fn is_valid_env_key(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn validate_provision(steps: &[crate::config::types::ProvisionStep]) -> Vec<String> {
+    let mut errors: Vec<String> = Vec::new();
+    if steps.len() > 64 {
+        errors.push(format!(
+            "provision: too many steps ({}) — at most 64",
+            steps.len()
+        ));
+        return errors;
+    }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for (i, step) in steps.iter().enumerate() {
+        let prefix = format!("provision[{i}]");
+        if step.name == "dotfiles" {
+            errors.push(format!("{prefix}.name: 'dotfiles' is reserved"));
+        } else if !is_valid_provision_name(&step.name) {
+            errors.push(format!(
+                "{prefix}.name: '{}' is invalid (use ^[a-z0-9][a-z0-9_-]{{0,63}}$)",
+                step.name
+            ));
+        }
+        if !seen.insert(step.name.as_str()) {
+            errors.push(format!(
+                "{prefix}.name: duplicate step name '{}'",
+                step.name
+            ));
+        }
+        if step.run.trim().is_empty() {
+            errors.push(format!("{prefix}.run: must not be empty"));
+        }
+        if parse_provision_timeout_secs(&step.timeout) == 0 {
+            errors.push(format!(
+                "{prefix}.timeout: '{}' is invalid (expected e.g. '30s', '5m', '1h', > 0)",
+                step.timeout
+            ));
+        }
+        for (key, value) in &step.env {
+            if !is_valid_env_key(key) {
+                errors.push(format!(
+                    "{prefix}.env: invalid key '{key}' (use ^[A-Za-z_][A-Za-z0-9_]*$)"
+                ));
+            } else if key.starts_with("PODBOX_") {
+                errors.push(format!(
+                    "{prefix}.env: key '{key}' is reserved (PODBOX_ prefix)"
+                ));
+            }
+            if value.chars().any(|c| matches!(c, '\0' | '\n' | '\r')) {
+                errors.push(format!(
+                    "{prefix}.env: value for '{key}' contains newline or NUL"
+                ));
+            }
+        }
+    }
+    errors
 }

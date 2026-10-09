@@ -29,11 +29,11 @@ pub fn is_false(v: &bool) -> bool {
 }
 
 pub fn default_shell() -> String {
-    "fish".into()
+    "bash".into()
 }
 
 pub fn is_default_shell(v: &str) -> bool {
-    v == "fish"
+    v == "bash"
 }
 
 pub fn default_package_manager() -> PackageManager {

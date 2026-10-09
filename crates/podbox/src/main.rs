@@ -104,11 +104,13 @@ fn run() -> Result<()> {
             | Command::Dotfiles {
                 dotfiles_cmd: podbox::cli::DotfilesCommand::Status { .. }
             }
+            | Command::Provision {
+                provision_cmd: podbox::cli::ProvisionCommand::Status { .. }
+            }
     ) && which::which("podman").is_err()
     {
         return Err(PodboxError::PodmanNotFound.into());
     }
-
     match &cli.command {
         Command::InternalStdinWatchdog { parent_pid } => {
             return commands::runtime::run_stdin_watchdog(*parent_pid);
@@ -467,6 +469,15 @@ fn run() -> Result<()> {
             }
             podbox::cli::DotfilesCommand::Status { .. } => {
                 commands::dotfiles::status(&config, &env)?;
+            }
+        },
+
+        Command::Provision { provision_cmd } => match provision_cmd {
+            podbox::cli::ProvisionCommand::Sync { steps, force, .. } => {
+                commands::provision::sync(&config, &env, steps, *force, cli.dry_run)?;
+            }
+            podbox::cli::ProvisionCommand::Status { output, check, .. } => {
+                commands::provision::status(&config, *output, *check)?;
             }
         },
 

@@ -31,9 +31,9 @@ pub(super) fn detect_host_shell_from(shell_path: Option<&str>) -> ShellInfo {
 
 fn fallback_shell() -> ShellInfo {
     ShellInfo {
-        bin_name: "fish".into(),
-        full_path: "/usr/bin/fish".into(),
-        package_name: "fish".into(),
+        bin_name: "bash".into(),
+        full_path: "/bin/bash".into(),
+        package_name: "bash".into(),
         detected: false,
     }
 }
@@ -116,21 +116,21 @@ mod tests {
     #[test]
     fn fallback_on_dash() {
         let info = detect_host_shell_from(Some("/bin/dash"));
-        assert_eq!(info.bin_name, "fish");
+        assert_eq!(info.bin_name, "bash");
         assert!(!info.detected);
     }
 
     #[test]
     fn fallback_on_empty_shell() {
         let info = detect_host_shell_from(None);
-        assert_eq!(info.bin_name, "fish");
+        assert_eq!(info.bin_name, "bash");
         assert!(!info.detected);
     }
 
     #[test]
     fn fallback_on_sh() {
         let info = detect_host_shell_from(Some("/bin/sh"));
-        assert_eq!(info.bin_name, "fish");
+        assert_eq!(info.bin_name, "bash");
         assert!(!info.detected);
     }
 
@@ -179,7 +179,7 @@ home = "~/containers/testenv"
         apply_shell_defaults(&mut cfg, &shell);
         assert!(cfg.image.packages.install.contains(&"zsh".to_string()));
         assert_eq!(
-            cfg.container.shell, "fish",
+            cfg.container.shell, "bash",
             "should not override existing shell"
         );
     }

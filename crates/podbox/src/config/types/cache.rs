@@ -69,8 +69,9 @@ pub struct BuiltinCachePath {
     pub container_path: &'static str,
 }
 
-/// Expand the built-in table into one entry per mount, in order.
-fn all_builtin_paths() -> Vec<BuiltinCachePath> {
+/// Every built-in cache mount, in declaration order, regardless of what is
+/// enabled. Public so `env` can probe the host without a config in hand.
+pub fn all_builtin_cache_paths() -> Vec<BuiltinCachePath> {
     BUILTIN_CACHES
         .iter()
         .flat_map(|(cache, mounts)| {
@@ -124,7 +125,7 @@ pub struct BuiltinCaches {
 impl BuiltinCaches {
     /// The mounts the requested built-ins need, in declaration order.
     pub fn enabled_paths(&self) -> Vec<BuiltinCachePath> {
-        all_builtin_paths()
+        all_builtin_cache_paths()
             .into_iter()
             .filter(|p| self.is_enabled(p.cache))
             .collect()
@@ -164,7 +165,7 @@ pub fn builtin_cache_names() -> impl Iterator<Item = &'static str> {
 
 /// Volume names used by a built-in cache, for grouped pruning.
 pub fn builtin_cache_mount_names(cache: &str) -> Option<Vec<&'static str>> {
-    let paths = all_builtin_paths();
+    let paths = all_builtin_cache_paths();
     let mounts: Vec<_> = paths
         .iter()
         .filter(|path| path.cache == cache)

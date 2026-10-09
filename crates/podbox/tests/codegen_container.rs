@@ -405,3 +405,70 @@ fn xdg_dirs_default_to_read_only_and_respect_read_write() {
     // Unset dirs stay unmounted.
     assert!(!q.contains("/home/user/Pictures"));
 }
+
+#[test]
+fn host_cache_with_missing_host_dir_is_skipped_with_a_warning() {
+    // A probed real host: `~/.cargo/git` absent, `~/.cargo/registry` present.
+    let mut env = default_env();
+    env.host_cache_dirs = Some(vec!["~/.cargo/registry".into()]);
+    if let Ok(home) = std::env::var("HOME")
+        && std::path::Path::new(&format!("{home}/.cache/mbx")).is_dir()
+    {
+        env.host_cache_dirs
+            .as_mut()
+            .unwrap()
+            .push("~/.cache/mbx".into());
+    }
+    let config = podbox::config::Config::parse(
+        r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/containers/env"
+[storage.host_caches]
+cargo = true
+mbx = true
+"#,
+    )
+    .unwrap();
+    let (q, warnings) = quadlet::generate_container_with_warnings(&config, &env, &default_xdg());
+    assert!(q.contains("Volume=%h/.cargo/registry"), "{q}");
+    assert!(
+        !q.contains("/.cargo/git"),
+        "missing host dir must be skipped: {q}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("cargo") && w.contains("does not exist")),
+        "expected a warning: {warnings:?}"
+    );
+}
+
+#[test]
+fn host_cache_is_never_skipped_for_an_unprobed_preview_host() {
+    let mut env = default_env();
+    env.host_cache_dirs = None;
+    let config = podbox::config::Config::parse(
+        r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/containers/env"
+[storage.host_caches]
+cargo = true
+"#,
+    )
+    .unwrap();
+    let (q, warnings) = quadlet::generate_container_with_warnings(&config, &env, &default_xdg());
+    assert!(q.contains("Volume=%h/.cargo/registry"), "{q}");
+    assert!(q.contains("Volume=%h/.cargo/git"), "{q}");
+    assert!(
+        !warnings.iter().any(|w| w.contains("host_caches")),
+        "a preview must never drop caches: {warnings:?}"
+    );
+}

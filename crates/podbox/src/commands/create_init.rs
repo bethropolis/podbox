@@ -23,7 +23,7 @@ pub fn run_init(
 ) -> Result<()> {
     let shell_info = podbox::wizard::detect_host_shell();
     if !shell_info.detected && !interactive {
-        eprintln!("Note: $SHELL not set or unrecognized, defaulting to fish.");
+        eprintln!("Note: $SHELL not set or unrecognized, defaulting to bash.");
     }
 
     if interactive {

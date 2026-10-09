@@ -26,6 +26,21 @@ pub fn checksum(content: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Checksum of the definition for build-cache purposes.
+///
+/// `[[provision]]` steps run inside the home volume, never touch the image,
+/// so they are excluded: editing a step must not trigger a rebuild.
+pub(crate) fn definition_checksum(config: &Config) -> Result<String> {
+    let mut value =
+        toml::Value::try_from(config).with_context(|| "failed to serialize definition config")?;
+    if let Some(tbl) = value.as_table_mut() {
+        tbl.remove("provision");
+    }
+    let definition_toml =
+        toml::to_string(&value).with_context(|| "failed to serialize definition config")?;
+    Ok(checksum(&definition_toml))
+}
+
 /// Full build log for a container: ~/.local/state/podbox/<name>/build.log
 pub fn build_log_path(name: &str) -> PathBuf {
     dirs::state_dir()
@@ -145,9 +160,7 @@ fn run_build(
     // Guarded by `run()` for custom builds; prebuilt builds never reach here.
     let guest_bin = crate::guest::PODBOX_GUEST.expect("custom build without embedded guest");
 
-    let definition_toml = toml::to_string(config)
-        .with_context(|| "failed to serialize definition config".to_string())?;
-    let config_checksum = checksum(&definition_toml);
+    let config_checksum = definition_checksum(config)?;
 
     if !rebuild {
         if let Some(lock) = crate::lock::read(&lock_path)? {
@@ -256,5 +269,58 @@ mod tests {
     fn build_log_path_uses_state_dir() {
         let p = build_log_path("myenv");
         assert!(p.ends_with("podbox/myenv/build.log"));
+    }
+
+    #[test]
+    fn provision_steps_are_excluded_from_the_build_checksum() {
+        let base = r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let without = Config::parse(base).unwrap();
+        let with = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+
+[[provision]]
+name = "toolchain"
+run = "mise use -g rust@stable"
+"#,
+        )
+        .unwrap();
+        // Editing a step must never trigger an image rebuild.
+        assert_eq!(
+            definition_checksum(&without).unwrap(),
+            definition_checksum(&with).unwrap()
+        );
+        // An image-affecting change still moves the checksum.
+        let changed_image = Config::parse(
+            r#"
+[image]
+base = "fedora:45"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+
+[[provision]]
+name = "toolchain"
+run = "mise use -g rust@stable"
+"#,
+        )
+        .unwrap();
+        assert_ne!(
+            definition_checksum(&with).unwrap(),
+            definition_checksum(&changed_image).unwrap()
+        );
     }
 }

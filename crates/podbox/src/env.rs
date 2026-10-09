@@ -36,6 +36,16 @@ pub struct HostEnv {
     pub gpg_agent_socket: Option<PathBuf>,
     pub gpg_home: Option<PathBuf>,
     pub ssh_agent_socket: Option<PathBuf>,
+    /// Host cache directories that exist on this host, as `~/`-prefixed
+    /// container paths (e.g. `~/.cargo/git`).
+    ///
+    /// `None` means "not probed" — the Studio/wasm preview has no host to
+    /// inspect, so every host cache is treated as present rather than
+    /// silently dropped from the rendered unit. `Some(dirs)` on a real host
+    /// is authoritative: a configured host cache whose directory is absent
+    /// is skipped with a warning, because there is nothing on the host to
+    /// reuse and podman would refuse to start the container.
+    pub host_cache_dirs: Option<Vec<String>>,
 }
 
 impl HostEnv {
@@ -69,6 +79,8 @@ impl HostEnv {
             gpg_agent_socket: Some(PathBuf::from("/home/user/.gnupg/S.gpg-agent")),
             gpg_home: Some(PathBuf::from("/home/user/.gnupg")),
             ssh_agent_socket: Some(PathBuf::from("/run/user/1000/keyring/ssh")),
+            // A preview has no host to probe, so nothing is skipped.
+            host_cache_dirs: None,
         }
     }
 }
@@ -167,7 +179,7 @@ pub fn resolve() -> Result<HostEnv> {
     Ok(HostEnv {
         uid,
         username,
-        home_dir: home,
+        home_dir: home.clone(),
         xdg_runtime_dir,
         wayland_display,
         wayland_socket,
@@ -190,5 +202,21 @@ pub fn resolve() -> Result<HostEnv> {
         gpg_agent_socket,
         gpg_home,
         ssh_agent_socket,
+        host_cache_dirs: Some(probe_host_cache_dirs(&home)),
     })
+}
+
+/// Host cache directories that exist on this host, as `~/`-prefixed
+/// container paths. Probes every built-in so the answer does not depend on
+/// what a particular config happens to enable; a missing directory is
+/// simply absent from the list.
+#[cfg(feature = "cli")]
+fn probe_host_cache_dirs(home: &Path) -> Vec<String> {
+    crate::config::all_builtin_cache_paths()
+        .into_iter()
+        .filter_map(|p| {
+            let rest = p.container_path.strip_prefix("~/")?;
+            home.join(rest).is_dir().then(|| format!("~/{rest}"))
+        })
+        .collect()
 }

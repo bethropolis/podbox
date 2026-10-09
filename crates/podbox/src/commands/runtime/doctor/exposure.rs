@@ -141,6 +141,35 @@ pub(crate) fn print_exposure_summary(config: &Config) {
             }
         }
     }
+    // Provision steps (declared + stale count). Stamps are stamps; a stale
+    // entry means the home no longer matches the declared step.
+    let provision_rows = crate::commands::provision::classify(config);
+    if provision_rows.is_empty() {
+        line("Provision steps", "none".to_string());
+    } else {
+        let stale = provision_rows
+            .iter()
+            .filter(|(_, s, _)| matches!(s, crate::commands::provision::ProvisionState::Stale))
+            .count();
+        let pending = provision_rows
+            .iter()
+            .filter(|(_, s, _)| matches!(s, crate::commands::provision::ProvisionState::Pending))
+            .count();
+        line(
+            "Provision steps",
+            if stale == 0 && pending == 0 {
+                format!("{} declared, all applied", provision_rows.len())
+            } else {
+                format!(
+                    "{} declared, {pending} pending, {stale} stale",
+                    provision_rows.len()
+                )
+            },
+        );
+        for (name, state, _) in &provision_rows {
+            println!("    • {name} ({})", state.as_str());
+        }
+    }
     // Container-specific at the bottom
     line(
         "Home directory",

@@ -17,6 +17,7 @@ pub mod inspect;
 pub mod lifecycle;
 pub mod list;
 pub mod migrate;
+pub mod provision;
 pub mod pull;
 pub mod recover;
 pub mod runtime;

@@ -60,6 +60,10 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
             podbox::cli::DotfilesCommand::Sync { name }
             | podbox::cli::DotfilesCommand::Status { name } => name.clone(),
         },
+        Command::Provision { provision_cmd } => match provision_cmd {
+            podbox::cli::ProvisionCommand::Sync { name, .. }
+            | podbox::cli::ProvisionCommand::Status { name, .. } => name.clone(),
+        },
         _ => None,
     }
 }

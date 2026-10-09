@@ -59,6 +59,7 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
         if dotfiles_pending && dotfiles_staged {
             crate::commands::dotfiles::provision(cfg, &podbox::env::resolve()?, true)?;
         }
+        crate::commands::provision::run_for_create(cfg, &podbox::env::resolve()?, true)?;
     } else {
         podbox::ui::step("Starting container...");
         if systemd::is_available() {
@@ -78,11 +79,25 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
                 );
             }
         }
+        // Provision steps run once, after dotfiles, in declared order.
+        if let Err(err) =
+            crate::commands::provision::run_for_create(cfg, &podbox::env::resolve()?, false)
+        {
+            eprintln!("Warning: guest provisioning failed: {err:#}");
+            eprintln!(
+                "Run `podbox provision status {container_name}`, then `podbox provision sync {container_name}` to retry."
+            );
+        }
         println!("Run `podbox enter` to enter.");
     }
     if no_start && dotfiles_pending {
         println!(
             "Dotfiles provisioning will run after the container is started; use `podbox dotfiles sync {container_name}` to run it explicitly."
+        );
+    }
+    if no_start && !cfg.provision.is_empty() {
+        println!(
+            "Provisioning steps will run after the container is started; use `podbox provision status {container_name}` to check."
         );
     }
 
@@ -151,7 +166,7 @@ pub fn run_create(
 
         let shell_info = podbox::wizard::detect_host_shell();
         if !shell_info.detected {
-            eprintln!("Note: $SHELL not set or unrecognized, defaulting to fish.");
+            eprintln!("Note: $SHELL not set or unrecognized, defaulting to bash.");
         }
 
         let mut cfg = Config::parse(&profile_content)?;

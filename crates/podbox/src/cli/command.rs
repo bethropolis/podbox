@@ -321,6 +321,12 @@ pub enum Command {
         dotfiles_cmd: DotfilesCommand,
     },
 
+    /// Run one-shot guest provisioning steps.
+    Provision {
+        #[command(subcommand)]
+        provision_cmd: ProvisionCommand,
+    },
+
     /// Run diagnostic checks.
     #[command(display_order = 43)]
     Doctor {
@@ -505,6 +511,32 @@ pub enum DotfilesCommand {
     Status {
         /// Container name (overrides active context).
         name: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ProvisionCommand {
+    /// Run pending or stale provisioning steps.
+    Sync {
+        /// Container name (overrides active context).
+        name: Option<String>,
+        /// Only run these named steps (repeatable).
+        #[arg(long = "step")]
+        steps: Vec<String>,
+        /// Re-run applied steps too.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Show provisioning step states.
+    Status {
+        /// Container name (overrides active context).
+        name: Option<String>,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+        /// Exit 1 when any step is pending or stale (for scripting).
+        #[arg(long)]
+        check: bool,
     },
 }
 

@@ -19,18 +19,18 @@ home = "~/containers/myenv"
     assert_eq!(cfg.image.base, "fedora:41");
     assert_eq!(cfg.image.name, "myenv");
     assert_eq!(cfg.container.name, "myenv");
-    assert_eq!(cfg.container.shell, "fish");
+    assert_eq!(cfg.container.shell, "bash");
     assert_eq!(cfg.integration.gpu, GpuMode::Auto);
-    assert!(cfg.integration.wayland);
-    assert!(cfg.integration.audio);
-    assert!(cfg.integration.dbus);
+    assert!(!cfg.integration.wayland);
+    assert!(!cfg.integration.audio);
+    assert!(!cfg.integration.dbus);
     assert!(!cfg.integration.notify);
     assert!(!cfg.integration.xdg_open);
     assert!(!cfg.integration.clipboard);
     assert!(!cfg.integration.host_exec.enabled);
     assert!(cfg.integration.host_exec.allowlist.is_none());
     assert!(!cfg.integration.ssh_agent);
-    assert!(cfg.integration.git_identity);
+    assert!(!cfg.integration.git_identity);
     assert!(!cfg.lifecycle.auto_checkpoint);
 }
 
@@ -209,7 +209,7 @@ home = "~/containers/myenv"
     assert!(!cfg.integration.xdg_dirs.desktop.is_enabled());
 }
 #[test]
-fn test_wayland_default_is_true() {
+fn test_integration_defaults_to_opt_in() {
     let toml = r#"
 [image]
 base = "fedora:41"
@@ -220,8 +220,10 @@ name = "myenv"
 home = "~/containers/myenv"
 "#;
     let cfg = Config::parse(toml).unwrap();
-    assert!(cfg.integration.wayland);
-    assert!(cfg.integration.audio);
+    assert!(!cfg.integration.git_identity);
+    assert!(!cfg.integration.wayland);
+    assert!(!cfg.integration.audio);
+    assert!(!cfg.integration.dbus);
 }
 #[test]
 fn test_embedded_default_parses() {
@@ -229,9 +231,9 @@ fn test_embedded_default_parses() {
     assert_eq!(cfg.image.base, "fedora:44");
     assert_eq!(cfg.image.name, "podbox");
     assert_eq!(cfg.container.name, "podbox");
-    assert!(cfg.integration.wayland);
-    assert!(cfg.integration.audio);
-    assert!(cfg.integration.dbus);
+    assert!(!cfg.integration.wayland);
+    assert!(!cfg.integration.audio);
+    assert!(!cfg.integration.dbus);
     assert_eq!(cfg.integration.gpu, GpuMode::Auto);
     assert!(!cfg.lifecycle.quadlet);
 }
@@ -294,4 +296,124 @@ fn test_missing_required_fields_errors() {
 base = "fedora:41"
 "#;
     assert!(Config::parse(toml).is_err());
+}
+
+#[test]
+fn provision_steps_parse_with_defaults() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+
+[[provision]]
+name = "rust-toolchain"
+run = "mise use -g rust@stable"
+
+[[provision]]
+name = "git-defaults"
+run = "git config --global init.defaultBranch main"
+on_failure = "abort"
+env = { FOO = "bar" }
+root = false
+timeout = "10m"
+"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.provision.len(), 2);
+    assert_eq!(cfg.provision[0].name, "rust-toolchain");
+    assert_eq!(cfg.provision[0].run, "mise use -g rust@stable");
+    assert_eq!(cfg.provision[0].timeout, "5m");
+    assert_eq!(
+        cfg.provision[0].on_failure,
+        crate::config::types::ProvisionOnFailure::Warn
+    );
+    assert!(cfg.provision[0].env.is_empty());
+    assert!(!cfg.provision[0].root);
+    assert_eq!(cfg.provision[1].timeout, "10m");
+    assert_eq!(
+        cfg.provision[1].on_failure,
+        crate::config::types::ProvisionOnFailure::Abort
+    );
+    assert_eq!(
+        cfg.provision[1].env.get("FOO").map(String::as_str),
+        Some("bar")
+    );
+}
+
+#[test]
+fn empty_provision_is_omitted_from_serialized_toml() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#,
+    )
+    .unwrap();
+    assert!(cfg.provision.is_empty());
+    let out = toml::to_string_pretty(&cfg).unwrap();
+    assert!(!out.contains("provision"), "{out}");
+}
+
+#[test]
+fn provision_steps_round_trip_through_toml() {
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+
+[[provision]]
+name = "toolchain"
+run = "mise use -g rust@stable"
+timeout = "1h"
+"#,
+    )
+    .unwrap();
+    let serialized = toml::to_string_pretty(&cfg).unwrap();
+    assert!(serialized.contains("[[provision]]"), "{serialized}");
+    let reparsed = Config::parse(&serialized).unwrap();
+    assert_eq!(reparsed.provision.len(), 1);
+    assert_eq!(reparsed.provision[0].name, "toolchain");
+    assert_eq!(reparsed.provision[0].run, "mise use -g rust@stable");
+    assert_eq!(reparsed.provision[0].timeout, "1h");
+}
+
+#[test]
+fn provision_run_accepts_multi_line_scripts() {
+    // `run` goes straight to `sh -c`, so embedded newlines are a script,
+    // not a syntax error. Triple-quoted TOML carries them.
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+
+[[provision]]
+name = "toolchain"
+run = """
+set -e
+mise use -g rust@stable
+"""
+"#,
+    )
+    .unwrap();
+    assert_eq!(cfg.provision[0].run, "set -e\nmise use -g rust@stable\n");
+    // Round-trips byte-identical through serialization.
+    let serialized = toml::to_string_pretty(&cfg).unwrap();
+    let reparsed = Config::parse(&serialized).unwrap();
+    assert_eq!(reparsed.provision[0].run, cfg.provision[0].run);
 }

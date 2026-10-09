@@ -4,10 +4,11 @@ use super::super::*;
 
 #[test]
 fn test_dbus_config_defaults_empty() {
-    // Desktop capabilities are opt-in: the embedded default enables none of
-    // them, so no proxy units or portal rules are generated.
+    // D-Bus itself is opt-in: the embedded default enables nothing, so no
+    // preset is applied and no proxy units or portal rules are generated.
     let cfg = Config::embedded();
-    assert_eq!(cfg.dbus.preset, "portal");
+    assert!(!cfg.integration.dbus);
+    assert!(cfg.dbus.preset.is_empty());
     assert!(cfg.dbus_effective_talk().is_empty());
     assert!(cfg.dbus_portal_calls().is_empty());
     assert!(!cfg.use_dbus_proxy());
@@ -24,6 +25,7 @@ home = "~/env"
 [dbus]
 preset = "portal"
 [integration]
+dbus = true
 notify = false
 xdg_open = false
 clipboard = false
@@ -45,6 +47,7 @@ home = "~/env"
 [dbus]
 preset = "portal"
 [integration]
+dbus = true
 notify = true
 xdg_open = false
 clipboard = false
@@ -75,6 +78,7 @@ home = "~/env"
 [dbus]
 preset = "portal"
 [integration]
+dbus = true
 notify = false
 xdg_open = true
 clipboard = false
@@ -98,6 +102,8 @@ home = "~/env"
 [dbus]
 talk = ["org.freedesktop.Notifications", "org.mpris.MediaPlayer2.*"]
 own = ["org.mpris.MediaPlayer2.podbox_app"]
+[integration]
+dbus = true
 "#;
     let cfg = Config::parse(toml).unwrap();
     assert_eq!(
@@ -118,6 +124,8 @@ name = "env"
 home = "~/env"
 [dbus]
 talk = ["org.freedesktop.Notifications"]
+[integration]
+dbus = true
 "#;
     let cfg = Config::parse(toml).unwrap();
     assert_eq!(cfg.dbus.talk.len(), 1);
@@ -135,9 +143,55 @@ name = "env"
 home = "~/env"
 [dbus]
 own = ["org.example.Service"]
+[integration]
+dbus = true
 "#;
     let cfg = Config::parse(toml).unwrap();
     assert!(cfg.dbus.talk.is_empty());
     assert_eq!(cfg.dbus.own.len(), 1);
     assert!(cfg.use_dbus_proxy());
+}
+
+#[test]
+fn dbus_rules_without_dbus_enabled_are_rejected() {
+    // Talk rules with the bus off would be silently ignored — fail fast.
+    let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+talk = ["org.freedesktop.Notifications"]
+"#;
+    let err = Config::parse(toml).unwrap_err().to_string();
+    assert!(err.contains("integration.dbus"), "{err}");
+
+    // ...including a preset without the bus.
+    let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+preset = "portal"
+"#;
+    let err = Config::parse(toml).unwrap_err().to_string();
+    assert!(err.contains("integration.dbus"), "{err}");
+
+    // Explicit `preset = "none"` is a no-op, not dead config — allowed.
+    let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+preset = "none"
+"#;
+    Config::parse(toml).unwrap();
 }

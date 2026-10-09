@@ -29,7 +29,7 @@ impl SchemaVersion {
 use super::defaults::EMBEDDED_DEFAULT;
 use super::types::{
     ContainerConfig, DbusConfig, DotfilesConfig, ImageConfig, IntegrationConfig, LifecycleConfig,
-    NetworkConfig, SecurityConfig, StorageConfig, SystemdConfig, WaylandConfig,
+    NetworkConfig, ProvisionStep, SecurityConfig, StorageConfig, SystemdConfig, WaylandConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -58,6 +58,8 @@ pub struct Config {
     pub security: SecurityConfig,
     #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
     pub storage: StorageConfig,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provision: Vec<ProvisionStep>,
 }
 
 impl Config {

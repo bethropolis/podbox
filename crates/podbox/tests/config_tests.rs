@@ -44,11 +44,11 @@ fn parses_minimal_config() {
 
     assert_eq!(cfg.image.base, "fedora:41");
     assert_eq!(cfg.container.name, "minimal");
-    assert_eq!(cfg.container.shell, "fish");
+    assert_eq!(cfg.container.shell, "bash");
     assert_eq!(cfg.integration.gpu, podbox::config::GpuMode::Auto);
-    assert!(cfg.integration.wayland);
-    assert!(cfg.integration.audio);
-    assert!(cfg.integration.dbus);
+    assert!(!cfg.integration.wayland);
+    assert!(!cfg.integration.audio);
+    assert!(!cfg.integration.dbus);
 }
 
 #[test]
@@ -77,13 +77,14 @@ fn xdg_dirs_default_all_false() {
 }
 
 #[test]
-fn wayland_default_is_true() {
+fn integration_defaults_to_opt_in() {
     let path = fixtures_dir().join("minimal.toml");
     let content = std::fs::read_to_string(path).unwrap();
     let cfg = Config::parse(&content).unwrap();
 
-    assert!(cfg.integration.wayland);
-    assert!(cfg.integration.audio);
+    assert!(!cfg.integration.git_identity);
+    assert!(!cfg.integration.wayland);
+    assert!(!cfg.integration.audio);
 }
 
 #[test]

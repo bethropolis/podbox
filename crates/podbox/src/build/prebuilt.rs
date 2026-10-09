@@ -15,7 +15,7 @@ use crate::env::build_context_dir;
 use crate::error::PodboxError;
 use crate::ui;
 
-use super::{checksum, open_log, run_podman_logged};
+use super::{open_log, run_podman_logged};
 
 pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
     let image_ref = match config.image.source() {
@@ -37,10 +37,9 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
     };
 
     // Checksum covers both the image ref and the install list so that
-    // changing either triggers a rebuild.
-    let definition_toml = toml::to_string(config)
-        .with_context(|| "failed to serialize definition config".to_string())?;
-    let config_checksum = checksum(&definition_toml);
+    // changing either triggers a rebuild. Provision steps are excluded
+    // (see definition_checksum): they touch only the home volume.
+    let config_checksum = super::definition_checksum(config)?;
 
     if !rebuild {
         if let Some(lock) = crate::lock::read(&lock_path)? {

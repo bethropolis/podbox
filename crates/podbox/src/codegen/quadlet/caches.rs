@@ -10,7 +10,8 @@
 //! deliberately *not* `:U`: under `keep-id` the host and container UIDs
 //! already agree, and remapping an existing host directory would be wrong.
 
-use crate::config::{Config, HostCacheConfig, HostCachesConfig, SharedCachesConfig};
+use crate::config::{Config, HostCachesConfig, SharedCachesConfig};
+use crate::env::HostEnv;
 
 /// Expand a `~/`-prefixed path against a container home, leaving absolute
 /// paths untouched.
@@ -52,28 +53,60 @@ pub(super) fn emit_shared_caches(lines: &mut Vec<String>, caches: &SharedCachesC
 }
 
 /// Emit `Volume=` lines for host bind-mounted caches.
-pub(super) fn emit_host_caches(lines: &mut Vec<String>, caches: &HostCachesConfig, home: &str) {
+///
+/// A cache whose host directory does not exist is skipped with a warning
+/// rather than emitted: there is nothing on the host to reuse, and podman
+/// fails to start the container outright when a bind source is missing.
+/// `env.host_cache_dirs` is `None` for a preview host, so nothing is
+/// skipped there.
+pub(super) fn emit_host_caches(
+    lines: &mut Vec<String>,
+    caches: &HostCachesConfig,
+    home: &str,
+    env: &HostEnv,
+    warnings: &mut Vec<String>,
+) {
     // A built-in is the same relative path on both sides, so the host path
     // is just the container path with the container home removed.
+    let probed = env.host_cache_dirs.as_ref();
     for path in caches.enabled_paths() {
+        if let Some(present) = probed
+            && !present.iter().any(|p| p == path.container_path)
+        {
+            warnings.push(format!(
+                "storage.host_caches: '{}' skipped -- {} does not exist on the host",
+                path.cache,
+                host_display(path.container_path)
+            ));
+            continue;
+        }
         lines.push(format!(
             "Volume={}:{}:rw,z",
             on_host(path.container_path),
             in_container(path.container_path, home)
         ));
     }
-    for HostCacheConfig {
-        name: _,
-        host_path,
-        container_path,
-    } in &caches.custom
-    {
+    for cache in &caches.custom {
+        if let Some(present) = probed
+            && !present.contains(&cache.host_path)
+        {
+            warnings.push(format!(
+                "storage.host_caches: '{}' skipped -- {} does not exist on the host",
+                cache.name, cache.host_path
+            ));
+            continue;
+        }
         lines.push(format!(
             "Volume={}:{}:rw,z",
-            on_host(host_path),
-            in_container(container_path, home)
+            on_host(&cache.host_path),
+            in_container(&cache.container_path, home)
         ));
     }
+}
+
+/// Render a container path the way the host knows it, for the warning.
+fn host_display(container_path: &str) -> String {
+    on_host(container_path).replace("%h", "~")
 }
 
 /// Container-side paths a host cache would occupy, used by validation to

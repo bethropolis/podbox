@@ -73,8 +73,8 @@ fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool
         .add_base_packages(distro, host_shell.as_deref(), host_locale.as_deref())
         // The image must contain the shell the container actually runs. Only
         // the host's shell was installed above, so a config asking for a
-        // different one (podbox's own default is `fish`) produced `CMD ["fish"]`
-        // on an image without fish, and the container failed to start a shell.
+        // different one produced a `CMD` pointing at a binary that was never
+        // installed, and the container failed to start a shell.
         .add_shell_packages(distro, &config.container.shell)
         .add_user_packages(config.image.packages.install.clone())
         .add_run_commands(config.image.run.commands.clone())
@@ -253,7 +253,7 @@ impl ContainerfileBuilder {
                 "bash" => Some("bash"),
                 _ => None,
             })
-            .unwrap_or("fish")
+            .unwrap_or("bash")
     }
 }
 
@@ -349,9 +349,8 @@ mod tests {
         assert!(cf.contains("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]"));
     }
 
-    /// podbox's default shell is `fish`, but the image only ever installed the
-    /// *host's* shell package. Configuring a shell the host does not use
-    /// produced a `CMD` pointing at a binary that was never installed.
+    /// A configured shell is installed even when the host uses another one;
+    /// otherwise `CMD` would point at a binary that was never installed.
     #[test]
     fn test_configured_shell_is_installed_regardless_of_host_shell() {
         let mut config = crate::config::Config::embedded();

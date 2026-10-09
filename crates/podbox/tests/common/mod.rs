@@ -80,6 +80,7 @@ pub fn default_env() -> HostEnv {
         gpg_agent_socket: None,
         gpg_home: None,
         ssh_agent_socket: None,
+        host_cache_dirs: None,
     }
 }
 

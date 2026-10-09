@@ -317,7 +317,13 @@ pub(super) fn emit_volumes(
     }
 
     caches::emit_shared_caches(lines, &config.storage.shared_caches, home_in_container);
-    caches::emit_host_caches(lines, &config.storage.host_caches, home_in_container);
+    caches::emit_host_caches(
+        lines,
+        &config.storage.host_caches,
+        home_in_container,
+        env,
+        warnings,
+    );
     if caches::any_configured(config) {
         lines.push(String::new());
     }

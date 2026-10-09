@@ -16,7 +16,8 @@ mod cache;
 mod runtime;
 pub use cache::{
     BuiltinCachePath, BuiltinCaches, CustomCacheConfig, HostCacheConfig, HostCachesConfig,
-    SharedCachesConfig, StorageConfig, builtin_cache_mount_names, builtin_cache_names,
+    SharedCachesConfig, StorageConfig, all_builtin_cache_paths, builtin_cache_mount_names,
+    builtin_cache_names,
 };
 pub use runtime::{NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig};
 
@@ -284,15 +285,15 @@ impl HostExecConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct IntegrationConfig {
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub git_identity: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub wayland: bool,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub audio: bool,
     #[serde(default, skip_serializing_if = "is_default_gpu")]
     pub gpu: GpuMode,
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub dbus: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub notify: bool,
@@ -323,11 +324,11 @@ pub struct IntegrationConfig {
 impl Default for IntegrationConfig {
     fn default() -> Self {
         IntegrationConfig {
-            git_identity: true,
-            wayland: true,
-            audio: true,
+            git_identity: false,
+            wayland: false,
+            audio: false,
             gpu: GpuMode::Auto,
-            dbus: true,
+            dbus: false,
             notify: false,
             xdg_open: false,
             clipboard: false,
@@ -368,6 +369,32 @@ pub struct ExportConfig {
     pub apps: Vec<String>,
     #[serde(default)]
     pub bins: Vec<String>,
+}
+
+fn default_provision_timeout() -> String {
+    "5m".into()
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProvisionOnFailure {
+    #[default]
+    Warn,
+    Abort,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct ProvisionStep {
+    pub name: String,
+    pub run: String,
+    #[serde(default = "default_provision_timeout")]
+    pub timeout: String,
+    #[serde(default)]
+    pub on_failure: ProvisionOnFailure,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub root: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

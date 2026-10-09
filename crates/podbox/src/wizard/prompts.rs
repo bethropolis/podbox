@@ -84,7 +84,7 @@ pub(super) fn prompt_custom_image() -> anyhow::Result<(crate::config::Config, St
     let packages: String =
         dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
             .with_prompt("Packages to install (space-separated)")
-            .default("fish fastfetch".to_string())
+            .default("fastfetch".to_string())
             .interact_text()?;
     cfg.image.packages.install = packages
         .split_whitespace()
@@ -209,7 +209,7 @@ pub(super) fn prompt_extra_mounts() -> Vec<String> {
 pub(super) fn prompt_wayland() -> bool {
     dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt("Wayland support?")
-        .default(true)
+        .default(false)
         .interact()
         .expect("failed to get wayland preference")
 }
@@ -217,7 +217,7 @@ pub(super) fn prompt_wayland() -> bool {
 pub(super) fn prompt_audio() -> bool {
     dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt("Audio support (PipeWire/PulseAudio)?")
-        .default(true)
+        .default(false)
         .interact()
         .expect("failed to get audio preference")
 }
@@ -225,7 +225,7 @@ pub(super) fn prompt_audio() -> bool {
 pub(super) fn prompt_dbus() -> bool {
     dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
         .with_prompt("D-Bus session bus access?")
-        .default(true)
+        .default(false)
         .interact()
         .expect("failed to get dbus preference")
 }

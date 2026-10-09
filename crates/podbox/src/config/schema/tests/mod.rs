@@ -4,6 +4,7 @@
 mod dbus;
 mod network;
 mod parse;
+mod provision;
 mod resources;
 mod security;
 mod version;

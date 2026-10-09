@@ -167,7 +167,7 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
         "podmgr.default_shell"
     };
     if let Some(shell) = labels.get(shell_key) {
-        if config.container.shell == "fish" {
+        if config.container.shell == "bash" {
             config.container.shell.clone_from(shell);
         }
     }

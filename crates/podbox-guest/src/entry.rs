@@ -102,7 +102,7 @@ pub fn run(cmd: &[String]) -> ! {
         exec_shell_cmd(&cmd[0], &cmd[1..], None);
     } else if is_tty {
         // Interactive with no explicit CMD: start a login shell
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/usr/bin/fish".into());
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
         let arg0 = format!("-{shell}");
         exec_shell_cmd(&shell, &[], Some(arg0));
     } else {

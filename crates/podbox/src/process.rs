@@ -127,7 +127,25 @@ pub fn spawn_interactive_timeout(
     args: &[OsString],
     timeout: Duration,
 ) -> anyhow::Result<ExitStatus> {
-    let mut child = Command::new(bin).args(args).spawn()?;
+    let mut cmd = Command::new(bin);
+    cmd.args(args);
+    spawn_interactive_timeout_cmd(&mut cmd, timeout)
+}
+
+/// Same as [`spawn_interactive_timeout`] but takes a pre-built command so
+/// callers can set stdin/stdout (e.g. null stdin for one-shot exec).
+pub fn spawn_interactive_timeout_with_stdio(
+    cmd: &mut Command,
+    timeout: Duration,
+) -> anyhow::Result<ExitStatus> {
+    spawn_interactive_timeout_cmd(cmd, timeout)
+}
+
+fn spawn_interactive_timeout_cmd(
+    cmd: &mut Command,
+    timeout: Duration,
+) -> anyhow::Result<ExitStatus> {
+    let mut child = cmd.spawn()?;
     let pid = Pid::from_raw(child.id().cast_signed());
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
