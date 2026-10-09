@@ -15,6 +15,7 @@ export const docsNav: NavEntry[] = [
   { slug: 'export', label: 'Desktop Integration' },
   { slug: 'guest', label: 'Guest Daemon' },
   { slug: 'dbus-proxy', label: 'D-Bus Proxy' },
+  { slug: 'setup', label: 'Home Setup' },
   { slug: 'quadlet', label: 'Quadlet Reference' },
   { slug: 'protocol', label: 'Protocol' },
   { slug: 'troubleshooting', label: 'Troubleshooting' },

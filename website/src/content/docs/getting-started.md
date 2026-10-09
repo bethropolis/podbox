@@ -190,12 +190,12 @@ base = "fedora:44"
 name = "myenv"
 
 [image.packages]
-install = ["fish", "git", "neovim", "gcc", "ripgrep"]
+install = ["git", "neovim", "gcc", "ripgrep"]
 
 [container]
 name = "myenv"
 home = "~/containers/myenv"
-shell = "/usr/bin/fish"
+shell = "/bin/bash"
 
 [integration]
 wayland = true
@@ -533,12 +533,15 @@ podbox edit myenv --rebuild
 | `podbox completions <shell>` | Generate shell completions |
 | `podbox dotfiles sync [<name>]` | Update dotfiles and rerun their install command |
 | `podbox dotfiles status [<name>]` | Show dotfiles provisioning state |
+| `podbox provision sync [<name>]` | Run pending or stale provisioning steps |
+| `podbox provision status [<name>]` | Show the state of each provisioning step |
 
 All commands support `--dry-run` to preview without side effects.
 
 ## Next Steps
 
 - [Configuration Reference](config.md) — all TOML keys, defaults, and examples
+- [Home Setup](setup.md) — dotfiles and one-shot provisioning steps
 - [Architecture Overview](architecture.md) — how podbox works end-to-end
 - [Desktop Integration](export.md) — exporting apps and binaries
 - [Troubleshooting Guide](troubleshooting.md) — common issues and fixes

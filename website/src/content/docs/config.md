@@ -54,7 +54,7 @@ commands = ["dnf clean all"]
 |-----|------|---------|-------------|
 | `name` | string | *required* | Container name (used for systemd unit names, socket paths) |
 | `home` | string | *required* | Host path for isolated home (`~` expands) |
-| `shell` | string | `"fish"` | Default login shell inside the container |
+| `shell` | string | `"bash"` | Default login shell inside the container |
 | `memory` | string | — | Memory limit (e.g. `"4G"`, `"2048M"`). Passed as `Memory=` in Quadlet |
 | `cpus` | string | — | CPU limit (e.g. `"2.0"`, `"0.5"`). Passed through to Podman as `--cpus` |
 | `slice` | string | `"podbox.slice"` | systemd slice for the container service |
@@ -98,39 +98,8 @@ Short form restarts on failure; long form takes `restart = "never"`,
 `"on-failure"`, or `"always"`, plus an `env` table. Logs go to
 `/run/podbox/services/<name>.log`. Services don't block idle shutdown.
 
-## `[dotfiles]`
-
-One-time dotfiles bootstrap during `podbox create`. Host sources copy into
-the container home; Git sources clone on the host, so your SSH keys stay
-where they are.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `source` | string | *required* | `host:<path>` to copy a local directory, or a Git URL/reference to clone |
-| `target` | string | `~/.dotfiles` | Destination inside the container home; must stay within that home |
-| `clone_on` | string | `"host"` | Git clone location: `"host"` or `"container"` |
-| `install` | string | — | Shell command run inside the container from `target` after acquisition |
-
-```toml
-[dotfiles]
-source = "host:~/.dotfiles"
-target = "~/.dotfiles"
-install = "./install.sh"
-```
-
-Runs once during `create` — never on plain starts. If creation used
-`--no-start` or failed halfway: `podbox dotfiles sync [name]` retries,
-`podbox dotfiles status [name]` shows state. Failures are warnings; the
-container still works.
-
-<details>
-<summary>Environment available to the install command</summary>
-
-`PODBOX=1`, `PODBOX_CONTAINER`, `PODBOX_DISTRO`, `PODBOX_HOME`,
-`PODBOX_DOTFILES_DIR`. `PODBOX_PROFILE` is set when the image name matches
-a built-in profile.
-
-</details>
+For one-shot setup inside the home — `[dotfiles]` and `[[provision]]` — see
+[Home Setup](setup.md). Both keys are documented there with their behaviour.
 
 ## `[security]`
 
@@ -260,6 +229,11 @@ use `shared_caches` when only containers use it.
 
 Same built-ins as `shared_caches` — same relative path on both sides.
 
+A cache whose host directory doesn't exist is skipped with a warning, not
+mounted: there is nothing on the host to reuse, and podman refuses to start
+a container whose bind source is missing. Create the directory (or run the
+tool once on the host) and re-enable to pick it up.
+
 ```toml
 [storage.host_caches]
 npm = true
@@ -305,10 +279,10 @@ Controls which host resources are shared with the container.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `wayland` | bool | `true` | Share Wayland socket for GUI apps |
-| `audio` | bool | `true` | Share PipeWire/PulseAudio sockets |
+| `wayland` | bool | `false` | Share Wayland socket for GUI apps |
+| `audio` | bool | `false` | Share PipeWire/PulseAudio sockets |
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
-| `dbus` | bool | `true` | Enable D-Bus session bus access |
+| `dbus` | bool | `false` | Enable D-Bus session bus access. Talk/own/preset rules without it are rejected |
 | `notify` | bool | `false` | Desktop notification forwarding |
 | `xdg_open` | bool | `false` | URI opening via host (`xdg-open`) |
 | `clipboard` | bool | `false` | Clipboard sharing |
@@ -316,7 +290,7 @@ Controls which host resources are shared with the container.
 | `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |
 | `sync_themes` | bool | `false` | Bind-mount `~/.themes` and `~/.local/share/themes` (read-only) when present on the host |
 | `gpg_agent` | bool | `false` | Forward GPG agent socket (`S.gpg-agent`). Sets `GPG_TTY` and `GNUPGHOME` |
-| `git_identity` | bool | `true` | Bridge host Git identity and `safe.directory` into the container. Needs `git` in the image — podbox never installs it, so this is a no-op without it |
+| `git_identity` | bool | `false` | Bridge host Git identity and `safe.directory` into the container. Needs `git` in the image — podbox never installs it, so this is a no-op without it |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
 
@@ -544,7 +518,7 @@ commands = ["dnf clean all"]    # Extra RUN steps
 [container]
 name = "myenv"                  # Required; used for unit names and socket paths
 home = "~/containers/myenv"     # Required; isolated home directory (~ expands)
-shell = "fish"                  # Default login shell
+shell = "bash"                  # Default login shell
 memory = "4G"                   # Memory limit (e.g. "4G", "512M", omitted = unlimited)
 cpus = "2.0"                    # CPU limit (e.g. "2.0", "0.5", omitted = unlimited)
 reload_cmd = "systemctl reload …"  # systemd ReloadCmd (omitted = none)
@@ -591,6 +565,16 @@ secrets = ["openai_key"]        # Podman secrets; no value ever lands in the ima
 # name = "aws_creds"
 # type = "mount"
 # mode = "0400"
+
+# ── Provisioning ───────────────────────────────────────
+# One-shot setup inside the container home, after dotfiles.
+[[provision]]
+name = "rust-toolchain"        # a-z0-9_- ; unique per container
+run = "mise use -g rust@stable"  # executed with sh -c from the home
+timeout = "5m"                 # 30s / 5m / 1h (default 5m)
+on_failure = "warn"            # warn (default) or abort
+env = { FOO = "bar" }          # extra variables; no PODBOX_ keys
+root = false                   # run as root inside the container
 
 # ── Network ────────────────────────────────────────────
 [network]

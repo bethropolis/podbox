@@ -218,11 +218,6 @@ export const SEARCH_DOCS: SearchDoc[] = [
         "level": 3
       },
       {
-        "id": "dotfiles",
-        "text": "[dotfiles]",
-        "level": 2
-      },
-      {
         "id": "security",
         "text": "[security]",
         "level": 2
@@ -856,6 +851,59 @@ export const SEARCH_DOCS: SearchDoc[] = [
       {
         "id": "important-notes",
         "text": "Important Notes",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "id": "setup",
+    "title": "Home Setup",
+    "path": "/docs/setup",
+    "description": "One-shot setup inside a podbox container home — dotfiles and provisioning steps, both stamped, plus host-side automation.",
+    "headings": [
+      {
+        "id": "dotfiles",
+        "text": "[dotfiles]",
+        "level": 2
+      },
+      {
+        "id": "provision",
+        "text": "[[provision]]",
+        "level": 2
+      },
+      {
+        "id": "how-steps-are-stamped",
+        "text": "How steps are stamped",
+        "level": 3
+      },
+      {
+        "id": "running-steps",
+        "text": "Running steps",
+        "level": 3
+      },
+      {
+        "id": "step-states",
+        "text": "Step states",
+        "level": 3
+      },
+      {
+        "id": "failure-handling",
+        "text": "Failure handling",
+        "level": 3
+      },
+      {
+        "id": "sharing-setup-between-configs",
+        "text": "Sharing setup between configs",
+        "level": 2
+      },
+      {
+        "id": "host-side-automation",
+        "text": "Host-side automation",
+        "level": 2
+      },
+      {
+        "id": "common-questions",
+        "text": "Common questions",
         "level": 2
       }
     ]

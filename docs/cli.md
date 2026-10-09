@@ -16,6 +16,7 @@ description: podbox CLI reference — every command grouped by workflow, contain
 | Remove | `remove` (alias `rm`) |
 | Context | `use` |
 | Dotfiles | `dotfiles sync`, `dotfiles status` |
+| Provision | `provision sync`, `provision status` |
 | Storage | `cache list`, `cache prune` |
 
 `serve`, `compositor`, `__complete-names`, and `internal-stdin-watchdog`
