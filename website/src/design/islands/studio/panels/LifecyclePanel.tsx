@@ -11,10 +11,13 @@ import { StudioTooltip } from '../../../components/StudioTooltip';
 import { ON_STOP_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type LifecyclePanelProps = Pick<StudioState, 'lifeAutoCheckpoint' | 'lifeAutoUpdate' | 'lifeAutostart' | 'lifeOnStop' | 'lifeQuadlet' | 'setLifeAutoCheckpoint' | 'setLifeAutoUpdate' | 'setLifeAutostart' | 'setLifeOnStop' | 'setLifeQuadlet' | 'setSysAfter' | 'sysAfter'>;
+type LifecyclePanelProps = Pick<StudioState, 'lifeAutoCheckpoint' | 'lifeAutoUpdate' | 'lifeAutostart' | 'lifeIdleTimeout' | 'lifeOnStop' | 'lifeQuadlet' | 'setLifeAutoCheckpoint' | 'setLifeAutoUpdate' | 'setLifeAutostart' | 'setLifeIdleTimeout' | 'setLifeOnStop' | 'setLifeQuadlet' | 'setSysAfter' | 'sysAfter'>;
 
-export function LifecyclePanel({ st }: { st: LifecyclePanelProps }) {
-  const { lifeAutoCheckpoint, lifeAutoUpdate, lifeAutostart, lifeOnStop, lifeQuadlet, setLifeAutoCheckpoint, setLifeAutoUpdate, setLifeAutostart, setLifeOnStop, setLifeQuadlet, setSysAfter, sysAfter } = st;
+const IDLE_TIMEOUT_PRESETS = ['off', '30s', '5m', '15m', '30m', '1h'];
+
+export function LifecyclePanel({ st, errorMap }: { st: LifecyclePanelProps; errorMap?: Record<string, string> }) {
+  const { lifeAutoCheckpoint, lifeAutoUpdate, lifeAutostart, lifeIdleTimeout, lifeOnStop, lifeQuadlet, setLifeAutoCheckpoint, setLifeAutoUpdate, setLifeAutostart, setLifeIdleTimeout, setLifeOnStop, setLifeQuadlet, setSysAfter, sysAfter } = st;
+  const err = (field: string) => errorMap?.[field];
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -99,6 +102,32 @@ export function LifecyclePanel({ st }: { st: LifecyclePanelProps }) {
         onChange={setLifeOnStop}
         options={ON_STOP_OPTIONS}
       />
+    </div>
+
+    <div className="space-y-1">
+      <StudioInput
+        label={
+          <div className="flex items-center">
+            <span>Idle Timeout</span>
+            <StudioTooltip
+              section="[lifecycle]"
+              title='idle_timeout = "off"'
+              description="Stop the container after this long with no user processes running. off means it runs until you stop it."
+            />
+          </div>
+        }
+        value={lifeIdleTimeout}
+        onChange={(e) => setLifeIdleTimeout(e.target.value)}
+        placeholder="off"
+        list="studio-idle-timeout-presets"
+        id="studio-input-lifecycle-idle-timeout"
+        error={err('lifecycle.idle_timeout')}
+      />
+      <datalist id="studio-idle-timeout-presets">
+        {IDLE_TIMEOUT_PRESETS.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
     </div>
 
     <StudioSwitch

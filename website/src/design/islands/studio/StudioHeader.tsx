@@ -36,8 +36,8 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
   const onReset = () => st.applyPatch(defaultPatch());
   const onClearSession = () => st.clearSavedSession();
   return (
-<div className={`shrink-0 border-b border-[var(--border)] ${isFullscreen ? 'pb-2.5 mb-2.5 space-y-2' : 'pb-4 mb-4 space-y-3'}`}>
-  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div className={`shrink-0 border-b border-[var(--border)] ${isFullscreen ? 'pb-2 mb-2' : 'pb-4 mb-4 space-y-3'}`}>
+  <div className={`flex flex-col md:flex-row md:items-center justify-between ${isFullscreen ? 'gap-2' : 'gap-4'}`}>
     {/* Left: Branding & status */}
     <div className="flex items-center gap-3">
       {!isFullscreen && (

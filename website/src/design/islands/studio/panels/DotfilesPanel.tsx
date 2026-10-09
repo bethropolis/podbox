@@ -8,9 +8,10 @@ import {
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { DOTFILES_CLONE_OPTIONS } from '../schema';
+import { ProvisionSteps } from './ProvisionPanel';
 import type { StudioState } from '../useStudioState';
 
-type DotfilesPanelProps = Pick<StudioState, 'dotfilesCloneOn' | 'dotfilesInstall' | 'dotfilesSource' | 'dotfilesTarget' | 'setDotfilesCloneOn' | 'setDotfilesInstall' | 'setDotfilesSource' | 'setDotfilesTarget'>;
+type DotfilesPanelProps = Pick<StudioState, 'dotfilesCloneOn' | 'dotfilesInstall' | 'dotfilesSource' | 'dotfilesTarget' | 'setDotfilesCloneOn' | 'setDotfilesInstall' | 'setDotfilesSource' | 'setDotfilesTarget' | 'provisionSteps' | 'setProvisionSteps'>;
 
 export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorMap?: Record<string, string> }) {
   const { dotfilesCloneOn, dotfilesInstall, dotfilesSource, dotfilesTarget, setDotfilesCloneOn, setDotfilesInstall, setDotfilesSource, setDotfilesTarget } = st;
@@ -103,6 +104,10 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
     id="studio-input-dotfiles-install"
     error={err('dotfiles.install')}
   />
+
+  <div className="pt-4 border-t border-[var(--border)]">
+    <ProvisionSteps st={st} errorMap={errorMap} />
+  </div>
 </div>
   );
 }

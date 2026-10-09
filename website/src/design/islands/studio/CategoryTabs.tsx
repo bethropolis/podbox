@@ -29,7 +29,7 @@ const icons: Record<string, typeof Box> = {
 
 const categories = CATEGORIES.map((cat) => ({ ...cat, icon: icons[cat.id] ?? Box }));
 
-export function CategoryTabs({ st, errorMap, advisoryMap }: { st: Pick<StudioState, 'activeCategory' | 'setActiveCategory'>; errorMap?: Record<string, string>; advisoryMap?: Record<string, string> }) {
+export function CategoryTabs({ st, errorMap, advisoryMap }: { st: Pick<StudioState, 'activeCategory' | 'setActiveCategory' | 'isFullscreen'>; errorMap?: Record<string, string>; advisoryMap?: Record<string, string> }) {
   const stripRef = useRef<HTMLDivElement>(null);
 
   // Translate vertical wheel into horizontal scroll while hovering the
@@ -63,14 +63,20 @@ export function CategoryTabs({ st, errorMap, advisoryMap }: { st: Pick<StudioSta
   }, [st.activeCategory]);
 
   return (
-<div ref={stripRef} className="shrink-0 bg-[var(--bg-crust)] border-b border-[var(--border)] px-2.5 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-none">
+<div ref={stripRef} className={`shrink-0 bg-[var(--bg-crust)] border-b border-[var(--border)] px-2.5 flex items-center gap-1 overflow-x-auto scrollbar-none ${st.isFullscreen ? 'py-1' : 'py-1.5'}`}>
   {categories.map((cat) => {
     const Icon = cat.icon;
     const isActive = st.activeCategory === cat.id;
-    const hasError = !!errorMap && Object.keys(errorMap).some((f) => f === cat.id || f.startsWith(`${cat.id}.`));
+    // `[[provision]]` steps render inside the dotfiles panel, so their
+    // `provision[i].*` fields badge that tab.
+    const owns = (f: string) =>
+      f === cat.id ||
+      f.startsWith(`${cat.id}.`) ||
+      (cat.id === 'dotfiles' && (f === 'provision' || f.startsWith('provision[') || f.startsWith('provision.')));
+    const hasError = !!errorMap && Object.keys(errorMap).some(owns);
     // Advisories (e.g. host_exec enabled without an allowlist) are still
     // worth flagging on the tab, just not in alarm red.
-    const hasAdvisory = !hasError && !!advisoryMap && Object.keys(advisoryMap).some((f) => f === cat.id || f.startsWith(`${cat.id}.`));
+    const hasAdvisory = !hasError && !!advisoryMap && Object.keys(advisoryMap).some(owns);
     return (
       <button
         key={cat.id}

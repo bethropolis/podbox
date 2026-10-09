@@ -36,49 +36,72 @@ export const PRESETS: readonly PresetDef[] = [
   {
     id: 'rust',
     label: 'Rust Dev',
-    blurb: 'Fedora with a mise-managed toolchain and mr-boxington',
+    blurb: 'CachyOS with a mise-managed toolchain, mr-boxington, and LazyVim',
     icon: Flame,
     accent: 'text-[var(--accent-peach)]',
     overrides: {
-      selectedPresetDistro: 'fedora:44',
+      selectedPresetDistro: 'cachyos/cachyos:latest',
       ...named('rust-dev'),
-      // The toolchain comes from mise, not dnf: installing distro `cargo` and
-      // `rustc` alongside it would shadow the mise shims. `git` is listed
-      // explicitly because podbox's base set has curl but *not* git, and the
-      // git_identity bridge is a silent no-op in a container without it.
-      packagesInstallList: ['git', 'neovim', 'ripgrep', 'mold'],
-      runCommands: [
-        'curl -fsSL https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh',
-        // Three locations have to be pinned, or the toolchain builds fine and
-        // then fails at runtime:
-        //   MISE_DATA_DIR          tool installs (default ~/.local/share/mise)
-        //   MISE_GLOBAL_CONFIG_FILE  `mise use --global` config — without it the
-        //     build writes root's ~/.config/mise and no shim finds a version
-        //   RUSTUP_HOME            mise's `rust` tool is only a rustup proxy, so
-        //     the real toolchain follows RUSTUP_HOME (default ~/.rustup) and
-        //     lands in root's home, invisible to the container user
-        // CARGO_HOME is deliberately left alone: it stays per-user, which is
-        // where the shared cargo cache volume is mounted (~/.cargo/registry).
-        'MISE_DATA_DIR=/usr/local/share/mise MISE_GLOBAL_CONFIG_FILE=/usr/local/share/mise/config.toml RUSTUP_HOME=/usr/local/share/rustup mise use --global --tool-option mr_boxington=true rust mr-boxington && ln -sf /usr/local/share/mise/shims/* /usr/local/bin/',
+      // mise and fish come from the CachyOS repos — no curl bootstrap, no
+      // RUN layer. The toolchain itself installs at first boot via
+      // [[provision]] steps, so it lives in the home volume, not the image.
+      // `git` is explicit because the base set has curl but *not* git, and
+      // the git_identity bridge is a silent no-op in a container without it.
+      packagesInstallList: ['git', 'neovim', 'ripgrep', 'mold', 'mise', 'fish'],
+      packageManager: 'pacman',
+      containerShell: 'fish',
+      provisionSteps: [
+        {
+          name: 'mise-activate',
+          run: "mkdir -p ~/.config/fish/conf.d\necho 'mise activate fish | source' > ~/.config/fish/conf.d/mise.fish",
+          timeout: '5m',
+          onFailure: 'warn',
+          envList: [],
+          root: false,
+        },
+        {
+          name: 'rust-toolchain',
+          run: 'mise use -g rust',
+          timeout: '5m',
+          onFailure: 'warn',
+          envList: [],
+          root: false,
+        },
+        {
+          name: 'mr-boxington',
+          run: 'mise use --global --tool-option mr_boxington=true rust mr-boxington',
+          timeout: '5m',
+          onFailure: 'warn',
+          envList: [],
+          root: false,
+        },
+        {
+          name: 'expose-shims',
+          run: 'ln -sf $PODBOX_HOME/.local/share/mise/shims/* /usr/local/bin/',
+          timeout: '5m',
+          onFailure: 'warn',
+          envList: [],
+          root: true,
+        },
+        {
+          name: 'lazyvim',
+          run: '[ -d ~/.config/nvim ] || git clone https://github.com/LazyVim/starter ~/.config/nvim',
+          timeout: '5m',
+          onFailure: 'warn',
+          envList: [],
+          root: false,
+        },
       ],
-      envVars: [
-        { key: 'MISE_DATA_DIR', value: '/usr/local/share/mise' },
-        { key: 'MISE_GLOBAL_CONFIG_FILE', value: '/usr/local/share/mise/config.toml' },
-        { key: 'RUSTUP_HOME', value: '/usr/local/share/rustup' },
-      ],
-      // mr-boxington runs in the container, so its ~/.cache/mbx belongs with
-      // the cargo registry: podbox-managed volumes, shared between containers.
-      // `rustup` is deliberately absent — a toolchain is libc-bound and must
-      // not cross distro boundaries.
-      sharedCaches: ['cargo', 'mbx'],
-      // Deviates from podbox's `audio = true`; everything else below is
-      // already the Studio default and therefore never written to the TOML.
-      intAudio: false,
-      intNotify: true,
+      // Host caches reuse the host's own cargo registry and mbx store;
+      // `rustup` stays out — a toolchain is libc-bound and must not cross
+      // machines via a shared volume.
+      sharedCaches: [],
+      hostCaches: ['cargo', 'mbx'],
+      // Everything below is already the Studio default except the opt-ins,
+      // which are the only lines that reach the TOML.
+      intGitIdentity: true,
       intXdgOpen: true,
-      intClipboard: true,
       intSshAgent: true,
-      xdgProjects: 'rw',
     },
   },
   {
@@ -127,7 +150,6 @@ export const PRESETS: readonly PresetDef[] = [
       packagesInstallList: ['busybox-extras', 'curl', 'ca-certificates'],
       runCommands: ['apk cache clean'],
       ...headlessIntegration,
-      intDbus: false,
       readOnlyRootfs: true,
       noNewPrivileges: true,
       // Ports are rejected when the network is none/offline. The defaults are

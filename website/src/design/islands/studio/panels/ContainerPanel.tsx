@@ -80,7 +80,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
           <span>Default Shell</span>
           <StudioTooltip
             section="[container]"
-            title="shell = &quot;fish&quot;"
+            title="shell = &quot;bash&quot;"
             description="Shell opened by podbox enter."
           />
         </div>

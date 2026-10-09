@@ -291,7 +291,8 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
   opacity: 0.04;
 }
 
-/* Code block syntax coloring helpers */
+/* Code block syntax coloring helpers (Catppuccin: Mocha by default, Latte
+   under html.light — all var-driven so both themes follow automatically). */
 .syntax-keyword { color: var(--accent-mauve); }
 .syntax-string { color: var(--accent-green); }
 .syntax-comment { color: var(--text-muted); font-style: italic; }
@@ -300,6 +301,7 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
 .syntax-operator { color: var(--accent-teal); }
 .syntax-variable { color: var(--accent-red); }
 .syntax-section { color: var(--accent-yellow); font-weight: 600; }
+.syntax-punct { color: var(--text-muted); }
 
 /* Install-tab switcher (CSS-only tabs, zero JS). Radios live hidden inside
    .install-tabs; :has() wires the titlebar labels and panels together.

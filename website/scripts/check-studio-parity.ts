@@ -47,6 +47,39 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       lifeAutoCheckpoint: true,
     },
   ],
+  // [[provision]]: array-of-tables, defaults omitted, abort + root + env
+  // emitted only when they differ from the engine default.
+  [
+    "provision",
+    {
+      provisionSteps: [
+        {
+          name: "rust-toolchain",
+          run: "mise use -g rust@stable",
+          timeout: "5m",
+          onFailure: "warn",
+          envList: [],
+          root: false,
+        },
+        {
+          name: "git-defaults",
+          run: 'git config --global init.defaultBranch main',
+          timeout: "10m",
+          onFailure: "abort",
+          envList: [{ key: "FOO", value: "bar" }],
+          root: true,
+        },
+        {
+          name: "multi-line",
+          run: "set -e\nmise use -g rust@stable\necho done",
+          timeout: "5m",
+          onFailure: "warn",
+          envList: [],
+          root: false,
+        },
+      ],
+    },
+  ],
 ];
 
 let failed = 0;

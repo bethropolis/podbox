@@ -5,8 +5,9 @@
 // readers below. Unknown keys are ignored; missing keys keep current state.
 
 import type { StudioValues } from './useStudioState';
-import type { MountItem, EnvVarItem, HostExecItem, SecretItem, ServiceItem } from './types';
+import type { MountItem, EnvVarItem, HostExecItem, ProvisionItem, SecretItem, ServiceItem } from './types';
 import { FIELDS, CACHE_ORDER, getPath, coerceScalar } from './schema';
+import { PROVISION_DEFAULT_TIMEOUT } from './types';
 
 type Patch = Partial<StudioValues>;
 
@@ -98,6 +99,27 @@ function parseCacheFlags(rec: unknown): string[] | undefined {
   );
 }
 
+/** `[[provision]]` array-of-tables → step list, in declared order. */
+function parseProvisionSteps(rec: unknown): ProvisionItem[] | undefined {
+  if (!Array.isArray(rec)) return undefined;
+  return rec.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const t = entry as Record<string, unknown>;
+    const name = str(t.name);
+    const run = str(t.run);
+    // A step without both is not loadable; keep the rest.
+    if (!name?.trim() || !run?.trim()) return [];
+    return [{
+      name,
+      run,
+      timeout: str(t.timeout) ?? PROVISION_DEFAULT_TIMEOUT,
+      onFailure: t.on_failure === 'abort' ? 'abort' : 'warn',
+      envList: parseEnv(t.env) ?? [],
+      root: bool(t.root) ?? false,
+    }];
+  });
+}
+
 export function tomlToPatch(doc: Record<string, any>): Patch {
   const patch: Record<string, any> = { activePreset: 'custom' };
   const sec = (name: string): Record<string, any> =>
@@ -179,6 +201,9 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
   if (sharedCaches) patch.sharedCaches = sharedCaches;
   const hostCaches = parseCacheFlags(storage.host_caches);
   if (hostCaches) patch.hostCaches = hostCaches;
+
+  const provision = parseProvisionSteps((doc as Record<string, any>).provision);
+  if (provision) patch.provisionSteps = provision;
 
   const integration = sec('integration');
   // gpu accepts bare bools or "auto"/"nvidia"/"true"/"false" strings.

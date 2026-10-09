@@ -42,7 +42,13 @@ export function StudioPage(_props: StudioPageProps) {
   // Banner click-to-focus: jump to the tab owning the field, then focus it.
   const focusField = (field: string | undefined) => {
     if (!field) return;
-    const category = field.split('.')[0];
+    // `[[provision]]` steps live in the dotfiles panel; their engine fields
+    // look like `provision[0].name` and their inputs are id'd per step.
+    const provisionMatch = field.match(/^provision\[(\d+)\]\.(.+)$/);
+    const category = provisionMatch ? 'dotfiles' : field.split('.')[0];
+    const targetId = provisionMatch
+      ? `studio-input-provision-${provisionMatch[1]}-${provisionMatch[2]}`
+      : `studio-input-${field.replaceAll('.', '-')}`;
     // Tabs currently rendered; fields from other sections skip the switch
     // (their banner entry still shows) and go straight to the focus attempt.
     const known = ['image', 'container', 'dotfiles', 'storage', 'security', 'network', 'integration', 'lifecycle', 'dbus', 'wayland'];
@@ -50,16 +56,18 @@ export function StudioPage(_props: StudioPageProps) {
       st.setActiveCategory(category as typeof st.activeCategory);
     }
     // Panels render after the category switch; wait a tick before focusing.
+    // A step carrying the error opens itself (see ProvisionSteps), but the
+    // state flip needs a beat to land before the element exists.
     window.setTimeout(() => {
-      document.getElementById(`studio-input-${field.replaceAll('.', '-')}`)?.focus();
-    }, 50);
+      document.getElementById(targetId)?.focus();
+    }, 120);
   };
 
   return (
 <div
   className={`w-full font-sans text-[var(--text-primary)] transition-all ${
     st.isFullscreen
-      ? 'fixed inset-0 z-50 bg-[var(--bg-base)] flex flex-col p-3 sm:p-4 h-screen max-h-screen overflow-hidden'
+      ? 'fixed inset-0 z-50 bg-[var(--bg-base)] flex flex-col p-2 sm:p-3 h-screen max-h-screen overflow-hidden'
       : 'max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:h-[calc(100vh-4.5rem)] lg:flex lg:flex-col lg:overflow-hidden'
   }`}
 >
@@ -68,7 +76,7 @@ export function StudioPage(_props: StudioPageProps) {
 
 {/* Live diagnostics from the Rust engine (validation errors + codegen warnings) */}
 {wasmReady && validation && (errors.length > 0 || warnings.length > 0) && (
-  <div className="mb-4 space-y-1.5 font-mono text-xs">
+  <div className={`${isFullscreen ? 'mb-2' : 'mb-4'} space-y-1.5 font-mono text-xs`}>
     {errors.map((issue, idx) => (
       <button
         key={`e-${idx}`}
@@ -90,13 +98,13 @@ export function StudioPage(_props: StudioPageProps) {
 
 {/* 2. MAIN WORKSPACE (SETTINGS + LIVE PREVIEW)                           */}
 {/* -------------------------------------------------------------------- */}
-<div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-stretch ${st.isFullscreen ? 'flex-1 min-h-0 overflow-hidden' : 'lg:flex-1 lg:min-h-0 lg:overflow-hidden'}`}>
+<div className={`grid grid-cols-1 lg:grid-cols-12 lg:items-stretch ${st.isFullscreen ? 'gap-3 flex-1 min-h-0 overflow-hidden' : 'gap-4 lg:flex-1 lg:min-h-0 lg:overflow-hidden'}`}>
   {/* LEFT COLUMN: Categories & Settings Form (7 cols) */}
   <div className="lg:col-span-7 flex flex-col min-h-0 h-full overflow-hidden rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)]/40 shadow-sm">
           <CategoryTabs st={st} errorMap={errorMap} advisoryMap={validation?.advisoryMap ?? {}} />
 
 {/* Form Content Body - Scrollable */}
-<div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-6 scrollbar-slim bg-[var(--bg-base)]">
+<div className={`flex-1 min-h-0 overflow-y-auto space-y-6 scrollbar-slim bg-[var(--bg-base)] ${isFullscreen ? 'p-3' : 'p-4 sm:p-5'}`}>
             {activeCategory === 'image' && <ImagePanel st={st} errorMap={errorMap} />}
             {activeCategory === 'container' && <ContainerPanel st={st} errorMap={errorMap} />}
             {activeCategory === 'dotfiles' && <DotfilesPanel st={st} errorMap={errorMap} />}
@@ -104,7 +112,7 @@ export function StudioPage(_props: StudioPageProps) {
             {activeCategory === 'security' && <SecurityPanel st={st} />}
             {activeCategory === 'network' && <NetworkPanel st={st} errorMap={errorMap} />}
             {activeCategory === 'integration' && <IntegrationPanel st={st} errorMap={errorMap} />}
-            {activeCategory === 'lifecycle' && <LifecyclePanel st={st} />}
+            {activeCategory === 'lifecycle' && <LifecyclePanel st={st} errorMap={errorMap} />}
             {activeCategory === 'dbus' && <DbusPanel st={st} />}
             {activeCategory === 'wayland' && <WaylandPanel st={st} />}
           </div>

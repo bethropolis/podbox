@@ -6,7 +6,9 @@
 // appear exactly when the user configures them.
 
 import type { StudioValues } from './useStudioState';
+import type { ProvisionItem } from './types';
 import { isBareSecret } from './types';
+import { PROVISION_DEFAULT_TIMEOUT } from './types';
 import {
   FIELDS,
   CACHE_ORDER,
@@ -26,6 +28,7 @@ const TABLE_ORDER = [
   'container.mounts',
   'container.services',
   'dotfiles',
+  'provision',
   'storage.shared_caches',
   'storage.host_caches',
   'security',
@@ -40,13 +43,22 @@ const TABLE_ORDER = [
   'dbus',
   'wayland',
 ];
-
 // Tables that only render when their feature toggle is on (talk/own lists
 // without dbus, or firewall rules without wayland, would be dead config).
 const TABLE_GATES: Record<string, (s: StudioValues) => boolean> = {
   dbus: (s) => s.intDbus,
   wayland: (s) => s.intWayland,
+  // A step with a blank name or blank command cannot parse, so the section
+  // only appears once the row is usable.
+  provision: (s) => validProvisionSteps(s).length > 0,
 };
+
+const validProvisionSteps = (s: StudioValues): ProvisionItem[] =>
+  s.provisionSteps.filter((p) => p.name.trim() && p.run.trim());
+
+// Tables that write their own headers: `[[provision]]` is an array of tables,
+// so a bare `[provision]` header would be a duplicate key.
+const SELF_HEADED_TABLES = new Set(['provision']);
 
 function scalarLines(s: StudioValues, table: string): string[] {
   const vals = s as unknown as V;
@@ -164,9 +176,48 @@ function customLines(s: StudioValues, table: string): string[] {
       if (!s.intWayland) return [];
       return s.waylandFirewall ? [] : ['firewall = false'];
     }
+    case 'provision': {
+      const lines: string[] = [];
+      for (const step of validProvisionSteps(s)) {
+        lines.push('[[provision]]');
+        lines.push(`name = "${esc(step.name.trim())}"`);
+        lines.push(`run = ${tomlString(step.run.trim())}`);
+        // `5m` is the engine default — never written out.
+        const timeout = step.timeout.trim();
+        if (timeout && timeout !== PROVISION_DEFAULT_TIMEOUT) {
+          lines.push(`timeout = "${esc(timeout)}"`);
+        }
+        if (step.onFailure === 'abort') lines.push('on_failure = "abort"');
+        const env = step.envList.filter((e) => e.key.trim());
+        if (env.length > 0) {
+          lines.push(`env = { ${env.map((e) => `${e.key.trim()} = "${esc(e.value)}"`).join(', ')} }`);
+        }
+        if (step.root) lines.push('root = true');
+      }
+      return lines;
+    }
     default:
       return [];
   }
+}
+
+/** Escape a value for a TOML basic string. */
+function esc(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * Quote a string for TOML: single-line values stay `"..."`, multi-line ones
+ * become a `"""` block with the delimiters on their own lines. The newline
+ * right after the opener is trimmed by the parser; the one before the closer
+ * becomes a trailing newline in the value — insignificant to `sh -c`, and
+ * the trim-then-emit cycle is a stable fixed point.
+ * Escaping `\` and `"` up front means content can never terminate the
+ * delimiter early.
+ */
+function tomlString(s: string): string {
+  if (s.includes('\n')) return `"""\n${esc(s)}\n"""`;
+  return `"${esc(s)}"`;
 }
 
 function cacheLines(enabled: string[]): string[] {
@@ -182,7 +233,7 @@ export function generateStudioToml(s: StudioValues): string {
     if (lines.length === 0) continue;
     if (!first) t += `\n`;
     first = false;
-    t += `[${table}]\n`;
+    if (!SELF_HEADED_TABLES.has(table)) t += `[${table}]\n`;
     t += `${lines.join('\n')}\n`;
   }
   return t;

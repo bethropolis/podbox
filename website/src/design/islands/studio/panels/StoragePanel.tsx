@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Database,
   Plus,
   Trash2,
+  ChevronDown,
 } from 'lucide-react';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { STUDIO_FIELD } from '../../../components/StudioControls';
@@ -51,6 +52,10 @@ type StoragePanelProps = Pick<StudioState, 'extraMounts' | 'hostCaches' | 'setEx
 export function StoragePanel({ st }: { st: StoragePanelProps }) {
   const { extraMounts, hostCaches, setExtraMounts, setHostCaches, setSharedCaches, sharedCaches } = st;
 
+  // Off caches hide behind an expander so the list doesn't dominate the
+  // panel; enabled ones are always visible on top.
+  const [showAll, setShowAll] = useState(false);
+
   // Rebuilding from a Set keeps the two lists exclusive and in the canonical
   // BUILTIN_CACHES order, so the emitted TOML never depends on click order.
   const setCacheMode = (name: string, mode: CacheMode) => {
@@ -60,9 +65,43 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
     if (mode === 'host') host.add(name);
     setSharedCaches(CACHE_ORDER.filter((c) => shared.has(c)));
     setHostCaches(CACHE_ORDER.filter((c) => host.has(c)));
+    // Turning a cache off moves it into the collapsed section — open it so
+    // the row doesn't just vanish from under the cursor.
+    if (mode === 'off') setShowAll(true);
   };
 
+  const isOn = (name: string) => sharedCaches.includes(name) || hostCaches.includes(name);
+  const onCaches = CACHE_ORDER.filter(isOn);
+  const offCaches = CACHE_ORDER.filter((c) => !isOn(c));
   const enabled = sharedCaches.length + hostCaches.length;
+
+  const row = (name: string) => {
+    const mode: CacheMode = sharedCaches.includes(name)
+      ? 'shared'
+      : hostCaches.includes(name)
+        ? 'host'
+        : 'off';
+    return (
+      <div
+        key={name}
+        className="flex items-center justify-between gap-3 px-2.5 py-1 hover:bg-[var(--bg-surface0)]/40 transition-colors"
+      >
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span
+            className={`text-xs font-mono font-medium shrink-0 ${
+              mode === 'off' ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'
+            }`}
+          >
+            {name}
+          </span>
+          <span className="text-[11px] text-[var(--text-muted)] truncate hidden md:block">
+            {CACHE_DESCRIPTIONS[name]}
+          </span>
+        </div>
+        <ModeControl mode={mode} onChange={(m) => setCacheMode(name, m)} />
+      </div>
+    );
+  };
 
   return (
 <div className="space-y-5 animate-fadeIn">
@@ -95,33 +134,21 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
     </div>
 
     <div className="divide-y divide-[var(--border)] rounded-[2px] border border-[var(--border)] overflow-hidden">
-      {CACHE_ORDER.map((name) => {
-        const mode: CacheMode = sharedCaches.includes(name)
-          ? 'shared'
-          : hostCaches.includes(name)
-            ? 'host'
-            : 'off';
-        return (
-          <div
-            key={name}
-            className="flex items-center justify-between gap-3 px-2.5 py-1 hover:bg-[var(--bg-surface0)]/40 transition-colors"
-          >
-            <div className="flex items-baseline gap-2 min-w-0">
-              <span
-                className={`text-xs font-mono font-medium shrink-0 ${
-                  mode === 'off' ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'
-                }`}
-              >
-                {name}
-              </span>
-              <span className="text-[11px] text-[var(--text-muted)] truncate hidden md:block">
-                {CACHE_DESCRIPTIONS[name]}
-              </span>
-            </div>
-            <ModeControl mode={mode} onChange={(m) => setCacheMode(name, m)} />
-          </div>
-        );
-      })}
+      {onCaches.map(row)}
+      {offCaches.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(!showAll)}
+          aria-expanded={showAll}
+          className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-[11px] font-mono text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]/40 transition-colors cursor-pointer"
+        >
+          <ChevronDown
+            className={`w-3 h-3 transition-transform duration-150 ${showAll ? '' : '-rotate-90'}`}
+          />
+          {showAll ? 'Hide unused caches' : `Show ${offCaches.length} unused caches`}
+        </button>
+      )}
+      {showAll && offCaches.map(row)}
     </div>
   </div>
 

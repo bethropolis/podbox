@@ -8,38 +8,12 @@ import {
 } from 'lucide-react';
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
+import { highlightDocument, type PreviewLang } from './highlight';
 
-const highlightCodeLine = (line: string, lang: string) => {
-  const trimmed = line.trim();
-  if (trimmed.startsWith('#') || trimmed.startsWith('//') || trimmed.startsWith(';')) {
-    return <span className="syntax-comment">{line}</span>;
-  }
-  if (lang === 'toml' || lang === 'ini') {
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      return <span className="syntax-section font-bold text-[var(--accent-mauve)]">{line}</span>;
-    }
-    const eqIdx = line.indexOf('=');
-    if (eqIdx !== -1) {
-      const key = line.slice(0, eqIdx);
-      const val = line.slice(eqIdx + 1);
-      return (
-        <>
-          <span className="syntax-variable text-[var(--accent-blue)]">{key}</span>
-          <span className="syntax-operator text-[var(--text-muted)]">=</span>
-          <span className={val.includes('"') ? 'syntax-string text-[var(--accent-green)]' : 'syntax-number text-[var(--accent-peach)]'}>
-            {val}
-          </span>
-        </>
-      );
-    }
-  }
-  return <span>{line}</span>;
-};
-
-interface CodePreviewProps { st: Pick<StudioState, 'activeView' | 'setActiveView' | 'containerName' | 'copied'>; toml: string; quadlet: string; containerfile: string | null; engine: 'rust' | 'ts'; }
+interface CodePreviewProps { st: Pick<StudioState, 'activeView' | 'setActiveView' | 'containerName' | 'copied' | 'isFullscreen'>; toml: string; quadlet: string; containerfile: string | null; engine: 'rust' | 'ts'; }
 
 export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePreviewProps) {
-  const { activeView, setActiveView, containerName, copied } = st;
+  const { activeView, setActiveView, containerName, copied, isFullscreen } = st;
   const { handleCopyConfig } = useOutputActions(
     st as Pick<StudioState, 'activeView' | 'containerName' | 'copied' | 'setCopied' | 'setShowExportMenu'>, toml, quadlet, containerfile);
   // The engine always renders a Containerfile: prebuilt images get the short
@@ -49,55 +23,62 @@ export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePr
   const showContainerfile = containerfile != null && containerfile.length > 0;
   const view = activeView === 'containerfile' && !showContainerfile ? 'toml' : activeView;
   const code = view === 'toml' ? toml : view === 'containerfile' ? (containerfile ?? '') : quadlet;
+  const lang: PreviewLang = view === 'toml' ? 'toml' : view === 'containerfile' ? 'containerfile' : 'quadlet';
+  const highlighted = highlightDocument(code, lang);
   const lines = code.split('\n');
+  // Fullscreen is a workbench: tighter chrome so the code itself gets the pixels.
+  const pad = isFullscreen ? 'px-2 py-1' : 'px-3 py-2';
   return (
 <div className="lg:col-span-5 flex flex-col min-h-0 h-full overflow-hidden rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] shadow-sm">
   {/* Header tabs for Output */}
-  <div className="shrink-0 flex items-center justify-between bg-[var(--bg-crust)] px-3 py-2 border-b border-[var(--border)]">
-    <div className="flex items-center gap-1">
+  <div className={`shrink-0 flex items-center justify-between gap-2 bg-[var(--bg-crust)] border-b border-[var(--border)] ${pad}`}>
+    <div className="flex items-center gap-1 min-w-0 overflow-hidden">
       <button
         type="button"
         onClick={() => setActiveView('toml')}
-        className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+        title={`${containerName || 'podbox'}.toml`}
+        className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 min-w-0 max-w-[160px] ${
           view === 'toml'
             ? 'bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-bold shadow-xs'
             : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]'
         }`}
       >
-        <FileCode2 className="w-3 h-3" />
-        <span>{containerName || 'podbox'}.toml</span>
+        <FileCode2 className="w-3 h-3 shrink-0" />
+        <span className="truncate">{containerName || 'podbox'}.toml</span>
       </button>
 
       <button
         type="button"
         onClick={() => setActiveView('quadlet')}
-        className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+        title={`${containerName || 'podbox'}.container`}
+        className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 min-w-0 max-w-[160px] ${
           view === 'quadlet'
             ? 'bg-[var(--accent-peach)] text-[var(--bg-crust)] font-bold shadow-xs'
             : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]'
         }`}
       >
-        <Terminal className="w-3 h-3" />
-        <span>{containerName || 'podbox'}.container</span>
+        <Terminal className="w-3 h-3 shrink-0" />
+        <span className="truncate">{containerName || 'podbox'}.container</span>
       </button>
 
       {showContainerfile && (
         <button
           type="button"
           onClick={() => setActiveView('containerfile')}
-          className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+          title="Containerfile"
+          className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
             view === 'containerfile'
               ? 'bg-[var(--accent-teal)] text-[var(--bg-crust)] font-bold shadow-xs'
               : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]'
           }`}
         >
-          <Box className="w-3 h-3" />
+          <Box className="w-3 h-3 shrink-0" />
           <span>Containerfile</span>
         </button>
       )}
     </div>
 
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 shrink-0">
       <button
         onClick={handleCopyConfig}
         type="button"
@@ -120,15 +101,15 @@ export function CodePreview({ st, toml, quadlet, containerfile, engine }: CodePr
   </div>
 
   {/* Code Body - flex-1 min-h-0 overflow-auto */}
-  <div className="flex-1 min-h-0 overflow-auto p-3.5 font-mono text-[12.5px] leading-relaxed select-text scrollbar-slim bg-[var(--bg-crust)]/50">
+  <div className={`flex-1 min-h-0 overflow-auto font-mono select-text scrollbar-slim bg-[var(--bg-crust)]/50 ${isFullscreen ? 'p-2 text-[12px] leading-snug' : 'p-3.5 text-[12.5px] leading-relaxed'}`}>
     <div className="table w-full">
-      {lines.map((line, idx) => (
+      {highlighted.map((nodes, idx) => (
         <div key={idx} className="table-row hover:bg-[var(--bg-surface0)]/40 transition-colors">
-          <span className="table-cell pr-4 pl-1 text-right select-none text-[var(--text-muted)]/40 text-[11px] w-9">
+          <span className={`table-cell text-right select-none text-[var(--text-muted)]/40 text-[11px] ${isFullscreen ? 'pr-2 pl-0.5 w-7' : 'pr-4 pl-1 w-9'}`}>
             {idx + 1}
           </span>
           <span className="table-cell whitespace-pre font-mono">
-            {highlightCodeLine(line, view)}
+            {nodes}
           </span>
         </div>
       ))}

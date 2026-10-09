@@ -9,7 +9,10 @@
 // from this module instead of hardcoding them. `bun run check:studio`
 // guards the data layer against drift.
 
-import type { EnvVarItem, HostExecItem, MountItem, SecretItem, ServiceItem } from './types';
+import type { EnvVarItem, HostExecItem, MountItem, ProvisionItem, SecretItem, ServiceItem } from './types';
+
+export type { ProvisionItem };
+export { ON_FAILURE_OPTIONS, PROVISION_DEFAULT_TIMEOUT } from './types';
 
 // ── scalar field kinds ────────────────────────────────────────────────────
 
@@ -299,6 +302,8 @@ export interface StudioDefaults {
   intSyncThemes: boolean;
   intSshAgent: boolean;
   intGpgAgent: boolean;
+  /** `[[provision]]` steps (top-level, ordered). */
+  provisionSteps: ProvisionItem[];
   hostExecEnabled: boolean;
   hostExecList: HostExecItem[];
   // [integration.hardware] — host device passthrough
@@ -346,8 +351,7 @@ export const UI_ONLY_KEYS = [
   'showExportMenu',
 ] as const;
 
-export const STUDIO_DEFAULTS: StudioDefaults = {
-  // view state
+export const STUDIO_DEFAULTS: StudioDefaults = {  // view state
   isFullscreen: false,
   activeCategory: 'image',
   activeView: 'toml',
@@ -380,7 +384,7 @@ export const STUDIO_DEFAULTS: StudioDefaults = {
   // [container]
   containerName: 'dev',
   containerHome: '~/containers/dev',
-  containerShell: 'fish',
+  containerShell: 'bash',
   // Empty = unlimited. Limits are opt-in per container, not a base default.
   containerMemory: '',
   containerCpus: '',
@@ -407,11 +411,13 @@ extraMounts: [{ host: '', guest: '', mode: 'z' }],
   netOffline: false,
   portMappingsList: [],
   // [integration]
-  intGitIdentity: true,
-  intWayland: true,
-  intAudio: true,
+  // Everything here is opt-in: the engine default is off for all of these
+  // except gpu (auto-detect), so Studio only writes what you turn on.
+  intGitIdentity: false,
+  intWayland: false,
+  intAudio: false,
   intGpu: 'auto',
-  intDbus: true,
+  intDbus: false,
   intNotify: false,
   intXdgOpen: false,
   intClipboard: false,
@@ -422,6 +428,9 @@ extraMounts: [{ host: '', guest: '', mode: 'z' }],
   intGpgAgent: false,
   hostExecEnabled: false,
   hostExecList: [],
+  // One empty row so the pattern is discoverable; the emitter drops blank
+  // rows, so the placeholder never becomes a real step.
+  provisionSteps: [],
   hwKvm: false,
   hwJoystick: false,
   hwWebcam: false,
@@ -475,9 +484,9 @@ export const FIELDS: FieldDef[] = [
   // [container]
   { stateKey: 'containerName', tomlPath: 'container.name', kind: 'string', def: '', emit: 'always' },
   { stateKey: 'containerHome', tomlPath: 'container.home', kind: 'string', def: '', emit: 'non-empty' },
-  // 'fish' is podbox's own default, so it is never written out; a different
+  // 'bash' is podbox's own default, so it is never written out; a different
   // shell is an intentional override and gets emitted.
-  { stateKey: 'containerShell', tomlPath: 'container.shell', kind: 'string', def: 'fish', emit: 'non-default' },
+  { stateKey: 'containerShell', tomlPath: 'container.shell', kind: 'string', def: 'bash', emit: 'non-default' },
   { stateKey: 'containerMemory', tomlPath: 'container.memory', kind: 'string', def: '', emit: 'non-empty' },
   { stateKey: 'containerCpus', tomlPath: 'container.cpus', kind: 'string', def: '', emit: 'non-empty' },
   { stateKey: 'containerSlice', tomlPath: 'container.slice', kind: 'string', def: 'podbox.slice', emit: 'non-default' },
@@ -502,10 +511,10 @@ export const FIELDS: FieldDef[] = [
   { stateKey: 'netOffline', tomlPath: 'network.offline', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'portMappingsList', tomlPath: 'network.ports', kind: 'string-list', def: [], emit: 'non-empty' },
   // [integration]
-  { stateKey: 'intGitIdentity', tomlPath: 'integration.git_identity', kind: 'boolean', def: true, emit: 'is-false' },
-  { stateKey: 'intWayland', tomlPath: 'integration.wayland', kind: 'boolean', def: true, emit: 'non-default' },
-  { stateKey: 'intAudio', tomlPath: 'integration.audio', kind: 'boolean', def: true, emit: 'non-default' },
-  { stateKey: 'intDbus', tomlPath: 'integration.dbus', kind: 'boolean', def: true, emit: 'non-default' },
+  { stateKey: 'intGitIdentity', tomlPath: 'integration.git_identity', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'intWayland', tomlPath: 'integration.wayland', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'intAudio', tomlPath: 'integration.audio', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'intDbus', tomlPath: 'integration.dbus', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intNotify', tomlPath: 'integration.notify', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intXdgOpen', tomlPath: 'integration.xdg_open', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intClipboard', tomlPath: 'integration.clipboard', kind: 'boolean', def: false, emit: 'is-true' },

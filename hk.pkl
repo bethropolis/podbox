@@ -12,7 +12,8 @@ exclude = List(
     "website/src/design/searchIndex.ts",
     "website/public/assets",
     "website/public/install.sh",
-    "website/public/og-image.png"
+    "website/public/og-image.png",
+    "website/src/wasm"
 )
 
 local linters = new Mapping {
