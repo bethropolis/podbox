@@ -171,6 +171,20 @@ impl ContainerfileBuilder {
         lines.push(format!("FROM {}", self.base_image));
         lines.push(String::new());
 
+        // CachyOS only (not vanilla Arch): its pacman is patched with a
+        // network-isolation hook sandbox that rootless userns cannot grant,
+        // so every GUI package install fails its hooks there. Vanilla Arch's
+        // pacman lacks that toggle entirely (an unrecognized directive would
+        // only warn), hence the base-name gate instead of a family gate.
+        // Directive must sit inside [options]; EOF would park it under a
+        // repo section where pacman ignores it.
+        if distro == DistroFamily::ArchLike && self.base_image.to_lowercase().contains("cachy") {
+            lines.push(String::from(
+                "RUN sed -i 's/^\\[options\\]/[options]\\nDisableSandboxNetwork/' /etc/pacman.conf",
+            ));
+            lines.push(String::new());
+        }
+
         if !self.packages.is_empty() {
             let pkgs = self.packages.join(" ");
             let clean = distro.clean_cmd();
@@ -309,6 +323,36 @@ mod tests {
         assert!(cf.contains("ENV PODBOX_CONTAINER=test"));
         // No locale requested, so no localedef
         assert!(!cf.contains("localedef"));
+    }
+
+    #[test]
+    fn test_builder_arch_disables_hook_sandbox() {
+        // CachyOS pacman has the network-sandbox toggle; vanilla Arch's
+        // lacks it, so only CachyOS bases get the line.
+        let cachy = ContainerfileBuilder::new("cachyos/cachyos:latest", "test").add_base_packages(
+            DistroFamily::ArchLike,
+            Some("/bin/bash"),
+            None,
+        );
+        let cf = cachy.build();
+        let unsandbox = "DisableSandboxNetwork";
+        assert!(cf.contains(unsandbox));
+        // Must precede the install layer to take effect.
+        assert!(cf.find(unsandbox) < cf.find("RUN pacman -Syu"));
+
+        let arch = ContainerfileBuilder::new("archlinux:latest", "test").add_base_packages(
+            DistroFamily::ArchLike,
+            Some("/bin/bash"),
+            None,
+        );
+        assert!(!arch.build().contains("DisableSandbox"));
+
+        let fedora = ContainerfileBuilder::new("fedora:41", "test").add_base_packages(
+            DistroFamily::FedoraLike,
+            Some("/bin/bash"),
+            None,
+        );
+        assert!(!fedora.build().contains("DisableSandbox"));
     }
 
     #[test]

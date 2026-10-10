@@ -69,6 +69,9 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
             podbox::process::spawn_interactive("podman", &args)?;
         }
         podbox::ui::ok(&format!("Container '{container_name}' is running"));
+        // `create` starts via systemd/podman directly, bypassing `run_start`,
+        // so exports happen here rather than riding along with it.
+        podbox::export::ensure_exports(cfg, container_name);
         if dotfiles_pending && dotfiles_staged {
             if let Err(err) =
                 crate::commands::dotfiles::provision(cfg, &podbox::env::resolve()?, false)
@@ -273,7 +276,7 @@ pub fn run_create(
             .unwrap_or_else(|| PathBuf::from("~"))
             .join("containers")
             .join(&container_name);
-        cfg.image.packages.manager = detect_package_manager(image);
+        cfg.image.packages.manager = Some(detect_package_manager(image));
         cfg.container.shell.clear();
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {

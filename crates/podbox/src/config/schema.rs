@@ -125,6 +125,13 @@ impl Config {
                 "--call=org.freedesktop.portal.Desktop=org.freedesktop.DBus.Introspectable.*@/org/freedesktop/portal/*"
                     .into(),
             );
+            // Nearly every GTK app reads theme preferences via Settings.Read
+            // at startup; without this it falls back with a warning. Read-only
+            // like introspection — no portal privilege beyond preferences.
+            rules.push(
+                "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.Settings.*@/org/freedesktop/portal/desktop"
+                    .into(),
+            );
         }
         rules
     }

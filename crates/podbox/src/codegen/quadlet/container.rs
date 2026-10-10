@@ -345,8 +345,9 @@ pub(super) fn emit_env(
         lines.push(String::new());
     }
 
-    // Extra user env
-    for (key, value) in &config.container.env.values {
+    // Extra user env, layered over engine-derived defaults (SHELL and
+    // friends — see ContainerConfig::effective_env). Explicit wins.
+    for (key, value) in &config.container.effective_env() {
         if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
             // systemd expands % specifiers in Environment= values. Double
             // user-supplied percent signs so they arrive literally in the

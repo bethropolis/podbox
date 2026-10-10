@@ -6,16 +6,58 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::Instant;
 
+use super::tracker::Tracker;
+
 pub(crate) struct FirewallState {
     blocked_interfaces: HashSet<String>,
+    /// Connection-global Wayland object tracker for fd attribution.
+    /// Shared by both bridge directions: object ids are unique per
+    /// connection regardless of which side minted them.
+    tracker: Tracker,
 }
 
 impl FirewallState {
     pub(crate) fn new(blocked_interfaces: Vec<String>) -> Self {
         Self {
             blocked_interfaces: blocked_interfaces.into_iter().collect(),
+            tracker: Tracker::default(),
         }
     }
+}
+
+/// Learn ids minted by a client→host request (registries, binds, factories).
+pub(crate) fn track_client_request(
+    state: &Mutex<FirewallState>,
+    obj: u32,
+    opcode: u16,
+    msg: &[u8],
+) {
+    state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .tracker
+        .observe_client_request(obj, opcode, msg);
+}
+
+/// Learn ids minted by a host→client event (offers), forget `delete_id`s.
+pub(crate) fn track_server_event(state: &Mutex<FirewallState>, obj: u32, opcode: u16, msg: &[u8]) {
+    state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .tracker
+        .observe_server_event(obj, opcode, msg);
+}
+
+/// How many descriptors does this message carry? Only recognized bearers
+/// take from the fd queue; every other message takes nothing.
+pub(crate) fn fd_arity(
+    state: &Mutex<FirewallState>,
+    obj: u32,
+    opcode: u16,
+    client_to_host: bool,
+) -> u8 {
+    let guard = state.lock().unwrap_or_else(|e| e.into_inner());
+    guard.tracker.fd_arity(obj, opcode, client_to_host)
 }
 
 pub(crate) fn rate_allow(bucket: &mut f64, last_refill: &mut Instant) -> bool {

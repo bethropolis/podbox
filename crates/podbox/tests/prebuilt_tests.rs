@@ -66,9 +66,14 @@ fn containerfile_prebuilt_generates_minimal() {
     assert!(cf.contains(r#"ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]"#));
     assert!(cf.contains(r#"CMD ["/usr/bin/fish"]"#));
     assert!(cf.contains("ENV PODBOX_CONTAINER=prebuilt"));
-    // Prebuilt should NOT include packages or RUN commands
+    // Prebuilt should NOT include packages or RUN commands — except the
+    // CachyOS pacman sandbox relaxation, which needs no package install.
     assert!(!cf.contains("dnf install"));
-    assert!(!cf.contains("RUN "));
+    assert!(
+        !cf.lines()
+            .any(|l| l.starts_with("RUN ") && !l.contains("DisableSandboxNetwork")),
+        "unexpected RUN layer:\n{cf}"
+    );
 }
 
 #[test]

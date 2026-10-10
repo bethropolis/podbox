@@ -163,6 +163,10 @@ pub fn run_start(
     println!("Starting container...");
     crate::commands::ensure_running(name, false, timeout_secs)?;
     println!("Container '{name}' is running!");
+    // Declared apps/bins export here, not at enable: discovery execs into
+    // the container, so it needs a running box. Re-running on every start
+    // also heals exports deleted from the host since last time.
+    podbox::export::ensure_exports(config, name);
     let _ = podbox::history::record(name, "start", "");
     Ok(())
 }
@@ -183,6 +187,71 @@ pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     }
     if config.lifecycle.quadlet && systemd::is_available() {
         systemd::stop_unit(name)?;
+    } else {
+        let args = podbox::process::args(&["stop", name]);
+        podbox::process::spawn_interactive("podman", &args)?;
+    }
+    let _ = podbox::history::record(name, "stop", "");
+    Ok(())
+}
+
+/// Stop every running managed container.
+///
+/// Enumerates TOML configs (the same source as `podbox list`) and stops
+/// those actually running. A config that fails to load doesn't block the
+/// rest: it falls back to stopping by unit/podman directly, with a warning.
+/// Idle timeout already stops boxes routinely, so no confirmation prompt.
+pub fn run_stop_all(dry_run: bool) -> Result<()> {
+    let mut stopped = 0u32;
+    let mut failed = 0u32;
+    for path in podbox::config::list_configs() {
+        let name = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if !matches!(
+            podbox::podman::query_state(&name),
+            Ok(podbox::podman::ContainerState::Running)
+        ) {
+            continue;
+        }
+        if dry_run {
+            println!("would stop {name}");
+            stopped += 1;
+            continue;
+        }
+        let result = match podbox::config::Config::load(&path) {
+            Ok(cfg) => run_stop(&cfg, &name, false),
+            Err(e) => {
+                eprintln!(
+                    "Warning: config for '{name}' failed to load ({e:#}); stopping directly."
+                );
+                stop_by_name(&name)
+            }
+        };
+        match result {
+            Ok(()) => {
+                println!("Stopped {name}");
+                stopped += 1;
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to stop '{name}': {e:#}");
+                failed += 1;
+            }
+        }
+    }
+    if stopped == 0 && failed == 0 {
+        println!("No running containers.");
+    }
+    Ok(())
+}
+
+/// Stop a container without its config: systemd unit when installed,
+/// plain podman otherwise.
+fn stop_by_name(name: &str) -> Result<()> {
+    if podbox::quadlet_install::is_installed(name) {
+        podbox::systemd::stop_unit(name)?;
     } else {
         let args = podbox::process::args(&["stop", name]);
         podbox::process::spawn_interactive("podman", &args)?;

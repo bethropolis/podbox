@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+use crate::config::Config;
 use crate::error::PodboxError;
 
 /// Standard XDG application directories searched inside the container,
@@ -19,6 +20,24 @@ pub(crate) use desktop::{
     copy_icon_from_container, extract_icon_name, find_desktop_file, is_valid_app_name,
     rewrite_desktop_file,
 };
+
+/// Host executable to embed in exported launchers and shims.
+///
+/// `current_exe()` under a dev build resolves into `target/debug`, an mbx
+/// cache dir, or `/tmp` — all rebuilt or garbage-collected, so a launcher
+/// pointing at one rots (mbx gc evicts it silently). Those paths fall back
+/// to a PATH lookup; an installed binary uses its own absolute path.
+pub(crate) fn stable_exe() -> String {
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "podbox".to_string());
+    const EPHEMERAL: [&str; 4] = ["/target/debug/", "/target/release/", "/.cache/", "/tmp/"];
+    if EPHEMERAL.iter().any(|m| exe.contains(m)) {
+        "podbox".to_string()
+    } else {
+        exe
+    }
+}
 
 pub fn export_app(container_name: &str, app: &str) -> Result<()> {
     if !is_valid_app_name(app) {
@@ -72,6 +91,26 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
     Ok(())
 }
 
+/// Export every app and bin declared in `[integration.export]`.
+///
+/// Warn-and-continue: a missing .desktop file must not fail a start.
+/// Call only once the container is running — app discovery shells out to
+/// `podman exec`, which cannot see a stopped container. (This used to run at
+/// `enable` time, where it always failed on fresh boxes for exactly that
+/// reason.)
+pub fn ensure_exports(config: &Config, name: &str) {
+    for app in &config.integration.export.apps {
+        if let Err(e) = export_app(name, app) {
+            eprintln!("Warning: auto-export app '{app}' failed: {e}");
+        }
+    }
+    for bin in &config.integration.export.bins {
+        if let Err(e) = export_bin(name, bin) {
+            eprintln!("Warning: auto-export bin '{bin}' failed: {e}");
+        }
+    }
+}
+
 /// Find a `.desktop` file in the container by searching XDG dirs,
 /// falling back to user-installed locations.
 pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
@@ -80,9 +119,7 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
     std::fs::create_dir_all(&bin_dir)?;
 
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "podbox".to_string());
+    let exe = stable_exe();
     let shim = format!(
         "#!/bin/sh\nexec {} --container \"{}\" exec \"{}\" \"$@\"\n",
         exe,
@@ -239,6 +276,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stable_exe_falls_back_for_dev_builds() {
+        // Test binaries live under target/debug (or an mbx cache dir), both
+        // classified ephemeral — so this must resolve to the PATH fallback.
+        assert_eq!(stable_exe(), "podbox");
+    }
+
+    #[test]
     fn valid_app_names() {
         for name in &["firefox", "Firefox", "code-oss", "code_oss", "v1.2.3", "a"] {
             assert!(is_valid_app_name(name), "expected '{name}' to be valid");
@@ -294,7 +338,7 @@ mod tests {
             exec.starts_with("Exec="),
             "Exec key must start at column 0, got: {exec:?}"
         );
-        assert!(exec.contains("--container \"box\" exec -- /usr/bin/firefox %u"));
+        assert!(exec.contains("--container \"box\" run /usr/bin/firefox %u"));
     }
 
     #[test]

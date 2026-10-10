@@ -122,16 +122,17 @@ pub(crate) fn find_desktop_in_opt(
 
 /// Export a binary shim to ~/.local/bin.
 pub(crate) fn rewrite_desktop_file(content: &str, container_name: &str, _app: &str) -> String {
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "podbox".to_string());
+    // `run`, not `exec`: launchers have no tty and hand stdio nowhere.
+    // `exec` foreground-attaches the GUI to the launcher process; `run`
+    // detaches (`podman exec -d`) and auto-starts an idled-down box.
+    let exe = super::stable_exe();
     let suffix = format!("({container_name})");
     content
         .lines()
         .map(|line| {
             if let Some(original) = line.strip_prefix("Exec=") {
                 format!(
-                    "Exec={} --container \"{}\" exec -- {}",
+                    "Exec={} --container \"{}\" run {}",
                     exe,
                     container_name.replace('"', "\\\""),
                     original

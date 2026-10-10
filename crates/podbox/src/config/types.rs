@@ -4,10 +4,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::config::defaults::{
-    default_package_manager, default_pull_retry, default_pull_retry_delay, default_shell,
-    default_true, is_default_gpu, is_default_host_exec, is_default_mounts, is_default_packages,
-    is_default_pkg_mgr, is_default_pull_retry, is_default_pull_retry_delay, is_default_run,
-    is_default_shell, is_false, is_true,
+    default_pull_retry, default_pull_retry_delay, default_shell, default_true, is_default_gpu,
+    is_default_host_exec, is_default_mounts, is_default_packages, is_default_pull_retry,
+    is_default_pull_retry_delay, is_default_run, is_default_shell, is_false, is_true,
 };
 use crate::config::enums::{GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 use crate::config::expand_tilde;
@@ -56,27 +55,17 @@ impl ImageConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct PackageConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub install: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remove: Vec<String>,
-    #[serde(
-        default = "default_package_manager",
-        skip_serializing_if = "is_default_pkg_mgr"
-    )]
-    pub manager: PackageManager,
-}
-
-impl Default for PackageConfig {
-    fn default() -> Self {
-        Self {
-            install: Vec::new(),
-            remove: Vec::new(),
-            manager: default_package_manager(),
-        }
-    }
+    /// Explicit override. `None` (omitted) means auto-detect from the image
+    /// name at use time — see `resolve_prebuilt_distro` and diff's
+    /// `resolve_manager`. This is why the field can stay out of the TOML.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manager: Option<PackageManager>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -167,6 +156,42 @@ pub struct ContainerEnvConfig {
     pub values: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forward: Vec<String>,
+}
+
+/// Resolve a `container.shell` value to the binary path terminals expect in
+/// `$SHELL`. Accepts full paths verbatim; well-known names map to their
+/// distro-standard locations. Anything else yields `None` (no derivation).
+fn shell_binary(shell: &str) -> Option<String> {
+    if shell.contains('/') {
+        return Some(shell.to_string());
+    }
+    match shell {
+        "bash" => Some("/bin/bash".into()),
+        "fish" => Some("/usr/bin/fish".into()),
+        "zsh" => Some("/bin/zsh".into()),
+        "sh" => Some("/bin/sh".into()),
+        _ => None,
+    }
+}
+
+impl ContainerConfig {
+    /// Effective container environment: explicit `[container.env]` values
+    /// plus engine-derived defaults for well-known variables the config
+    /// already implies. Explicit values always win.
+    ///
+    /// Current derivations (first of a general mechanism — add more here as
+    /// new "config already says it" variables emerge):
+    /// - `SHELL` from `container.shell`, so terminals, `enter`, and GUI
+    ///   apps agree without repeating the path in every TOML.
+    pub fn effective_env(&self) -> HashMap<String, String> {
+        let mut out = self.env.values.clone();
+        if !out.contains_key("SHELL") {
+            if let Some(path) = shell_binary(&self.shell) {
+                out.insert("SHELL".into(), path);
+            }
+        }
+        out
+    }
 }
 
 impl ContainerEnvConfig {

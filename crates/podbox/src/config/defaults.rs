@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::enums::{GpuMode, OnStop, PackageManager};
+use crate::config::enums::{GpuMode, OnStop};
 use crate::config::types::{
     HostExecConfig, LifecycleConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
     SystemdConfig,
@@ -36,14 +36,6 @@ pub fn is_default_shell(v: &str) -> bool {
     v == "bash"
 }
 
-pub fn default_package_manager() -> PackageManager {
-    PackageManager::Dnf
-}
-
-pub fn is_default_pkg_mgr(v: &PackageManager) -> bool {
-    *v == PackageManager::Dnf
-}
-
 pub fn default_pull_retry() -> u32 {
     3
 }
@@ -73,7 +65,7 @@ pub fn is_default_gpu(v: &GpuMode) -> bool {
 }
 
 pub fn is_default_packages(v: &PackageConfig) -> bool {
-    v.install.is_empty() && v.remove.is_empty() && v.manager == PackageManager::Dnf
+    v.install.is_empty() && v.remove.is_empty() && v.manager.is_none()
 }
 
 pub fn is_default_run(v: &RunConfig) -> bool {

@@ -69,7 +69,7 @@ pub(super) fn prompt_custom_image() -> anyhow::Result<(crate::config::Config, St
                 .interact_text()?;
         let mut c = crate::config::Config::embedded();
         c.image.base.clone_from(&base);
-        c.image.packages.manager = detect_package_manager(&base);
+        c.image.packages.manager = Some(detect_package_manager(&base));
         let name = base
             .split_once(':')
             .map(|(n, _)| n)

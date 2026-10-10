@@ -76,7 +76,11 @@ pub enum Command {
     #[command(display_order = 24)]
     Stop {
         /// Container name (overrides auto-detection / active context).
+        #[arg(conflicts_with = "all")]
         name: Option<String>,
+        /// Stop every running managed container.
+        #[arg(long)]
+        all: bool,
     },
 
     /// Execute a command interactively in the container.

@@ -122,7 +122,7 @@ pub fn run_init(
         .unwrap_or_else(|| PathBuf::from("~"))
         .join("containers")
         .join(&container_name);
-    cfg.image.packages.manager = detect_package_manager(base);
+    cfg.image.packages.manager = Some(detect_package_manager(base));
 
     cfg.container.shell.clear();
     podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);

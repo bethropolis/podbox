@@ -123,8 +123,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
                 </button>
               ))}
               <p className="px-3 py-2 text-[10px] leading-snug text-[var(--text-muted)] border-t border-[var(--border)]">
-                A preset replaces the whole configuration, so nothing carries over from your
-                current session.
+                Replaces your current configuration.
               </p>
             </div>
           </>

@@ -56,7 +56,7 @@ clipboard = false
     assert!(cfg.dbus_effective_talk().is_empty());
     assert!(cfg.use_dbus_proxy());
     let calls = cfg.dbus_portal_calls();
-    assert_eq!(calls.len(), 4);
+    assert_eq!(calls.len(), 5);
     assert!(calls[0].starts_with("--call=org.freedesktop.portal.Desktop="));
     assert!(calls[0].contains("org.freedesktop.portal.Notification.*"));
     assert!(calls[1].starts_with("--call=org.freedesktop.portal.Desktop="));
@@ -65,6 +65,8 @@ clipboard = false
     assert!(calls[2].contains("org.freedesktop.portal.Request.*"));
     assert!(calls[3].starts_with("--call=org.freedesktop.portal.Desktop="));
     assert!(calls[3].contains("org.freedesktop.DBus.Introspectable.*"));
+    assert!(calls[4].starts_with("--call=org.freedesktop.portal.Desktop="));
+    assert!(calls[4].contains("org.freedesktop.portal.Settings.*"));
 }
 #[test]
 fn test_dbus_portal_calls_gated_by_capabilities() {
@@ -85,10 +87,11 @@ clipboard = false
 "#;
     let cfg = Config::parse(toml).unwrap();
     let calls = cfg.dbus_portal_calls();
-    assert_eq!(calls.len(), 4);
+    assert_eq!(calls.len(), 5);
     assert!(!calls.iter().any(|r| r.contains("Notification")));
     assert!(calls.iter().any(|r| r.contains("OpenURI.*")));
     assert!(calls.iter().any(|r| r.contains("Introspectable")));
+    assert!(calls.iter().any(|r| r.contains("Settings.*")));
 }
 #[test]
 fn test_dbus_config_parses_talk_own() {

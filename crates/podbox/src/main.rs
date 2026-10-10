@@ -233,6 +233,11 @@ fn run() -> Result<()> {
         return commands::lifecycle::run_remove_stale(cli.dry_run, *force);
     }
 
+    // `stop --all` needs no target: it enumerates running containers itself.
+    if let Command::Stop { all: true, .. } = &cli.command {
+        return commands::lifecycle::run_stop_all(cli.dry_run);
+    }
+
     // Doctor needs special handling: bare `memory = "2"` now fails validation,
     // so `resolve_config` would bail before `run_doctor` can offer --fix.
     if let Command::Doctor { fix, output, .. } = &cli.command {
@@ -304,7 +309,7 @@ fn run() -> Result<()> {
             commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run, *timeout)?;
         }
 
-        Command::Stop { name: _ } => {
+        Command::Stop { .. } => {
             commands::lifecycle::run_stop(&config, &name, cli.dry_run)?;
         }
 

@@ -200,3 +200,36 @@ fn quadlet_locale_env_vars_absent_when_unset() {
     assert!(!q.contains("Environment=LANG="));
     assert!(!q.contains("Environment=LC_ALL="));
 }
+#[test]
+fn quadlet_shell_derived_from_container_shell() {
+    // full.toml sets shell = "fish" with no explicit SHELL.
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Environment=SHELL=/usr/bin/fish"));
+}
+#[test]
+fn quadlet_explicit_shell_env_wins_over_derived() {
+    let mut config = load_config("full.toml");
+    config
+        .container
+        .env
+        .values
+        .insert("SHELL".into(), "/bin/zsh".into());
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Environment=SHELL=/bin/zsh"));
+    assert!(!q.contains("SHELL=/usr/bin/fish"));
+}
+#[test]
+fn quadlet_default_shell_derives_bash() {
+    let mut config = load_config("full.toml");
+    config.container.shell = "bash".into();
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Environment=SHELL=/bin/bash"));
+}
+#[test]
+fn quadlet_unknown_shell_derives_nothing() {
+    let mut config = load_config("full.toml");
+    config.container.shell = "nu".into();
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("Environment=SHELL="));
+}

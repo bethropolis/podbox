@@ -368,7 +368,7 @@ export const STUDIO_DEFAULTS: StudioDefaults = {  // view state
   pullRetryDelay: '5s',
   packagesInstallList: ['git', 'fish', 'fastfetch'],
   packagesRemoveList: [],
-  packageManager: 'dnf',
+  packageManager: 'auto',
   // Empty on purpose: the engine appends the right per-distro cleanup
   // (dnf/apt/pacman/…) to the install layer itself. A hardcoded clean
   // command here would be redundant on Fedora and break other distros.

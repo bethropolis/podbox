@@ -191,14 +191,86 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
 }
 
 /// Resolve the distro family for package installation on a prebuilt image.
-/// Respects the explicit `manager` field in the config, falling back to
-/// name-based detection via `DistroFamily`.
+///
+/// An explicit `manager` always wins. An omitted one is detected from the
+/// image reference (falling back to the base name), so prebuilt images from
+/// any distro family build without pinning a manager.
 pub(crate) fn resolve_prebuilt_distro(config: &Config) -> DistroFamily {
-    match config.image.packages.manager {
-        crate::config::PackageManager::Apt => DistroFamily::DebianLike,
-        crate::config::PackageManager::Dnf => DistroFamily::FedoraLike,
-        crate::config::PackageManager::Pacman => DistroFamily::ArchLike,
-        crate::config::PackageManager::Apk => DistroFamily::AlpineLike,
-        crate::config::PackageManager::Zypper => DistroFamily::SuseLike,
+    use crate::config::PackageManager;
+    if let Some(manager) = config.image.packages.manager {
+        return match manager {
+            PackageManager::Apt => DistroFamily::DebianLike,
+            PackageManager::Dnf => DistroFamily::FedoraLike,
+            PackageManager::Pacman => DistroFamily::ArchLike,
+            PackageManager::Apk => DistroFamily::AlpineLike,
+            PackageManager::Zypper => DistroFamily::SuseLike,
+        };
+    }
+    let probe = config
+        .image
+        .image_ref
+        .as_deref()
+        .unwrap_or(&config.image.base);
+    DistroFamily::from_base_image(probe)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn config_with(image_base: &str, image_ref: Option<&str>, manager: Option<&str>) -> Config {
+        let manager_line = manager
+            .map(|m| format!("manager = \"{m}\"\n"))
+            .unwrap_or_default();
+        let image_line = image_ref
+            .map(|r| format!("image = \"{r}\"\n"))
+            .unwrap_or_default();
+        Config::parse(&format!(
+            r#"
+[image]
+base = "{image_base}"
+name = "env"
+{image_line}
+[image.packages]
+{manager_line}
+[container]
+name = "env"
+home = "~/env"
+"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn omitted_manager_detects_from_the_image_reference() {
+        let cfg = config_with(
+            "ubuntu-latest",
+            Some("ghcr.io/bethropolis/podbox:ubuntu-latest"),
+            None,
+        );
+        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::DebianLike);
+
+        let cfg = config_with("cachyos/cachyos:latest", None, None);
+        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::ArchLike);
+
+        // Unknown names stay Unknown (whose manager resolves to dnf),
+        // rather than guessing a family.
+        let cfg = config_with("unknown:latest", None, None);
+        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::Unknown);
+        assert_eq!(
+            resolve_prebuilt_distro(&cfg).manager(),
+            crate::config::PackageManager::Dnf
+        );
+    }
+
+    #[test]
+    fn explicit_manager_wins_over_detection() {
+        let cfg = config_with(
+            "ubuntu-latest",
+            Some("ghcr.io/bethropolis/podbox:ubuntu-latest"),
+            Some("dnf"),
+        );
+        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::FedoraLike);
     }
 }

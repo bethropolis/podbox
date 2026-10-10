@@ -62,17 +62,12 @@ pub fn compute(config: &Config, name: &str, username: &str) -> Result<DiffResult
 
 /// Map the explicit `manager` field or fall back to distro-based detection.
 fn resolve_manager(config: &Config) -> PackageManager {
-    if config.image.packages.manager == PackageManager::Dnf
-        || config.image.packages.manager == PackageManager::Apt
-        || config.image.packages.manager == PackageManager::Pacman
-        || config.image.packages.manager == PackageManager::Apk
-    {
-        config.image.packages.manager
-    } else {
-        DistroFamily::from_base_image(&config.image.base).manager()
+    match config.image.packages.manager {
+        // Zypper is valid but doesn't have a query command yet, so it falls
+        // through to detection like an omitted manager.
+        Some(m) if m != PackageManager::Zypper => m,
+        _ => DistroFamily::from_base_image(&config.image.base).manager(),
     }
-    // Zypper is valid but doesn't have a query command yet, so it falls
-    // through to the dnf/rpm default below.
 }
 
 /// Returns the command + arguments used to query *all* installed packages

@@ -79,6 +79,20 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         return Ok(());
     }
 
+    // Unit files embed the invoking binary. Warn when it is a dev build
+    // (target/, cache): those paths rot on rebuild or gc, and the fallback
+    // is silent — services keep running stale code.
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "podbox".into());
+    let stable = crate::export::stable_exe();
+    if exe != stable {
+        eprintln!(
+            "Warning: enabling with a dev binary ({exe}); generated units will reference it. \
+             Prefer the installed binary ({stable}) so services survive rebuilds."
+        );
+    }
+
     // Acquire exclusive install lock (auto-releases on panic/crash via kernel flock)
     let _install_lock = {
         let lock_path = context_dir.join(".install.lock");
@@ -139,17 +153,11 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         config.use_wayland_proxy(),
     )?;
 
-    // Auto-export apps and bins
-    for app in &config.integration.export.apps {
-        if let Err(e) = crate::export::export_app(name, app) {
-            eprintln!("Warning: auto-export app '{app}' failed: {e}");
-        }
-    }
-    for bin in &config.integration.export.bins {
-        if let Err(e) = crate::export::export_bin(name, bin) {
-            eprintln!("Warning: auto-export bin '{bin}' failed: {e}");
-        }
-    }
+    // Auto-export runs at start time (see `ensure_exports`), not here:
+    // app discovery execs into the container, which may not exist yet at
+    // enable time — exporting here only produced bogus warnings on fresh
+    // boxes. Bins are host-side shims and could run here, but keeping one
+    // call site keeps the behavior uniform.
 
     if config.lifecycle.autostart {
         systemd::enable_linger()?;
