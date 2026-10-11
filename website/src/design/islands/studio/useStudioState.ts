@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { shareFromHash, hasPendingSharedLoad } from './share';
 import type { MountItem, EnvVarItem, HostExecItem, ProvisionItem, SecretItem, ServiceItem } from './types';
 import { STUDIO_DEFAULTS, UI_ONLY_KEYS } from './schema';
 
@@ -36,9 +37,9 @@ function loadSaved(): Record<string, any> {
 // payload is ignored outright.
 const KNOWN_CATEGORIES = [
   'image', 'container', 'security', 'network', 'integration',
-  'lifecycle', 'dbus', 'wayland', 'dotfiles', 'storage',
+  'lifecycle', 'proxies', 'dotfiles', 'storage',
 ] as const;
-const KNOWN_VIEWS = ['toml', 'quadlet', 'containerfile'] as const;
+const KNOWN_VIEWS = ['toml', 'quadlet', 'containerfile', 'host', 'proxy', 'compositor'] as const;
 
 function loadSavedUI(): {
   activeCategory?: (typeof KNOWN_CATEGORIES)[number];
@@ -67,9 +68,9 @@ function loadSavedUI(): {
 export function useStudioState() {
 const [isFullscreen, setIsFullscreen] = useState(STUDIO_DEFAULTS.isFullscreen);
 const [activeCategory, setActiveCategory] = useState<
-  'image' | 'container' | 'security' | 'network' | 'integration' | 'lifecycle' | 'dbus' | 'wayland' | 'dotfiles' | 'storage'
+  'image' | 'container' | 'security' | 'network' | 'integration' | 'lifecycle' | 'proxies' | 'dotfiles' | 'storage'
 >(STUDIO_DEFAULTS.activeCategory);
-const [activeView, setActiveView] = useState<'toml' | 'quadlet' | 'containerfile'>(STUDIO_DEFAULTS.activeView);
+const [activeView, setActiveView] = useState<'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor'>(STUDIO_DEFAULTS.activeView);
 const [copied, setCopied] = useState(STUDIO_DEFAULTS.copied);
 const [showExportMenu, setShowExportMenu] = useState(STUDIO_DEFAULTS.showExportMenu);
 const [activePreset, setActivePreset] = useState<string>(STUDIO_DEFAULTS.activePreset);
@@ -244,6 +245,17 @@ const handleContainerNameChange = (val: string) => {
     const savedUI = loadSavedUI();
     if (savedUI.activeCategory) setActiveCategory(savedUI.activeCategory);
     if (savedUI.activeView) setActiveView(savedUI.activeView);
+    // A shared link (#c=…) is this visit's entry point, so it is applied
+    // instead of the saved session: opening someone else's config must
+    // never inherit your own. Marking the session as restored here also
+    // keeps the debounced save below from firing with stale values before
+    // the shared config lands. An unreadable link reloads without the hash
+    // (see StudioPage), which takes the normal path on that fresh visit.
+    if (shareFromHash(window.location.hash)) {
+      restoredRef.current = true;
+      setHasRestoredSession(false);
+      return;
+    }
     const saved = loadSaved();
     if (Object.keys(saved).length > 0) {
       // Sessions saved before RUN commands became a list stored them as one
@@ -264,9 +276,12 @@ const handleContainerNameChange = (val: string) => {
   }, []);
 
   // Debounced write: the studio re-renders on every keystroke, so write
-  // at most every 400ms and skip when the payload is unchanged.
+  // at most every 400ms and skip when the payload is unchanged. A visit
+  // carrying a shared link holds defaults until that link lands; writing
+  // them would erase the session the link is meant to be an alternative
+  // to, so hold off until the load resolves.
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!restoredRef.current || hasPendingSharedLoad()) return;
     const timer = window.setTimeout(() => {
       try {
         const json = JSON.stringify(persistable);
@@ -283,7 +298,7 @@ const handleContainerNameChange = (val: string) => {
   // View state writes straight through (no debounce): tabs and previews
   // change rarely, and the payload is two strings.
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!restoredRef.current || hasPendingSharedLoad()) return;
     try {
       localStorage.setItem(UI_STORAGE_KEY, JSON.stringify({ activeCategory, activeView }));
     } catch {

@@ -9,10 +9,10 @@ import {
   Monitor,
   RefreshCw,
   Radio,
-  Layers3,
 } from 'lucide-react';
 import type { StudioState } from './useStudioState';
 import { CATEGORIES } from './schema';
+import { useHorizontalWheel } from './useHorizontalWheel';
 
 const icons: Record<string, typeof Box> = {
   image: Box,
@@ -23,36 +23,14 @@ const icons: Record<string, typeof Box> = {
   network: Network,
   integration: Monitor,
   lifecycle: RefreshCw,
-  dbus: Radio,
-  wayland: Layers3,
+  proxies: Radio,
 };
 
 const categories = CATEGORIES.map((cat) => ({ ...cat, icon: icons[cat.id] ?? Box }));
 
 export function CategoryTabs({ st, errorMap, advisoryMap }: { st: Pick<StudioState, 'activeCategory' | 'setActiveCategory' | 'isFullscreen'>; errorMap?: Record<string, string>; advisoryMap?: Record<string, string> }) {
   const stripRef = useRef<HTMLDivElement>(null);
-
-  // Translate vertical wheel into horizontal scroll while hovering the
-  // strip. Native listener (non-passive) so preventDefault actually applies.
-  useEffect(() => {
-    const el = stripRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      const max = el.scrollWidth - el.clientWidth;
-      if (max <= 0) return;
-      // Clamp rather than bail on an overshooting tick: bailing meant the last
-      // few pixels were unreachable, so the last tab could never be scrolled
-      // into view. At a real edge we still let the event through so the page
-      // scrolls underneath.
-      const next = Math.min(max, Math.max(0, el.scrollLeft + e.deltaY));
-      if (next === el.scrollLeft) return;
-      e.preventDefault();
-      el.scrollLeft = next;
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  useHorizontalWheel(stripRef);
 
   // The strip has no visible scrollbar, so keep the active tab in view when
   // something other than a click changes it (validation banner, preset, Esc).
@@ -72,6 +50,7 @@ export function CategoryTabs({ st, errorMap, advisoryMap }: { st: Pick<StudioSta
     const owns = (f: string) =>
       f === cat.id ||
       f.startsWith(`${cat.id}.`) ||
+      (cat.id === 'proxies' && (f === 'dbus' || f.startsWith('dbus.') || f === 'wayland' || f.startsWith('wayland.'))) ||
       (cat.id === 'dotfiles' && (f === 'provision' || f.startsWith('provision[') || f.startsWith('provision.')));
     const hasError = !!errorMap && Object.keys(errorMap).some(owns);
     // Advisories (e.g. host_exec enabled without an allowlist) are still

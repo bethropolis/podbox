@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
-import init, { validate_toml, compile_quadlet, parse_toml_to_json } from '../../../wasm/podbox_wasm';
+import init, { validate_toml, compile_quadlet, parse_toml_to_json, locate_field_in_toml, field_lines_in_toml } from '../../../wasm/podbox_wasm';
 
 export interface ValidationIssue {
   field?: string;
   message: string;
+  /** 1-based source line in the submitted TOML, when locatable. */
+  line?: number;
+  /** 1-based source column, when locatable (syntax errors). */
+  column?: number;
+  /** Byte offsets (start, end) in the submitted TOML, when locatable. */
+  span?: [number, number];
 }
 
 export interface ValidationReport {
@@ -31,6 +37,12 @@ export interface CompileResult {
   container: string;
   socket: string;
   build: string | null;
+  /** Companion host socket server unit (`{name}-host.service`). */
+  host_service: string;
+  /** D-Bus proxy unit; null when the proxy is disabled in config. */
+  dbus_proxy_service: string | null;
+  /** Wayland firewall unit; null when the proxy is disabled in config. */
+  compositor_service: string | null;
   containerfile: string | null;
   warnings: string[];
 }
@@ -110,6 +122,26 @@ export function useWasm() {
       if (!ready) return null;
       try {
         return parse_toml_to_json(toml);
+      } catch {
+        return null;
+      }
+    },
+    locateField: (toml: string, field: string): number | null => {
+      if (!ready) return null;
+      try {
+        const line = locate_field_in_toml(toml, field) as number | null | undefined;
+        return typeof line === 'number' ? line : null;
+      } catch {
+        return null;
+      }
+    },
+    fieldLines: (toml: string): Record<string, number> | null => {
+      if (!ready) return null;
+      try {
+        const raw = field_lines_in_toml(toml) as unknown;
+        // serde-wasm-bindgen serializes HashMap as a JS Map.
+        if (raw instanceof Map) return Object.fromEntries(raw) as Record<string, number>;
+        return raw as Record<string, number>;
       } catch {
         return null;
       }

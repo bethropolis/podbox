@@ -12,6 +12,23 @@
 export function compile_quadlet(toml_str: string): any;
 
 /**
+ * Scan a TOML document into a `dotted.path -> 1-based line` source map for
+ * field-to-line highlighting in Studio. One call per render; hover and
+ * click-to-edit resolve locally from the result.
+ */
+export function field_lines_in_toml(toml_str: string): any;
+
+/**
+ * Locate a dotted schema path (`container.memory`) in a TOML document.
+ *
+ * Returns the 1-based line number, or `null` when the key has no source
+ * line (derived values, defaults, absent keys). Thin wrapper over the same
+ * lookup backing error spans; Studio prefers the batch `field_lines_map`
+ * equivalent per render and calls this for ad-hoc jumps.
+ */
+export function locate_field_in_toml(toml_str: string, field_path: string): any;
+
+/**
  * Parse a TOML definition into a plain JS object for Studio state import.
  */
 export function parse_toml_to_json(toml_str: string): any;
@@ -26,6 +43,8 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly compile_quadlet: (a: number, b: number, c: number) => void;
+    readonly field_lines_in_toml: (a: number, b: number) => number;
+    readonly locate_field_in_toml: (a: number, b: number, c: number, d: number) => number;
     readonly parse_toml_to_json: (a: number, b: number, c: number) => void;
     readonly validate_toml: (a: number, b: number) => number;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;

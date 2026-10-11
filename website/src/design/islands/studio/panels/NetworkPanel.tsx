@@ -55,7 +55,7 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
           <StudioTooltip
             section="[network]"
             title="ports = [&quot;8080:80&quot;, &quot;3000:3000&quot;]"
-            description="Host ports forwarded into the container."
+            description="Host ports forwarded into the container. Ignored when network mode is host."
             quadlet="PublishPort=8080:80"
           />
         </div>
@@ -63,7 +63,6 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
       tags={portMappingsList}
       onChange={setPortMappingsList}
       placeholder="e.g. 3000:3000, 8080:80"
-      helperText="Ignored when network mode is set to host."
       error={err('network.ports')}
     />
   </div>

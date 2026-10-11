@@ -16,6 +16,10 @@ export const rustPreset: PresetDef = {
     packagesInstallList: ['base-devel', 'clang', 'mold', 'git', 'neovim', 'ripgrep', 'fd', 'mise', 'fish'],
     packageManager: 'pacman',
     containerShell: 'fish',
+    // The preset compiles Rust and links through clang+mold: the crate
+    // registry/git caches, the C toolchain's compiler cache and the shared
+    // build cache all survive container recreation as volumes.
+    sharedCaches: ['cargo', 'ccache', 'mbx'],
     provisionSteps: [
       {
         name: 'mise-activate',

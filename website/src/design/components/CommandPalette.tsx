@@ -3,6 +3,7 @@ import { Terminal, FileText, CornerDownLeft, X, Layers } from 'lucide-react';
 import { withBase } from '../base';
 import type { SearchDoc } from '../searchIndex';
 import { predefinedCommands, type SearchResult } from './palette/commands';
+import { isPagePaletteActive } from '../paletteGuard';
 
 interface CommandPaletteProps {
   // Only the version string crosses the Astro boundary; the search index
@@ -36,6 +37,9 @@ export function CommandPalette({ version }: CommandPaletteProps) {
       setIsOpen(true);
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Studio (and any page that marks itself) owns the shortcut while it
+      // is on screen; its own palette opens instead of this one.
+      if (isPagePaletteActive()) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsOpen(prev => {

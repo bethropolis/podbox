@@ -10,6 +10,7 @@ import {
   StudioTagInput,
   STUDIO_FIELD,
 } from '../../../components/StudioControls';
+import { memoryFix, cpusFix } from '../quickFixes';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { SHELL_OPTIONS, SERVICE_RESTART_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
@@ -107,6 +108,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
       placeholder="4G"
       id="studio-input-container-memory"
       error={err('container.memory')}
+      quickFix={memoryFix(containerMemory, setContainerMemory)}
     />
 
     <StudioInput
@@ -126,6 +128,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
       placeholder="2.0"
       id="studio-input-container-cpus"
       error={err('container.cpus')}
+      quickFix={cpusFix(containerCpus, setContainerCpus)}
     />
   </div>
 

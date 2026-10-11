@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { parse } from 'smol-toml';
 import { tomlToPatch } from './parseImport';
+import { useWasm } from './useWasm';
 import type { StudioState } from './useStudioState';
 
 interface StudioImportProps {
@@ -13,6 +14,7 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const { ready: wasmReady, parseToml, validate } = useWasm();
 
   const onFile = async (f: File | undefined) => {
     if (!f) return;
@@ -21,6 +23,23 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
   };
 
   const onApply = () => {
+    // Native path first: the Rust parser applies migrations and defaults, so
+    // older schemas land in current state with one semantics everywhere.
+    // (The canonical shape drops the legacy Studio-only `image.preset` key;
+    // its base ref survives, so imports land in custom-image mode.)
+    if (wasmReady) {
+      const parsed = parseToml(text);
+      if (parsed && typeof parsed === 'object') {
+        st.applyPatch(tomlToPatch(parsed as Record<string, any>));
+        onClose();
+        return;
+      }
+      const report = validate(text);
+      if (report && !report.valid) {
+        setError(report.errors.map((e) => e.message).join('\n') || 'Invalid TOML.');
+        return;
+      }
+    }
     try {
       const doc = parse(text);
       st.applyPatch(tomlToPatch(doc as Record<string, any>));

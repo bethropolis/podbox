@@ -44,6 +44,25 @@ fn quadlet_container_has_read_only_rootfs() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("ReadOnly=true"));
+    // ReadOnly without a writable /run keeps the guest daemon from creating
+    // /run/podbox/bin (it fails there at startup), and /tmp is needed by
+    // ordinary tooling. Both are tmpfs, so the images stay immutable.
+    for target in ["/run", "/tmp", "/var/tmp"] {
+        assert!(
+            q.contains(&format!("Mount=type=tmpfs,destination={target}")),
+            "read-only rootfs needs a writable {target}:\n{q}"
+        );
+    }
+}
+#[test]
+fn quadlet_container_writable_root_has_no_scratch_tmpfs() {
+    let config = load_config("minimal.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("ReadOnly=true"));
+    assert!(
+        !q.contains("type=tmpfs"),
+        "scratch tmpfs is read-only-rootfs only:\n{q}"
+    );
 }
 #[test]
 fn quadlet_container_has_cpu_limit() {

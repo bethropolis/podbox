@@ -4,13 +4,13 @@ import { StudioSwitch } from './StudioControls';
 import { StudioTooltip } from './StudioTooltip';
 import {
   ArrowRight,
-  Sparkles,
   SlidersHorizontal,
   FileCode2,
   Terminal
 } from 'lucide-react';
 
 import { withBase } from '../base';
+import { encodeShare } from '../islands/studio/share';
 import { generatePlaygroundToml, generatePlaygroundQuadlet, type PlaygroundConfig } from './playground/generate';
 
 interface ConfigPlaygroundProps {
@@ -46,6 +46,7 @@ function fieldLabel(label: string, title: string, description: string) {
 }
 
 export function ConfigPlayground(_props: ConfigPlaygroundProps) {
+  const [linking, setLinking] = useState(false);
   const [name, setName] = useState('dev-box');
   const [distro, setDistro] = useState<'fedora' | 'arch' | 'ubuntu' | 'debian' | 'custom'>('fedora');
   const [customImage, setCustomImage] = useState('ghcr.io/username/custom-env:latest');
@@ -216,11 +217,24 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             </div>
             <a
               href={withBase('/studio')}
+              onClick={(e) => {
+                // Carry this config across as a shared link, so Studio opens
+                // on it instead of a blank canvas. Encoding is the only async
+                // step; without JS the plain href still lands on Studio.
+                e.preventDefault();
+                setLinking(true);
+                void encodeShare(code)
+                  .then((payload) => {
+                    window.location.assign(`${withBase('/studio')}#c=${payload}`);
+                  })
+                  .catch(() => {
+                    window.location.assign(withBase('/studio'));
+                  });
+              }}
               className="flex items-center gap-1.5 text-xs text-[var(--accent-mauve)] hover:text-white font-medium cursor-pointer transition-colors whitespace-nowrap"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Open in Studio</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>{linking ? 'opening…' : 'Open in Studio'}</span>
+              {!linking && <ArrowRight className="w-3.5 h-3.5" />}
             </a>
           </div>
 

@@ -25,15 +25,20 @@ export function generatePlaygroundToml(cfg: PlaygroundConfig): string {
     .filter(Boolean);
 
   let toml = `# podbox.toml for ${name}\n`;
-  toml += `[container]\n`;
-  toml += `name = "${name}"\n`;
-  toml += `home = "~/containers/${name}"\n\n`;
-
   toml += `[image]\n`;
+  toml += `name = "${name}"\n`;
   toml += `base = "${distro === 'custom' ? customImage : DISTRO_BASES[distro]}"\n`;
   if (parsedPackages.length > 0) {
-    toml += `packages = [${parsedPackages.map((p) => `"${p}"`).join(', ')}]\n`;
+    // `image.packages` is a table, not a bare list: the engine rejects
+    // `packages = [...]`, so the friendly shape would not survive a paste
+    // into a real config file.
+    toml += `\n[image.packages]\n`;
+    toml += `install = [${parsedPackages.map((p) => `"${p}"`).join(', ')}]\n`;
   }
+
+  toml += `\n[container]\n`;
+  toml += `name = "${name}"\n`;
+  toml += `home = "~/containers/${name}"\n`;
 
   toml += `\n[integration]\n`;
   toml += `wayland = ${wayland}\n`;
@@ -43,7 +48,9 @@ export function generatePlaygroundToml(cfg: PlaygroundConfig): string {
 
   if (shareProjects) {
     toml += `\n[integration.xdg_dirs]\n`;
-    toml += `projects = true\n`;
+    // Read-write on purpose: the panel above promises your code is "right
+    // there", and a read-only mount would not deliver that.
+    toml += `projects = { enabled = true, read_write = true }\n`;
   }
 
   toml += `\n[lifecycle]\n`;

@@ -29,6 +29,14 @@ const handleCopyConfig = async () => {
   setTimeout(() => st.setCopied(false), 2000);
 };
 
+const handleCopyTerminalCommand = async () => {
+  const name = st.containerName?.trim() || 'podbox';
+  const command = `mkdir -p ~/.config/podbox && cat << 'EOF' > ~/.config/podbox/${name}.toml\n${toml}\nEOF\npodbox create ${name}`;
+  await navigator.clipboard.writeText(command);
+  st.setCopied(true);
+  setTimeout(() => st.setCopied(false), 2000);
+  st.setShowExportMenu(false);
+};
 
-  return { handleDownloadToml, handleCopyConfig };
+  return { handleDownloadToml, handleCopyConfig, handleCopyTerminalCommand };
 }

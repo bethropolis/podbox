@@ -23,6 +23,12 @@ pub struct ValidationError {
     /// errors, which carry no field target.
     pub field: Option<String>,
     pub message: String,
+    /// 1-based line of the issue in the submitted TOML, when locatable.
+    pub line: Option<usize>,
+    /// 1-based column of the issue in the submitted TOML, when locatable.
+    pub column: Option<usize>,
+    /// Byte offsets (start, end) in the submitted TOML, when locatable.
+    pub span: Option<(usize, usize)>,
 }
 
 #[derive(Serialize)]
@@ -37,6 +43,13 @@ pub struct CompileResponse {
     pub container: String,
     pub socket: String,
     pub build: Option<String>,
+    /// Companion host socket server unit (`{name}-host.service`). Always
+    /// present: the socket unit references it.
+    pub host_service: String,
+    /// D-Bus proxy unit. `None` when the proxy is disabled in config.
+    pub dbus_proxy_service: Option<String>,
+    /// Wayland firewall unit. `None` when the proxy is disabled in config.
+    pub compositor_service: Option<String>,
     /// Rendered Containerfile. Always present: prebuilt images get the short
     /// overlay, and a custom `base` gets the full recipe with the `podbox-guest`
     /// layer marked as a placeholder (this wasm build embeds no guest binary).
@@ -46,13 +59,136 @@ pub struct CompileResponse {
     pub warnings: Vec<String>,
 }
 
+/// Convert a byte offset into 1-based (line, column). Columns count Unicode
+/// scalar values, matching how editors render the line.
+fn offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(text.len());
+    let before = &text[..offset];
+    let line = before.bytes().filter(|&b| b == b'\n').count() + 1;
+    let column = before.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+    (line, column)
+}
+
+/// Best-effort line lookup for a dotted schema path (`container.memory`).
+///
+/// Matches the `key =` assignment for the last segment, preferring one under
+/// the matching `[table.path]` header. Table-only paths (`network`) resolve
+/// to their header line. Returns `None` when the key is absent (derived or
+/// defaulted values have no source line).
+fn find_field_line(text: &str, field: &str) -> Option<usize> {
+    let segments: Vec<String> = field
+        .split('.')
+        .map(|s| match s.find('[') {
+            // `provision[0].name` style paths index into arrays-of-tables.
+            Some(bracket) => s[..bracket].to_string(),
+            None => s.to_string(),
+        })
+        .collect();
+    let (table_path, key) = match segments.as_slice() {
+        [] => return None,
+        [single] => (None, single.clone()),
+        _ => (
+            Some(segments[..segments.len() - 1].join(".")),
+            segments[segments.len() - 1].clone(),
+        ),
+    };
+    let mut current_table = String::new();
+    let mut header_line: Option<usize> = None;
+    let mut fallback: Option<usize> = None;
+    for (idx, raw) in text.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = raw.trim();
+        if trimmed.starts_with('[') && !trimmed.starts_with("[![") {
+            let header = trimmed
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            current_table = header.trim_start_matches('[').to_string();
+            if table_path.as_deref() == Some(current_table.as_str()) {
+                header_line = Some(line_no);
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((lhs, _)) = trimmed.split_once('=') {
+            let lhs = lhs.trim().trim_matches('"').trim_matches('\'');
+            if lhs == key {
+                if table_path.is_none() {
+                    return Some(line_no);
+                }
+                if table_path.as_deref() == Some(current_table.as_str()) {
+                    return Some(line_no);
+                }
+                fallback.get_or_insert(line_no);
+            }
+        }
+    }
+    fallback.or(header_line)
+}
+
+/// Scan a TOML document into a `dotted.path -> 1-based line` source map.
+///
+/// Covers `[table]` headers, `key =` assignments (qualified by their table),
+/// and `[[array]]` headers. Comment-only and blank lines are skipped. Used
+/// for error squiggles and field-to-line highlighting in Studio.
+fn field_lines_map(text: &str) -> std::collections::HashMap<String, usize> {
+    let mut map = std::collections::HashMap::new();
+    let mut current_table = String::new();
+    for (idx, raw) in text.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("[[") {
+            if let Some(end) = rest.find("]]") {
+                let table = rest[..end].trim().to_string();
+                current_table.clone_from(&table);
+                map.entry(table).or_insert(line_no);
+            }
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            if let Some(end) = rest.find(']') {
+                let table = rest[..end]
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+                current_table.clone_from(&table);
+                map.entry(table).or_insert(line_no);
+            }
+            continue;
+        }
+        if let Some((lhs, _)) = trimmed.split_once('=') {
+            let key = lhs.trim().trim_matches('"').trim_matches('\'');
+            if key.is_empty() {
+                continue;
+            }
+            let dotted = if current_table.is_empty() {
+                key.to_string()
+            } else {
+                format!("{current_table}.{key}")
+            };
+            map.entry(dotted).or_insert(line_no);
+        }
+    }
+    map
+}
+
 /// Split an `anyhow` parse error into Studio-ready issues.
 ///
 /// Schema violations arrive as `ConfigValidationFailed { details }` with
 /// items joined by `"\n  - "`, each shaped `<field>: <reason>`; the field
-/// target is split off for input highlighting. Everything else (TOML syntax
-/// errors, missing fields) is a single field-less message.
-fn validation_errors(err: &anyhow::Error) -> Vec<ValidationError> {
+/// target is split off for input highlighting and resolved to a source line
+/// in the submitted TOML. TOML syntax errors carry the parser's byte span,
+/// converted to line/column here instead of regexing the message.
+fn validation_errors(err: &anyhow::Error, toml_str: &str) -> Vec<ValidationError> {
     if let Some(PodboxError::ConfigValidationFailed { details }) = err.downcast_ref::<PodboxError>()
     {
         details
@@ -60,23 +196,51 @@ fn validation_errors(err: &anyhow::Error) -> Vec<ValidationError> {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(|line| match line.split_once(':') {
-                Some((field, message)) => ValidationError {
-                    field: Some(field.trim().to_string()),
-                    message: message.trim().to_string(),
-                },
+                Some((field, message)) => {
+                    let field = field.trim().to_string();
+                    let line_no = find_field_line(toml_str, &field);
+                    ValidationError {
+                        field: Some(field),
+                        message: message.trim().to_string(),
+                        line: line_no,
+                        column: None,
+                        span: None,
+                    }
+                }
                 None => ValidationError {
                     field: None,
                     message: line.to_string(),
+                    line: None,
+                    column: None,
+                    span: None,
                 },
             })
             .collect()
-    } else {
+    } else if let Some(de) = err.downcast_ref::<toml::de::Error>() {
+        let (line, column, span) = match de.span() {
+            Some(range) => {
+                let (l, c) = offset_to_line_col(toml_str, range.start);
+                (Some(l), Some(c), Some((range.start, range.end)))
+            }
+            None => (None, None, None),
+        };
         vec![ValidationError {
             field: None,
             // `{:#}` renders the full anyhow chain ("failed to parse definition
             // file: TOML parse error at line 1, column 9"); `{}` would show only
             // the outermost context.
             message: format!("{err:#}"),
+            line,
+            column,
+            span,
+        }]
+    } else {
+        vec![ValidationError {
+            field: None,
+            message: format!("{err:#}"),
+            line: None,
+            column: None,
+            span: None,
         }]
     }
 }
@@ -92,7 +256,7 @@ pub fn validate_toml(toml_str: &str) -> JsValue {
         },
         Err(err) => ValidationResponse {
             valid: false,
-            errors: validation_errors(&err),
+            errors: validation_errors(&err, toml_str),
             warnings: Vec::new(),
         },
     };
@@ -133,14 +297,44 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
 
     let containerfile = podbox::codegen::containerfile::generate_preview(&config, "podbox-guest");
 
+    // Companion units mirror `podbox enable`. Service binaries resolve via
+    // `current_exe`, which has no meaningful value on wasm — the preview
+    // falls back to the install path, matching a packaged host.
+    let name = &config.container.name;
+    let host_service = podbox::codegen::quadlet::generate_host_service(name);
+    let dbus_proxy_service = podbox::codegen::quadlet::generate_dbus_proxy_service(name, &config);
+    let compositor_service = podbox::codegen::quadlet::generate_compositor_service(name, &config);
+
     let response = CompileResponse {
         container,
         socket,
         build,
+        host_service,
+        dbus_proxy_service,
+        compositor_service,
         containerfile: Some(containerfile),
         warnings,
     };
     Ok(serde_wasm_bindgen::to_value(&response).unwrap_or(JsValue::NULL))
+}
+
+/// Locate a dotted schema path (`container.memory`) in a TOML document.
+///
+/// Returns the 1-based line number, or `null` when the key has no source
+/// line (derived values, defaults, absent keys). Thin wrapper over the same
+/// lookup backing error spans; Studio prefers the batch `field_lines_map`
+/// equivalent per render and calls this for ad-hoc jumps.
+#[wasm_bindgen]
+pub fn locate_field_in_toml(toml_str: &str, field_path: &str) -> JsValue {
+    serde_wasm_bindgen::to_value(&find_field_line(toml_str, field_path)).unwrap_or(JsValue::NULL)
+}
+
+/// Scan a TOML document into a `dotted.path -> 1-based line` source map for
+/// field-to-line highlighting in Studio. One call per render; hover and
+/// click-to-edit resolve locally from the result.
+#[wasm_bindgen]
+pub fn field_lines_in_toml(toml_str: &str) -> JsValue {
+    serde_wasm_bindgen::to_value(&field_lines_map(toml_str)).unwrap_or(JsValue::NULL)
 }
 
 /// Parse a TOML definition into a plain JS object for Studio state import.
@@ -148,4 +342,58 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
 pub fn parse_toml_to_json(toml_str: &str) -> Result<JsValue, JsError> {
     let config = Config::parse(toml_str).map_err(|e| JsError::new(&format!("{e:#}")))?;
     Ok(serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::NULL))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn offset_to_line_col_counts_from_one() {
+        assert_eq!(offset_to_line_col("ab\ncd", 0), (1, 1));
+        assert_eq!(offset_to_line_col("ab\ncd", 3), (2, 1));
+        assert_eq!(offset_to_line_col("ab\ncd", 4), (2, 2));
+    }
+
+    #[test]
+    fn syntax_error_carries_span_and_line() {
+        let bad = "[container\nname = 1\n";
+        let err = Config::parse_with_warnings(bad).unwrap_err();
+        let issues = validation_errors(&err, bad);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].field.is_none());
+        assert!(issues[0].line.is_some());
+        assert!(issues[0].span.is_some());
+    }
+
+    #[test]
+    fn semantic_error_resolves_source_line() {
+        let toml = "[image]\nbase = \"fedora:44\"\nname = \"x\"\n\n[container]\nname = \"x\"\nhome = \"~/c/x\"\nmemory = \"bogus\"\n";
+        let err = Config::parse_with_warnings(toml).unwrap_err();
+        let issues = validation_errors(&err, toml);
+        let mem = issues
+            .iter()
+            .find(|i| i.field.as_deref() == Some("container.memory"))
+            .expect("memory issue present");
+        assert_eq!(mem.line, Some(8));
+    }
+
+    #[test]
+    fn field_map_covers_tables_and_keys() {
+        let toml = "[container]\nname = \"x\"\n\n[network]\nmode = \"pasta\"\n";
+        let map = field_lines_map(toml);
+        assert_eq!(map.get("container"), Some(&1));
+        assert_eq!(map.get("container.name"), Some(&2));
+        assert_eq!(map.get("network.mode"), Some(&5));
+    }
+
+    #[test]
+    fn compile_response_includes_companions() {
+        let toml = "[image]\nbase = \"fedora:44\"\nname = \"x\"\n\n[container]\nname = \"x\"\nhome = \"~/c/x\"\n\n[integration]\ndbus = true\nwayland = true\n\n[wayland]\nfirewall = true\n\n[dbus]\nown = [\"com.example.Test\"]\n";
+        let (config, _) = Config::parse_with_warnings(toml).unwrap();
+        let name = &config.container.name;
+        assert!(podbox::codegen::quadlet::generate_host_service(name).contains("serve"));
+        assert!(podbox::codegen::quadlet::generate_dbus_proxy_service(name, &config).is_some());
+        assert!(podbox::codegen::quadlet::generate_compositor_service(name, &config).is_some());
+    }
 }

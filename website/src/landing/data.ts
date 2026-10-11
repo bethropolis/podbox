@@ -43,8 +43,11 @@ curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh`,
 mise use -g github:bethropolis/podbox`,
   brew: `# Homebrew (Linux only)
 brew install bethropolis/homebrew-tap/podbox`,
-  aur: `# Arch Linux, via AUR
-paru -S podbox-bin`,
+  aur: `# Arch Linux, via AUR (binary, fast)
+paru -S podbox-bin
+
+# ...or build from source
+paru -S podbox`,
   cargo: `# From crates.io (supports prebuilt images only)
 cargo install podbox-cli`,
   source: `# Source install (builds CLI & guest daemon)

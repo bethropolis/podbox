@@ -171,29 +171,9 @@ impl ContainerfileBuilder {
         lines.push(format!("FROM {}", self.base_image));
         lines.push(String::new());
 
-        // CachyOS only (not vanilla Arch): its pacman is patched with a
-        // network-isolation hook sandbox that rootless userns cannot grant,
-        // so every GUI package install fails its hooks there. Vanilla Arch's
-        // pacman lacks that toggle entirely (an unrecognized directive would
-        // only warn), hence the base-name gate instead of a family gate.
-        // Directive must sit inside [options]; EOF would park it under a
-        // repo section where pacman ignores it.
-        if distro == DistroFamily::ArchLike && self.base_image.to_lowercase().contains("cachy") {
-            lines.push(String::from(
-                "RUN sed -i 's/^\\[options\\]/[options]\\nDisableSandboxNetwork/' /etc/pacman.conf",
-            ));
-            lines.push(String::new());
-        }
-
         if !self.packages.is_empty() {
             let pkgs = self.packages.join(" ");
-            let clean = distro.clean_cmd();
-            let cmd = if clean.is_empty() {
-                format!("{} {}", distro.install_cmd(), pkgs)
-            } else {
-                format!("{} {} && {}", distro.install_cmd(), pkgs, clean)
-            };
-            lines.push(format!("RUN {cmd}"));
+            lines.push(format!("RUN {}", self.install_command(distro, &pkgs)));
             lines.push(String::new());
         }
 
@@ -253,6 +233,47 @@ impl ContainerfileBuilder {
         lines.push(String::new());
 
         lines.join("\n")
+    }
+
+    /// True when the base needs CachyOS's hook sandbox lifted for installs.
+    ///
+    /// CachyOS only, not vanilla Arch: its pacman is patched with a
+    /// network-isolation hook sandbox that rootless userns cannot grant, so
+    /// package installs fail their hooks there. Vanilla Arch's pacman lacks
+    /// the toggle entirely (an unrecognized directive only warns), hence the
+    /// base-name gate instead of a family gate.
+    fn needs_hook_sandbox_relaxation(&self, distro: DistroFamily) -> bool {
+        distro == DistroFamily::ArchLike && self.base_image.to_lowercase().contains("cachy")
+    }
+
+    /// The install layer: one `RUN`, including the cache clean.
+    ///
+    /// On CachyOS the sandbox relaxation is scoped to this single command via
+    /// `pacman --config`: `/etc/pacman.conf` is read, never rewritten, so the
+    /// image ships with the sandbox intact and the weakening lives no longer
+    /// than the install itself.
+    fn install_command(&self, distro: DistroFamily, pkgs: &str) -> String {
+        let clean = distro.clean_cmd();
+        if self.needs_hook_sandbox_relaxation(distro) {
+            let mut cmd = String::from(
+                "sed 's/^\\[options\\]/[options]\\nDisableSandboxNetwork/' /etc/pacman.conf > /tmp/podbox-pacman.conf",
+            );
+            cmd.push_str(&format!(
+                " && {} --config /tmp/podbox-pacman.conf {}",
+                distro.install_cmd(),
+                pkgs
+            ));
+            cmd.push_str(" && rm -f /tmp/podbox-pacman.conf");
+            if !clean.is_empty() {
+                cmd.push_str(&format!(" && {clean}"));
+            }
+            return cmd;
+        }
+        if clean.is_empty() {
+            format!("{} {}", distro.install_cmd(), pkgs)
+        } else {
+            format!("{} {} && {}", distro.install_cmd(), pkgs, clean)
+        }
     }
 
     fn default_shell(&self) -> &str {
@@ -326,9 +347,9 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_arch_disables_hook_sandbox() {
+    fn test_cachy_hook_sandbox_relaxation_is_scoped_to_install() {
         // CachyOS pacman has the network-sandbox toggle; vanilla Arch's
-        // lacks it, so only CachyOS bases get the line.
+        // lacks it, so only CachyOS bases get the relaxation.
         let cachy = ContainerfileBuilder::new("cachyos/cachyos:latest", "test").add_base_packages(
             DistroFamily::ArchLike,
             Some("/bin/bash"),
@@ -337,8 +358,20 @@ mod tests {
         let cf = cachy.build();
         let unsandbox = "DisableSandboxNetwork";
         assert!(cf.contains(unsandbox));
-        // Must precede the install layer to take effect.
-        assert!(cf.find(unsandbox) < cf.find("RUN pacman -Syu"));
+        // Scoped via --config on a temp copy: /etc/pacman.conf is never
+        // rewritten in place, so the image keeps the sandbox.
+        assert!(
+            cf.contains("--config /tmp/podbox-pacman.conf"),
+            "relaxation must be scoped to the install:\n{cf}"
+        );
+        assert!(
+            !cf.contains("sed -i 's/^"),
+            "must not rewrite /etc/pacman.conf in place:\n{cf}"
+        );
+        assert!(
+            cf.contains("rm -f /tmp/podbox-pacman.conf"),
+            "temp config must be removed in the same layer:\n{cf}"
+        );
 
         let arch = ContainerfileBuilder::new("archlinux:latest", "test").add_base_packages(
             DistroFamily::ArchLike,

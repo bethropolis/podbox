@@ -19,6 +19,7 @@ serde-wasm-bindgen = "0.6"
 anyhow             = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
+toml               = { workspace = true }
 
 # The pure core only: no Linux CLI dependencies.
 podbox = { package = "podbox-cli", path = "../podbox", version = "0.8", default-features = false }

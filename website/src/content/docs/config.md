@@ -71,8 +71,14 @@ commands = ["dnf clean all"]
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `*` | string | — | Arbitrary environment variables passed to the container |
+| `*` | string | — | Arbitrary environment variables passed to the container; explicit values always win over derived ones below |
 | `forward` | string[] | `[]` | Host variables to forward for `enter`, `exec`, and `run`; supports exact names and `PREFIX_*` patterns |
+
+Derived variables (engine-set from the rest of the config, no TOML needed):
+
+| Variable | Derived from | Example |
+|----------|--------------|---------|
+| `SHELL` | `container.shell` (`fish` → `/usr/bin/fish`, `bash` → `/bin/bash`, `zsh` → `/bin/zsh`, full paths verbatim) | `shell = "fish"` ⇒ `SHELL=/usr/bin/fish` |
 
 ```toml
 [container]
@@ -509,7 +515,7 @@ pull_retry_delay = "5s"         # Delay between pull retries
 [image.packages]
 install = ["git", "gcc", "ripgrep"]
 remove = ["vim-minimal"]
-manager = "dnf"                 # auto-detected; override: dnf, apt, pacman, apk, zypper
+# manager = "pacman"        # omitted = auto-detect from the image name
 
 [image.run]
 commands = ["dnf clean all"]    # Extra RUN steps

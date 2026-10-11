@@ -9,10 +9,10 @@ import {
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import type { StudioState } from '../useStudioState';
 
-type WaylandPanelProps = Pick<StudioState, 'setWaylandBlockedList' | 'setWaylandFirewall' | 'waylandBlockedList' | 'waylandFirewall'>;
+type WaylandPanelProps = Pick<StudioState, 'setWaylandBlockedList' | 'setWaylandFirewall' | 'waylandBlockedList' | 'waylandFirewall' | 'intWayland'>;
 
 export function WaylandPanel({ st }: { st: WaylandPanelProps }) {
-  const { setWaylandBlockedList, setWaylandFirewall, waylandBlockedList, waylandFirewall } = st;
+  const { setWaylandBlockedList, setWaylandFirewall, waylandBlockedList, waylandFirewall, intWayland } = st;
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -27,6 +27,9 @@ export function WaylandPanel({ st }: { st: WaylandPanelProps }) {
     </p>
   </div>
 
+  {/* Dead config without the Wayland socket: the generator drops [wayland]
+      when integration.wayland is off, so dim the controls and say why. */}
+  <div className={intWayland ? undefined : 'opacity-40 pointer-events-none select-none'}>
   <StudioSwitch
     id="wayland-firewall"
     checked={waylandFirewall}
@@ -59,6 +62,12 @@ export function WaylandPanel({ st }: { st: WaylandPanelProps }) {
     onChange={setWaylandBlockedList}
     placeholder="e.g. zwlr_screencopy_manager_v1"
   />
+  </div>
+  {!intWayland && (
+    <p className="text-[11px] font-mono text-[var(--text-muted)]">
+      Enable Wayland under [integration] to use the firewall.
+    </p>
+  )}
 </div>
   );
 }

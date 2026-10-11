@@ -220,8 +220,7 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'network', label: '[network]', blurb: 'Pasta & Ports' },
   { id: 'integration', label: '[integration]', blurb: 'Wayland & GPU' },
   { id: 'lifecycle', label: '[lifecycle]', blurb: 'Quadlet & Boot' },
-  { id: 'dbus', label: '[dbus]', blurb: 'Proxy Rules' },
-  { id: 'wayland', label: '[wayland]', blurb: 'Filter Protocol' },
+  { id: 'proxies', label: '[proxies]', blurb: 'D-Bus & Wayland filters' },
 ];
 
 // ── defaults (mirrors the useState initializers in useStudioState.ts) ──────
@@ -240,11 +239,10 @@ export interface StudioDefaults {
     | 'network'
     | 'integration'
     | 'lifecycle'
-    | 'dbus'
-    | 'wayland'
+    | 'proxies'
     | 'dotfiles'
     | 'storage';
-  activeView: 'toml' | 'quadlet' | 'containerfile';
+  activeView: 'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor';
   copied: boolean;
   showExportMenu: boolean;
   activePreset: string;

@@ -10,10 +10,10 @@ import { StudioTooltip } from '../../../components/StudioTooltip';
 import { DBUS_PRESET_OPTIONS } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type DbusPanelProps = Pick<StudioState, 'dbusPreset' | 'dbusTalkList' | 'setDbusPreset' | 'setDbusTalkList'>;
+type DbusPanelProps = Pick<StudioState, 'dbusPreset' | 'dbusTalkList' | 'setDbusPreset' | 'setDbusTalkList' | 'intDbus'>;
 
 export function DbusPanel({ st }: { st: DbusPanelProps }) {
-  const { dbusPreset, dbusTalkList, setDbusPreset, setDbusTalkList } = st;
+  const { dbusPreset, dbusTalkList, setDbusPreset, setDbusTalkList, intDbus } = st;
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -28,7 +28,9 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
     </p>
   </div>
 
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  {/* Dead config without the bus: the generator drops [dbus] when
+      integration.dbus is off, so dim the controls and say why. */}
+  <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${intDbus ? '' : 'opacity-40 pointer-events-none select-none'}`}>
     <StudioSelect
       label={
         <div className="flex items-center">
@@ -61,6 +63,11 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
       placeholder="e.g. org.freedesktop.Notifications"
     />
   </div>
+  {!intDbus && (
+    <p className="text-[11px] font-mono text-[var(--text-muted)]">
+      Enable D-Bus under [integration] to use the proxy.
+    </p>
+  )}
 </div>
   );
 }

@@ -89,7 +89,7 @@ export function Navbar({ currentPath, isDocsPage = false, version }: NavbarProps
                 <span className="font-bold text-base tracking-tight text-[var(--text-primary)]">
                   podbox
                 </span>
-                <span className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-[2px] bg-[var(--accent-mauve)]/10 text-[var(--accent-mauve)] border border-[var(--accent-mauve)]/30 font-semibold">
+                <span className="hidden sm:inline-block text-[10px] font-mono text-[var(--text-muted)]/60 font-normal">
                   v{version}
                 </span>
               </div>

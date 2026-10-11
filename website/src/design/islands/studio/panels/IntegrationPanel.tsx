@@ -60,6 +60,10 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
     if (hostExecList.some((e) => e.alias === entry.alias)) return;
     setHostExecList([...hostExecList, entry]);
   };
+  // Rules exist for a proxy that is switched off: the engine rejects the
+  // config, so offer the switch right here rather than a banner.
+  const needsDbus = !!err('dbus');
+  const needsWayland = !!err('wayland');
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -73,6 +77,33 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       Share Wayland, audio, GPU, and desktop features with the host.
     </p>
   </div>
+
+  {(needsDbus || needsWayland) && (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-[var(--accent-red)]">
+      <span>
+        {needsDbus ? '[dbus] rules need D-Bus on' : '[wayland] rules need Wayland on'}
+      </span>
+      <span className="text-[var(--text-muted)]">→</span>
+      {needsDbus && (
+        <button
+          type="button"
+          onClick={() => setIntDbus(true)}
+          className="px-1.5 py-px rounded-[2px] border border-[var(--accent-green)]/40 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/10 transition-colors cursor-pointer"
+        >
+          enable D-Bus
+        </button>
+      )}
+      {needsWayland && (
+        <button
+          type="button"
+          onClick={() => setIntWayland(true)}
+          className="px-1.5 py-px rounded-[2px] border border-[var(--accent-green)]/40 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/10 transition-colors cursor-pointer"
+        >
+          enable Wayland
+        </button>
+      )}
+    </div>
+  )}
 
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
     <StudioSwitch

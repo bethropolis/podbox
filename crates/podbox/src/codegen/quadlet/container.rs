@@ -94,6 +94,17 @@ pub(super) fn emit_container_image(
     }
     if config.security.read_only_rootfs {
         lines.push("ReadOnly=true".into());
+        // A read-only root leaves no writable runtime paths, and the guest
+        // daemon needs some: it does `create_dir_all("/run/podbox/bin")?`
+        // before it can talk to the host at all, so without a tmpfs there the
+        // image never starts. Ordinary tools need /tmp and /var/tmp too.
+        // tmpfs keeps the image layers immutable while the running container
+        // still has somewhere to work.
+        for target in ["/run", "/tmp", "/var/tmp"] {
+            lines.push(format!(
+                "Mount=type=tmpfs,destination={target},tmpfs-mode=1777"
+            ));
+        }
     }
     if let Some(ref profile) = config.security.apparmor {
         lines.push(format!("AppArmor={profile}"));

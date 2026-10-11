@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   Copy,
   Download,
@@ -10,19 +11,24 @@ import {
   RotateCcw,
   Save,
   Sparkles,
+  Terminal,
+  FileTerminal,
   Trash2,
   Upload,
+  Share2,
 } from 'lucide-react';
 import { withBase } from '../../base';
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
 import { PRESETS, defaultPatch, presetPatch, type PresetId } from './presets';
 import { StudioImport } from './StudioImport';
+import { cliCommand, quickStartCommand } from './quickStart';
+import { encodeShare } from './share';
 
-interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession'>; toml: string; quadlet: string; containerfile: string | null; }
+interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession' | 'values' | 'imagePrebuiltRef'>; toml: string; quadlet: string; containerfile: string | null; }
 
 export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderProps) {
-  const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu, hasRestoredSession } = st;
+  const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu, hasRestoredSession, imagePrebuiltRef } = st;
   const { handleDownloadToml, handleCopyConfig } = useOutputActions(st, toml, quadlet, containerfile);
   const [showImport, setShowImport] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
@@ -35,9 +41,39 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
   };
   const onReset = () => st.applyPatch(defaultPatch());
   const onClearSession = () => st.clearSavedSession();
+  const [shareNote, setShareNote] = useState('');
+  // Which menu row just confirmed a copy, so the row itself can show it. A
+  // single footer note made the user hunt for what they clicked.
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+    } catch {
+      setCopied('error');
+    }
+    setShowExportMenu(true);
+    window.setTimeout(() => setCopied(null), 2000);
+  };
+  // A shared link is a snapshot of the config, so sharing writes the hash
+  // once and leaves it alone: later edits must not silently rewrite the URL
+  // someone already pasted somewhere.
+  const onShare = async () => {
+    setShareNote('');
+    try {
+      const payload = await encodeShare(toml);
+      const url = `${window.location.origin}${window.location.pathname}#c=${payload}`;
+      window.history.replaceState(null, '', url);
+      await navigator.clipboard.writeText(url);
+      setShareNote('link copied');
+    } catch {
+      setShareNote('could not build link');
+    }
+    window.setTimeout(() => setShareNote(''), 2500);
+  };
   return (
-<div className={`shrink-0 border-b border-[var(--border)] ${isFullscreen ? 'pb-2 mb-2' : 'pb-4 mb-4 space-y-3'}`}>
-  <div className={`flex flex-col md:flex-row md:items-center justify-between ${isFullscreen ? 'gap-2' : 'gap-4'}`}>
+<div className={`shrink-0 border-b border-[var(--border)] ${isFullscreen ? 'pb-1 mb-1' : 'pb-4 mb-4 space-y-3'}`}>
+  <div className={`flex flex-col md:flex-row md:items-center justify-between ${isFullscreen ? 'gap-1' : 'gap-4'}`}>
     {/* Left: Branding & status */}
     <div className="flex items-center gap-3">
       {!isFullscreen && (
@@ -132,6 +168,19 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
 
       {/* Import button */}
       <button
+        onClick={onShare}
+        type="button"
+        title="Put this configuration in a shareable link"
+        className={`px-2.5 py-1.5 rounded-[2px] border text-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
+          shareNote
+            ? 'bg-[var(--accent-green)]/10 border-[var(--accent-green)]/40 text-[var(--accent-green)]'
+            : 'bg-[var(--bg-mantle)] border-[var(--border)] text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50'
+        }`}
+      >
+        <Share2 className="w-3.5 h-3.5" />
+        {!iconOnly && <span className="hidden sm:inline">{shareNote || 'Share'}</span>}
+      </button>
+      <button
         onClick={() => setShowImport(true)}
         type="button"
         className="px-2.5 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50 transition-colors cursor-pointer flex items-center gap-1.5"
@@ -162,15 +211,50 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
             <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl p-1 text-xs font-sans animate-fadeIn">
               <button
                 onClick={handleDownloadToml}
-                className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-primary)] flex items-center justify-between cursor-pointer"
+                className="w-full text-left px-3 py-2 rounded-[2px] hover:bg-[var(--bg-surface0)] text-[var(--text-primary)] flex items-center gap-2 cursor-pointer"
               >
-                <div className="flex items-center gap-2">
-                  <FileCode2 className="w-4 h-4 text-[var(--accent-mauve)]" />
-                  <div>
-                    <div className="font-medium">Download podbox.toml</div>
-                    <div className="text-[10px] text-[var(--text-muted)] font-mono">
-                      {containerName || 'podbox'}.toml
-                    </div>
+                <FileCode2 className="w-4 h-4 text-[var(--accent-mauve)] shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-medium">Download podbox.toml</div>
+                  <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">
+                    {containerName || 'podbox'}.toml
+                  </div>
+                </div>
+              </button>
+
+              <div className="my-1 border-t border-[var(--border)]" />
+
+              <div className="px-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wider font-mono text-[var(--text-muted)]">
+                or run it
+              </div>
+              <button
+                onClick={() => copyText(quickStartCommand(st.values, toml), 'quick start')}
+                className={`w-full text-left px-3 py-2 rounded-[2px] text-[var(--text-subtext)] hover:text-[var(--text-primary)] flex items-center gap-2 cursor-pointer ${copied === 'quick start' ? 'bg-[var(--accent-green)]/10' : 'hover:bg-[var(--bg-surface0)]'}`}
+              >
+                {copied === 'quick start'
+                  ? <Check className="w-4 h-4 text-[var(--accent-green)] shrink-0" />
+                  : <Terminal className="w-4 h-4 text-[var(--accent-green)] shrink-0" />}
+                <div className="min-w-0">
+                  <div>Copy quick start</div>
+                  <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">
+                    {copied === 'quick start'
+                      ? 'copied'
+                      : imagePrebuiltRef?.trim() ? 'one line' : 'writes TOML + podbox create'}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => copyText(cliCommand(st.values), 'command')}
+                className={`w-full text-left px-3 py-2 rounded-[2px] text-[var(--text-subtext)] hover:text-[var(--text-primary)] flex items-center gap-2 cursor-pointer ${copied === 'command' ? 'bg-[var(--accent-green)]/10' : 'hover:bg-[var(--bg-surface0)]'}`}
+              >
+                {copied === 'command'
+                  ? <Check className="w-4 h-4 text-[var(--accent-green)] shrink-0" />
+                  : <FileTerminal className="w-4 h-4 text-[var(--accent-blue)] shrink-0" />}
+                <div className="min-w-0">
+                  <div>Copy CLI command</div>
+                  <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">
+                    {copied === 'command' ? 'copied' : `podbox create ${containerName || 'podbox'}`}
                   </div>
                 </div>
               </button>

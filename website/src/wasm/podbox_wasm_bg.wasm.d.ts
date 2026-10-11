@@ -2,6 +2,8 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const compile_quadlet: (a: number, b: number, c: number) => void;
+export const field_lines_in_toml: (a: number, b: number) => number;
+export const locate_field_in_toml: (a: number, b: number, c: number, d: number) => number;
 export const parse_toml_to_json: (a: number, b: number, c: number) => void;
 export const validate_toml: (a: number, b: number) => number;
 export const __wbindgen_add_to_stack_pointer: (a: number) => number;

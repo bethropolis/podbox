@@ -9,6 +9,7 @@ import {
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { ON_STOP_OPTIONS } from '../schema';
+import { idleTimeoutFix } from '../quickFixes';
 import type { StudioState } from '../useStudioState';
 
 type LifecyclePanelProps = Pick<StudioState, 'lifeAutoCheckpoint' | 'lifeAutoUpdate' | 'lifeAutostart' | 'lifeIdleTimeout' | 'lifeOnStop' | 'lifeQuadlet' | 'setLifeAutoCheckpoint' | 'setLifeAutoUpdate' | 'setLifeAutostart' | 'setLifeIdleTimeout' | 'setLifeOnStop' | 'setLifeQuadlet' | 'setSysAfter' | 'sysAfter'>;
@@ -122,6 +123,7 @@ export function LifecyclePanel({ st, errorMap }: { st: LifecyclePanelProps; erro
         list="studio-idle-timeout-presets"
         id="studio-input-lifecycle-idle-timeout"
         error={err('lifecycle.idle_timeout')}
+        quickFix={idleTimeoutFix(lifeIdleTimeout, setLifeIdleTimeout)}
       />
       <datalist id="studio-idle-timeout-presets">
         {IDLE_TIMEOUT_PRESETS.map((p) => (

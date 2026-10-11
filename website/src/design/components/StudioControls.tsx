@@ -89,6 +89,11 @@ interface StudioInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   helperText?: string;
   isMono?: boolean;
   error?: string;
+  /**
+   * Inline repair for this error. Rendered as a small action inside the
+   * error line, so the fix is found where the problem is.
+   */
+  quickFix?: { label: string; run: () => void } | null;
 }
 
 export function StudioInput({
@@ -97,6 +102,7 @@ export function StudioInput({
   helperText,
   isMono = true,
   error,
+  quickFix,
   className = '',
   ...props
 }: StudioInputProps) {
@@ -129,8 +135,18 @@ export function StudioInput({
         />
       </div>
       {error ? (
-        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
-          {error}
+        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1 flex items-center gap-1.5 flex-wrap">
+          <span>{error}</span>
+          {quickFix && (
+            <button
+              type="button"
+              onClick={quickFix.run}
+              className="inline-flex items-center gap-0.5 px-1 py-px rounded-[2px] border border-[var(--accent-green)]/40 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/10 transition-colors cursor-pointer text-[10px]"
+              title={`Replace the value — ${quickFix.label}`}
+            >
+              {quickFix.label}
+            </button>
+          )}
         </p>
       ) : helperText && (
         <p className="text-[11px] text-[var(--text-muted)] leading-tight">

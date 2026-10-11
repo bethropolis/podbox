@@ -29,6 +29,40 @@ export function compile_quadlet(toml_str) {
 }
 
 /**
+ * Scan a TOML document into a `dotted.path -> 1-based line` source map for
+ * field-to-line highlighting in Studio. One call per render; hover and
+ * click-to-edit resolve locally from the result.
+ * @param {string} toml_str
+ * @returns {any}
+ */
+export function field_lines_in_toml(toml_str) {
+    const ptr0 = passStringToWasm0(toml_str, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.field_lines_in_toml(ptr0, len0);
+    return takeObject(ret);
+}
+
+/**
+ * Locate a dotted schema path (`container.memory`) in a TOML document.
+ *
+ * Returns the 1-based line number, or `null` when the key has no source
+ * line (derived values, defaults, absent keys). Thin wrapper over the same
+ * lookup backing error spans; Studio prefers the batch `field_lines_map`
+ * equivalent per render and calls this for ad-hoc jumps.
+ * @param {string} toml_str
+ * @param {string} field_path
+ * @returns {any}
+ */
+export function locate_field_in_toml(toml_str, field_path) {
+    const ptr0 = passStringToWasm0(toml_str, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(field_path, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.locate_field_in_toml(ptr0, len0, ptr1, len1);
+    return takeObject(ret);
+}
+
+/**
  * Parse a TOML definition into a plain JS object for Studio state import.
  * @param {string} toml_str
  * @returns {any}
@@ -69,6 +103,10 @@ function __wbg_get_imports() {
             const ret = Error(getStringFromWasm0(arg0, arg1));
             return addHeapObject(ret);
         },
+        __wbg_Number_4779d427bae39753: function(arg0) {
+            const ret = Number(getObject(arg0));
+            return ret;
+        },
         __wbg___wbindgen_is_string_6541b0f6ecd4e8e5: function(arg0) {
             const ret = typeof(getObject(arg0)) === 'string';
             return ret;
@@ -106,6 +144,11 @@ function __wbg_get_imports() {
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
+            return addHeapObject(ret);
+        },
+        __wbindgen_cast_0000000000000003: function(arg0) {
+            // Cast intrinsic for `U64 -> Externref`.
+            const ret = BigInt.asUintN(64, arg0);
             return addHeapObject(ret);
         },
         __wbindgen_object_clone_ref: function(arg0) {

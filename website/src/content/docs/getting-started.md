@@ -30,8 +30,11 @@ brew install bethropolis/homebrew-tap/podbox
 **Arch Linux**, via AUR
 
 ```bash
-# Arch Linux, via AUR
+# Arch Linux, via AUR (binary, fast)
 paru -S podbox-bin
+
+# ...or build from source
+paru -S podbox
 ```
 
 **From crates.io** (supports prebuilt images only)
