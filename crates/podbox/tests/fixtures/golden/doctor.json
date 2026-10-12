@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "checks": [
+    {
+      "group": "Host",
+      "name": "podman",
+      "status": "pass",
+      "message": "5.6.0"
+    }
+  ],
+  "summary": {
+    "passes": 12,
+    "failures": 0,
+    "total": 12
+  }
+}

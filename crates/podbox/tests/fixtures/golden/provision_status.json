@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "steps": [
+    {
+      "name": "toolchain",
+      "state": "pending"
+    }
+  ]
+}

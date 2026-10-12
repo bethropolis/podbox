@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "name": "myenv",
+  "status": "stopped",
+  "installed": true,
+  "base_image": "fedora:41"
+}

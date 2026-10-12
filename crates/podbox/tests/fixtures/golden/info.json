@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "podbox": "0.8.2",
+  "podman": "5.6.0",
+  "features": [
+    "schema",
+    "error_envelope",
+    "status_extras",
+    "export_list",
+    "restart",
+    "config",
+    "watch",
+    "build_ndjson"
+  ]
+}

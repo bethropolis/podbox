@@ -281,9 +281,11 @@ Treat it as informational, not contractual.
 
 ## Testing against the contract
 
-**Proposed:** podbox keeps golden JSON fixtures in `tests/fixtures/` for every
-reader above, and CI fails when output changes shape. Clients can copy these
-fixtures to build their own tests without a running container.
+podbox keeps golden JSON fixtures in `crates/podbox/tests/fixtures/golden/`
+for every sandbox-runnable reader above, and `cargo test -p podbox-cli
+--test golden` fails when an output shape changes. (`diff` is excluded: it
+needs a running container.) Clients can copy these fixtures to build their
+own tests without a running container. **Today**
 
 ## Checklist for maintainers
 
@@ -296,4 +298,4 @@ In priority order:
 5. ~~Add `"schema": 1` to every JSON payload and the structured error format.~~ Done.
 6. ~~Add `info`, `config get|set|validate`, and non-interactive `create`.~~ Done.
 7. ~~Add `watch` and `build --output ndjson`.~~ Done.
-8. Add the golden fixtures.
+8. ~~Add the golden fixtures.~~ Done.

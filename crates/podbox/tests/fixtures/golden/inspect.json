@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "config": "[image]\nbase = \"fedora:41\"\nname = \"myenv\"\n",
+  "quadlet": {
+    "container": "[Container]\nImage=localhost/podbox-myenv:latest\n",
+    "socket": "[Socket]\nListenStream=%t/podbox/myenv.sock\n"
+  },
+  "env": {
+    "container_name": "myenv",
+    "image_ref": "build:fedora:41",
+    "image_source": "Build",
+    "quadlet": true,
+    "autostart": true,
+    "auto_update": false,
+    "xdg_runtime_dir": "/run/user/1000",
+    "gpu_dri": false,
+    "gpu_nvidia": false
+  }
+}

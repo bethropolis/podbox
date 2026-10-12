@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "containers": [
+    {
+      "name": "myenv",
+      "status": "stopped",
+      "autostart": true,
+      "active": false
+    }
+  ]
+}

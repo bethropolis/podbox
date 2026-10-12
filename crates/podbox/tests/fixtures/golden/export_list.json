@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "apps": [
+    {
+      "id": "gedit",
+      "name": "Text Editor (myenv)",
+      "exported": true
+    }
+  ],
+  "bins": [
+    {
+      "name": "rg",
+      "path": "/usr/bin/rg",
+      "exported": true
+    }
+  ]
+}
