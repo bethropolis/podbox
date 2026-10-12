@@ -37,6 +37,9 @@ pub enum Command {
         /// Open config in editor before building.
         #[arg(long)]
         edit: bool,
+        /// Output format (text, or ndjson for streamed progress events).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
     },
 
     /// Install Quadlet systemd files and enable the container.
@@ -446,6 +449,23 @@ pub enum Command {
         limit: usize,
         /// Output format (text or json).
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
+
+    /// Stream container status changes as newline-delimited JSON.
+    ///
+    /// Runs in the foreground: prints the current state once, then one line
+    /// per change until stopped. Nothing runs in the background, so the
+    /// no-daemon promise holds — the client owns the child process.
+    #[command(display_order = 47)]
+    Watch {
+        /// Container name to watch (default: all managed containers).
+        name: Option<String>,
+        /// Seconds between polls.
+        #[arg(long, default_value_t = 2)]
+        interval: u64,
+        /// Output format (ndjson or text).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Ndjson)]
         output: OutputFormat,
     },
 

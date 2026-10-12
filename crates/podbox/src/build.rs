@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use nix::fcntl::{Flock, FlockArg};
 use sha2::{Digest, Sha256};
 
+use crate::cli::OutputFormat;
 use crate::codegen::containerfile;
 use crate::config::Config;
 use crate::env::{HostEnv, build_context_dir};
@@ -114,15 +115,20 @@ pub(crate) fn run_podman_logged(
 }
 
 /// Run the full build orchestration.
+///
+/// With `OutputFormat::Ndjson`, stdout carries only progress events
+/// (`step` lines, then `done`) instead of human text; diagnostics stay on
+/// stderr either way. `--dry-run` always prints the human plan.
 pub fn run(
     config: &Config,
     env: &HostEnv,
     xdg: &ResolvedXdgDirs,
     dry_run: bool,
     rebuild: bool,
+    output: OutputFormat,
 ) -> Result<()> {
     if config.image.source().is_prebuilt() {
-        run_prebuilt(config, dry_run, rebuild)
+        run_prebuilt(config, dry_run, rebuild, output)
     } else {
         // Custom builds bake the embedded guest into the image. Builds from
         // the published crate have no guest (PODBOX_GUEST is None); reject
@@ -130,7 +136,7 @@ pub fn run(
         if crate::guest::PODBOX_GUEST.is_none() {
             return Err(PodboxError::GuestBinaryUnavailable.into());
         }
-        run_build(config, env, xdg, dry_run, rebuild)
+        run_build(config, env, xdg, dry_run, rebuild, output)
     }
 }
 
@@ -142,7 +148,9 @@ fn run_build(
     _xdg: &ResolvedXdgDirs,
     dry_run: bool,
     rebuild: bool,
+    output: OutputFormat,
 ) -> Result<()> {
+    let events = matches!(output, OutputFormat::Ndjson);
     let name = &config.container.name;
     let context_dir = build_context_dir(name);
     let containerfile_path = context_dir.join("Containerfile");
@@ -165,8 +173,14 @@ fn run_build(
     if !rebuild {
         if let Some(lock) = crate::lock::read(&lock_path)? {
             if lock.config_checksum == config_checksum {
-                println!("Definition unchanged and image already built. Skipping.");
-                println!("Use --rebuild to force.");
+                if events {
+                    crate::contract::emit_event(serde_json::json!({
+                        "event": "done", "ok": true, "cached": true,
+                    }));
+                } else {
+                    println!("Definition unchanged and image already built. Skipping.");
+                    println!("Use --rebuild to force.");
+                }
                 return Ok(());
             }
         }
@@ -189,6 +203,11 @@ fn run_build(
         return Ok(());
     }
 
+    if events {
+        crate::contract::emit_event(serde_json::json!({
+            "event": "step", "index": 1, "total": 3, "text": "Writing build context",
+        }));
+    }
     phase("Writing build context", || {
         std::fs::create_dir_all(&context_dir).map_err(|e| PodboxError::HomeCreateFailed {
             path: context_dir.clone(),
@@ -234,6 +253,12 @@ fn run_build(
         build_log_path(name).display()
     ));
     let start = Instant::now();
+    if events {
+        crate::contract::emit_event(serde_json::json!({
+            "event": "step", "index": 2, "total": 3,
+            "text": format!("Building image {tag}"),
+        }));
+    }
     run_podman_logged(&args, name, "podman build", &mut log)?;
     ui::ok(&format!(
         "Image {tag} built ({:.1}s)",
@@ -241,6 +266,11 @@ fn run_build(
     ));
 
     phase("Writing lock file", || {
+        if events {
+            crate::contract::emit_event(serde_json::json!({
+                "event": "step", "index": 3, "total": 3, "text": "Writing lock file",
+            }));
+        }
         let digest = crate::podman::image_digest(&tag)?;
         let lock = crate::lock::LockFile {
             config_checksum,
@@ -250,6 +280,11 @@ fn run_build(
         Ok(())
     })?;
 
+    if events {
+        crate::contract::emit_event(serde_json::json!({
+            "event": "done", "ok": true, "cached": false,
+        }));
+    }
     Ok(())
 }
 

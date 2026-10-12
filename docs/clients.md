@@ -222,19 +222,30 @@ A client that wants live state has two options.
 
 1. **Poll `list`.** Every 5 to 10 seconds is enough for a status indicator.
    Never run two overlapping polls of the same command. **Today**
-2. **Subscribe.** **Proposed:** `podbox watch --output ndjson` runs in the
-   foreground and prints one JSON line per state change:
+2. **Subscribe: `podbox watch`.** **Today** Runs in the foreground and
+   prints the current state once, then one compact JSON line per change:
 
    ```json
-   {"event": "status", "name": "myenv", "status": "running"}
+   {"schema": 1, "event": "status", "name": "myenv", "status": "running"}
    ```
 
    The client spawns it as a child process and stops it when it is done.
-   Nothing runs in the background, so the no-daemon promise holds.
+   Nothing runs in the background, so the no-daemon promise holds. Filter
+   with a positional `NAME`, pace with `--interval SECONDS` (default 2),
+   render human transitions with `--output text`. `--dry-run` prints the
+   poll plan.
 
-Builds can be slow. **Proposed:** `podbox build NAME --output ndjson` prints
-progress events (`{"event": "step", "index": 3, "total": 9, "text": "..."}`),
-ending with a `{"event": "done", "ok": true}` line.
+Builds can be slow. `podbox build --output ndjson` prints
+progress events, ending with a `done` line. **Today** (`--dry-run` always
+prints the human plan):
+
+```json
+{"schema": 1, "event": "step", "index": 2, "total": 3, "text": "Building image ..."}
+{"schema": 1, "event": "done", "ok": true, "cached": false}
+```
+
+A failure terminates the stream with the compact error object instead of
+`done`. A no-op rebuild ends immediately with `"cached": true`.
 
 ## Version and capability checks
 
@@ -284,5 +295,5 @@ In priority order:
 4. ~~Add `restart`.~~ Done.
 5. ~~Add `"schema": 1` to every JSON payload and the structured error format.~~ Done.
 6. ~~Add `info`, `config get|set|validate`, and non-interactive `create`.~~ Done.
-7. Add `watch` and `build --output ndjson`.
+7. ~~Add `watch` and `build --output ndjson`.~~ Done.
 8. Add the golden fixtures.

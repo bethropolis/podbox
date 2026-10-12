@@ -35,6 +35,7 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Start { name, .. }
         | Command::Stop { name, .. }
         | Command::Restart { name, .. }
+        | Command::Watch { name, .. }
         | Command::Enter { name, .. }
         | Command::Status { name, .. }
         | Command::Remove { name, .. }
@@ -344,7 +345,15 @@ pub(crate) fn run_edit(dry_run: bool, container: Option<&str>, rebuild_after: bo
             let config = Config::load(&config_path)?;
             let env = podbox::env::resolve()?;
             let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
-            commands::lifecycle::run_build(&config, &env, &xdg, false, false, false)?;
+            commands::lifecycle::run_build(
+                &config,
+                &env,
+                &xdg,
+                false,
+                false,
+                false,
+                podbox::cli::OutputFormat::Text,
+            )?;
         } else if podbox::codegen::distros::is_tty() {
             let yes = dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
                 .with_prompt("Rebuild now?")
@@ -354,7 +363,15 @@ pub(crate) fn run_edit(dry_run: bool, container: Option<&str>, rebuild_after: bo
                 let config = Config::load(&config_path)?;
                 let env = podbox::env::resolve()?;
                 let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
-                commands::lifecycle::run_build(&config, &env, &xdg, false, false, false)?;
+                commands::lifecycle::run_build(
+                    &config,
+                    &env,
+                    &xdg,
+                    false,
+                    false,
+                    false,
+                    podbox::cli::OutputFormat::Text,
+                )?;
             }
         } else {
             eprintln!("Run `podbox build` to apply changes.");

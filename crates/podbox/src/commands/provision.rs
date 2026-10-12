@@ -483,6 +483,9 @@ pub fn status(config: &Config, output: podbox::cli::OutputFormat, check: bool) -
                 .collect();
             podbox::contract::print_json(serde_json::json!({ "steps": out }))?;
         }
+        podbox::cli::OutputFormat::Ndjson => {
+            return Err(podbox::contract::bail_ndjson("provision status"));
+        }
         podbox::cli::OutputFormat::Text => {
             println!("Container: {}", config.container.name);
             for (name, state, at) in &rows {

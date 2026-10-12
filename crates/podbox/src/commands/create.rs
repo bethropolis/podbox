@@ -19,7 +19,14 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
         } else {
             let env = podbox::env::resolve()?;
             let xdg = podbox::xdg::resolve(&cfg.integration.xdg_dirs)?;
-            podbox::build::run(cfg, &env, &xdg, false, false)?;
+            podbox::build::run(
+                cfg,
+                &env,
+                &xdg,
+                false,
+                false,
+                podbox::cli::OutputFormat::Text,
+            )?;
         }
     }
 

@@ -59,6 +59,9 @@ pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportComman
                 podbox::cli::OutputFormat::Json => {
                     podbox::contract::print_json(serde_json::to_value(&inv)?)?;
                 }
+                podbox::cli::OutputFormat::Ndjson => {
+                    return Err(podbox::contract::bail_ndjson("export list"));
+                }
                 podbox::cli::OutputFormat::Text => {
                     podbox::export::print_inventory_text(name, &inv);
                 }

@@ -77,6 +77,9 @@ fn list_snapshots(name: &str) -> Result<Vec<SnapshotMeta>> {
 
 /// List all snapshots for a container.
 pub fn run_snapshot_list(name: &str, output: podbox::cli::OutputFormat) -> Result<()> {
+    if matches!(output, podbox::cli::OutputFormat::Ndjson) {
+        return Err(podbox::contract::bail_ndjson("snapshot list"));
+    }
     let snapshots = list_snapshots(name)?;
     if let podbox::cli::OutputFormat::Json = output {
         let entries: Vec<serde_json::Value> = snapshots

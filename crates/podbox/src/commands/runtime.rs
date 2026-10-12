@@ -674,6 +674,9 @@ pub fn run_status(
     dry_run: bool,
     output: podbox::cli::OutputFormat,
 ) -> Result<()> {
+    if matches!(output, podbox::cli::OutputFormat::Ndjson) {
+        return Err(podbox::contract::bail_ndjson("status"));
+    }
     if matches!(output, podbox::cli::OutputFormat::Json) {
         let state = query_state(name)?;
         // Canonical vocabulary shared with `podbox list --output json`:

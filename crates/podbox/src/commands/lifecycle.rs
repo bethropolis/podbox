@@ -22,22 +22,24 @@ pub fn run_build(
     dry_run: bool,
     rebuild: bool,
     no_diff: bool,
+    output: podbox::cli::OutputFormat,
 ) -> Result<()> {
     if rebuild && config.lifecycle.auto_checkpoint {
         checkpoint_previous(config, &config.container.name, dry_run)?;
     }
-    podbox::build::run(config, env, xdg, dry_run, rebuild)?;
+    podbox::build::run(config, env, xdg, dry_run, rebuild, output)?;
     if !dry_run {
         let _ = podbox::history::record(&config.container.name, "build", "");
-        if config.lifecycle.quadlet {
+        if config.lifecycle.quadlet && !matches!(output, podbox::cli::OutputFormat::Ndjson) {
             println!(
                 "\nRun `podbox enable {}` to install Quadlet files.",
                 config.container.name
             );
         }
     }
-    // Post-build drift check (best-effort).
-    if !dry_run && !no_diff {
+    // Post-build drift check (best-effort, human mode only: advisory text
+    // has no place in an event stream).
+    if !dry_run && !no_diff && !matches!(output, podbox::cli::OutputFormat::Ndjson) {
         let name = &config.container.name;
         if let Ok(state) = podbox::podman::query_state(name)
             && state == podbox::podman::ContainerState::Running
@@ -131,7 +133,14 @@ pub fn run_start(
     let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
     if !podbox::podman::image_exists(&local_tag).unwrap_or(false) {
         println!("Image not found, building first...");
-        podbox::build::run(config, env, xdg, false, false)?;
+        podbox::build::run(
+            config,
+            env,
+            xdg,
+            false,
+            false,
+            podbox::cli::OutputFormat::Text,
+        )?;
     }
 
     if !podbox::quadlet_install::is_installed(name) {
@@ -316,7 +325,14 @@ pub fn run_update(
         checkpoint_previous(config, name, false)?;
     }
 
-    podbox::build::run(config, env, xdg, false, true)?;
+    podbox::build::run(
+        config,
+        env,
+        xdg,
+        false,
+        true,
+        podbox::cli::OutputFormat::Text,
+    )?;
 
     if no_restart {
         println!("Image updated. Restart skipped (--no-restart).");

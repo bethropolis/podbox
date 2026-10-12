@@ -35,6 +35,7 @@ pub fn run_get(config: &Config, key: &str, output: OutputFormat) -> Result<()> {
     let value = toml::Value::try_from(config)?;
     let found = lookup(&value, &segments).ok_or_else(|| anyhow::anyhow!("unknown key '{key}'"))?;
     match output {
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("config get")),
         OutputFormat::Json => {
             podbox::contract::print_json(serde_json::to_value(found)?)?;
         }
@@ -119,6 +120,7 @@ pub fn run_set(path: &Path, key: &str, raw_value: &str, output: OutputFormat) ->
     std::fs::write(path, &new_text)?;
     let rebuild_required = segments[0] == "image";
     match output {
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("config set")),
         OutputFormat::Json => {
             podbox::contract::print_json(serde_json::json!({
                 "ok": true,
@@ -197,6 +199,7 @@ pub fn run_validate(path: &Path, output: OutputFormat) -> Result<()> {
 
     let valid = errors.is_empty();
     match output {
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("config validate")),
         OutputFormat::Json => {
             podbox::contract::print_json(serde_json::json!({
                 "valid": valid,

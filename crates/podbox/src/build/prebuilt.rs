@@ -9,6 +9,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use nix::fcntl::{Flock, FlockArg};
 
+use crate::cli::OutputFormat;
 use crate::codegen::distros::DistroFamily;
 use crate::config::Config;
 use crate::env::build_context_dir;
@@ -17,7 +18,13 @@ use crate::ui;
 
 use super::{open_log, run_podman_logged};
 
-pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Result<()> {
+pub(crate) fn run_prebuilt(
+    config: &Config,
+    dry_run: bool,
+    rebuild: bool,
+    output: OutputFormat,
+) -> Result<()> {
+    let events = matches!(output, OutputFormat::Ndjson);
     let image_ref = match config.image.source() {
         crate::config::ImageSource::Prebuilt { ref_str } => ref_str,
         _ => config.image.base.clone(),
@@ -44,8 +51,14 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
     if !rebuild {
         if let Some(lock) = crate::lock::read(&lock_path)? {
             if lock.config_checksum == config_checksum && crate::podman::image_exists(&local_tag)? {
-                println!("Prebuilt image already present as {local_tag}. Skipping pull.");
-                println!("Use --rebuild to re-pull.");
+                if events {
+                    crate::contract::emit_event(serde_json::json!({
+                        "event": "done", "ok": true, "cached": true,
+                    }));
+                } else {
+                    println!("Prebuilt image already present as {local_tag}. Skipping pull.");
+                    println!("Use --rebuild to re-pull.");
+                }
                 return Ok(());
             }
         }
@@ -84,7 +97,14 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
         }
     }
 
-    println!("Pulling {image_ref}...");
+    if events {
+        crate::contract::emit_event(serde_json::json!({
+            "event": "step", "index": 1, "total": 2,
+            "text": format!("Pulling {image_ref}"),
+        }));
+    } else {
+        println!("Pulling {image_ref}...");
+    }
     let status = std::process::Command::new("podman")
         .args(["pull", &image_ref])
         .status()?;
@@ -137,7 +157,14 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
             )
         })?;
 
-        println!("Installing packages on top of prebuilt image...");
+        if events {
+            crate::contract::emit_event(serde_json::json!({
+                "event": "step", "index": 2, "total": 2,
+                "text": format!("Installing packages on top of {local_tag}"),
+            }));
+        } else {
+            println!("Installing packages on top of prebuilt image...");
+        }
         let args: Vec<std::ffi::OsString> = vec![
             "build".into(),
             "-t".into(),
@@ -161,7 +188,14 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
             start.elapsed().as_secs_f32()
         ));
     } else {
-        println!("Tagging as {local_tag}...");
+        if events {
+            crate::contract::emit_event(serde_json::json!({
+                "event": "step", "index": 2, "total": 2,
+                "text": format!("Tagging {local_tag}"),
+            }));
+        } else {
+            println!("Tagging as {local_tag}...");
+        }
         let status = std::process::Command::new("podman")
             .args(["tag", &image_ref, &local_tag])
             .status()?;
@@ -171,7 +205,9 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
             }
             .into());
         }
-        println!("Image {local_tag} ready.");
+        if !events {
+            println!("Image {local_tag} ready.");
+        }
     }
 
     std::fs::create_dir_all(&config.container.home).with_context(|| {
@@ -187,6 +223,11 @@ pub(crate) fn run_prebuilt(config: &Config, dry_run: bool, rebuild: bool) -> Res
     };
     crate::lock::write(&lock_path, &lock)?;
 
+    if events {
+        crate::contract::emit_event(serde_json::json!({
+            "event": "done", "ok": true, "cached": false,
+        }));
+    }
     Ok(())
 }
 

@@ -9,6 +9,9 @@ use podbox::history;
 /// Read-only: never creates the log, never prompts, works on a machine
 /// contract. Missing log / no matching entries => empty output, exit 0.
 pub fn run_history(name: Option<String>, limit: usize, output: OutputFormat) -> Result<()> {
+    if matches!(output, OutputFormat::Ndjson) {
+        return Err(podbox::contract::bail_ndjson("history"));
+    }
     let entries = history::load().unwrap_or_default();
     let filtered: Vec<&history::HistoryEntry> = entries
         .iter()

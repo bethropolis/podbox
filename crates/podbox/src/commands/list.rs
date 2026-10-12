@@ -12,6 +12,9 @@ use podbox::config;
 
 /// List all podbox-managed containers with status, autostart, and active context.
 pub fn run_list(output: OutputFormat) -> Result<()> {
+    if matches!(output, OutputFormat::Ndjson) {
+        return Err(podbox::contract::bail_ndjson("list"));
+    }
     let configs = config::list_configs();
     let active_ctx = config::read_active_context();
 
@@ -24,17 +27,7 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
-                let state_label = match podbox::podman::query_state(&name) {
-                    Ok(podbox::podman::ContainerState::Running) => "running",
-                    Ok(podbox::podman::ContainerState::Stopped)
-                        if podbox::systemd::is_unit_failed(&name) =>
-                    {
-                        "failed"
-                    }
-                    Ok(podbox::podman::ContainerState::Stopped) => "stopped",
-                    Ok(podbox::podman::ContainerState::Missing) => "unbuilt",
-                    Err(_) => "unknown",
-                };
+                let state_label = podbox::podman::state_label(&name);
                 let autostart = config::Config::load(cp).is_ok_and(|c| c.lifecycle.autostart);
                 serde_json::json!({
                     "name": name,

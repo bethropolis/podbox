@@ -25,6 +25,7 @@ pub fn run_diff(
         OutputFormat::Json => {
             podbox::contract::print_json(serde_json::to_value(&result)?)?;
         }
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("diff")),
         OutputFormat::Text => {
             if !result.has_drift {
                 println!("✓ No drift detected — all declared packages are installed.");

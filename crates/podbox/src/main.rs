@@ -49,13 +49,18 @@ fn init_tracing(verbosity: u8) {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let json_mode = command_requests_json(&cli.command);
+    let format = command_output_format(&cli.command);
     if let Err(e) = run(cli) {
         // Contract: in JSON mode failures also print a structured error on
         // stdout (same exit code). Diagnostics stay on stderr either way.
         // Skipped when the command already printed its JSON report and the
         // error only carries the exit status (doctor failures, --check).
-        if json_mode {
+        // NDJSON streams get the compact one-line form so line parsers keep
+        // working; the envelope terminates the stream.
+        if matches!(
+            format,
+            Some(podbox::cli::OutputFormat::Json | podbox::cli::OutputFormat::Ndjson)
+        ) {
             let reported = e
                 .downcast_ref::<PodboxError>()
                 .is_some_and(PodboxError::json_reported);
@@ -63,10 +68,12 @@ fn main() -> ExitCode {
                 let code = e
                     .downcast_ref::<PodboxError>()
                     .map_or("error", PodboxError::code);
-                if let Ok(text) = serde_json::to_string_pretty(&podbox::contract::error_payload(
-                    code,
-                    &format!("{e:#}"),
-                )) {
+                let payload = podbox::contract::error_payload(code, &format!("{e:#}"));
+                let text = match format {
+                    Some(podbox::cli::OutputFormat::Ndjson) => serde_json::to_string(&payload),
+                    _ => serde_json::to_string_pretty(&payload),
+                };
+                if let Ok(text) = text {
                     println!("{text}");
                 }
             }
@@ -97,12 +104,17 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
     }
 }
 
-/// True when the invoked command was asked for `--output json`, including
-/// the nested `provision status` / `snapshot list` readers. Used once from
-/// `main` so JSON-mode failures can print the structured error envelope.
-fn command_requests_json(cmd: &Command) -> bool {
-    use podbox::cli::{ConfigCommand, OutputFormat, ProvisionCommand, SnapshotCommand};
-    match cmd {
+/// The `--output` format the invoked command was asked for, including the
+/// nested `provision status` / `snapshot list` / `config` / `export list`
+/// readers. Used once from `main` so machine-mode failures can print the
+/// structured error envelope (pretty for `json`, one line for `ndjson`).
+fn command_output_format(cmd: &Command) -> Option<podbox::cli::OutputFormat> {
+    use podbox::cli::{
+        ConfigCommand, ExportCommand, OutputFormat, ProvisionCommand, SnapshotCommand,
+    };
+    let is_machine =
+        |output: &OutputFormat| matches!(output, OutputFormat::Json | OutputFormat::Ndjson);
+    let format = match cmd {
         Command::Status { output, .. }
         | Command::Stats { output, .. }
         | Command::Inspect { output, .. }
@@ -110,24 +122,27 @@ fn command_requests_json(cmd: &Command) -> bool {
         | Command::Info { output, .. }
         | Command::Doctor { output, .. }
         | Command::Diff { output, .. }
-        | Command::History { output, .. } => matches!(output, OutputFormat::Json),
-        Command::Provision { provision_cmd } => matches!(
-            provision_cmd,
-            ProvisionCommand::Status { output, .. } if matches!(output, OutputFormat::Json)
-        ),
-        Command::Config { config_cmd } => matches!(
-            config_cmd,
-            ConfigCommand::Get { output, .. }
-            | ConfigCommand::Set { output, .. }
-            | ConfigCommand::Validate { output, .. }
-                if matches!(output, OutputFormat::Json)
-        ),
-        Command::Snapshot { snapshot_cmd } => matches!(
-            snapshot_cmd,
-            SnapshotCommand::List { output, .. } if matches!(output, OutputFormat::Json)
-        ),
-        _ => false,
-    }
+        | Command::History { output, .. }
+        | Command::Build { output, .. }
+        | Command::Watch { output, .. }
+        | Command::Export {
+            export_cmd: ExportCommand::List { output },
+        }
+        | Command::Provision {
+            provision_cmd: ProvisionCommand::Status { output, .. },
+        }
+        | Command::Config {
+            config_cmd:
+                ConfigCommand::Get { output, .. }
+                | ConfigCommand::Set { output, .. }
+                | ConfigCommand::Validate { output, .. },
+        }
+        | Command::Snapshot {
+            snapshot_cmd: SnapshotCommand::List { output, .. },
+        } => *output,
+        _ => return None,
+    };
+    is_machine(&format).then_some(format)
 }
 
 fn run(mut cli: Cli) -> Result<()> {
@@ -151,6 +166,7 @@ fn run(mut cli: Cli) -> Result<()> {
             | Command::CompleteNames
             | Command::History { .. }
             | Command::Info { .. }
+            | Command::Watch { .. }
             | Command::Cache { .. }
             | Command::InternalStdinWatchdog { .. }
             | Command::Migrate { .. }
@@ -233,6 +249,19 @@ fn run(mut cli: Cli) -> Result<()> {
 
         Command::Info { output } => {
             return commands::info::run_info(*output);
+        }
+
+        Command::Watch {
+            name,
+            interval,
+            output,
+        } => {
+            return commands::watch::run_watch(
+                name.clone().or_else(|| cli.container.clone()),
+                *interval,
+                *output,
+                cli.dry_run,
+            );
         }
 
         Command::Config { config_cmd } => match config_cmd {
@@ -360,13 +389,27 @@ fn run(mut cli: Cli) -> Result<()> {
             rebuild,
             no_diff,
             edit,
+            output,
         } => {
+            if matches!(output, podbox::cli::OutputFormat::Json) {
+                return Err(anyhow::anyhow!(
+                    "`podbox build` supports text and ndjson output, not pretty json"
+                ));
+            }
             if *edit {
                 let config_path = resolve_config_path(cli.container.as_deref())?;
                 let ed = editor::resolve()?;
                 editor::open(&ed, &config_path)?;
             }
-            commands::lifecycle::run_build(&config, &env, &xdg, cli.dry_run, *rebuild, *no_diff)?;
+            commands::lifecycle::run_build(
+                &config,
+                &env,
+                &xdg,
+                cli.dry_run,
+                *rebuild,
+                *no_diff,
+                *output,
+            )?;
         }
 
         Command::Enable { name: _, yes } => {
@@ -616,6 +659,7 @@ fn run(mut cli: Cli) -> Result<()> {
         | Command::Clone { .. }
         | Command::List { .. }
         | Command::Info { .. }
+        | Command::Watch { .. }
         | Command::Use { .. }
         | Command::Migrate { .. }
         | Command::Edit { .. } => unreachable!(),

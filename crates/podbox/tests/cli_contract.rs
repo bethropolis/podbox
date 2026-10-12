@@ -939,3 +939,91 @@ fn create_yes_dry_run() {
         String::from_utf8_lossy(&out.stdout)
     );
 }
+
+/// Contract P5: `watch --dry-run` prints the poll plan and exits.
+#[test]
+fn watch_dry_run_prints_plan() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb.cmd().args(["watch", "--dry-run"]).output().unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("every 2s"),
+        "stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+/// Contract P5: `watch --output ndjson` streams one JSON object per line.
+/// Spawned and killed: the first lines are the initial snapshot.
+#[test]
+fn watch_ndjson_streams_snapshot_lines() {
+    let sb = Sandbox::new(&["alpha"]);
+    let mut child = sb
+        .cmd()
+        .args(["-C", "alpha", "watch", "--interval", "1"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    child.kill().ok();
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!stdout.trim().is_empty(), "watch must print snapshot lines");
+    for line in stdout.lines().take(3) {
+        let v: serde_json::Value =
+            serde_json::from_str(line).expect("every line must be one JSON object");
+        assert_eq!(v["schema"], 1);
+        assert_eq!(v["event"], "status");
+        assert!(v["name"].is_string());
+        assert!(v["status"].is_string());
+    }
+}
+
+/// Contract P5: `--output ndjson` fails loudly on single-document readers.
+#[test]
+fn ndjson_rejected_outside_streams() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb
+        .cmd()
+        .args(["list", "--output", "ndjson"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("only supported by"),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Contract P5: `build --output json` points at ndjson; dry-run stays text.
+#[test]
+fn build_output_modes() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "build", "--output", "json", "--dry-run"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "build", "--dry-run", "--output", "ndjson"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("Build context"),
+        "dry-run prints the human plan: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}

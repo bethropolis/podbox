@@ -73,7 +73,14 @@ pub fn run_recover(
     let tag = format!("localhost/podbox-{}:latest", config.image.name);
     let image_ok = podbox::podman::image_exists(&tag).unwrap_or(false);
     if !image_ok && confirmed(&opts, "Image is missing - build it now?") {
-        podbox::build::run(config, env, xdg, false, false)?;
+        podbox::build::run(
+            config,
+            env,
+            xdg,
+            false,
+            false,
+            podbox::cli::OutputFormat::Text,
+        )?;
     } else if image_ok {
         ui::ok(&format!("Image {tag} present"));
     }

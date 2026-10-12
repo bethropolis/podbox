@@ -26,6 +26,7 @@ pub mod runtime;
 pub mod serve;
 pub mod stats;
 pub mod translate;
+pub mod watch;
 
 pub const DEFAULT_START_TIMEOUT_SECS: u64 = 30;
 

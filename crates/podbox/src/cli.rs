@@ -48,6 +48,10 @@ pub use command::{
 pub enum OutputFormat {
     Text,
     Json,
+    /// Newline-delimited JSON: one compact object per line, for streams
+    /// (`watch`, `build`). Only those commands accept it; every other
+    /// `--output` reader bails with a pointer (see `contract::bail_ndjson`).
+    Ndjson,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

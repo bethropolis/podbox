@@ -39,6 +39,15 @@ pub fn print_json(payload: Value) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// One compact enveloped line on stdout: the NDJSON stream primitive.
+/// (`watch` status lines, `build` progress events, and the terminating
+/// error object all go through here.)
+pub fn emit_event(payload: Value) {
+    let line =
+        serde_json::to_string(&envelope(payload)).unwrap_or_else(|_| r#"{"schema":1}"#.into());
+    println!("{line}");
+}
+
 /// Capability flags for `podbox info --output json`. Additive only:
 /// clients probe for the flags they need and tolerate unknown ones.
 pub const CONTRACT_FEATURES: &[&str] = &[
@@ -48,6 +57,8 @@ pub const CONTRACT_FEATURES: &[&str] = &[
     "export_list",
     "restart",
     "config",
+    "watch",
+    "build_ndjson",
 ];
 
 /// Convert a byte offset into 1-based (line, column). Columns count Unicode
@@ -130,6 +141,18 @@ pub fn error_payload(code: &str, message: &str) -> Value {
     envelope(serde_json::json!({
         "error": { "code": code, "message": message },
     }))
+}
+
+/// Reject `--output ndjson` on single-document commands.
+///
+/// Only the streaming commands (`watch`, `build`) speak NDJSON; every other
+/// reader bails through here so the flag fails loudly instead of silently
+/// printing pretty JSON into a line parser.
+pub fn bail_ndjson(cmd: &'static str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "--output ndjson is only supported by `podbox watch` and `podbox build`; \
+         `{cmd}` supports text and json"
+    )
 }
 
 #[cfg(test)]

@@ -289,6 +289,19 @@ pub fn image_labels(tag: &str) -> anyhow::Result<std::collections::HashMap<Strin
     Ok(map)
 }
 
+/// Canonical status vocabulary shared by `list`, `status` and `watch`:
+/// `running | stopped | failed | unbuilt`, with `unknown` when podman
+/// cannot be queried at all.
+pub fn state_label(name: &str) -> &'static str {
+    match query_state(name) {
+        Ok(ContainerState::Running) => "running",
+        Ok(ContainerState::Stopped) if crate::systemd::is_unit_failed(name) => "failed",
+        Ok(ContainerState::Stopped) => "stopped",
+        Ok(ContainerState::Missing) => "unbuilt",
+        Err(_) => "unknown",
+    }
+}
+
 /// Query the state of a container.
 ///
 /// Checks `podman inspect` first.  If the container is unknown to podman,

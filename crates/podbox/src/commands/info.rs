@@ -19,6 +19,7 @@ pub fn run_info(output: OutputFormat) -> Result<()> {
                 "features": podbox::contract::CONTRACT_FEATURES,
             }))?;
         }
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("info")),
         OutputFormat::Text => {
             println!("podbox {}", podbox::VERSION);
             match &podman {

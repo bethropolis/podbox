@@ -83,6 +83,7 @@ pub fn run_inspect(
             );
             println!("{}", serde_json::to_string_pretty(&out)?);
         }
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("inspect")),
         OutputFormat::Text => {
             if all || show_config {
                 println!("--- Config ---");

@@ -129,6 +129,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
                 }
             }))?;
         }
+        OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("doctor")),
         OutputFormat::Text => {
             // Header: which container this run is for, with active hint on default run.
             let active = podbox::config::read_active_context();
