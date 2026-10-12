@@ -40,8 +40,8 @@ pub struct Cli {
 mod command;
 
 pub use command::{
-    CacheCommand, Command, DotfilesCommand, ExportCommand, ProfileCommand, ProvisionCommand,
-    SnapshotCommand,
+    CacheCommand, Command, DotfilesCommand, ExportCommand, ExportTarget, ProfileCommand,
+    ProvisionCommand, SnapshotCommand,
 };
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

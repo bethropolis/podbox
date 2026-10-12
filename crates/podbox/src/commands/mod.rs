@@ -13,6 +13,7 @@ pub mod diff;
 pub mod dotfiles;
 pub mod export;
 pub mod history;
+pub mod info;
 pub mod inspect;
 pub mod lifecycle;
 pub mod list;

@@ -41,6 +41,14 @@ pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportComman
         ExportCommand::Clean => {
             podbox::export::unexport_all(name)?;
         }
+        ExportCommand::Remove { target, item } => match target {
+            podbox::cli::ExportTarget::App => {
+                podbox::export::unexport_app(name, item)?;
+            }
+            podbox::cli::ExportTarget::Bin => {
+                podbox::export::unexport_bin(name, item)?;
+            }
+        },
         ExportCommand::List { output } => {
             let (declared_apps, declared_bins): (&[String], &[String]) = match config {
                 Some(cfg) => (&cfg.integration.export.apps, &cfg.integration.export.bins),

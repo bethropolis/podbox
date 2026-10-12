@@ -39,6 +39,16 @@ pub fn print_json(payload: Value) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Capability flags for `podbox info --output json`. Additive only:
+/// clients probe for the flags they need and tolerate unknown ones.
+pub const CONTRACT_FEATURES: &[&str] = &[
+    "schema",
+    "error_envelope",
+    "status_extras",
+    "export_list",
+    "restart",
+];
+
 /// Structured error envelope for JSON mode. `code` is a stable lowercase
 /// identifier ([`crate::error::PodboxError::code`]); `message` is for people.
 pub fn error_payload(code: &str, message: &str) -> Value {

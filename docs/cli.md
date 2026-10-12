@@ -11,7 +11,7 @@ description: podbox CLI reference — every command grouped by workflow, contain
 | Get started | `create`, `init`, `profile` |
 | Day to day | `enter` (alias `shell`), `exec`, `run`, `start`, `stop`, `restart`, `list` (alias `ls`), `status` |
 | Change | `edit`, `build`, `enable`, `disable`, `update`, `rollback`, `pull`, `diff` |
-| Inspect | `logs`, `inspect`, `stats`, `doctor`, `history`, `find-definition` |
+| Inspect | `logs`, `inspect`, `stats`, `doctor`, `history`, `find-definition`, `info` |
 | Copy / backup | `clone`, `snapshot`, `restore`, `export` |
 | Remove | `remove` (alias `rm`) |
 | Context | `use` |

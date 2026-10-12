@@ -107,6 +107,7 @@ fn command_requests_json(cmd: &Command) -> bool {
         | Command::Stats { output, .. }
         | Command::Inspect { output, .. }
         | Command::List { output, .. }
+        | Command::Info { output, .. }
         | Command::Doctor { output, .. }
         | Command::Diff { output, .. }
         | Command::History { output, .. } => matches!(output, OutputFormat::Json),
@@ -142,6 +143,7 @@ fn run(mut cli: Cli) -> Result<()> {
             | Command::Compositor { .. }
             | Command::CompleteNames
             | Command::History { .. }
+            | Command::Info { .. }
             | Command::Cache { .. }
             | Command::InternalStdinWatchdog { .. }
             | Command::Migrate { .. }
@@ -218,6 +220,10 @@ fn run(mut cli: Cli) -> Result<()> {
 
         Command::List { output } => {
             return commands::definition::run_list(*output);
+        }
+
+        Command::Info { output } => {
+            return commands::info::run_info(*output);
         }
 
         Command::Clone {
@@ -571,6 +577,7 @@ fn run(mut cli: Cli) -> Result<()> {
         | Command::Create { .. }
         | Command::Clone { .. }
         | Command::List { .. }
+        | Command::Info { .. }
         | Command::Use { .. }
         | Command::Migrate { .. }
         | Command::Edit { .. } => unreachable!(),

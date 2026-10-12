@@ -584,3 +584,101 @@ fn status_json_has_base_image() {
     assert_eq!(v["schema"], 1);
     assert!(v["base_image"].is_string(), "base_image missing: {v}");
 }
+
+/// Contract P3: `info --output json` reports versions and capabilities,
+/// needing no config and no container.
+#[test]
+fn info_json_shape() {
+    let sb = Sandbox::new(&[]);
+    let out = sb
+        .cmd()
+        .args(["info", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
+        .expect("info must print a single JSON document");
+    assert_eq!(v["schema"], 1);
+    assert!(v["podbox"].is_string(), "podbox version missing: {v}");
+    let features = v["features"].as_array().expect("features array");
+    assert!(
+        features.iter().any(|f| f == "restart"),
+        "features missing restart: {features:?}"
+    );
+}
+
+/// Contract P3: `export remove app` deletes one launcher; a second removal
+/// fails cleanly. (Fixture inner name is `myenv`.)
+#[test]
+fn export_remove_app_roundtrip() {
+    let sb = Sandbox::new(&["alpha"]);
+    let apps_dir = sb.dir.join("data").join("applications");
+    std::fs::create_dir_all(&apps_dir).unwrap();
+    let planted = apps_dir.join("podbox-myenv-testapp.desktop");
+    std::fs::write(&planted, "[Desktop Entry]\nName=Test (myenv)\n").unwrap();
+
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "export", "remove", "app", "testapp"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!planted.exists(), "launcher must be gone");
+
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "export", "remove", "app", "testapp"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "second removal must fail");
+}
+
+/// Contract P3: `export remove bin` deletes one shim, and only one that
+/// references the container. HOME is isolated so the real ~/.local/bin is
+/// never touched.
+#[test]
+fn export_remove_bin_roundtrip() {
+    let sb = Sandbox::new(&["alpha"]);
+    let home = sb.dir.join("home");
+    let bin_dir = home.join(".local/bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let shim = bin_dir.join("testtool");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\nexec podbox --container \"myenv\" exec \"testtool\" \"$@\"\n",
+    )
+    .unwrap();
+    // A same-named foreign file must survive: no marker, no removal.
+    let foreign = bin_dir.join("other");
+    std::fs::write(&foreign, "#!/bin/sh\necho hi\n").unwrap();
+
+    let out = sb
+        .cmd()
+        .env("HOME", &home)
+        .args(["-C", "alpha", "export", "remove", "bin", "testtool"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!shim.exists(), "shim must be gone");
+    assert!(foreign.exists(), "foreign file must survive");
+
+    let out = sb
+        .cmd()
+        .env("HOME", &home)
+        .args(["-C", "alpha", "export", "remove", "bin", "other"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "foreign removal must fail");
+}

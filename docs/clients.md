@@ -138,7 +138,7 @@ They never prompt when `--output json` or `--yes` is given.
 | Export a command | `podbox export bin NAME ITEM` | **Today** |
 | Remove everything exported | `podbox export clean` with `-C NAME` | **Today** |
 | List exportable items and what is exported | `podbox export list NAME --output json` | **Today** |
-| Remove one item | `podbox export remove app\|bin NAME ITEM` | **Proposed** |
+| Remove one item | `podbox export remove app\|bin ITEM` with `-C NAME` | **Today** |
 
 App export reads the `.desktop` file with `podman exec`, so the environment
 must be running.
@@ -224,18 +224,25 @@ ending with a `{"event": "done", "ok": true}` line.
 
 ## Version and capability checks
 
-**Proposed:** `podbox info --output json`:
+`podbox info --output json` needs no config and never fails for a missing
+box. **Today**
 
 ```json
-{"podbox": "0.8.2", "podman": "5.6.0", "schema": 1, "features": ["export_list", "watch"]}
+{"schema": 1, "podbox": "0.8.2", "podman": "5.6.0", "features": ["export_list", "restart"]}
 ```
 
-Every podbox-owned JSON payload carries `"schema": 1`. **Today** The number
-changes only on a breaking change, and clients should refuse to run against
-a higher schema than they know. New fields and new commands never bump it.
+`podman` is null when podman is not installed. `features` is additive:
+probe for the flags you need, tolerate unknown ones. New fields and new
+commands never bump `schema`; only a breaking change does.
+
+Every podbox-owned JSON payload carries `"schema": 1`. Clients should
+refuse to run against a higher schema than they know.
 
 Exception: `stats --output json` is a raw `podman stats` passthrough with
-no envelope, and stays that way until its shape is documented.
+no envelope. It prints podman's own JSON array (one object per container,
+all values strings — `CPU` like `"0.12%"`, `MemUsage` like `"12.3MiB /
+2GiB"`, `PIDs`), whose exact fields follow the installed podman version.
+Treat it as informational, not contractual.
 
 ## Safety
 
@@ -257,11 +264,11 @@ fixtures to build their own tests without a running container.
 
 In priority order:
 
-1. Document this page's **Today** items and the `stats` shape.
+1. ~~Document this page's **Today** items and the `stats` shape.~~ Page written; `stats` documented as passthrough.
 2. ~~Extend `status --output json` with the optional fields.~~ Done.
-3. ~~Add `export list --output json` and per-item removal.~~ List done; per-item removal still proposed.
+3. ~~Add `export list --output json` and per-item removal.~~ Done.
 4. ~~Add `restart`.~~ Done.
 5. ~~Add `"schema": 1` to every JSON payload and the structured error format.~~ Done.
-6. Add `info`, then `config get|set|validate`, then non-interactive `create`.
+6. ~~Add `info`,~~ then `config get|set|validate`, then non-interactive `create`.
 7. Add `watch` and `build --output ndjson`.
 8. Add the golden fixtures.

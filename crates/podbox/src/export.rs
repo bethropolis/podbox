@@ -139,6 +139,60 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
     Ok(())
 }
 
+/// Remove one exported app launcher from the host.
+///
+/// Errors when nothing with that id is exported, so scripts can tell
+/// "already gone" apart from success.
+pub fn unexport_app(container_name: &str, app: &str) -> Result<()> {
+    let path = dirs::data_dir()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".local/share"))
+                .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
+        })
+        .join("applications")
+        .join(format!("podbox-{container_name}-{app}.desktop"));
+    if !path.exists() {
+        return Err(PodboxError::ExportFailed {
+            details: format!("no exported app '{app}' for '{container_name}'"),
+        }
+        .into());
+    }
+    std::fs::remove_file(&path)?;
+    println!("Unexported app '{app}' for '{container_name}'.");
+    Ok(())
+}
+
+/// Remove one exported bin shim from the host.
+///
+/// Only removes shims that reference this container, never a same-named
+/// host binary. Errors when no such shim exists.
+pub fn unexport_bin(container_name: &str, bin: &str) -> Result<()> {
+    if bin.is_empty() || bin.contains('/') || bin.contains("..") {
+        return Err(PodboxError::ExportFailed {
+            details: format!("invalid bin name: '{bin}'"),
+        }
+        .into());
+    }
+    let path = dirs::home_dir()
+        .map(|h| h.join(".local/bin"))
+        .unwrap_or_else(|| PathBuf::from("/usr/local/bin"))
+        .join(bin);
+    let marker = format!("--container \"{container_name}\"");
+    let owned = std::fs::read_to_string(&path)
+        .map(|content| content.contains(&marker))
+        .unwrap_or(false);
+    if !owned {
+        return Err(PodboxError::ExportFailed {
+            details: format!("no exported bin '{bin}' for '{container_name}'"),
+        }
+        .into());
+    }
+    std::fs::remove_file(&path)?;
+    println!("Unexported bin '{bin}' for '{container_name}'.");
+    Ok(())
+}
+
 /// Remove all exports for a container.
 pub fn unexport_all(container_name: &str) -> Result<()> {
     let apps_dir = dirs::data_dir()

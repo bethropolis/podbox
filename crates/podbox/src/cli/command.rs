@@ -4,7 +4,7 @@
 //! Extracted verbatim from `cli.rs`; re-exported from `cli` so
 //! `podbox::cli::Command` paths keep resolving.
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 
 use super::{OutputFormat, Shell};
 
@@ -273,6 +273,14 @@ pub enum Command {
         output: OutputFormat,
     },
 
+    /// Show podbox/podman versions and client-contract capabilities.
+    #[command(display_order = 27)]
+    Info {
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
+
     /// Clone an existing container config to a new name.
     #[command(display_order = 50)]
     Clone {
@@ -496,12 +504,28 @@ pub enum ExportCommand {
     },
     /// Remove all exports for the container.
     Clean,
+    /// Remove one exported app or bin shim from the host.
+    Remove {
+        /// Whether to remove an app launcher or a bin shim.
+        #[arg(value_enum)]
+        target: ExportTarget,
+        /// Exported item name (the app id or bin name).
+        item: String,
+    },
     /// List apps and bins exported to the host for the container.
     List {
         /// Output format (text or json).
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output: OutputFormat,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ExportTarget {
+    /// A `.desktop` application launcher.
+    App,
+    /// A binary shim.
+    Bin,
 }
 
 #[derive(Subcommand)]
