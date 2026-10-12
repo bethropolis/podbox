@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { Upload, X } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { parse } from 'smol-toml';
+import { Dialog } from '../../components/Dialog';
 import { tomlToPatch } from './parseImport';
 import { useWasm } from './useWasm';
 import type { StudioState } from './useStudioState';
@@ -49,63 +50,58 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
     }
   };
 
+  // Mounted only while open (see StudioHeader), so `open` is constant here:
+  // Esc, backdrop click, and ✕ all funnel into `onClose`, which unmounts.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-xl rounded-[3px] bg-[var(--bg-mantle)] border border-[var(--border)] shadow-2xl">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-          <div className="text-sm font-bold text-[var(--text-primary)]">Import podbox.toml</div>
+    <Dialog
+      open
+      onClose={onClose}
+      title="Import podbox.toml"
+      size="md"
+      actions={
+        <>
           <button
-            onClick={onClose}
+            onClick={() => fileRef.current?.click()}
             type="button"
-            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-            aria-label="Close import"
+            className="px-3 py-1.5 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs text-[var(--text-subtext)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
           >
-            <X className="w-4 h-4" />
+            <Upload className="w-3.5 h-3.5" />
+            <span>Choose .toml file</span>
           </button>
-        </div>
-        <div className="p-4 space-y-3">
-          <textarea
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setError('');
-            }}
-            spellCheck={false}
-            placeholder={'[image]\nbase = "fedora:44"\n\n[container]\nname = "dev"'}
-            rows={12}
-            className="w-full rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] p-3 font-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)] resize-y"
-          />
-          {error && (
-            <p className="text-xs text-[var(--accent-red)] font-mono">{error}</p>
-          )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".toml,text/plain"
-            className="hidden"
-            onChange={(e) => onFile(e.target.files?.[0])}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button
-              onClick={() => fileRef.current?.click()}
-              type="button"
-              className="px-3 py-1.5 rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] text-xs text-[var(--text-subtext)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Choose .toml file</span>
-            </button>
-            <button
-              onClick={onApply}
-              type="button"
-              disabled={!text.trim()}
-              className="px-4 py-1.5 rounded-[2px] bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-semibold text-xs transition-colors cursor-pointer disabled:opacity-40 hover:opacity-95"
-            >
-              Import into Studio
-            </button>
-          </div>
-        </div>
+          <button
+            onClick={onApply}
+            type="button"
+            disabled={!text.trim()}
+            className="px-4 py-1.5 rounded-[2px] bg-[var(--accent-mauve)] text-[var(--bg-crust)] font-semibold text-xs transition-colors cursor-pointer disabled:opacity-40 hover:opacity-95"
+          >
+            Import into Studio
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setError('');
+          }}
+          spellCheck={false}
+          placeholder={'[image]\nbase = "fedora:44"\n\n[container]\nname = "dev"'}
+          rows={12}
+          className="w-full rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] p-3 font-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)] resize-y"
+        />
+        {error && (
+          <p className="text-xs text-[var(--accent-red)] font-mono whitespace-pre-line">{error}</p>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".toml,text/plain"
+          className="hidden"
+          onChange={(e) => onFile(e.target.files?.[0])}
+        />
       </div>
-    </div>
+    </Dialog>
   );
 }

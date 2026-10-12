@@ -18,6 +18,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { withBase } from '../../base';
+import { ConfirmDialog } from '../../components/Dialog';
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
 import { PRESETS, defaultPatch, presetPatch, type PresetId } from './presets';
@@ -41,6 +42,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
   };
   const onReset = () => st.applyPatch(defaultPatch());
   const onClearSession = () => st.clearSavedSession();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [shareNote, setShareNote] = useState('');
   // Which menu row just confirmed a copy, so the row itself can show it. A
   // single footer note made the user hunt for what they clicked.
@@ -107,7 +109,7 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
 
       {/* Reset button */}
       <button
-        onClick={onReset}
+        onClick={() => setShowResetConfirm(true)}
         type="button"
         className="px-2.5 py-1.5 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] text-xs text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-red)]/50 transition-colors cursor-pointer flex items-center gap-1.5"
         title="Reset all settings to default"
@@ -115,6 +117,15 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
         <RotateCcw className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         {!iconOnly && <span className="hidden sm:inline">Reset</span>}
       </button>
+      <ConfirmDialog
+        open={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={onReset}
+        title="Reset Studio?"
+        body="This wipes your current configuration back to blank defaults. Autosave keeps no history, so anything unsaved is gone."
+        confirmLabel="Reset everything"
+        danger
+      />
 
       {/* Presets dropdown */}
       <div className="relative">

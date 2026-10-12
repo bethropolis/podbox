@@ -25,6 +25,7 @@ const cases: Array<[string, Partial<StudioValues>]> = [
   ["rust", presetPatch("rust")],
   ["arch-gui", presetPatch("arch-gui")],
   ["fullstack", presetPatch("fullstack")],
+  ["gaming", presetPatch("gaming")],
   ["minimal", presetPatch("minimal")],
   // New panels: dotfiles + caches + services + slice/weight + offline.
   [

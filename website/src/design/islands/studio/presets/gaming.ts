@@ -33,7 +33,8 @@ export const gamingPreset: PresetDef = {
       'noto-fonts-emoji',
       'noto-fonts-cjk',
     ],
-    runCommands: ['rm -rf /var/cache/pacman/pkg/*'],
+    // No cache-clean RUN step: the engine appends `pacman -Scc` to the
+    // install layer itself, so a separate step would only add a layer.
     // No shell override: bash is the default, and Steam launches from a
     // .desktop entry that never sees an interactive shell.
     // Game library on a real disk, plus the host Xwayland socket for the

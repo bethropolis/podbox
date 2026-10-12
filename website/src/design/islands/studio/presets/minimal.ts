@@ -30,16 +30,17 @@ export const minimalPreset: PresetDef = {
   icon: Lock,
   accent: 'text-[var(--accent-red)]',
   overrides: {
-    selectedPresetDistro: 'archlinux:latest',
+    selectedPresetDistro: 'fedora:44',
     ...named('hardened'),
-    packagesInstallList: ['git', 'fish', 'neovim', 'ripgrep', 'fd'],
-    packageManager: 'pacman',
+    // fd ships as fd-find outside Arch.
+    packagesInstallList: ['git', 'fish', 'neovim', 'ripgrep', 'fd-find'],
     containerShell: 'fish',
     // A container that needs 4G or 4 cores to run an editor is a smell, but
     // the caps keep a runaway build from consuming the machine.
     containerMemory: '4G',
     containerCpus: '2.0',
-    runCommands: ['pacman -Scc --noconfirm'],
+    // No cache-clean RUN step: the engine appends `dnf clean all` to the
+    // install layer itself, so a separate step would only add a layer.
     ...headlessIntegration,
     intDbus: false,
     intNotify: false,
