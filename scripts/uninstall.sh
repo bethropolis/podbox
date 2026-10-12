@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # podbox — uninstall script
 # Removes binaries, completions, and optionally config/data/quadlet files.
+#
+# shellcheck disable=SC2059
+# printf format strings below embed only in-file color constants; all
+# variable data passes through %s/%b arguments.
 set -euo pipefail
 
 # ── Terminal capability detection ────────────────────────
@@ -14,16 +18,13 @@ fi
 RST=$'\033[0m'
 BOLD=$'\033[1m'
 DIM=$'\033[2m'
-ITAL=$'\033[3m'
 RED=$'\033[38;5;203m'
 GREEN=$'\033[38;5;114m'
 YELLOW=$'\033[38;5;221m'
-BLUE=$'\033[38;5;75m'
 CYAN=$'\033[38;5;87m'
 PURPLE=$'\033[38;5;141m'
 GRAY=$'\033[38;5;245m'
 WHITE=$'\033[38;5;255m'
-BG_DARK=$'\033[48;5;234m'
 
 # True-color gradient stops (blue → violet → fuchsia)
 TC0=$'\033[38;2;59;130;246m'
@@ -37,12 +38,12 @@ TC5=$'\033[38;2;236;72;153m'
 if $_has_unicode; then
   SYM_OK="✓";    SYM_WARN="⚠";  SYM_ERR="✗"
   SYM_ARR="›";   SYM_DOT="·";   SYM_DASH="─"
-  SYM_TL="╭";    SYM_BL="╰";    SYM_V="│"
+  SYM_BL="╰";    SYM_V="│"
   SYM_BULLET="▸"
 else
   SYM_OK="[ok]"; SYM_WARN="[!]"; SYM_ERR="[x]"
   SYM_ARR=">";   SYM_DOT=".";    SYM_DASH="-"
-  SYM_TL="+";    SYM_BL="+";     SYM_V="|"
+  SYM_BL="+";    SYM_V="|"
   SYM_BULLET=">"
 fi
 
@@ -162,15 +163,13 @@ confirm() {
 remove_binaries() {
   step "Removing binaries"
   local removed=false
-  for bin in podbox; do
-    if [ -f "$BIN_DIR/$bin" ]; then
-      asroot rm -f "$BIN_DIR/$bin"
-      ok "$bin  ${DIM}← $BIN_DIR/$bin${RST}"
-      removed=true
-    else
-      info "$bin  ${DIM}not found${RST}"
-    fi
-  done
+  if [ -f "$BIN_DIR/podbox" ]; then
+    asroot rm -f "$BIN_DIR/podbox"
+    ok "podbox  ${DIM}← $BIN_DIR/podbox${RST}"
+    removed=true
+  else
+    info "podbox  ${DIM}not found${RST}"
+  fi
   $removed || info "No binaries to remove"
 }
 
@@ -259,7 +258,11 @@ remove_quadlet() {
   step "Disabling Quadlet files"
   if command -v podbox &>/dev/null; then
     if confirm "Disable and remove Quadlet systemd files (podbox disable)?"; then
-      podbox disable 2>/dev/null && ok "Quadlet files disabled" || warn "podbox disable failed"
+      if podbox disable 2>/dev/null; then
+        ok "Quadlet files disabled"
+      else
+        warn "podbox disable failed"
+      fi
     else
       info "Skipped"
     fi

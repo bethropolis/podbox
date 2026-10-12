@@ -28,7 +28,7 @@ find_wasm_pack() {
     return 0
   fi
   local mise_bin
-  mise_bin="$(ls -d "${MISE_DATA_DIR:-$HOME/.local/share/mise}"/installs/*wasm-pack/*/wasm-pack 2>/dev/null | sort -V | tail -n 1)"
+  mise_bin="$(find "${MISE_DATA_DIR:-$HOME/.local/share/mise}/installs" -maxdepth 2 -type f -path '*wasm-pack/wasm-pack' 2>/dev/null | sort -V | tail -n 1)"
   if [[ -n "$mise_bin" ]] && "$mise_bin" --version &>/dev/null; then
     printf '%s' "$mise_bin"
     return 0

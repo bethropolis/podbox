@@ -3,6 +3,9 @@ import "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Builtins.
 // Using a coding agent? See https://hk.jdx.dev/agents
 
 // Auto-generated: never linted, only produced by builds or sync scripts.
+// Asset buckets: images and copied files are never hand-edited line by
+// line, so whitespace/key linters only add noise there. Core code
+// (crates, scripts, docs text, website sources) stays linted.
 exclude = List(
     "target",
     "dist",
@@ -10,10 +13,12 @@ exclude = List(
     "website/node_modules",
     "website/src/content/docs",
     "website/src/design/searchIndex.ts",
-    "website/public/assets",
-    "website/public/install.sh",
-    "website/public/og-image.png",
-    "website/src/wasm"
+    "website/src/wasm",
+    "website/src/assets",
+    "website/public/*",
+    "docs/assets/*",
+    "scripts/gen-cover-svg.sh",
+    "scripts/gen-logo-svg.sh"
 )
 
 local linters = new Mapping {

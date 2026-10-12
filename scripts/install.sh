@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # podbox — install script
 # Install to ~/.local/bin or $PREFIX/bin
+#
+# shellcheck disable=SC2059
+# printf format strings below embed only in-file color constants; all
+# variable data passes through %s/%b arguments.
 set -euo pipefail
 
 # ── Terminal capability detection ────────────────────────
@@ -14,11 +18,9 @@ fi
 RST=$'\033[0m'
 BOLD=$'\033[1m'
 DIM=$'\033[2m'
-ITAL=$'\033[3m'
 RED=$'\033[38;5;203m'
 GREEN=$'\033[38;5;114m'
 YELLOW=$'\033[38;5;221m'
-BLUE=$'\033[38;5;75m'
 CYAN=$'\033[38;5;87m'
 PURPLE=$'\033[38;5;141m'
 GRAY=$'\033[38;5;245m'
@@ -37,12 +39,12 @@ TC5=$'\033[38;2;236;72;153m'
 if $_has_unicode; then
   SYM_OK="✓";    SYM_WARN="⚠";  SYM_ERR="✗"
   SYM_ARR="›";   SYM_DOT="·";   SYM_DASH="─"
-  SYM_TL="╭";    SYM_BL="╰";    SYM_V="│"
+  SYM_BL="╰";    SYM_V="│"
   SYM_BULLET="▸"
 else
   SYM_OK="[ok]"; SYM_WARN="[!]"; SYM_ERR="[x]"
   SYM_ARR=">";   SYM_DOT=".";    SYM_DASH="-"
-  SYM_TL="+";    SYM_BL="+";     SYM_V="|"
+  SYM_BL="+";    SYM_V="|"
   SYM_BULLET=">"
 fi
 
@@ -106,7 +108,11 @@ detect_distro() {
 check_prereqs() {
   local missing=()
   command -v cargo  &>/dev/null || missing+=("cargo  ${DIM}(install via rustup.rs)${RST}")
-  command -v podman &>/dev/null && ok "podman found" || warn "podman not found — required at runtime"
+  if command -v podman &>/dev/null; then
+    ok "podman found"
+  else
+    warn "podman not found — required at runtime"
+  fi
 
   if [ ${#missing[@]} -gt 0 ]; then
     for m in "${missing[@]}"; do
@@ -274,8 +280,6 @@ install_completions() {
 
 # ── Summary ────────────────────────────────────────────────
 print_summary() {
-  local distro; distro=$(detect_distro)
-
   printf "\n"
   hr
   printf "\n"
