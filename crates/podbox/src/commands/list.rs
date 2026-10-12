@@ -11,29 +11,43 @@ use podbox::cli::OutputFormat;
 use podbox::config;
 
 /// List all podbox-managed containers with status, autostart, and active context.
+///
+/// Display names are runtime names (`container.name`), matching `status`,
+/// units, and exports. The file stem is only the lookup key for `-C` and
+/// may differ; unloadable configs fall back to their stem so they stay
+/// visible instead of vanishing.
 pub fn run_list(output: OutputFormat) -> Result<()> {
     if matches!(output, OutputFormat::Ndjson) {
         return Err(podbox::contract::bail_ndjson("list"));
     }
     let configs = config::list_configs();
-    let active_ctx = config::read_active_context();
+    let active_inner = config::read_active_context().and_then(|stem| {
+        config::find_config_path(&stem)
+            .and_then(|path| config::Config::load(&path).ok())
+            .map(|cfg| cfg.container.name)
+    });
 
     if matches!(output, OutputFormat::Json) {
         let entries: Vec<serde_json::Value> = configs
             .iter()
             .map(|cp| {
-                let name = cp
+                let stem = cp
                     .file_stem()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
+                let loaded = config::Config::load(cp).ok();
+                let name = loaded
+                    .as_ref()
+                    .map(|cfg| cfg.container.name.clone())
+                    .unwrap_or_else(|| stem.clone());
                 let state_label = podbox::podman::state_label(&name);
-                let autostart = config::Config::load(cp).is_ok_and(|c| c.lifecycle.autostart);
+                let autostart = loaded.is_some_and(|cfg| cfg.lifecycle.autostart);
                 serde_json::json!({
                     "name": name,
                     "status": state_label,
                     "autostart": autostart,
-                    "active": active_ctx.as_deref() == Some(&name),
+                    "active": active_inner.as_deref() == Some(&name),
                 })
             })
             .collect();
@@ -56,17 +70,20 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
     println!("{}", "─".repeat(64));
 
     for config_path in configs {
-        let name = config_path
+        let stem = config_path
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
+        let name = config::Config::load(&config_path)
+            .map(|cfg| cfg.container.name)
+            .unwrap_or_else(|_| stem.clone());
 
         // Colored cells are padded around their *plain* text (see
         // [`pad_around`]) so ANSI escapes never skew the column widths.
         let (dot, label) = status_parts(&name);
         let (auto_plain, auto_cell) = autostart_parts(&config_path);
-        let (active_plain, active_cell) = active_parts(&name, &active_ctx);
+        let (active_plain, active_cell) = active_parts(&name, &active_inner);
 
         let mut row = format!(
             "{name:<20} {dot} {label:<15} {}",

@@ -327,6 +327,12 @@ fn history_without_log_is_empty_success() {
 #[test]
 fn list_columns_align_without_trailing_space() {
     let sb = Sandbox::new(&["alpha", "beta"]);
+    // Distinct runtime names: list shows `container.name`, not the stem.
+    let beta = sb.dir.join("podbox").join("beta.toml");
+    let text = std::fs::read_to_string(&beta)
+        .unwrap()
+        .replace("myenv", "beta");
+    std::fs::write(&beta, &text).unwrap();
     let out = sb.cmd().arg("list").output().unwrap();
     assert!(
         out.status.success(),
@@ -361,7 +367,7 @@ fn list_columns_align_without_trailing_space() {
     // Status labels start right after the fixed CONTAINER + dot columns.
     for row in &lines[2..] {
         assert!(
-            row.starts_with("alpha") || row.starts_with("beta"),
+            row.starts_with("myenv") || row.starts_with("beta"),
             "unexpected row {row:?}"
         );
         let _ = active_col; // documented above; kept for readability
@@ -1026,4 +1032,43 @@ fn build_output_modes() {
         "dry-run prints the human plan: {}",
         String::from_utf8_lossy(&out.stdout)
     );
+}
+
+/// Consistency: `list` shows runtime names (`container.name`), not file
+/// stems — matching `status`, units, and exports. The fixture file is
+/// `alpha.toml` but its inner name is `myenv`.
+#[test]
+fn list_shows_runtime_names() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb
+        .cmd()
+        .args(["list", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    let names: Vec<&str> = v["containers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["myenv"]);
+}
+
+/// Consistency: watching an unknown name fails fast (exit 3) instead of
+/// streaming `unbuilt` forever.
+#[test]
+fn watch_unknown_name_exits_three() {
+    let sb = Sandbox::new(&[]);
+    let out = sb
+        .cmd()
+        .args(["-C", "nosuch", "watch", "--output", "ndjson"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+    assert_eq!(v["error"]["code"], "container_missing");
 }

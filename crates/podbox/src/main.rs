@@ -258,6 +258,7 @@ fn run(mut cli: Cli) -> Result<()> {
         } => {
             return commands::watch::run_watch(
                 name.clone().or_else(|| cli.container.clone()),
+                cli.config.clone(),
                 *interval,
                 *output,
                 cli.dry_run,

@@ -45,6 +45,12 @@ Every command resolves its target in the same order:
 
 Clients should use 1 or 2.
 
+Two namespaces: the config file stem is the *lookup key* (`-C`, `use`,
+completion); `container.name` is the *runtime name* shown by `list` and
+`status` and used for units, containers, and exports. They match when the
+config is created normally and diverge only if hand-edited — clients
+should always display the runtime name.
+
 **Proposed:** one documented name rule, `^[A-Za-z0-9_.-]+$`, enforced by
 podbox itself so clients can validate against the same pattern.
 

@@ -27,7 +27,7 @@ pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<(
             .map_or_else(|_| "0".to_string(), |d| d.as_secs().to_string()),
     };
 
-    let container_name = format!("podbox-{name}");
+    let container_name = name.to_string();
     let image_tag = snapshot_tag(&tag, name);
 
     eprintln!("Snapshotting container '{container_name}' as '{image_tag}'...");
@@ -193,12 +193,9 @@ pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
     }
 
     // Stop the container
-    eprintln!("Stopping container 'podbox-{name}'...");
-    if let Err(e) = podbox::process::run_piped(
-        "podman",
-        &podbox::process::args(&["stop", &format!("podbox-{name}")]),
-    ) {
-        eprintln!("Warning: failed to stop container 'podbox-{name}': {e}");
+    eprintln!("Stopping container '{name}'...");
+    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name])) {
+        eprintln!("Warning: failed to stop container '{name}': {e}");
     }
 
     // Re-tag snapshot as the main image
@@ -213,11 +210,8 @@ pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
 
     // Start the container
     eprintln!("Starting container...");
-    if let Err(e) = podbox::process::run_piped(
-        "podman",
-        &podbox::process::args(&["start", &format!("podbox-{name}")]),
-    ) {
-        eprintln!("Warning: failed to start container 'podbox-{name}': {e}");
+    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["start", name])) {
+        eprintln!("Warning: failed to start container '{name}': {e}");
     }
 
     println!("✓ Restored '{name}' from snapshot '{tag}'");

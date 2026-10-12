@@ -363,15 +363,12 @@ fn checkpoint_previous(config: &Config, name: &str, dry_run: bool) -> Result<()>
         };
     let previous = format!("localhost/podbox-{name}:checkpoint-prev");
     if dry_run {
-        println!(
-            "podman tag \"$(podman inspect --format '{{{{.Image}}}}' podbox-{name})\" {previous}"
-        );
+        println!("podman tag \"$(podman inspect --format '{{{{.Image}}}}' {name})\" {previous}");
         return Ok(());
     }
-    let container = format!("podbox-{name}");
     let inspect = podbox::process::run_piped(
         "podman",
-        &podbox::process::args(&["inspect", "--format", "{{.Image}}", &container]),
+        &podbox::process::args(&["inspect", "--format", "{{.Image}}", name]),
     );
     let current = inspect
         .ok()
