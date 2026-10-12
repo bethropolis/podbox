@@ -83,6 +83,13 @@ pub enum Command {
         all: bool,
     },
 
+    /// Restart the container (systemd unit, or `podman restart` without one).
+    #[command(display_order = 25)]
+    Restart {
+        /// Container name (overrides auto-detection / active context).
+        name: Option<String>,
+    },
+
     /// Execute a command interactively in the container.
     #[command(display_order = 21)]
     Exec {
@@ -490,7 +497,11 @@ pub enum ExportCommand {
     /// Remove all exports for the container.
     Clean,
     /// List apps and bins exported to the host for the container.
-    List,
+    List {
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
 }
 
 #[derive(Subcommand)]

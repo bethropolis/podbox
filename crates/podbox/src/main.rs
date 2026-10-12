@@ -357,6 +357,10 @@ fn run(mut cli: Cli) -> Result<()> {
             commands::lifecycle::run_stop(&config, &name, cli.dry_run)?;
         }
 
+        Command::Restart { .. } => {
+            commands::lifecycle::run_restart(&config, &name, cli.dry_run)?;
+        }
+
         Command::Enter {
             name: _,
             edit,
@@ -413,7 +417,7 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Status { name: _, output } => {
-            commands::runtime::run_status(&name, cli.dry_run, *output)?;
+            commands::runtime::run_status(&config, &name, cli.dry_run, *output)?;
         }
 
         Command::Stats {

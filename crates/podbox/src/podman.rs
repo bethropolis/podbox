@@ -200,6 +200,28 @@ mod tests {
         assert!(!v.at_least(5, 7));
         assert!(!v.at_least(6, 0));
     }
+
+    #[test]
+    fn parse_size_bytes_handles_podman_units() {
+        assert_eq!(super::parse_size_bytes("12B"), Some(12));
+        assert_eq!(super::parse_size_bytes("1.5KiB"), Some(1536));
+        assert_eq!(super::parse_size_bytes("12.3MiB"), Some(12_897_484));
+        assert_eq!(super::parse_size_bytes("2GiB"), Some(2_147_483_648));
+        assert_eq!(super::parse_size_bytes("16.61GB"), Some(16_610_000_000));
+        assert_eq!(super::parse_size_bytes("65.54kB"), Some(65540));
+        assert_eq!(super::parse_size_bytes("512"), Some(512));
+        assert_eq!(super::parse_size_bytes("bogus"), None);
+        assert_eq!(super::parse_size_bytes("10XB"), None);
+    }
+
+    #[test]
+    fn split_mem_usage_splits_used_and_limit() {
+        assert_eq!(
+            super::split_mem_usage("12.3MiB / 2GiB"),
+            Some((12_897_484, 2_147_483_648))
+        );
+        assert_eq!(super::split_mem_usage("n/a"), None);
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -372,4 +394,109 @@ pub fn image_digest(tag: &str) -> anyhow::Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Last-start timestamp for a container, as reported by podman.
+///
+/// `None` when the container is unknown or was never started (podman
+/// reports the zero time). Best-effort: every failure maps to `None` so
+/// `status --output json` simply omits the field.
+pub fn started_at(name: &str) -> Option<String> {
+    let args = crate::process::args(&[
+        "inspect",
+        "--type",
+        "container",
+        "--format",
+        "{{json .State.StartedAt}}",
+        name,
+    ]);
+    let output =
+        crate::process::run_piped_timeout("podman", &args, std::time::Duration::from_secs(10))
+            .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .trim_matches('"')
+        .to_string();
+    if text.is_empty() || text.starts_with("0001-01-01") {
+        return None;
+    }
+    Some(text)
+}
+
+/// Point-in-time resource sample for a running container.
+#[derive(Debug, PartialEq)]
+pub struct ContainerStats {
+    pub cpu_percent: f64,
+    pub memory_bytes: u64,
+    pub memory_limit_bytes: u64,
+    pub pids: u32,
+}
+
+/// One `podman stats --no-stream` sample.
+///
+/// `None` when the container is not running or stats cannot be parsed.
+/// Best-effort by design: `status --output json` omits what it cannot read.
+pub fn stats_sample(name: &str) -> Option<ContainerStats> {
+    let args = crate::process::args(&["stats", "--no-stream", "--format", "json", name]);
+    let output =
+        crate::process::run_piped_timeout("podman", &args, std::time::Duration::from_secs(10))
+            .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim()).ok()?;
+    let row = rows.into_iter().next()?;
+    let cpu = row
+        .get("CPU")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.trim().trim_end_matches('%').parse::<f64>().ok())?;
+    let (used, limit) = row
+        .get("MemUsage")
+        .and_then(|v| v.as_str())
+        .and_then(split_mem_usage)?;
+    let pids = row.get("PIDs").and_then(|v| {
+        v.as_str()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .or_else(|| v.as_u64().and_then(|n| u32::try_from(n).ok()))
+    })?;
+    Some(ContainerStats {
+        cpu_percent: cpu,
+        memory_bytes: used,
+        memory_limit_bytes: limit,
+        pids,
+    })
+}
+
+/// Split podman's `MemUsage` (`"12.3MiB / 2GiB"`) into used/limit bytes.
+fn split_mem_usage(s: &str) -> Option<(u64, u64)> {
+    let (used, limit) = s.split_once('/')?;
+    Some((parse_size_bytes(used)?, parse_size_bytes(limit)?))
+}
+
+/// Parse a human size (`"12.3MiB"`, `"2GB"`, `"512"`) into bytes.
+/// SI units are 1000-based, IEC (`iB`) 1024-based, matching podman output.
+fn parse_size_bytes(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let cut = s.find(|c: char| c.is_alphabetic()).unwrap_or(s.len());
+    let (num, unit) = s.split_at(cut);
+    let num: f64 = num.trim().parse().ok()?;
+    let mult = match unit.trim().to_uppercase().as_str() {
+        "" | "B" => 1.0,
+        "K" | "KB" => 1e3,
+        "KIB" => 1024.0,
+        "M" | "MB" => 1e6,
+        "MIB" => 1024.0 * 1024.0,
+        "G" | "GB" => 1e9,
+        "GIB" => 1024.0 * 1024.0 * 1024.0,
+        "T" | "TB" => 1e12,
+        "TIB" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
+    };
+    // Podman sizes are non-negative magnitudes; saturate the float fallbacks.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some((num * mult) as u64)
 }

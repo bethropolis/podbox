@@ -74,16 +74,17 @@ All of these print only JSON on stdout when `--output json` is given.
 `installed` says whether Quadlet files exist, which matters for `unbuilt`
 environments.
 
-**Proposed:** optional fields so a client needs one call, not four.
+Optional enrichment, so a client needs one call, not four. **Today**
+Each field is present when readable, absent otherwise:
 
 | Field | Meaning |
 |-------|---------|
 | `base_image` | The image the environment is built from, or the prebuilt reference. |
-| `started_at` | RFC 3339 timestamp of the last start. |
-| `cpu_percent` | Current CPU use. |
-| `memory_bytes` | Current memory use. |
+| `started_at` | Last-start timestamp as reported by `podman inspect`. |
+| `cpu_percent` | Current CPU use (running containers only). |
+| `memory_bytes` | Current memory use (running containers only). |
 | `memory_limit_bytes` | Configured limit, or absent. |
-| `pids` | Number of processes. |
+| `pids` | Number of processes (running containers only). |
 
 ### Other readers **Today**
 
@@ -105,15 +106,12 @@ environments.
 |--------|---------|--------|
 | Start | `podbox start NAME` | **Today** |
 | Stop | `podbox stop NAME` | **Today** |
+| Restart | `podbox restart NAME` | **Today** |
 | Enter a shell | `podbox enter NAME` (starts it if needed) | **Today** |
 | Run a command | `podbox exec NAME -- CMD` | **Today** |
 | Open the config | `podbox edit NAME` | **Today** |
 | Build | `podbox build NAME` | **Today** |
 | Remove | `podbox remove NAME` | **Today** |
-| Restart | `podbox restart NAME` | **Proposed** |
-
-Until `restart` exists, clients can run
-`systemctl --user restart NAME.service`.
 
 ### Interactive commands
 
@@ -139,18 +137,24 @@ They never prompt when `--output json` or `--yes` is given.
 | Export an app | `podbox export app NAME ITEM` | **Today** |
 | Export a command | `podbox export bin NAME ITEM` | **Today** |
 | Remove everything exported | `podbox export clean` with `-C NAME` | **Today** |
-| List exportable items and what is exported | `podbox export list NAME --output json` | **Proposed** |
+| List exportable items and what is exported | `podbox export list NAME --output json` | **Today** |
 | Remove one item | `podbox export remove app\|bin NAME ITEM` | **Proposed** |
 
 App export reads the `.desktop` file with `podman exec`, so the environment
 must be running.
 
-Proposed shape for `export list`:
+`export list` reports the union of declared (`[integration.export]`) items
+and what is actually on the host:
 
 ```json
-{"apps": [{"id": "gedit", "name": "Text Editor", "exported": true}],
+{"schema": 1,
+ "apps": [{"id": "gedit", "name": "Text Editor (myenv)", "exported": true}],
  "bins": [{"name": "rg", "path": "/usr/bin/rg", "exported": true}]}
 ```
+
+`name` is the desktop file's display name; `path` is the in-container
+absolute path. Both are absent when they cannot be resolved (missing
+export, stopped box), while `exported` tells the two states apart.
 
 ## Creating and configuring
 
@@ -254,9 +258,9 @@ fixtures to build their own tests without a running container.
 In priority order:
 
 1. Document this page's **Today** items and the `stats` shape.
-2. Extend `status --output json` with the optional fields.
-3. Add `export list --output json` and per-item removal.
-4. Add `restart`.
+2. ~~Extend `status --output json` with the optional fields.~~ Done.
+3. ~~Add `export list --output json` and per-item removal.~~ List done; per-item removal still proposed.
+4. ~~Add `restart`.~~ Done.
 5. ~~Add `"schema": 1` to every JSON payload and the structured error format.~~ Done.
 6. Add `info`, then `config get|set|validate`, then non-interactive `create`.
 7. Add `watch` and `build --output ndjson`.

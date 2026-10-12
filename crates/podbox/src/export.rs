@@ -5,9 +5,10 @@
 //! exemption, per MODULARIZATION_GUIDE).
 
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use serde::Serialize;
 
 use crate::config::Config;
 use crate::error::PodboxError;
@@ -203,8 +204,77 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// List the .desktop apps and bin shims exported to the host for a container.
-pub fn list_exports(container_name: &str) -> Result<()> {
+/// One exported `.desktop` app: the config/export id, the display name from
+/// the desktop file when the export exists, and whether it is on the host.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportedApp {
+    pub id: String,
+    pub name: Option<String>,
+    pub exported: bool,
+}
+
+/// One exported bin shim: the name, its absolute path inside the container
+/// when the box is running, and whether the shim is on the host.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportedBin {
+    pub name: String,
+    pub path: Option<String>,
+    pub exported: bool,
+}
+
+/// Full export inventory for a container: declared items plus anything
+/// actually on the host, so clients can show pending vs live exports.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ExportInventory {
+    pub apps: Vec<ExportedApp>,
+    pub bins: Vec<ExportedBin>,
+}
+
+/// Build the export inventory: the union of declared (`[integration.export]`)
+/// items and what's actually on the host. Dictionary order, exported flag
+/// set for host-present items.
+pub fn inventory(
+    container_name: &str,
+    declared_apps: &[String],
+    declared_bins: &[String],
+) -> ExportInventory {
+    let on_disk = exported_desktop_files(container_name);
+    let mut ids: std::collections::BTreeSet<String> = declared_apps.iter().cloned().collect();
+    ids.extend(on_disk.keys().cloned());
+    let apps = ids
+        .into_iter()
+        .map(|id| {
+            let exported = on_disk.contains_key(&id);
+            let name = on_disk.get(&id).and_then(|p| desktop_display_name(p));
+            ExportedApp { id, name, exported }
+        })
+        .collect();
+
+    let exported_bins = exported_shim_names(container_name);
+    let mut names: std::collections::BTreeSet<String> = declared_bins.iter().cloned().collect();
+    names.extend(exported_bins.iter().cloned());
+    let running = matches!(
+        crate::podman::query_state(container_name),
+        Ok(crate::podman::ContainerState::Running)
+    );
+    let bins = names
+        .into_iter()
+        .map(|bin| {
+            let exported = exported_bins.contains(&bin);
+            let path = container_bin_path(container_name, &bin, running);
+            ExportedBin {
+                name: bin,
+                path,
+                exported,
+            }
+        })
+        .collect();
+
+    ExportInventory { apps, bins }
+}
+
+/// `(id, host path)` of every exported `.desktop` file for the container.
+fn exported_desktop_files(container_name: &str) -> std::collections::BTreeMap<String, PathBuf> {
     let apps_dir = dirs::data_dir()
         .unwrap_or_else(|| {
             dirs::home_dir()
@@ -214,23 +284,26 @@ pub fn list_exports(container_name: &str) -> Result<()> {
         .join("applications");
     let prefix = format!("podbox-{container_name}-");
     let suffix = ".desktop";
-
-    let mut apps: Vec<String> = Vec::new();
+    let mut out = std::collections::BTreeMap::new();
     if let Ok(entries) = std::fs::read_dir(&apps_dir) {
         for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with(&prefix) && name.ends_with(suffix) {
-                apps.push(name[prefix.len()..name.len() - suffix.len()].to_string());
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            if file_name.starts_with(&prefix) && file_name.ends_with(suffix) {
+                let id = file_name[prefix.len()..file_name.len() - suffix.len()].to_string();
+                out.insert(id, entry.path());
             }
         }
     }
-    apps.sort();
+    out
+}
 
+/// Names of every exported bin shim for the container.
+fn exported_shim_names(container_name: &str) -> std::collections::BTreeSet<String> {
     let bin_dir = dirs::home_dir()
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
     let marker = format!("--container \"{container_name}\"");
-    let mut bins: Vec<String> = Vec::new();
+    let mut out = std::collections::BTreeSet::new();
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -240,17 +313,72 @@ pub fn list_exports(container_name: &str) -> Result<()> {
                 if let Ok(bytes_read) = file.read(&mut chunk) {
                     let content = String::from_utf8_lossy(&chunk[..bytes_read]);
                     if content.contains(&marker) {
-                        bins.push(entry.file_name().to_string_lossy().into_owned());
+                        out.insert(entry.file_name().to_string_lossy().into_owned());
                     }
                 }
             }
         }
     }
-    bins.sort();
+    out
+}
+
+/// Display name from a `.desktop` file's `Name=` line.
+fn desktop_display_name(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    content.lines().find_map(|line| {
+        let value = line.strip_prefix("Name=")?.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+/// Absolute path of a bin inside the running container, via `command -v`.
+/// `None` unless the box is running and the lookup succeeds — including
+/// for odd names, which are never interpolated into a shell.
+fn container_bin_path(container_name: &str, bin: &str, running: bool) -> Option<String> {
+    if !running
+        || bin.is_empty()
+        || !bin
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+' | '/' | ':'))
+    {
+        return None;
+    }
+    let probe = format!("command -v {bin}");
+    let args = crate::process::args(&["exec", container_name, "sh", "-c", probe.as_str()]);
+    let output =
+        crate::process::run_piped_timeout("podman", &args, std::time::Duration::from_secs(10))
+            .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    (!path.is_empty()).then_some(path)
+}
+
+/// List the .desktop apps and bin shims exported to the host for a container.
+pub fn list_exports(container_name: &str) -> Result<()> {
+    print_inventory_text(container_name, &inventory(container_name, &[], &[]));
+    Ok(())
+}
+
+/// Human rendering of an inventory (the `export list` text form).
+pub fn print_inventory_text(container_name: &str, inv: &ExportInventory) {
+    let apps: Vec<&str> = inv
+        .apps
+        .iter()
+        .filter(|a| a.exported)
+        .map(|a| a.id.as_str())
+        .collect();
+    let bins: Vec<&str> = inv
+        .bins
+        .iter()
+        .filter(|b| b.exported)
+        .map(|b| b.name.as_str())
+        .collect();
 
     if apps.is_empty() && bins.is_empty() {
         println!("No exports for '{container_name}'.");
-        return Ok(());
+        return;
     }
 
     if !apps.is_empty() {
@@ -268,7 +396,6 @@ pub fn list_exports(container_name: &str) -> Result<()> {
             println!("  {bin}");
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -510,3 +510,77 @@ fn json_error_envelope_for_missing_container() {
         "human diagnostics must stay on stderr"
     );
 }
+
+/// Contract P2: `export list --output json` reports declared and exported
+/// items with the schema stamp.
+#[test]
+fn export_list_json_shape() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "export", "list", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
+        .expect("export list must print a single JSON document");
+    assert_eq!(v["schema"], 1);
+    let apps = v["apps"].as_array().expect("apps array");
+    assert!(
+        apps.iter()
+            .any(|a| a["id"] == "gedit" && a["exported"] == false),
+        "declared app missing: {apps:?}"
+    );
+    let bins = v["bins"].as_array().expect("bins array");
+    assert!(
+        bins.iter()
+            .any(|b| b["name"] == "rg" && b["exported"] == false),
+        "declared bin missing: {bins:?}"
+    );
+}
+
+/// Contract P2: `restart --dry-run` prints the plan and touches nothing.
+#[test]
+fn restart_dry_run_prints_plan() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "restart", "--dry-run"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // The fixture's inner container name is `myenv`, not the file stem.
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("restart myenv"),
+        "stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+/// Contract P2: `status --output json` carries the base image reference.
+#[test]
+fn status_json_has_base_image() {
+    let sb = Sandbox::new(&["alpha"]);
+    let out = sb
+        .cmd()
+        .args(["-C", "alpha", "status", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
+        .expect("status must print a single JSON document");
+    assert_eq!(v["schema"], 1);
+    assert!(v["base_image"].is_string(), "base_image missing: {v}");
+}

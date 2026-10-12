@@ -195,6 +195,31 @@ pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// Restart the container.
+///
+/// Same mechanism as the restart inside `update`: `systemctl --user restart`
+/// (after `reset-failed`, so a failed unit actually restarts) when Quadlet
+/// manages the box, plain `podman restart` otherwise.
+pub fn run_restart(config: &Config, name: &str, dry_run: bool) -> Result<()> {
+    if dry_run {
+        if config.lifecycle.quadlet && systemd::is_available() {
+            println!("systemctl --user restart {name}.service");
+        } else {
+            println!("podman restart {name}");
+        }
+        return Ok(());
+    }
+    if config.lifecycle.quadlet && systemd::is_available() {
+        systemd::reset_failed(name)?;
+        systemd::restart_unit(name)?;
+    } else {
+        let args = podbox::process::args(&["restart", name]);
+        podbox::process::spawn_interactive("podman", &args)?;
+    }
+    let _ = podbox::history::record(name, "restart", "");
+    Ok(())
+}
+
 /// Stop every running managed container.
 ///
 /// Enumerates TOML configs (the same source as `podbox list`) and stops

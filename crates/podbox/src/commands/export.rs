@@ -41,8 +41,20 @@ pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportComman
         ExportCommand::Clean => {
             podbox::export::unexport_all(name)?;
         }
-        ExportCommand::List => {
-            podbox::export::list_exports(name)?;
+        ExportCommand::List { output } => {
+            let (declared_apps, declared_bins): (&[String], &[String]) = match config {
+                Some(cfg) => (&cfg.integration.export.apps, &cfg.integration.export.bins),
+                None => (&[], &[]),
+            };
+            let inv = podbox::export::inventory(name, declared_apps, declared_bins);
+            match output {
+                podbox::cli::OutputFormat::Json => {
+                    podbox::contract::print_json(serde_json::to_value(&inv)?)?;
+                }
+                podbox::cli::OutputFormat::Text => {
+                    podbox::export::print_inventory_text(name, &inv);
+                }
+            }
         }
     }
     Ok(())

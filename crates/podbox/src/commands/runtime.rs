@@ -668,7 +668,12 @@ fn quadlet_installed(name: &str) -> bool {
 }
 
 /// Print the container's running state.
-pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) -> Result<()> {
+pub fn run_status(
+    config: &podbox::config::Config,
+    name: &str,
+    dry_run: bool,
+    output: podbox::cli::OutputFormat,
+) -> Result<()> {
     if matches!(output, podbox::cli::OutputFormat::Json) {
         let state = query_state(name)?;
         // Canonical vocabulary shared with `podbox list --output json`:
@@ -680,11 +685,32 @@ pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) 
             ContainerState::Stopped => ("stopped", true),
             ContainerState::Missing => ("unbuilt", quadlet_installed(name)),
         };
-        podbox::contract::print_json(serde_json::json!({
-            "name": name,
-            "status": status,
-            "installed": installed,
-        }))?;
+        let mut obj = serde_json::Map::new();
+        obj.insert("name".into(), serde_json::json!(name));
+        obj.insert("status".into(), serde_json::json!(status));
+        obj.insert("installed".into(), serde_json::json!(installed));
+        let base_image = match config.image.source() {
+            podbox::config::ImageSource::Build { base } => base.clone(),
+            podbox::config::ImageSource::Prebuilt { ref_str } => ref_str.clone(),
+        };
+        obj.insert("base_image".into(), serde_json::json!(base_image));
+        // Optional enrichment: present when readable, absent otherwise, so
+        // a client needs one call instead of four.
+        if let Some(started) = podbox::podman::started_at(name) {
+            obj.insert("started_at".into(), serde_json::json!(started));
+        }
+        if status == "running" {
+            if let Some(stats) = podbox::podman::stats_sample(name) {
+                obj.insert("cpu_percent".into(), serde_json::json!(stats.cpu_percent));
+                obj.insert("memory_bytes".into(), serde_json::json!(stats.memory_bytes));
+                obj.insert(
+                    "memory_limit_bytes".into(),
+                    serde_json::json!(stats.memory_limit_bytes),
+                );
+                obj.insert("pids".into(), serde_json::json!(stats.pids));
+            }
+        }
+        podbox::contract::print_json(serde_json::Value::Object(obj))?;
         return Ok(());
     }
 

@@ -34,6 +34,7 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::Disable { name, .. }
         | Command::Start { name, .. }
         | Command::Stop { name, .. }
+        | Command::Restart { name, .. }
         | Command::Enter { name, .. }
         | Command::Status { name, .. }
         | Command::Remove { name, .. }
