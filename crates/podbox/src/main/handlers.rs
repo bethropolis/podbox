@@ -118,13 +118,14 @@ pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(
         }
     } else if let Some(ref container_name) = target_name {
         let config_path = config::find_config_path(container_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "no config found for container '{}' at '{}/{{profiles/,}}/{}.toml'\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
-                container_name,
+            // Human detail stays on stderr; the typed error carries exit 3
+            // and the `container_missing` code for JSON-mode clients.
+            ui::hint(&[&format!(
+                "no config for '{container_name}' at '{}/{{profiles/,}}{container_name}.toml' — use `--config <PATH>` or `-C <NAME>` from {}",
                 config::config_dir().display(),
-                container_name,
-                config::config_dir().display()
-            )
+                config::config_dir().display(),
+            )]);
+            PodboxError::ContainerMissing(container_name.clone())
         })?;
         Config::load(&config_path).map_err(|e| {
             anyhow::anyhow!(

@@ -120,15 +120,14 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
 
     match output {
         OutputFormat::Json => {
-            let report = serde_json::json!({
+            podbox::contract::print_json(serde_json::json!({
                 "checks": entries,
                 "summary": {
                     "passes": passes,
                     "failures": failures,
                     "total": entries.len(),
                 }
-            });
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            }))?;
         }
         OutputFormat::Text => {
             // Header: which container this run is for, with active hint on default run.
@@ -171,7 +170,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     }
 
     if failures > 0 {
-        Err(anyhow::anyhow!("{failures} check(s) failed"))
+        Err(podbox::error::PodboxError::ChecksFailed(failures).into())
     } else {
         Ok(())
     }

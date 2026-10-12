@@ -12,6 +12,7 @@ pub const VERSION: &str = env!("PODBOX_VERSION");
 // (see the `cli` feature below) so the website Studio can share them.
 pub mod codegen;
 pub mod config;
+pub mod contract;
 pub mod env;
 pub mod error;
 pub mod guest;

@@ -77,6 +77,10 @@ pub fn run_inspect(
                 }
                 out.insert("env".into(), json!(env_map));
             }
+            out.insert(
+                "schema".into(),
+                serde_json::Value::from(podbox::contract::CONTRACT_SCHEMA),
+            );
             println!("{}", serde_json::to_string_pretty(&out)?);
         }
         OutputFormat::Text => {

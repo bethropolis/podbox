@@ -44,10 +44,7 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
                 })
             })
             .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({"containers": entries}))?
-        );
+        podbox::contract::print_json(serde_json::json!({"containers": entries}))?;
         return Ok(());
     }
 

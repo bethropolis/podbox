@@ -23,7 +23,7 @@ pub fn run_diff(
 
     match output {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            podbox::contract::print_json(serde_json::to_value(&result)?)?;
         }
         OutputFormat::Text => {
             if !result.has_drift {
@@ -56,10 +56,19 @@ pub fn run_diff(
 
         let patched = diff::patch_toml(&original, &reconciled)?;
         std::fs::write(&definition_path, patched)?;
-        println!(
-            "\n✓ Updated {} with reconciled package list.",
-            definition_path.display()
-        );
+        // Stdout stays a single JSON document in JSON mode; the
+        // confirmation is a diagnostic and goes to stderr there.
+        if matches!(output, OutputFormat::Json) {
+            podbox::ui::ok(&format!(
+                "Updated {} with reconciled package list.",
+                definition_path.display()
+            ));
+        } else {
+            println!(
+                "\n✓ Updated {} with reconciled package list.",
+                definition_path.display()
+            );
+        }
     }
 
     Ok(())

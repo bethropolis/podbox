@@ -48,8 +48,29 @@ fn init_tracing(verbosity: u8) {
 }
 
 fn main() -> ExitCode {
-    let result = run();
-    if let Err(e) = result {
+    let cli = Cli::parse();
+    let json_mode = command_requests_json(&cli.command);
+    if let Err(e) = run(cli) {
+        // Contract: in JSON mode failures also print a structured error on
+        // stdout (same exit code). Diagnostics stay on stderr either way.
+        // Skipped when the command already printed its JSON report and the
+        // error only carries the exit status (doctor failures, --check).
+        if json_mode {
+            let reported = e
+                .downcast_ref::<PodboxError>()
+                .is_some_and(PodboxError::json_reported);
+            if !reported {
+                let code = e
+                    .downcast_ref::<PodboxError>()
+                    .map_or("error", PodboxError::code);
+                if let Ok(text) = serde_json::to_string_pretty(&podbox::contract::error_payload(
+                    code,
+                    &format!("{e:#}"),
+                )) {
+                    println!("{text}");
+                }
+            }
+        }
         ui::error(&format!("{e:#}"));
         exit_code_for_error(&e)
     } else {
@@ -76,9 +97,32 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
     }
 }
 
-fn run() -> Result<()> {
-    let mut cli = Cli::parse();
+/// True when the invoked command was asked for `--output json`, including
+/// the nested `provision status` / `snapshot list` readers. Used once from
+/// `main` so JSON-mode failures can print the structured error envelope.
+fn command_requests_json(cmd: &Command) -> bool {
+    use podbox::cli::{OutputFormat, ProvisionCommand, SnapshotCommand};
+    match cmd {
+        Command::Status { output, .. }
+        | Command::Stats { output, .. }
+        | Command::Inspect { output, .. }
+        | Command::List { output, .. }
+        | Command::Doctor { output, .. }
+        | Command::Diff { output, .. }
+        | Command::History { output, .. } => matches!(output, OutputFormat::Json),
+        Command::Provision { provision_cmd } => matches!(
+            provision_cmd,
+            ProvisionCommand::Status { output, .. } if matches!(output, OutputFormat::Json)
+        ),
+        Command::Snapshot { snapshot_cmd } => matches!(
+            snapshot_cmd,
+            SnapshotCommand::List { output, .. } if matches!(output, OutputFormat::Json)
+        ),
+        _ => false,
+    }
+}
 
+fn run(mut cli: Cli) -> Result<()> {
     ui::set_quiet(cli.quiet);
     ui::set_verbose(cli.verbose);
     init_tracing(cli.verbose);

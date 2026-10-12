@@ -17,8 +17,7 @@ pub fn run_history(name: Option<String>, limit: usize, output: OutputFormat) -> 
         .collect();
 
     if matches!(output, OutputFormat::Json) {
-        let json = serde_json::json!({ "history": filtered });
-        println!("{}", serde_json::to_string_pretty(&json)?);
+        podbox::contract::print_json(serde_json::json!({ "history": filtered }))?;
         return Ok(());
     }
 

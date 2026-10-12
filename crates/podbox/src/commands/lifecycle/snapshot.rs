@@ -83,10 +83,7 @@ pub fn run_snapshot_list(name: &str, output: podbox::cli::OutputFormat) -> Resul
             .iter()
             .map(|s| serde_json::json!({ "tag": s.tag, "created": s.created, "image": s.image }))
             .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({ "snapshots": entries }))?
-        );
+        podbox::contract::print_json(serde_json::json!({ "snapshots": entries }))?;
         return Ok(());
     }
     if snapshots.is_empty() {

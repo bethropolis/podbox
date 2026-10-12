@@ -481,10 +481,7 @@ pub fn status(config: &Config, output: podbox::cli::OutputFormat, check: bool) -
                     applied_at: *at,
                 })
                 .collect();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({ "steps": out }))?
-            );
+            podbox::contract::print_json(serde_json::json!({ "steps": out }))?;
         }
         podbox::cli::OutputFormat::Text => {
             println!("Container: {}", config.container.name);
@@ -501,7 +498,7 @@ pub fn status(config: &Config, output: podbox::cli::OutputFormat, check: bool) -
             .iter()
             .any(|(_, s, _)| matches!(s, ProvisionState::Pending | ProvisionState::Stale));
         if bad {
-            anyhow::bail!("provision steps pending or stale");
+            return Err(podbox::error::PodboxError::StepsPending.into());
         }
     }
     Ok(())

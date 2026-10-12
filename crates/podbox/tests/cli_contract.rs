@@ -464,3 +464,49 @@ fn recover_dry_run_prints_plan() {
     assert!(text.contains("daemon-reload"));
     assert!(text.contains("Quadlet"));
 }
+
+/// Contract P1: every podbox-owned `--output json` payload carries
+/// `"schema": 1`, and stdout stays a single JSON document.
+#[test]
+fn json_readers_carry_schema() {
+    let sb = Sandbox::new(&["alpha"]);
+    for args in [
+        vec!["list", "--output", "json"],
+        vec!["history", "--output", "json"],
+        vec!["-C", "alpha", "snapshot", "list", "--output", "json"],
+    ] {
+        let out = sb.cmd().args(&args).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
+                .expect("{args:?} must print a single JSON document");
+        assert_eq!(v["schema"], 1, "{args:?} missing schema stamp");
+    }
+}
+
+/// Contract P1: JSON-mode failure prints the structured error envelope on
+/// stdout with the documented exit code; diagnostics stay on stderr.
+#[test]
+fn json_error_envelope_for_missing_container() {
+    let sb = Sandbox::new(&[]);
+    // `status` resolves the named config; a missing one is exit 3.
+    let out = sb
+        .cmd()
+        .args(["-C", "nosuch", "status", "--output", "json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    let v: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
+        .expect("stdout must be a single JSON error document");
+    assert_eq!(v["schema"], 1);
+    assert_eq!(v["error"]["code"], "container_missing");
+    assert!(v["error"]["message"].is_string());
+    assert!(
+        !String::from_utf8_lossy(&out.stderr).is_empty(),
+        "human diagnostics must stay on stderr"
+    );
+}

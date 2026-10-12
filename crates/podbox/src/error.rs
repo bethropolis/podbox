@@ -45,8 +45,49 @@ pub enum PodboxError {
     #[error("config validation failed:\n{details}")]
     ConfigValidationFailed { details: String },
 
+    #[error("provision steps pending or stale")]
+    StepsPending,
+
+    #[error("{0} check(s) failed")]
+    ChecksFailed(u32),
+
     #[error(
         "this build of podbox has no embedded guest binary and can only manage prebuilt images -- use a release binary or a source build with the podbox-guest workspace present to build custom images"
     )]
     GuestBinaryUnavailable,
+}
+
+impl PodboxError {
+    /// Stable lowercase identifier for the client contract
+    /// (`docs/clients.md`). Messages are for people; codes are for parsers.
+    /// Only extended, never renamed.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::ContainerMissing(_) => "container_missing",
+            Self::DefinitionNotFound { .. } => "definition_missing",
+            Self::DefinitionReadFailed(_) => "definition_unreadable",
+            Self::DefinitionParseFailed(_) | Self::ConfigValidationFailed { .. } => {
+                "definition_invalid"
+            }
+            Self::PodmanNotFound => "podman_missing",
+            Self::HomeCreateFailed { .. } => "home_create_failed",
+            Self::PodmanInspectFailed { .. } => "inspect_failed",
+            Self::BuildFailed(_) => "build_failed",
+            Self::ExportFailed { .. } => "export_failed",
+            Self::XdgUserDirNotFound => "xdg_user_dir_missing",
+            Self::PullFailed { .. } => "image_pull_failed",
+            Self::TagFailed { .. } => "image_tag_failed",
+            Self::StepsPending => "steps_pending",
+            Self::ChecksFailed(_) => "checks_failed",
+            Self::ProtocolMismatch { .. } => "protocol_mismatch",
+            Self::GuestBinaryUnavailable => "guest_binary_unavailable",
+        }
+    }
+
+    /// True when the failure's structured JSON report was already printed
+    /// on stdout and the error only carries the exit status. `main` skips
+    /// the error envelope for these so stdout stays a single JSON document.
+    pub fn json_reported(&self) -> bool {
+        matches!(self, Self::StepsPending | Self::ChecksFailed(_))
+    }
 }

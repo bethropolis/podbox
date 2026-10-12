@@ -680,14 +680,11 @@ pub fn run_status(name: &str, dry_run: bool, output: podbox::cli::OutputFormat) 
             ContainerState::Stopped => ("stopped", true),
             ContainerState::Missing => ("unbuilt", quadlet_installed(name)),
         };
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "name": name,
-                "status": status,
-                "installed": installed,
-            }))?
-        );
+        podbox::contract::print_json(serde_json::json!({
+            "name": name,
+            "status": status,
+            "installed": installed,
+        }))?;
         return Ok(());
     }
 
