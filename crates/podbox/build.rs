@@ -9,6 +9,14 @@ fn main() {
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION not set"));
     println!("cargo:rustc-env=PODBOX_VERSION={version}");
 
+    // The version tracks git state, which cargo never watches on its own —
+    // and the guest-only directives below override the default file watching.
+    // Without these, the version string freezes at whatever commit first
+    // built this target dir. Paths are package-relative (crates/podbox/).
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/refs/heads");
+    println!("cargo:rerun-if-changed=../../.git/packed-refs");
+
     // The guest daemon is a Linux binary: embedding it into a wasm build is
     // meaningless (and `cargo build -p podbox-guest` would target wasm).
     // Emit the same `None` stub the crates.io path uses.
@@ -16,6 +24,7 @@ fn main() {
         let dest = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("podbox_guest.rs");
         std::fs::write(&dest, "pub static PODBOX_GUEST: Option<&[u8]> = None;")
             .expect("failed to write podbox_guest.rs");
+        println!("cargo:rustc-env=PODBOX_GUEST_KIND=none");
         return;
     }
 
@@ -50,6 +59,7 @@ fn embed_guest() {
     } else {
         std::fs::write(&dest, "pub static PODBOX_GUEST: Option<&[u8]> = None;")
             .expect("failed to write podbox_guest.rs");
+        println!("cargo:rustc-env=PODBOX_GUEST_KIND=none");
         println!(
             "cargo:warning=no podbox-guest workspace found; custom image builds unsupported (prebuilt images only)"
         );
@@ -125,6 +135,14 @@ fn embed_guest_from_workspace(dest: &Path) {
     };
 
     println!("cargo:warning=podbox-guest binary built ({target_label})");
+    println!(
+        "cargo:rustc-env=PODBOX_GUEST_KIND={}",
+        if target_label == "musl / static" {
+            "static"
+        } else {
+            "dynamic"
+        }
+    );
 
     let guest_bytes = std::fs::read(&guest_path).expect("failed to read podbox-guest binary");
 

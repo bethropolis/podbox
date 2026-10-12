@@ -3,7 +3,12 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "podbox")]
-#[command(version = env!("PODBOX_VERSION"))]
+#[command(version = env!("PODBOX_VERSION"), long_version = concat!(
+    env!("PODBOX_VERSION"),
+    "\nembedded guest: ",
+    env!("PODBOX_GUEST_KIND"),
+    " (`podbox info` for the full contract report)",
+))]
 #[command(about = "Podman-native container environment manager")]
 #[command(after_help = "Common workflow:\n  \
         podbox create <profile>   Create and start a prebuilt environment\n  \
