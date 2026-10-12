@@ -101,7 +101,7 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
 /// the nested `provision status` / `snapshot list` readers. Used once from
 /// `main` so JSON-mode failures can print the structured error envelope.
 fn command_requests_json(cmd: &Command) -> bool {
-    use podbox::cli::{OutputFormat, ProvisionCommand, SnapshotCommand};
+    use podbox::cli::{ConfigCommand, OutputFormat, ProvisionCommand, SnapshotCommand};
     match cmd {
         Command::Status { output, .. }
         | Command::Stats { output, .. }
@@ -114,6 +114,13 @@ fn command_requests_json(cmd: &Command) -> bool {
         Command::Provision { provision_cmd } => matches!(
             provision_cmd,
             ProvisionCommand::Status { output, .. } if matches!(output, OutputFormat::Json)
+        ),
+        Command::Config { config_cmd } => matches!(
+            config_cmd,
+            ConfigCommand::Get { output, .. }
+            | ConfigCommand::Set { output, .. }
+            | ConfigCommand::Validate { output, .. }
+                if matches!(output, OutputFormat::Json)
         ),
         Command::Snapshot { snapshot_cmd } => matches!(
             snapshot_cmd,
@@ -203,6 +210,7 @@ fn run(mut cli: Cli) -> Result<()> {
             packages,
             no_start,
             edit,
+            yes,
         } => {
             return commands::create::run_create(
                 cli.dry_run,
@@ -211,6 +219,7 @@ fn run(mut cli: Cli) -> Result<()> {
                 packages.as_deref(),
                 *no_start,
                 *edit,
+                *yes,
             );
         }
 
@@ -225,6 +234,28 @@ fn run(mut cli: Cli) -> Result<()> {
         Command::Info { output } => {
             return commands::info::run_info(*output);
         }
+
+        Command::Config { config_cmd } => match config_cmd {
+            // Set/validate work on the file and do their own loading, so a
+            // broken config still gets a precise report (or a fix) instead
+            // of dying in shared resolution. `--config` wins when given,
+            // otherwise `-C` / active context / auto-detect.
+            podbox::cli::ConfigCommand::Set { key, value, output } => {
+                let path = match &cli.config {
+                    Some(p) => p.clone(),
+                    None => resolve_config_path(cli.container.as_deref())?,
+                };
+                return commands::config::run_set(&path, key, value, *output);
+            }
+            podbox::cli::ConfigCommand::Validate { output } => {
+                let path = match &cli.config {
+                    Some(p) => p.clone(),
+                    None => resolve_config_path(cli.container.as_deref())?,
+                };
+                return commands::config::run_validate(&path, *output);
+            }
+            podbox::cli::ConfigCommand::Get { .. } => {}
+        },
 
         Command::Clone {
             src,
@@ -425,6 +456,13 @@ fn run(mut cli: Cli) -> Result<()> {
         Command::Status { name: _, output } => {
             commands::runtime::run_status(&config, &name, cli.dry_run, *output)?;
         }
+
+        Command::Config { config_cmd } => match config_cmd {
+            podbox::cli::ConfigCommand::Get { key, output, .. } => {
+                commands::config::run_get(&config, key, *output)?;
+            }
+            _ => unreachable!("config set/validate are handled before config resolution"),
+        },
 
         Command::Stats {
             no_stream, output, ..

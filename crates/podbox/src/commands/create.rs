@@ -154,6 +154,9 @@ pub(super) fn detect_package_manager(image: &str) -> podbox::config::PackageMana
 pub use super::create_init::run_init;
 
 /// Create a container: pull profile/image, build, install Quadlet, and start.
+///
+/// Never prompts: with `--yes` an omitted `--name` is derived from the image
+/// reference instead of stopping with a suggestion.
 pub fn run_create(
     dry_run: bool,
     image: &str,
@@ -161,6 +164,7 @@ pub fn run_create(
     packages: Option<&str>,
     no_start: bool,
     edit: bool,
+    yes: bool,
 ) -> Result<()> {
     let is_profile = !image.contains('/') && !image.contains('\\');
 
@@ -220,6 +224,19 @@ pub fn run_create(
         );
     }
 
+    // Non-interactive mode: derive the container name up front so the whole
+    // raw-image path (conflict check, dry-run plan, config write) runs.
+    let derived;
+    let name = match name {
+        Some(n) => Some(n),
+        None if yes => {
+            derived = derive_container_name(image, None);
+            println!("Using derived container name '{derived}' (--yes).");
+            Some(derived.as_str())
+        }
+        None => None,
+    };
+
     let existing_name = match name {
         Some(n) => Some(n.to_string()),
         None => Some(image.to_string()),
@@ -244,6 +261,12 @@ pub fn run_create(
 
     if dry_run {
         println!("podman pull {image}");
+        if name.is_none() {
+            let suggested = derive_container_name(image, None);
+            println!(
+                "Run `podbox init {image} --name <name>` to create a config (e.g. --name {suggested})."
+            );
+        }
         return Ok(());
     }
 

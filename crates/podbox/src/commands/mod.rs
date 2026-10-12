@@ -5,6 +5,7 @@ use podbox::systemd;
 
 pub mod cache;
 pub mod clone;
+pub mod config;
 pub mod context;
 pub mod create;
 pub mod create_init;

@@ -158,17 +158,31 @@ export, stopped box), while `exported` tells the two states apart.
 
 ## Creating and configuring
 
-These exist only as interactive flows or as hand-edited TOML today. A GUI
-should not have to drive a wizard or parse TOML.
+`podbox create PROFILE --name NAME --yes` never prompts. **Today** Without
+`--name`, `--yes` derives the container name from a raw image reference
+instead of stopping with a suggestion.
 
-**Proposed:**
+`podbox config get KEY` prints one effective value (defaults and `extends`
+applied): scalars print raw, tables and arrays print as JSON. **Today**
 
-- `podbox create PROFILE --name NAME --yes` with no prompts.
-- `podbox config get NAME KEY` and `podbox config set NAME KEY VALUE`, built on
-  `toml_edit` so comments and formatting survive. Setting a key that changes
-  the image reports that a rebuild is needed.
-- `podbox config validate NAME --output json`, returning errors with line
-  numbers.
+`podbox config set KEY VALUE` edits the file with `toml_edit`, so comments
+and formatting survive. **Today** Values parse as TOML (`4`, `true`,
+`["a"]`); anything else becomes a string. The edit is verified before it
+lands — unknown keys and invalid values fail without touching the file.
+Setting a key under `image.` reports that a rebuild is needed. Array
+indices (`provision[0]`) are not addressable yet.
+
+`podbox config validate --output json` returns the verdict with line
+numbers. **Today**
+
+```json
+{"schema": 1, "valid": false,
+ "errors": [{"field": "container.memory", "line": 12, "col": null,
+             "message": "'bogus' is not a valid memory limit"}]}
+```
+
+Target the config with `-C NAME`, the active context, or `--config PATH`
+(`KEY` is positional, so config subcommands take no positional `NAME`).
 
 ## Errors and exit codes
 
@@ -269,6 +283,6 @@ In priority order:
 3. ~~Add `export list --output json` and per-item removal.~~ Done.
 4. ~~Add `restart`.~~ Done.
 5. ~~Add `"schema": 1` to every JSON payload and the structured error format.~~ Done.
-6. ~~Add `info`,~~ then `config get|set|validate`, then non-interactive `create`.
+6. ~~Add `info`, `config get|set|validate`, and non-interactive `create`.~~ Done.
 7. Add `watch` and `build --output ndjson`.
 8. Add the golden fixtures.

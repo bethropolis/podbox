@@ -47,7 +47,82 @@ pub const CONTRACT_FEATURES: &[&str] = &[
     "status_extras",
     "export_list",
     "restart",
+    "config",
 ];
+
+/// Convert a byte offset into 1-based (line, column). Columns count Unicode
+/// scalar values, matching how editors render the line.
+pub fn offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(text.len());
+    let before = &text[..offset];
+    let line = before.bytes().filter(|&b| b == b'\n').count() + 1;
+    let column = before.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+    (line, column)
+}
+
+/// Best-effort line lookup for a dotted schema path (`container.memory`).
+///
+/// Matches the `key =` assignment for the last segment, preferring one under
+/// the matching `[table.path]` header; single-segment paths match top-level
+/// assignments. Returns `None` when the key is absent (derived or defaulted
+/// values have no source line).
+pub fn find_field_line(text: &str, field: &str) -> Option<usize> {
+    let segments: Vec<String> = field
+        .split('.')
+        .map(|s| match s.find('[') {
+            // `provision[0].name` style paths index into arrays-of-tables.
+            Some(bracket) => s[..bracket].to_string(),
+            None => s.to_string(),
+        })
+        .collect();
+    let (table_path, key) = match segments.as_slice() {
+        [] => return None,
+        [single] => (None, single.clone()),
+        _ => (
+            Some(segments[..segments.len() - 1].join(".")),
+            segments[segments.len() - 1].clone(),
+        ),
+    };
+    let mut current_table = String::new();
+    let mut header_line: Option<usize> = None;
+    let mut fallback: Option<usize> = None;
+    for (idx, raw) in text.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = raw.trim();
+        if trimmed.starts_with('[') && !trimmed.starts_with("[![") {
+            // `[[array]]` headers flow through here too: stripping brackets
+            // leaves the bare table name, which still qualifies lookups.
+            let header = trimmed
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            current_table = header.trim_start_matches('[').to_string();
+            if table_path.as_deref() == Some(current_table.as_str()) {
+                header_line = Some(line_no);
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((lhs, _)) = trimmed.split_once('=') {
+            let lhs = lhs.trim().trim_matches('"').trim_matches('\'');
+            if lhs == key {
+                if table_path.is_none() {
+                    return Some(line_no);
+                }
+                if table_path.as_deref() == Some(current_table.as_str()) {
+                    return Some(line_no);
+                }
+                fallback.get_or_insert(line_no);
+            }
+        }
+    }
+    fallback.or(header_line)
+}
 
 /// Structured error envelope for JSON mode. `code` is a stable lowercase
 /// identifier ([`crate::error::PodboxError::code`]); `message` is for people.
@@ -80,5 +155,16 @@ mod tests {
         let v = error_payload("container_missing", "No environment named 'dev'.");
         assert_eq!(v["schema"], 1);
         assert_eq!(v["error"]["code"], "container_missing");
+    }
+
+    #[test]
+    fn field_line_prefers_matching_table() {
+        let text = "name = \"x\"\n[container]\nmemory = \"4G\"\n[network]\nmemory = \"y\"\n";
+        assert_eq!(find_field_line(text, "container.memory"), Some(3));
+        assert_eq!(find_field_line(text, "network.memory"), Some(5));
+        assert_eq!(find_field_line(text, "name"), Some(1));
+        // Missing key under a present table falls back to the header.
+        assert_eq!(find_field_line(text, "container.missing"), Some(2));
+        assert_eq!(find_field_line(text, "nosuch.key"), None);
     }
 }

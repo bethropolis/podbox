@@ -253,6 +253,10 @@ pub enum Command {
         /// Open config in editor before creating.
         #[arg(long)]
         edit: bool,
+        /// Never prompt: derive the container name when `--name` is omitted.
+        /// Without it, an unnamed raw-image create stops with a suggestion.
+        #[arg(long)]
+        yes: bool,
     },
 
     /// Open the container config in your preferred editor.
@@ -471,9 +475,48 @@ pub enum Command {
         force: bool,
     },
 
+    /// Read and change container configuration without hand-editing TOML.
+    #[command(display_order = 76)]
+    Config {
+        #[command(subcommand)]
+        config_cmd: ConfigCommand,
+    },
+
     /// Print known container names, one per line (shell completion helper).
     #[command(hide = true, name = "__complete-names")]
     CompleteNames,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ConfigCommand {
+    /// Print one effective configuration value (dotted `table.key` path).
+    /// Target via `-C`, active context, or `--config` (`KEY` is positional,
+    /// so there is no positional `NAME` here).
+    Get {
+        /// Dotted key path, e.g. `container.memory`.
+        key: String,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
+    /// Set one configuration value, preserving comments and formatting.
+    /// Values parse as TOML (`4`, `true`, `["a"]`); anything else becomes a
+    /// string. Keys under `image.` report that a rebuild is needed.
+    Set {
+        /// Dotted key path, e.g. `container.memory`.
+        key: String,
+        /// New value.
+        value: String,
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
+    /// Validate the configuration file, reporting errors with line numbers.
+    Validate {
+        /// Output format (text or json).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
 }
 
 #[derive(Subcommand)]

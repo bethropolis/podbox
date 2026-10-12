@@ -51,6 +51,9 @@ pub enum PodboxError {
     #[error("{0} check(s) failed")]
     ChecksFailed(u32),
 
+    #[error("configuration invalid: {0} error(s)")]
+    ConfigInvalid(usize),
+
     #[error(
         "this build of podbox has no embedded guest binary and can only manage prebuilt images -- use a release binary or a source build with the podbox-guest workspace present to build custom images"
     )]
@@ -79,6 +82,7 @@ impl PodboxError {
             Self::TagFailed { .. } => "image_tag_failed",
             Self::StepsPending => "steps_pending",
             Self::ChecksFailed(_) => "checks_failed",
+            Self::ConfigInvalid(_) => "config_invalid",
             Self::ProtocolMismatch { .. } => "protocol_mismatch",
             Self::GuestBinaryUnavailable => "guest_binary_unavailable",
         }
@@ -88,6 +92,9 @@ impl PodboxError {
     /// on stdout and the error only carries the exit status. `main` skips
     /// the error envelope for these so stdout stays a single JSON document.
     pub fn json_reported(&self) -> bool {
-        matches!(self, Self::StepsPending | Self::ChecksFailed(_))
+        matches!(
+            self,
+            Self::StepsPending | Self::ChecksFailed(_) | Self::ConfigInvalid(_)
+        )
     }
 }
