@@ -258,14 +258,16 @@ impl ContainerfileBuilder {
             let mut cmd = String::from(
                 "sed 's/^\\[options\\]/[options]\\nDisableSandboxNetwork/' /etc/pacman.conf > /tmp/podbox-pacman.conf",
             );
-            cmd.push_str(&format!(
+            use std::fmt::Write as _;
+            let _ = write!(
+                cmd,
                 " && {} --config /tmp/podbox-pacman.conf {}",
                 distro.install_cmd(),
                 pkgs
-            ));
+            );
             cmd.push_str(" && rm -f /tmp/podbox-pacman.conf");
             if !clean.is_empty() {
-                cmd.push_str(&format!(" && {clean}"));
+                let _ = write!(cmd, " && {clean}");
             }
             return cmd;
         }

@@ -1,5 +1,5 @@
 ---
-description: Build clients on podbox — the CLI as a stable contract: name handling, JSON output, errors, exit codes, streaming, and what is proposed next.
+description: "Build clients on podbox — the CLI as a stable contract: name handling, JSON output, errors, exit codes, streaming, and what is proposed next."
 ---
 
 # Building clients
