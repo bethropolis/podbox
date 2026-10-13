@@ -31,6 +31,14 @@ pub fn with_sandbox_home(f: impl FnOnce(&std::path::Path)) {
     unsafe {
         std::env::set_var("HOME", tmp.path());
     }
+    // `dirs` prefers XDG_CONFIG_HOME over HOME, so a developer machine with
+    // it set would leak real configs into the sandbox. Clear it the same way.
+    let old_xdg = std::env::var_os("XDG_CONFIG_HOME");
+    // SAFETY: Same serialization as HOME above.
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
     f(tmp.path());
     // SAFETY: Same serialization as above.
     #[allow(unsafe_code)]
@@ -39,6 +47,9 @@ pub fn with_sandbox_home(f: impl FnOnce(&std::path::Path)) {
             std::env::set_var("HOME", h);
         } else {
             std::env::remove_var("HOME");
+        }
+        if let Some(x) = old_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", x);
         }
     }
     // _guard dropped → HOME_LOCK released.

@@ -16,15 +16,16 @@ pub fn all() -> Vec<Profile> {
 }
 
 /// Find a profile by name (case-insensitive).
+///
+/// User configs in `~/.config/podbox/profiles/` (plus legacy root-level
+/// configs not yet migrated) win over bundled profiles of the same name, so
+/// `podbox create dev` uses your `dev.toml` instead of the bundled template.
 pub fn find(name: &str) -> Option<Profile> {
     let lower = name.to_lowercase();
-    // Check bundled first, then user-defined
-    for p in [cachy(), fedora(), ubuntu(), dev()] {
-        if p.name == lower {
-            return Some(p);
-        }
-    }
-    user_profiles().into_iter().find(|p| p.name == lower)
+    user_profiles()
+        .into_iter()
+        .chain([cachy(), fedora(), ubuntu(), dev()])
+        .find(|p| p.name == lower)
 }
 
 fn user_profiles_dir() -> PathBuf {
@@ -33,27 +34,48 @@ fn user_profiles_dir() -> PathBuf {
 
 fn user_profiles() -> Vec<Profile> {
     let dir = user_profiles_dir();
-    if !dir.is_dir() {
-        return vec![];
-    }
     let mut profiles = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&dir) {
+    let mut seen = std::collections::HashSet::new();
+    if dir.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&dir)
+    {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map(|e| e == "toml").unwrap_or(false) {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let name = path
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_lowercase())
-                        .unwrap_or_default();
-                    profiles.push(Profile {
-                        label: name.clone(),
-                        description: format!("User-defined profile ({name})"),
-                        toml: content,
-                        name,
-                    });
-                }
+            if path.extension().map(|e| e == "toml").unwrap_or(false)
+                && let Ok(content) = std::fs::read_to_string(&path)
+            {
+                let name = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                seen.insert(name.clone());
+                profiles.push(Profile {
+                    label: name.clone(),
+                    description: format!("User-defined profile ({name})"),
+                    toml: content,
+                    name,
+                });
             }
+        }
+    }
+    // Legacy root-level configs count as user profiles too until `podbox
+    // migrate` moves them; canonical profiles/ wins on stem collision.
+    for legacy in crate::config::find_legacy_root_configs() {
+        let name = legacy
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if seen.contains(&name) {
+            continue;
+        }
+        if let Ok(content) = std::fs::read_to_string(&legacy) {
+            seen.insert(name.clone());
+            profiles.push(Profile {
+                label: name.clone(),
+                description: format!("User-defined profile ({name}, legacy path)"),
+                toml: content,
+                name,
+            });
         }
     }
     profiles

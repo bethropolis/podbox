@@ -117,7 +117,7 @@ ssh_agent = true
 
 ```bash
 podbox doctor                             # checks Podman version
-grep ssh_agent ~/.config/podbox/<name>.toml
+grep ssh_agent ~/.config/podbox/profiles/<name>.toml
 ```
 
 On Podman 5.5 the socket path is baked at `enable` time — if `$SSH_AUTH_SOCK`

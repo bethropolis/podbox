@@ -3,6 +3,10 @@ use std::path::PathBuf;
 use podbox::config::Config;
 use podbox::labels;
 
+mod common;
+
+use common::with_sandbox_home;
+
 fn load_config(name: &str) -> Config {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
@@ -277,49 +281,61 @@ fn quadlet_has_environment_home() {
 
 #[test]
 fn profile_cachy_parses() {
-    let profile = podbox::profiles::find("cachy").expect("cachy profile exists");
-    let cfg = Config::parse(&profile.toml).unwrap();
-    assert_eq!(cfg.image.base, "cachy-latest");
-    assert!(cfg.image.source().is_prebuilt());
-    assert_eq!(cfg.container.shell, "/usr/bin/fish");
+    with_sandbox_home(|_| {
+        let profile = podbox::profiles::find("cachy").expect("cachy profile exists");
+        let cfg = Config::parse(&profile.toml).unwrap();
+        assert_eq!(cfg.image.base, "cachy-latest");
+        assert!(cfg.image.source().is_prebuilt());
+        assert_eq!(cfg.container.shell, "/usr/bin/fish");
+    });
 }
 
 #[test]
 fn profile_fedora_parses() {
-    let profile = podbox::profiles::find("fedora").expect("fedora profile exists");
-    let cfg = Config::parse(&profile.toml).unwrap();
-    assert_eq!(cfg.image.base, "fedora-latest");
-    assert!(cfg.image.source().is_prebuilt());
+    with_sandbox_home(|_| {
+        let profile = podbox::profiles::find("fedora").expect("fedora profile exists");
+        let cfg = Config::parse(&profile.toml).unwrap();
+        assert_eq!(cfg.image.base, "fedora-latest");
+        assert!(cfg.image.source().is_prebuilt());
+    });
 }
 
 #[test]
 fn profile_dev_parses() {
-    let profile = podbox::profiles::find("dev").expect("dev profile exists");
-    let cfg = Config::parse(&profile.toml).unwrap();
-    assert_eq!(cfg.image.base, "dev-latest");
-    assert!(cfg.integration.wayland);
-    assert_eq!(cfg.integration.gpu, podbox::config::GpuMode::Enabled);
+    with_sandbox_home(|_| {
+        let profile = podbox::profiles::find("dev").expect("dev profile exists");
+        let cfg = Config::parse(&profile.toml).unwrap();
+        assert_eq!(cfg.image.base, "dev-latest");
+        assert!(cfg.integration.wayland);
+        assert_eq!(cfg.integration.gpu, podbox::config::GpuMode::Enabled);
+    });
 }
 
 #[test]
 fn profile_ubuntu_parses() {
-    let profile = podbox::profiles::find("ubuntu").expect("ubuntu profile exists");
-    let cfg = Config::parse(&profile.toml).unwrap();
-    assert_eq!(cfg.image.base, "ubuntu-latest");
-    assert!(cfg.image.source().is_prebuilt());
-    assert_eq!(cfg.container.shell, "/usr/bin/fish");
+    with_sandbox_home(|_| {
+        let profile = podbox::profiles::find("ubuntu").expect("ubuntu profile exists");
+        let cfg = Config::parse(&profile.toml).unwrap();
+        assert_eq!(cfg.image.base, "ubuntu-latest");
+        assert!(cfg.image.source().is_prebuilt());
+        assert_eq!(cfg.container.shell, "/usr/bin/fish");
+    });
 }
 
 #[test]
 fn profile_unknown_returns_none() {
-    assert!(podbox::profiles::find("nonexistent").is_none());
+    with_sandbox_home(|_| {
+        assert!(podbox::profiles::find("nonexistent").is_none());
+    });
 }
 
 #[test]
 fn profile_list_contains_all() {
-    let names = podbox::profiles::list_names();
-    assert!(names.iter().any(|n| n == "cachy"));
-    assert!(names.iter().any(|n| n == "fedora"));
-    assert!(names.iter().any(|n| n == "ubuntu"));
-    assert!(names.iter().any(|n| n == "dev"));
+    with_sandbox_home(|_| {
+        let names = podbox::profiles::list_names();
+        assert!(names.iter().any(|n| n == "cachy"));
+        assert!(names.iter().any(|n| n == "fedora"));
+        assert!(names.iter().any(|n| n == "ubuntu"));
+        assert!(names.iter().any(|n| n == "dev"));
+    });
 }

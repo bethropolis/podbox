@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use podbox::cli::{Cli, Command};
 use podbox::config::{self, Config};
@@ -317,6 +317,33 @@ pub(crate) fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<(
             let p = podbox::profiles::find(name)
                 .ok_or_else(|| anyhow::anyhow!("Profile '{name}' not found"))?;
             println!("{}", p.toml);
+        }
+        podbox::cli::ProfileCommand::Export { name, output } => {
+            let p = podbox::profiles::find(name)
+                .ok_or_else(|| anyhow::anyhow!("Profile '{name}' not found"))?;
+            if let Some(path) = output {
+                std::fs::write(path, &p.toml)
+                    .with_context(|| format!("failed to write export '{}'", path.display()))?;
+                println!("Exported profile '{name}' -> {}", path.display());
+            } else {
+                print!("{}", p.toml);
+            }
+        }
+        podbox::cli::ProfileCommand::Import { path, name, force } => {
+            if *force {
+                // `--force` stages over an existing file: remove first so the
+                // shared staging helper's clobber guard stays unconditional.
+                let stem = name.clone().unwrap_or_else(|| {
+                    path.file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                });
+                let target = podbox::config::profiles_dir().join(format!("{stem}.toml"));
+                if target.is_file() {
+                    std::fs::remove_file(&target)?;
+                }
+            }
+            commands::create::stage_import(path, name.as_deref(), None, false)?;
         }
     }
     Ok(())

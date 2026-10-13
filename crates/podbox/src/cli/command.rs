@@ -6,6 +6,8 @@
 
 use clap::{Subcommand, ValueEnum};
 
+use std::path::PathBuf;
+
 use super::{OutputFormat, Shell};
 
 #[derive(Subcommand)]
@@ -239,21 +241,29 @@ pub enum Command {
         env: Vec<String>,
     },
 
-    /// Create and start a container from a profile or image in one step.
+    /// Create and start a container from a profile, image, or imported TOML in one step.
+    ///
+    /// An on-disk `profiles/<name>.toml` always wins over a bundled profile
+    /// of the same name.
     #[command(display_order = 10)]
     Create {
         /// Profile name (fedora, cachy) or full image reference.
-        image: String,
+        #[arg(required_unless_present = "import")]
+        image: Option<String>,
         /// Override the container name.
         #[arg(long, short)]
         name: Option<String>,
         /// Comma-separated list of packages to install (e.g. "fastfetch,btop").
         #[arg(long, short)]
         packages: Option<String>,
+        /// Import a TOML file into profiles/ and create from it.
+        #[arg(long, value_name = "PATH", conflicts_with = "image")]
+        import: Option<PathBuf>,
         /// Skip starting the container after setup.
         #[arg(long)]
         no_start: bool,
-        /// Open config in editor before creating.
+        /// Open config in editor before creating (writes the file first when
+        /// missing, re-reads it after the editor closes).
         #[arg(long)]
         edit: bool,
         /// Never prompt: derive the container name when `--name` is omitted.
@@ -599,6 +609,25 @@ pub enum ProfileCommand {
     Show {
         /// Name of the profile to display.
         name: String,
+    },
+    /// Print a profile's TOML to stdout, or write it to a file with `--output`.
+    Export {
+        /// Name of the profile to export.
+        name: String,
+        /// Write to this file instead of stdout.
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+    /// Install a TOML file into profiles/ as a new user profile.
+    Import {
+        /// TOML file to import (`-` reads stdin, requires `--name`).
+        path: PathBuf,
+        /// Profile name (defaults to the file stem).
+        #[arg(long, short)]
+        name: Option<String>,
+        /// Overwrite profiles/<name>.toml when it already exists.
+        #[arg(long)]
+        force: bool,
     },
 }
 

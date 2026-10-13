@@ -1,3 +1,4 @@
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -123,6 +124,88 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
     Ok(())
 }
 
+/// Validate a TOML file and stage it into profiles/ as a user profile.
+///
+/// Returns the staged container name. With `dry_run` nothing is written.
+/// The `--name` override (else the file stem) becomes the lookup key and is
+/// stamped into `[container] name` / `[image] name`; otherwise the file
+/// bytes land verbatim, comments and formatting intact.
+pub fn stage_import(
+    src: &Path,
+    name_override: Option<&str>,
+    packages: Option<&str>,
+    dry_run: bool,
+) -> Result<String> {
+    let from_stdin = src.as_os_str() == "-";
+    let raw = if from_stdin {
+        if name_override.is_none() {
+            anyhow::bail!("`--import -` (stdin) requires `--name`.");
+        }
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        buf
+    } else {
+        std::fs::read_to_string(src)
+            .with_context(|| format!("failed to read import '{}'", src.display()))?
+    };
+    let mut cfg = Config::parse(&raw)?;
+    cfg.validate()?;
+    let stem = if from_stdin {
+        String::new()
+    } else {
+        src.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let effective = name_override.unwrap_or(&stem).to_string();
+    if effective.is_empty() {
+        anyhow::bail!(
+            "Cannot derive a container name from '{}'. Pass `--name`.",
+            src.display()
+        );
+    }
+    let target = config::profiles_dir().join(format!("{effective}.toml"));
+    if target.is_file() && !dry_run {
+        anyhow::bail!(
+            "Config '{effective}' already exists at {}. Run `podbox create {effective}` to use it.",
+            target.display()
+        );
+    }
+    if let Some(pkgs) = packages {
+        for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            if !cfg.image.packages.install.contains(&pkg.to_string()) {
+                cfg.image.packages.install.push(pkg.to_string());
+            }
+        }
+    }
+    let mut out = raw;
+    if cfg.container.name != effective || cfg.image.name != effective {
+        // Stamping only when names disagree keeps untouched files byte-identical.
+        if name_override.is_some() || cfg.container.name.is_empty() {
+            cfg.container.name.clone_from(&effective);
+            cfg.image.name.clone_from(&effective);
+            out = toml::to_string_pretty(&cfg)?;
+        }
+    }
+    if dry_run {
+        println!("Would import {} -> {}", src.display(), target.display());
+        println!("---\n{out}");
+        return Ok(effective);
+    }
+    std::fs::create_dir_all(config::profiles_dir())?;
+    std::fs::write(&target, &out)?;
+    println!("Imported {} -> {}", src.display(), target.display());
+    Ok(effective)
+}
+
+/// Open a config file in the user's editor. Callers re-load the file after
+/// this returns, so edits (or pasted Studio TOML) take effect.
+fn edit_config_file(path: &Path) -> Result<()> {
+    let ed = editor::resolve()?;
+    editor::open(&ed, path)?;
+    Ok(())
+}
+
 pub(super) fn read_profile_content(profile: &str) -> Result<String> {
     if profile.contains('/') || profile.contains('\\') {
         std::fs::read_to_string(Path::new(profile))
@@ -164,26 +247,77 @@ pub use super::create_init::run_init;
 ///
 /// Never prompts: with `--yes` an omitted `--name` is derived from the image
 /// reference instead of stopping with a suggestion.
+#[allow(clippy::too_many_arguments)]
 pub fn run_create(
     dry_run: bool,
-    image: &str,
+    image: Option<&str>,
+    import: Option<&Path>,
     name: Option<&str>,
     packages: Option<&str>,
     no_start: bool,
     edit: bool,
     yes: bool,
 ) -> Result<()> {
+    // `--import` stages the file into profiles/, then the normal lookup
+    // runs: the staged user config wins over any bundled profile.
+    if let Some(src) = import {
+        let staged = stage_import(src, name, packages, dry_run)?;
+        if dry_run {
+            return Ok(());
+        }
+        return run_create(
+            dry_run,
+            Some(&staged),
+            None,
+            name,
+            None,
+            no_start,
+            edit,
+            yes,
+        );
+    }
+    let Some(image) = image else {
+        anyhow::bail!("Specify a profile or image, or pass `--import <PATH>`.");
+    };
     let is_profile = !image.contains('/') && !image.contains('\\');
 
     if is_profile && podbox::profiles::find(image).is_some() {
         let profile_content = read_profile_content(image)?;
+        let template = Config::parse(&profile_content)?;
+        let container_name = name.unwrap_or(&template.container.name).to_string();
+
+        // An on-disk config for the resolved name wins over the profile
+        // template, so `create dev` after pasting a Studio TOML builds your
+        // file instead of the bundled template.
+        if let Some(existing) = config::find_config_path(&container_name) {
+            eprintln!(
+                "Config already exists at '{}'. Reusing existing config.",
+                existing.display()
+            );
+            if packages.is_some() {
+                eprintln!("Note: --packages is ignored when reusing an existing config.");
+            }
+            if dry_run {
+                let cfg = Config::load(&existing)?;
+                let toml_str = toml::to_string_pretty(&cfg)?;
+                println!("Would reuse existing config: {}", existing.display());
+                println!("---\n{toml_str}");
+                return finish_create(&cfg, &container_name, dry_run, no_start);
+            }
+            let mut cfg = Config::load(&existing)?;
+            if edit {
+                edit_config_file(&existing)?;
+                cfg = Config::load(&existing)?;
+            }
+            return finish_create(&cfg, &container_name, dry_run, no_start);
+        }
 
         let shell_info = podbox::wizard::detect_host_shell();
         if !shell_info.detected {
             eprintln!("Note: $SHELL not set or unrecognized, defaulting to bash.");
         }
 
-        let mut cfg = Config::parse(&profile_content)?;
+        let mut cfg = template;
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
             for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
@@ -198,26 +332,21 @@ pub fn run_create(
         let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
 
-        if config::find_config_path(&container_name).is_some() && !dry_run {
-            eprintln!(
-                "Config already exists at '{}'. Reusing existing config.",
-                config_path.display()
-            );
+        // Any on-disk config returned early above, so this always writes.
+        if dry_run {
+            let config_toml = toml::to_string_pretty(&cfg)?;
+            println!("Would create config: {}", config_path.display());
+            println!("---\n{config_toml}");
         } else {
             let config_toml = toml::to_string_pretty(&cfg)?;
-            if dry_run {
-                println!("Would create config: {}", config_path.display());
-                println!("---\n{config_toml}");
-            } else {
-                std::fs::create_dir_all(&config_dir)?;
-                std::fs::write(&config_path, &config_toml)?;
-                println!("Created config: {}", config_path.display());
-            }
+            std::fs::create_dir_all(&config_dir)?;
+            std::fs::write(&config_path, &config_toml)?;
+            println!("Created config: {}", config_path.display());
         }
 
         if edit && !dry_run {
-            let ed = editor::resolve()?;
-            editor::open(&ed, &config_path)?;
+            edit_config_file(&config_path)?;
+            cfg = Config::load(&config_path)?;
         }
 
         return finish_create(&cfg, &container_name, dry_run, no_start);
@@ -244,25 +373,19 @@ pub fn run_create(
         None => None,
     };
 
-    let existing_name = match name {
-        Some(n) => Some(n.to_string()),
-        None => Some(image.to_string()),
-    };
-    if let Some(ref check) = existing_name
-        && config::find_config_path(check).is_some()
-    {
-        let existing_path = config::find_config_path(check).unwrap();
+    // A bare name that resolves to an on-disk config but no known profile
+    // stops here: without `--name` there is nothing to derive. (The `--name`
+    // case is handled in-branch below, reusing the existing config.)
+    if name.is_none() && config::find_config_path(image).is_some() {
+        let existing_path = config::find_config_path(image).unwrap();
         let stem = existing_path
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
         anyhow::bail!(
-            "Config '{}' already exists at {}.\n\
-             Use `podbox build -C {}` to build, or `podbox start -C {}` to start.",
-            stem,
+            "Config '{stem}' already exists at {}.\n\
+             Use `podbox build -C {stem}` to build, or `podbox start -C {stem}` to start.",
             existing_path.display(),
-            stem,
-            stem
         );
     }
 
@@ -297,6 +420,23 @@ pub fn run_create(
 
     if let Some(n) = name {
         let container_name = n.to_string();
+        // An on-disk config for `--name` wins over the derived image config.
+        if let Some(existing) = config::find_config_path(&container_name) {
+            eprintln!(
+                "Config already exists at '{}'. Reusing existing config.",
+                existing.display()
+            );
+            if packages.is_some() {
+                eprintln!("Note: --packages is ignored when reusing an existing config.");
+            }
+            let mut cfg = Config::load(&existing)?;
+            if edit && !dry_run {
+                edit_config_file(&existing)?;
+                cfg = Config::load(&existing)?;
+            }
+            println!("Image '{image}' pulled and configured.");
+            return finish_create(&cfg, &container_name, dry_run, no_start);
+        }
         let shell_info = podbox::wizard::detect_host_shell();
         let mut cfg = Config::embedded();
         cfg.image.base = image.to_string();
@@ -320,11 +460,11 @@ pub fn run_create(
 
         let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
-        if config::find_config_path(&container_name).is_some() {
-            eprintln!(
-                "Config already exists at '{}'. Reusing existing config.",
-                config_path.display()
-            );
+        // Any on-disk config returned early above, so this always writes.
+        if dry_run {
+            let toml_str = toml::to_string_pretty(&cfg)?;
+            println!("Would create config: {}", config_path.display());
+            println!("---\n{toml_str}");
         } else {
             std::fs::create_dir_all(&config_dir)?;
             let toml_str = toml::to_string_pretty(&cfg)?;
@@ -333,8 +473,8 @@ pub fn run_create(
         }
 
         if edit && !dry_run {
-            let ed = editor::resolve()?;
-            editor::open(&ed, &config_path)?;
+            edit_config_file(&config_path)?;
+            cfg = Config::load(&config_path)?;
         }
 
         println!("Image '{image}' pulled and configured.");

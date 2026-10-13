@@ -1072,3 +1072,160 @@ fn watch_unknown_name_exits_three() {
         serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
     assert_eq!(v["error"]["code"], "container_missing");
 }
+
+/// User configs win over bundled profiles: a `dev.toml` on disk (here the
+/// legacy root path, proving legacy configs count too) is what `profile
+/// export` and `create` use — not the bundled `dev` template.
+#[test]
+fn user_config_wins_over_bundled_profile() {
+    let sb = Sandbox::new(&["dev"]);
+    // Sanity: the fixture really is on disk under that name.
+    let out = sb
+        .cmd()
+        .args(["profile", "export", "dev"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("fedora:41"),
+        "must print the user's dev.toml, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("dev-latest"),
+        "must not print the bundled dev template"
+    );
+}
+
+/// `create <name>` with an on-disk profiles/<name>.toml reuses it instead of
+/// rebuilding from the bundled template (the Studio quick-start flow).
+#[test]
+fn create_reuses_on_disk_config_over_bundled_profile() {
+    let sb = Sandbox::new(&[]);
+    let profiles = sb.dir.join("podbox").join("profiles");
+    std::fs::create_dir_all(&profiles).unwrap();
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/full.toml");
+    std::fs::copy(&fixture, profiles.join("myenv.toml")).unwrap();
+
+    let out = sb
+        .cmd()
+        .args(["--dry-run", "create", "myenv"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("Reusing existing config"),
+        "stderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains("Would reuse existing config"),
+        "stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("fedora:41"),
+        "must build from the user's file, got:\n{stdout}"
+    );
+}
+
+/// `create --import` validates and stages a file without writing on dry-run.
+#[test]
+fn create_import_dry_run_stages_nothing() {
+    let sb = Sandbox::new(&[]);
+    let src = sb.dir.join("studio.toml");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/full.toml");
+    std::fs::copy(&fixture, &src).unwrap();
+
+    let out = sb
+        .cmd()
+        .args(["--dry-run", "create", "--import", src.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Would import"), "stdout:\n{stdout}");
+    assert!(
+        !sb.dir.join("podbox").join("profiles").exists(),
+        "dry-run must not create profiles/"
+    );
+}
+
+/// `create --import` rejects garbage before touching profiles/.
+#[test]
+fn create_import_rejects_invalid_toml() {
+    let sb = Sandbox::new(&[]);
+    let src = sb.dir.join("bad.toml");
+    std::fs::write(&src, "[image]\nbase = 42\n").unwrap();
+
+    let out = sb
+        .cmd()
+        .args(["create", "--import", src.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(
+        !sb.dir.join("podbox").join("profiles").exists(),
+        "invalid import must not create profiles/"
+    );
+}
+
+/// `profile import` installs a file; re-import bails unless `--force`.
+#[test]
+fn profile_import_installs_and_force_overwrites() {
+    let sb = Sandbox::new(&[]);
+    let src = sb.dir.join("studio.toml");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/full.toml");
+    std::fs::copy(&fixture, &src).unwrap();
+    let target = sb.dir.join("podbox").join("profiles").join("studio.toml");
+
+    let out = sb
+        .cmd()
+        .args(["profile", "import", src.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(target.is_file(), "import must stage profiles/studio.toml");
+
+    let out = sb
+        .cmd()
+        .args(["profile", "import", src.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "second import must refuse to clobber"
+    );
+
+    let out = sb
+        .cmd()
+        .args(["profile", "import", src.to_str().unwrap(), "--force"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "--force must overwrite");
+}
+
+/// `profile export --output` writes the TOML to a file.
+#[test]
+fn profile_export_output_writes_file() {
+    let sb = Sandbox::new(&["myenv"]);
+    let dest = sb.dir.join("exported.toml");
+    let out = sb
+        .cmd()
+        .args([
+            "profile",
+            "export",
+            "myenv",
+            "--output",
+            dest.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let body = std::fs::read_to_string(&dest).unwrap();
+    assert!(body.contains("fedora:41"), "exported body:\n{body}");
+}

@@ -222,6 +222,7 @@ fn run(mut cli: Cli) -> Result<()> {
 
         Command::Create {
             image,
+            import,
             name,
             packages,
             no_start,
@@ -230,7 +231,8 @@ fn run(mut cli: Cli) -> Result<()> {
         } => {
             return commands::create::run_create(
                 cli.dry_run,
-                image,
+                image.as_deref(),
+                import.as_deref(),
                 name.as_deref(),
                 packages.as_deref(),
                 *no_start,
