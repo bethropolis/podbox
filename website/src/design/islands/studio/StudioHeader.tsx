@@ -250,10 +250,28 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
                   <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">
                     {copied === 'quick start'
                       ? 'copied'
-                      : imagePrebuiltRef?.trim() ? 'one line' : 'writes TOML + podbox create'}
+                      : imagePrebuiltRef?.trim() ? 'one line' : 'sh · writes TOML + create'}
                   </div>
                 </div>
               </button>
+              {/* Fish collapses `\\` inside single quotes, so it gets its own
+                  variant with backslashes doubled (see quickStart.ts). */}
+              {!imagePrebuiltRef?.trim() && (
+              <button
+                onClick={() => copyText(quickStartCommand(st.values, toml, 'fish'), 'quick start fish')}
+                className={`w-full text-left px-3 py-2 rounded-[2px] text-[var(--text-subtext)] hover:text-[var(--text-primary)] flex items-center gap-2 cursor-pointer ${copied === 'quick start fish' ? 'bg-[var(--accent-green)]/10' : 'hover:bg-[var(--bg-surface0)]'}`}
+              >
+                {copied === 'quick start fish'
+                  ? <Check className="w-4 h-4 text-[var(--accent-green)] shrink-0" />
+                  : <Terminal className="w-4 h-4 text-[var(--accent-green)] shrink-0" />}
+                <div className="min-w-0">
+                  <div>Copy quick start (fish)</div>
+                  <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">
+                    {copied === 'quick start fish' ? 'copied' : 'fish · writes TOML + create'}
+                  </div>
+                </div>
+              </button>
+              )}
 
               <button
                 onClick={() => copyText(cliCommand(st.values), 'command')}
@@ -263,9 +281,9 @@ export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderP
                   ? <Check className="w-4 h-4 text-[var(--accent-green)] shrink-0" />
                   : <FileTerminal className="w-4 h-4 text-[var(--accent-blue)] shrink-0" />}
                 <div className="min-w-0">
-                  <div>Copy CLI command</div>
+                  <div>Copy create command</div>
                   <div className="text-[10px] text-[var(--text-muted)] font-mono truncate">
-                    {copied === 'command' ? 'copied' : `podbox create ${containerName || 'podbox'}`}
+                    {copied === 'command' ? 'copied' : cliCommand(st.values)}
                   </div>
                 </div>
               </button>
