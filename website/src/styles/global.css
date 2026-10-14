@@ -12,6 +12,12 @@
 @import '@fontsource/jetbrains-mono/latin-600.css';
 @import '@fontsource/jetbrains-mono/latin-700.css';
 
+/* Tailwind's font-sans / font-mono resolve to the self-hosted faces. */
+@theme {
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 /* Design system tokens: Catppuccin Mocha (default) + Latte (html.light).
    Ported 1:1 from the approved site design. */
 :root {
@@ -33,20 +39,25 @@
   --accent-red: #f38ba8;
   --accent-yellow: #f9e2af;
   --accent-teal: #94e2d5;
+  --accent-lavender: #b4befe;
 }
 
+/* Latte, tuned for reading: raised surfaces (cards, code) sit lighter than
+   the page instead of darker, and the muted/subtext steps are one notch
+   darker than stock so small text keeps a usable contrast ratio. Accents
+   are untouched Catppuccin Latte. */
 html.light {
   --bg-base: #eff1f5;
-  --bg-mantle: #e6e9ef;
-  --bg-crust: #dce0e8;
-  --bg-surface0: #ccd0da;
-  --bg-surface1: #bcc0cc;
+  --bg-mantle: #f8f9fb;
+  --bg-crust: #e6e9ef;
+  --bg-surface0: #e1e5ed;
+  --bg-surface1: #ccd0da;
   --bg-surface2: #acb0be;
-  --text-primary: #4c4f69;
-  --text-subtext: #6c6f85;
-  --text-muted: #9ca0b0;
-  --border: #ccd0da;
-  --border-focus: #acb0be;
+  --text-primary: #3f4259;
+  --text-subtext: #5c5f77;
+  --text-muted: #7c7f93;
+  --border: #d6dae3;
+  --border-focus: #b4b8c6;
   --accent-mauve: #8839ef;
   --accent-blue: #1e66f5;
   --accent-green: #40a02b;
@@ -54,6 +65,7 @@ html.light {
   --accent-red: #d20f39;
   --accent-yellow: #df8e1d;
   --accent-teal: #179299;
+  --accent-lavender: #7287fd;
 }
 
 html {
@@ -76,6 +88,9 @@ body {
 code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
   letter-spacing: normal;
+  /* JetBrains Mono turns `->`, `>-`, `--` into glyphs; in commands and
+     paths every character has to read as typed. */
+  font-variant-ligatures: none;
 }
 
 /* Sleek modern terminal scrollbar */
@@ -291,6 +306,14 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
   opacity: 0.04;
 }
 
+/* Inlined brand SVGs (scripts/gen-brand.py) carry their own media-query
+   palette for GitHub; on the site, follow the theme toggle instead. */
+:root .pbx-logo .box { stroke: var(--accent-mauve); }
+:root .pbx-logo .top { fill: var(--accent-mauve); }
+:root .pbx-logo .bottom { fill: var(--accent-lavender); }
+:root .pbx-logo .wm { fill: var(--text-primary); }
+:root .pbx-logo .wm-shadow { fill: var(--bg-surface1); }
+
 /* Code block syntax coloring helpers (Catppuccin: Mocha by default, Latte
    under html.light — all var-driven so both themes follow automatically). */
 .syntax-keyword { color: var(--accent-mauve); }
@@ -337,9 +360,9 @@ code, pre, kbd, samp, .font-mono, input.font-mono, textarea.font-mono {
 .install-tabs:has(#install-tab-aur:checked) label[for='install-tab-aur'],
 .install-tabs:has(#install-tab-cargo:checked) label[for='install-tab-cargo'],
 .install-tabs:has(#install-tab-source:checked) label[for='install-tab-source'] {
-  background: var(--accent-mauve);
-  color: #11111b;
-  font-weight: 700;
+  background: var(--bg-surface0);
+  border-color: var(--border-focus);
+  color: var(--text-primary);
 }
 
 /* Anchor targets clear the sticky navbar (3.5rem + breathing room) for

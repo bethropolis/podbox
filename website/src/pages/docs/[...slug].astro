@@ -35,6 +35,7 @@ const editUrl = `https://github.com/bethropolis/podbox/edit/main/docs/${file}`;
 const sidebarItems = docsNav.map((n) => ({
   id: n.slug,
   title: n.label,
+  group: n.group,
   path: n.slug === 'index' ? '/docs' : `/docs/${n.slug}`,
 }));
 
@@ -59,12 +60,12 @@ const tocHeadings = entry.body
 ---
 
 <SiteLayout title={`${title} — podbox Documentation`} description={description} currentPath={currentPath} isDocsPage>
-  <div class="w-full flex bg-[var(--bg-base)] text-[var(--text-primary)] min-h-[calc(100vh-3.5rem)]">
+  <div class="w-full max-w-[1480px] mx-auto flex items-start bg-[var(--bg-base)] text-[var(--text-primary)] min-h-[calc(100vh-3.5rem)] 2xl:border-x 2xl:border-[var(--border)]">
     {/* Left Sidebar (filter input needs hydration on all viewports) */}
     <DocsSidebar client:load items={sidebarItems} currentPath={currentPath} />
 
     {/* Main Content Area */}
-    <main class="flex-1 md:ml-72 min-w-0 px-4 sm:px-8 py-8 max-w-4xl xl:max-w-5xl">
+    <main class="flex-1 min-w-0 w-full max-w-[50rem] mx-auto px-5 sm:px-8 lg:px-12 pt-6 pb-10 sm:pt-8 lg:pt-10 font-sans">
       {/* Breadcrumb & GitHub Edit Bar */}
       <div class="flex items-center justify-between gap-4 pb-4 mb-6 border-b border-[var(--border)] text-xs text-[var(--text-muted)] select-none">
         <div class="flex items-center gap-1.5 truncate">
@@ -95,8 +96,8 @@ const tocHeadings = entry.body
 
       {/* Markdown Rendered Content (static HTML, zero client JS) */}
       {tocHeadings.length > 0 && (
-        <details class="xl:hidden mb-6 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] text-xs">
-          <summary class="flex items-center gap-1.5 px-3.5 py-2.5 cursor-pointer font-bold text-[var(--text-subtext)] uppercase tracking-wider text-[11px] select-none">
+        <details class="xl:hidden mb-8 rounded-md border border-[var(--border)] text-[13px]">
+          <summary class="flex items-center gap-2 px-3.5 py-2.5 cursor-pointer font-medium text-[var(--text-subtext)] select-none">
             <AlignLeft className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />
             <span>On this page</span>
           </summary>
@@ -104,9 +105,9 @@ const tocHeadings = entry.body
             {tocHeadings.map((h) => (
               <a
                 href={`#${h.id}`}
-                class={`block py-1 truncate transition-colors cursor-pointer ${
-                  h.level === 1 ? '' : h.level === 2 ? 'pl-3' : 'pl-6 text-[11px]'
-                } text-[var(--text-muted)] hover:text-[var(--text-primary)]`}
+                class={`block py-1 truncate transition-colors ${
+                  h.level === 1 ? 'hidden' : h.level === 2 ? '' : 'pl-4 text-[12.5px]'
+                } text-[var(--text-subtext)] hover:text-[var(--text-primary)]`}
               >
                 {h.text}
               </a>
@@ -118,53 +119,47 @@ const tocHeadings = entry.body
         <MarkdownRenderer content={entry.body} />
       </article>
 
-      {/* Prev / Next Page Navigation Buttons */}
-      <div class="mt-12 pt-6 border-t border-[var(--border)] grid grid-cols-1 sm:grid-cols-2 gap-4 select-none">
+      {/* Prev / Next */}
+      <nav aria-label="Pagination" class="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-3 select-none">
         {prevNav ? (
           <a
             href={navHref(prevNav.slug)}
-            class="flex flex-col items-start p-3.5 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] hover:border-[var(--accent-mauve)] transition-colors text-left cursor-pointer group"
+            class="group flex flex-col items-start rounded-md border border-[var(--border)] px-4 py-3 transition-colors hover:border-[var(--border-focus)] hover:bg-[var(--bg-mantle)]"
           >
-            <div class="flex items-center gap-1 text-[11px] text-[var(--text-muted)] mb-1">
-              <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              <span>Previous page</span>
-            </div>
-            <span class="text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-mauve)]">
-              {prevNav.label}
+            <span class="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+              <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+              Previous
             </span>
+            <span class="mt-0.5 text-[15px] font-medium text-[var(--text-primary)]">{prevNav.label}</span>
           </a>
         ) : (
-          <div />
+          <div class="hidden sm:block" />
         )}
-
         {nextNav ? (
           <a
             href={navHref(nextNav.slug)}
-            class="flex flex-col items-end p-3.5 rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] hover:border-[var(--accent-mauve)] transition-colors text-right cursor-pointer group"
+            class="group flex flex-col items-end rounded-md border border-[var(--border)] px-4 py-3 text-right transition-colors hover:border-[var(--border-focus)] hover:bg-[var(--bg-mantle)]"
           >
-            <div class="flex items-center gap-1 text-[11px] text-[var(--text-muted)] mb-1">
-              <span>Next page</span>
-              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span class="text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-mauve)]">
-              {nextNav.label}
+            <span class="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+              Next
+              <ChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
             </span>
+            <span class="mt-0.5 text-[15px] font-medium text-[var(--text-primary)]">{nextNav.label}</span>
           </a>
         ) : (
           <div />
         )}
-      </div>
+      </nav>
 
-      {/* Docs Footer */}
-      <div class="mt-10 py-6 border-t border-[var(--border)] text-xs text-[var(--text-muted)] flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div class="flex items-center gap-2">
+      <footer class="mt-10 flex flex-col gap-2 border-t border-[var(--border)] py-6 text-xs text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
+        <span class="flex items-center gap-2">
           <PodboxLogo className="w-4 h-4" />
-          <span>podbox — declarative Linux container environments</span>
-        </div>
-        <div class="text-[11px]">
-          Licensed under MIT. Open Source by bethropolis.
-        </div>
-      </div>
+          podbox · MIT licensed
+        </span>
+        <a href={editUrl} target="_blank" rel="noopener noreferrer" class="hover:text-[var(--text-primary)]">
+          Found a mistake? Edit this page on GitHub
+        </a>
+      </footer>
     </main>
 
     {/* Right Rail: Table of Contents */}

@@ -1,78 +1,139 @@
 import React from 'react';
-import { marked } from 'marked';
-import { ExternalLink } from 'lucide-react';
+import { marked, type Token } from 'marked';
+import { ArrowUpRight } from 'lucide-react';
 import { withBase } from '../../base';
 import { cleanMarkdownLink, resolveAssetUrl } from './links';
 
-export function renderInline(text: string): React.ReactNode[] {
-  // Parse inline formatting: code, bold, link, text
-  const inlineTokens = marked.Lexer.lexInline(text);
+const LINK =
+  'text-[var(--accent-blue)] underline underline-offset-[3px] decoration-[var(--accent-blue)]/35 hover:decoration-[var(--accent-blue)] transition-colors';
 
-  return inlineTokens.map((token, index) => {
-    if (token.type === 'codespan') {
-      return (
-        <code
-          key={index}
-          className="px-1.5 py-0.5 rounded-[2px] bg-[var(--bg-surface0)]/60 text-[var(--text-primary)] text-[0.85em] border border-[var(--border)]/60 font-mono"
-        >
-          {token.text}
-        </code>
-      );
-    }
-    if (token.type === 'strong') {
-      return (
-        <strong key={index} className="font-bold text-[var(--text-primary)]">
-          {renderInline(token.text)}
-        </strong>
-      );
-    }
-    if (token.type === 'em') {
-      return (
-        <em key={index} className="text-[var(--text-subtext)]">
-          {renderInline(token.text)}
-        </em>
-      );
-    }
-    if (token.type === 'link') {
-      const { isInternal, url } = cleanMarkdownLink(token.href);
-      if (isInternal) {
-        // Bare #anchors stay untouched: withBase would turn them into
-        // `/podbox/#…` and kick the reader back to the site root.
-        return (
-          <a
-            key={index}
-            href={url.startsWith('#') ? url : withBase(url)}
-            className="text-[var(--accent-blue)] underline underline-offset-4 decoration-[var(--accent-blue)]/50 hover:decoration-[var(--accent-blue)] transition-colors cursor-pointer"
-          >
-            {renderInline(token.text)}
-          </a>
-        );
+// Inline HTML the docs actually use. Anything else is reduced to its text so
+// a stray tag never shows up literally on the page.
+function renderInlineHtml(raw: string, key: number): React.ReactNode {
+  if (/^<br\s*\/?>$/i.test(raw)) return <br key={key} />;
+  return null;
+}
+
+function renderTokens(tokens: Token[]): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i] as any;
+    const key = i;
+
+    // <kbd>X</kbd> arrives as three tokens: open tag, text, close tag.
+    if (token.type === 'html' && /^<kbd>$/i.test(token.raw)) {
+      const inner: Token[] = [];
+      let j = i + 1;
+      while (j < tokens.length && !((tokens[j] as any).type === 'html' && /^<\/kbd>$/i.test((tokens[j] as any).raw))) {
+        inner.push(tokens[j]);
+        j++;
       }
-      return (
-        <a
-          key={index}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[var(--accent-blue)] inline-flex items-center gap-0.5 underline underline-offset-4 decoration-[var(--accent-blue)]/50 hover:decoration-[var(--accent-blue)]"
+      out.push(
+        <kbd
+          key={key}
+          className="inline-block rounded border border-[var(--border-focus)] border-b-2 bg-[var(--bg-mantle)] px-1.5 py-px font-mono text-[0.8em] text-[var(--text-primary)]"
         >
-          {renderInline(token.text)}
-          <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
-        </a>
+          {renderTokens(inner)}
+        </kbd>,
       );
+      i = j;
+      continue;
     }
-    if (token.type === 'image') {
-      const resolvedSrc = resolveAssetUrl(token.href);
-      return (
-        <img
-          key={index}
-          src={resolvedSrc}
-          alt={(token as any).title || (token as any).text || ''}
-          className="my-3 max-w-full rounded-[3px] border border-[var(--border)]"
-        />
-      );
+
+    switch (token.type) {
+      case 'codespan':
+        out.push(
+          <code
+            key={key}
+            className="rounded-[4px] border border-[var(--border)] bg-[var(--bg-mantle)] px-[0.35em] py-[0.1em] font-mono text-[0.86em] text-[var(--text-primary)] [overflow-wrap:anywhere]"
+          >
+            {token.text}
+          </code>,
+        );
+        break;
+      case 'strong':
+        out.push(
+          <strong key={key} className="font-semibold text-[var(--text-primary)]">
+            {renderTokens(token.tokens ?? [])}
+          </strong>,
+        );
+        break;
+      case 'em':
+        out.push(
+          <em key={key} className="italic">
+            {renderTokens(token.tokens ?? [])}
+          </em>,
+        );
+        break;
+      case 'del':
+        out.push(
+          <del key={key} className="text-[var(--text-muted)] decoration-[var(--text-muted)]">
+            {renderTokens(token.tokens ?? [])}
+          </del>,
+        );
+        break;
+      case 'br':
+        out.push(<br key={key} />);
+        break;
+      case 'link': {
+        const { isInternal, url } = cleanMarkdownLink(token.href);
+        if (isInternal) {
+          // Bare #anchors stay untouched: withBase would turn them into
+          // `/podbox/#…` and kick the reader back to the site root.
+          out.push(
+            <a key={key} href={url.startsWith('#') ? url : withBase(url)} className={LINK}>
+              {renderTokens(token.tokens ?? [])}
+            </a>,
+          );
+        } else {
+          out.push(
+            <a key={key} href={url} target="_blank" rel="noopener noreferrer" className={LINK}>
+              {renderTokens(token.tokens ?? [])}
+              <ArrowUpRight className="inline w-3 h-3 ml-0.5 -mt-0.5 opacity-60" aria-hidden="true" />
+            </a>,
+          );
+        }
+        break;
+      }
+      case 'image':
+        out.push(
+          <img
+            key={key}
+            src={resolveAssetUrl(token.href)}
+            alt={token.text || token.title || ''}
+            loading="lazy"
+            className="my-3 max-w-full rounded-md border border-[var(--border)]"
+          />,
+        );
+        break;
+      case 'html':
+        out.push(renderInlineHtml(token.raw.trim(), key));
+        break;
+      case 'escape':
+        out.push(token.text);
+        break;
+      case 'text':
+        // Text tokens can carry their own inline children (e.g. inside list
+        // items); render those so formatting survives.
+        out.push(
+          token.tokens?.length ? (
+            <React.Fragment key={key}>{renderTokens(token.tokens)}</React.Fragment>
+          ) : (
+            <React.Fragment key={key}>{token.text}</React.Fragment>
+          ),
+        );
+        break;
+      default:
+        out.push(<React.Fragment key={key}>{token.text ?? token.raw ?? ''}</React.Fragment>);
     }
-    const rawText = 'text' in token ? (token as any).text : ('raw' in token ? (token as any).raw : '');
-    return <span key={index}>{rawText}</span>;
-  });
+  }
+  return out;
+}
+
+export function renderInline(text: string): React.ReactNode[] {
+  return renderTokens(marked.Lexer.lexInline(text));
+}
+
+export function renderInlineTokens(tokens: Token[]): React.ReactNode[] {
+  return renderTokens(tokens);
 }

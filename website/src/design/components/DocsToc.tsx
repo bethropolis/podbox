@@ -79,29 +79,28 @@ export function DocsToc({ headings: initial = [] }: { headings?: TocHeading[] })
   };
 
   return (
-    <nav className="w-56 xl:w-64 p-4 text-xs font-mono select-none">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--text-subtext)] uppercase tracking-wider mb-3">
-        <AlignLeft className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />
+    <nav className="w-56 xl:w-64 p-4 text-[13px] font-sans select-none">
+      <div className="mb-3 flex items-center gap-1.5 text-xs font-medium text-[var(--text-primary)]">
+        <AlignLeft className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         <span>On this page</span>
       </div>
 
       <div className="space-y-1 border-l border-[var(--border)] pl-2 max-h-[calc(100vh-12rem)] overflow-y-auto pr-1">
-        {headings.map((heading, idx) => {
+        {headings.filter((h) => h.level > 1).map((heading, idx) => {
           const isActive = activeId === heading.id;
           // Bar geometry lives on the button; level indent on the inner
           // span, so the two never compete for the same property.
-          const indent =
-            heading.level === 1 ? '' : heading.level === 2 ? 'pl-3' : 'pl-6';
+          const indent = heading.level === 2 ? 'pl-2' : 'pl-5';
           return (
             <button
               key={`${heading.id}-${idx}`}
               onClick={() => scrollToHeading(heading.id)}
               type="button"
-              className={`w-full text-left py-1 text-[12px] transition-colors cursor-pointer block ${
-                heading.level === 3 ? 'text-[11px]' : ''
+              className={`w-full text-left py-1 transition-colors cursor-pointer block ${
+                heading.level === 3 ? 'text-[12.5px]' : 'text-[13px]'
               } ${
                 isActive
-                  ? '-ml-[9px] pl-2 border-l-2 border-[var(--accent-mauve)] text-[var(--accent-mauve)] font-semibold'
+                  ? '-ml-[9px] pl-2 border-l-2 border-[var(--accent-mauve)] text-[var(--text-primary)] font-medium'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
               title={heading.text}
@@ -116,7 +115,7 @@ export function DocsToc({ headings: initial = [] }: { headings?: TocHeading[] })
         <button
           onClick={scrollToTop}
           type="button"
-          className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent-blue)] transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
         >
           <ArrowUp className="w-3.5 h-3.5" />
           <span>Back to top</span>

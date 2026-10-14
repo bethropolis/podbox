@@ -1,13 +1,43 @@
 import React from 'react';
 
-// Tiny line-based syntax highlighter for the Studio preview.
+// Tiny line-based syntax highlighter shared by the Studio preview and every
+// code block on the site (docs, landing).
 //
-// A hand-rolled tokenizer instead of a library: the three grammars are small
-// (TOML, systemd ini, Containerfile), the code is <200 lines, and it
-// re-renders on every keystroke — zero dependency weight, zero init cost.
-// Colors come straight from the `.syntax-*` theme classes in global.css.
+// A hand-rolled tokenizer instead of a library: the grammars are small (TOML,
+// systemd ini, Containerfile, shell, JSON), it re-renders on every Studio
+// keystroke, and it costs nothing to load. Colors come straight from the
+// `.syntax-*` theme classes in global.css.
 
-export type PreviewLang = 'toml' | 'quadlet' | 'containerfile';
+export type PreviewLang = 'toml' | 'quadlet' | 'containerfile' | 'shell' | 'json' | 'text';
+
+/** Map a markdown fence label to a grammar. Unknown labels render plain. */
+export function langFromFence(fence: string | undefined): PreviewLang {
+  switch ((fence || '').toLowerCase()) {
+    case 'toml':
+      return 'toml';
+    case 'ini':
+    case 'systemd':
+    case 'quadlet':
+    case 'container':
+      return 'quadlet';
+    case 'dockerfile':
+    case 'containerfile':
+      return 'containerfile';
+    case 'bash':
+    case 'sh':
+    case 'shell':
+    case 'zsh':
+    case 'fish':
+    case 'console':
+      return 'shell';
+    case 'json':
+    case 'jsonc':
+    case 'ndjson':
+      return 'json';
+    default:
+      return 'text';
+  }
+}
 
 let key = 0;
 const span = (cls: string, text: string) => (
@@ -123,6 +153,57 @@ function containerfileLine(line: string): React.ReactNode[] {
   return out;
 }
 
+const SHELL_COMMAND_POS = /(^|[|;&]\s*|&&\s*|\|\|\s*|\$\(\s*)$/;
+
+function shellLine(line: string): React.ReactNode[] {
+  key = 0;
+  const out: React.ReactNode[] = [];
+  // Strings first so `#`, `|` or `--x` inside quotes stay part of the string;
+  // a `#` only starts a comment at line start or after whitespace.
+  const re =
+    /("(?:[^"\\]|\\.)*"|'[^']*'|(?:^|(?<=\s))#.*$|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\$\(|\s--?[A-Za-z0-9][A-Za-z0-9_-]*(?:=\S*)?|&&|\|\||[|;&<>]|\\$|[^\s"'|;&<>$]+)/g;
+  let last = 0;
+  for (let m = re.exec(line); m; m = re.exec(line)) {
+    if (m.index > last) out.push(plain(line.slice(last, m.index)));
+    const tok = m[0];
+    const before = line.slice(0, m.index);
+    if (tok.startsWith('#')) out.push(span('syntax-comment', tok));
+    else if (tok.startsWith('"') || tok.startsWith("'")) out.push(span('syntax-string', tok));
+    else if (tok.startsWith('$')) out.push(span('syntax-variable', tok));
+    else if (/^\s--?/.test(tok)) {
+      out.push(plain(tok[0]));
+      out.push(span('syntax-operator', tok.slice(1)));
+    } else if (/^(&&|\|\||[|;&<>]|\\)$/.test(tok)) out.push(span('syntax-punct', tok));
+    else if (SHELL_COMMAND_POS.test(before.trim().replace(/(^|[|;&]\s*)(sudo|time|exec)$/, '$1'))) out.push(span('syntax-func', tok));
+    else out.push(plain(tok));
+    last = m.index + tok.length;
+  }
+  if (last < line.length) out.push(plain(line.slice(last)));
+  return out;
+}
+
+function jsonLine(line: string): React.ReactNode[] {
+  key = 0;
+  const out: React.ReactNode[] = [];
+  const re = /("(?:[^"\\]|\\.)*")(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|\/\/.*$|[{}\[\],]/g;
+  let last = 0;
+  for (let m = re.exec(line); m; m = re.exec(line)) {
+    if (m.index > last) out.push(plain(line.slice(last, m.index)));
+    const tok = m[0];
+    if (m[1] && m[2]) {
+      out.push(span('syntax-func', m[1]));
+      out.push(span('syntax-punct', m[2]));
+    } else if (m[1]) out.push(span('syntax-string', tok));
+    else if (tok.startsWith('//')) out.push(span('syntax-comment', tok));
+    else if (/^(true|false|null)$/.test(tok)) out.push(span('syntax-keyword', tok));
+    else if (/^[{}\[\],]$/.test(tok)) out.push(span('syntax-punct', tok));
+    else out.push(span('syntax-number', tok));
+    last = m.index + tok.length;
+  }
+  if (last < line.length) out.push(plain(line.slice(last)));
+  return out;
+}
+
 /** Highlight one line for the given preview language. */
 export function highlightLine(line: string, lang: PreviewLang): React.ReactNode[] {
   switch (lang) {
@@ -132,6 +213,12 @@ export function highlightLine(line: string, lang: PreviewLang): React.ReactNode[
       return iniLine(line);
     case 'containerfile':
       return containerfileLine(line);
+    case 'shell':
+      return shellLine(line);
+    case 'json':
+      return jsonLine(line);
+    default:
+      return [line];
   }
 }
 

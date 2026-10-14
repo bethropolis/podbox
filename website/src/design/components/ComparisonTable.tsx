@@ -79,45 +79,64 @@ const COMPARISON_ROWS: Row[] = [
 // rather than guessing: table layout then gives the rest of the space to the
 // podbox column and every cell lands on one line.
 
+const PODBOX_COL = 'bg-[color-mix(in_srgb,var(--accent-mauve)_7%,transparent)]';
+
 export function ComparisonTable() {
   return (
     <div className="w-full">
-      <div className="overflow-x-auto rounded-[3px] border border-[var(--border)]">
-        <table className="w-full min-w-[720px] text-left border-collapse text-xs font-mono [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+      {/* Phones: four columns can't fit, so each aspect becomes a short stack
+          with podbox first and the alternatives underneath. */}
+      <dl className="md:hidden divide-y divide-[var(--border)] rounded-md border border-[var(--border)]">
+        {COMPARISON_ROWS.map((row) => (
+          <div key={row.feature} className="px-4 py-3.5">
+            <dt className="text-xs text-[var(--text-muted)]">{row.feature}</dt>
+            <dd className="mt-1 text-[15px] font-medium text-[var(--text-primary)]">{row.podbox}</dd>
+            <dd className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[13px]">
+              <span className="text-[var(--text-muted)]">Distrobox</span>
+              <span className="text-[var(--text-subtext)]">{row.distrobox}</span>
+              <span className="text-[var(--text-muted)]">podman</span>
+              <span className="text-[var(--text-subtext)]">{row.rawPodman}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="hidden md:block overflow-x-auto rounded-md border border-[var(--border)]">
+        <table className="w-full text-left border-collapse text-[13px] [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <caption className="sr-only">Comparison of podbox, Distrobox/Toolbox, and raw Podman capabilities</caption>
-          <thead>
-            <tr>
-              <th scope="col" className="p-3.5 text-[var(--text-muted)] font-medium w-1/5">
-                What
+          <thead className="bg-[var(--bg-mantle)]">
+            <tr className="border-b border-[var(--border)]">
+              <th scope="col" className="w-1/5 px-4 py-3">
+                <span className="sr-only">Aspect</span>
               </th>
-              <th scope="col" className="p-3.5 font-bold text-[var(--accent-mauve)] w-2/5">
+              <th scope="col" className={`w-2/5 px-4 py-3 font-semibold text-[var(--accent-mauve)] ${PODBOX_COL}`}>
                 podbox
               </th>
-              <th scope="col" className="p-3.5 text-[var(--text-subtext)] font-medium w-1/5">
+              <th scope="col" className="w-1/5 px-4 py-3 font-medium text-[var(--text-subtext)]">
                 Distrobox
               </th>
-              <th scope="col" className="p-3.5 text-[var(--text-muted)] font-medium w-1/5">
+              <th scope="col" className="w-1/5 px-4 py-3 font-medium text-[var(--text-subtext)]">
                 Raw podman
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {COMPARISON_ROWS.map((row) => (
-              <tr key={row.feature} className="hover:bg-[var(--bg-surface0)]/30 transition-colors">
-                <th scope="row" className="p-3.5 text-left font-normal text-[var(--text-muted)]">
+              <tr key={row.feature}>
+                <th scope="row" className="px-4 py-3 text-left font-normal text-[var(--text-muted)]">
                   {row.feature}
                 </th>
-                <td className="p-3.5 text-[var(--text-primary)]">{row.podbox}</td>
-                <td className="p-3.5 text-[var(--text-subtext)]">{row.distrobox}</td>
-                <td className="p-3.5 text-[var(--text-muted)]">{row.rawPodman}</td>
+                <td className={`px-4 py-3 text-[var(--text-primary)] ${PODBOX_COL}`}>{row.podbox}</td>
+                <td className="px-4 py-3 text-[var(--text-subtext)]">{row.distrobox}</td>
+                <td className="px-4 py-3 text-[var(--text-muted)]">{row.rawPodman}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <p className="mt-3 text-xs text-[var(--text-muted)] leading-relaxed">
-        Both projects are reasonable. Distrobox optimises for feeling like the host; podbox optimises for
+      <p className="mt-4 max-w-2xl text-sm text-[var(--text-muted)] leading-relaxed">
+        Both are reasonable choices. Distrobox optimises for feeling like the host; podbox optimises for
         reproducing the same environment from a file.
       </p>
     </div>

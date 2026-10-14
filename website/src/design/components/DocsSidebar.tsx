@@ -1,26 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import {
-  BookOpen,
-  Search,
-  ExternalLink,
-  Terminal,
-  ShieldCheck,
-  Layers3,
-  Settings,
-  ArrowLeftRight,
-  PackageCheck,
-  FileCode,
-  Radio,
-  FileText,
-  HelpCircle,
-  X
-} from 'lucide-react';
+import { Search, ExternalLink, X } from 'lucide-react';
 import { withBase } from '../base';
 
 export interface SidebarItem {
   id: string;
   title: string;
   path: string;
+  group: string;
 }
 
 interface DocsSidebarProps {
@@ -39,49 +25,37 @@ export function DocsSidebar({ items, currentPath }: DocsSidebarProps) {
     return () => window.removeEventListener('podbox:toggle-sidebar', toggle);
   }, []);
 
-  const getIcon = (id: string) => {
-    switch (id) {
-      case 'index': return <BookOpen className="w-4 h-4 shrink-0 text-[var(--accent-mauve)]" />;
-      case 'getting-started': return <Terminal className="w-4 h-4 shrink-0 text-[var(--accent-green)]" />;
-      case 'cli': return <Terminal className="w-4 h-4 shrink-0 text-[var(--accent-mauve)]" />;
-      case 'config': return <Settings className="w-4 h-4 shrink-0 text-[var(--accent-peach)]" />;
-      case 'baked-in-packages': return <PackageCheck className="w-4 h-4 shrink-0 text-[var(--accent-teal)]" />;
-      case 'architecture': return <Layers3 className="w-4 h-4 shrink-0 text-[var(--accent-blue)]" />;
-      case 'export': return <ArrowLeftRight className="w-4 h-4 shrink-0 text-[var(--accent-yellow)]" />;
-      case 'guest': return <ShieldCheck className="w-4 h-4 shrink-0 text-[var(--accent-red)]" />;
-      case 'dbus-proxy': return <Radio className="w-4 h-4 shrink-0 text-[var(--accent-mauve)]" />;
-      case 'quadlet': return <FileCode className="w-4 h-4 shrink-0 text-[var(--accent-green)]" />;
-      case 'protocol': return <FileText className="w-4 h-4 shrink-0 text-[var(--accent-blue)]" />;
-      case 'troubleshooting': return <HelpCircle className="w-4 h-4 shrink-0 text-[var(--accent-yellow)]" />;
-      default: return <FileText className="w-4 h-4 shrink-0" />;
-    }
-  };
 
   const filteredNav = items.filter(item =>
     item.title.toLowerCase().includes(filter.toLowerCase())
   );
+  // Preserve nav order while bucketing into sections.
+  const groups: [string, SidebarItem[]][] = [];
+  for (const item of filteredNav) {
+    const last = groups[groups.length - 1];
+    if (last && last[0] === item.group) last[1].push(item);
+    else groups.push([item.group, [item]]);
+  }
 
   return (
     <>
       {/* Mobile Backdrop */}
       {isOpenMobile && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs lg:hidden"
           onClick={() => setIsOpenMobile(false)}
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-14 bottom-0 left-0 z-40 w-64 md:w-72 bg-[var(--bg-mantle)] border-r border-[var(--border)] flex flex-col transition-transform duration-200 ease-in-out md:translate-x-0 ${
+        className={`fixed top-14 bottom-0 left-0 z-40 w-72 max-w-[85vw] bg-[var(--bg-mantle)] border-r border-[var(--border)] flex flex-col transition-transform duration-200 ease-in-out lg:sticky lg:z-0 lg:h-[calc(100vh-3.5rem)] lg:w-64 xl:w-72 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:bg-transparent ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Mobile Header */}
-        <div className="flex items-center justify-between p-3 border-b border-[var(--border)] md:hidden">
-          <span className="text-xs font-bold text-[var(--text-subtext)] uppercase tracking-wider">
-            Documentation Menu
-          </span>
+        <div className="flex items-center justify-between p-3 border-b border-[var(--border)] lg:hidden">
+          <span className="text-sm font-medium text-[var(--text-primary)]">Documentation</span>
           <button
             onClick={() => setIsOpenMobile(false)}
             type="button"
@@ -93,7 +67,7 @@ export function DocsSidebar({ items, currentPath }: DocsSidebarProps) {
         </div>
 
         {/* Filter input */}
-        <div className="p-3 border-b border-[var(--border)]">
+        <div className="px-3 pt-3 pb-1">
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
@@ -102,56 +76,52 @@ export function DocsSidebar({ items, currentPath }: DocsSidebarProps) {
               aria-label="Filter documentation topics"
               onChange={e => setFilter(e.target.value)}
               placeholder="Filter topics..."
-              className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-[2px] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)]"
+              className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-md font-sans text-[13px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)]"
             />
           </div>
         </div>
 
         {/* Navigation items */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-xs font-mono">
-          <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest px-2 py-1 font-semibold">
-            Guides & Reference
-          </div>
-
-          {filteredNav.map(item => {
-            const isActive =
-              currentPath === item.path ||
-              (item.path === '/docs' && (currentPath === '/docs' || currentPath === '/docs/'));
-
-            return (
-              <a
-                key={item.id}
-                href={withBase(item.path)}
-                onClick={() => setIsOpenMobile(false)}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-[2px] text-left transition-colors cursor-pointer ${
-                  isActive
-                    ? 'border-l-2 border-[var(--accent-mauve)] bg-[var(--accent-mauve)]/10 text-[var(--accent-mauve)] font-bold'
-                    : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]/50 border-l-2 border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <span className={isActive ? 'text-[var(--accent-mauve)]' : 'text-[var(--text-muted)]'}>
-                    {getIcon(item.id)}
-                  </span>
-                  <span className="truncate">{item.title}</span>
-                </div>
-                {isActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-mauve)] shrink-0" />
-                )}
-              </a>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-2 text-[13.5px] font-sans" aria-label="Documentation">
+          {groups.length === 0 && (
+            <p className="px-2.5 py-2 text-[var(--text-muted)]">No page matches “{filter}”.</p>
+          )}
+          {groups.map(([group, entries]) => (
+            <div key={group} className="pb-3">
+              <div className="px-2.5 pb-1.5 pt-2 text-xs font-medium text-[var(--text-muted)]">{group}</div>
+              {entries.map((item) => {
+                const isActive =
+                  currentPath === item.path ||
+                  (item.path === '/docs' && (currentPath === '/docs' || currentPath === '/docs/'));
+                return (
+                  <a
+                    key={item.id}
+                    href={withBase(item.path)}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => setIsOpenMobile(false)}
+                    className={`relative flex items-center rounded-md px-2.5 py-[7px] transition-colors ${
+                      isActive
+                        ? 'bg-[var(--bg-surface0)] text-[var(--text-primary)] font-medium before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-[var(--accent-mauve)]'
+                        : 'text-[var(--text-subtext)] hover:bg-[var(--bg-surface0)]/50 hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <span className="truncate">{item.title}</span>
+                  </a>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Sidebar Footer info */}
-        <div className="p-3 border-t border-[var(--border)] bg-[var(--bg-crust)]/50 text-[11px] text-[var(--text-muted)]">
+        <div className="px-5 py-3 border-t border-[var(--border)] text-xs">
           <a
             href="https://github.com/bethropolis/podbox"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between text-[var(--accent-blue)] hover:underline"
+            className="flex items-center justify-between text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
-            <span>GitHub Repository</span>
+            <span>Source on GitHub</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
