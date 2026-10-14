@@ -43,11 +43,11 @@ export function StudioSwitch({
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <div className="flex-1 min-w-0 pr-1">
-        <div className="text-xs font-medium text-[var(--text-primary)] flex items-center flex-wrap gap-1">
+        <div className="text-[13px] font-medium text-[var(--text-primary)] flex items-center flex-wrap gap-1">
           {label}
         </div>
         {description && (
-          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">
+          <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-snug">
             {description}
           </p>
         )}
@@ -60,17 +60,17 @@ export function StudioSwitch({
           checked={checked}
           disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
-          className="sr-only"
+          className="peer sr-only"
         />
+        {/* The real checkbox is visually hidden, so the track carries its
+            keyboard focus ring. */}
         <div
-          className={`w-9 h-5 rounded-full transition-colors duration-150 relative flex items-center p-0.5 ${
-            checked
-              ? 'bg-[var(--accent-mauve)] shadow-[0_0_8px_rgba(203,166,247,0.35)]'
-              : 'bg-[var(--bg-surface1)]'
+          className={`w-9 h-5 rounded-full transition-colors duration-150 relative flex items-center p-0.5 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--accent-mauve)] ${
+            checked ? 'bg-[var(--accent-mauve)]' : 'bg-[var(--bg-surface1)]'
           }`}
         >
           <div
-            className={`w-4 h-4 rounded-full bg-white dark:bg-[var(--bg-crust)] shadow-sm transform transition-transform duration-200 ease-in-out ${
+            className={`w-4 h-4 rounded-full bg-[var(--bg-base)] shadow-sm transform transition-transform duration-200 ease-in-out ${
               checked ? 'translate-x-4' : 'translate-x-0'
             }`}
           />
@@ -106,12 +106,18 @@ export function StudioInput({
   className = '',
   ...props
 }: StudioInputProps) {
+  // A real <label for>: clicking the label focuses the field and screen
+  // readers announce it. Tooltip buttons inside the label keep their own
+  // click (interactive content doesn't forward to the control).
+  const autoId = useId();
+  const inputId = props.id ?? autoId;
+  const errorId = `${inputId}-error`;
   return (
     <div className="space-y-1.5 w-full">
       {label && (
-        <div className="text-xs font-medium text-[var(--text-subtext)] flex items-center flex-wrap gap-1">
+        <label htmlFor={inputId} className="text-[13px] font-medium text-[var(--text-subtext)] flex items-center flex-wrap gap-1">
           {label}
-        </div>
+        </label>
       )}
       <div className="relative flex items-center">
         {prefixIcon && (
@@ -121,6 +127,9 @@ export function StudioInput({
         )}
         <input
           {...props}
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : props['aria-describedby']}
           spellCheck={props.spellCheck ?? false}
           autoComplete={props.autoComplete ?? 'off'}
           autoCorrect={props.autoCorrect ?? 'off'}
@@ -135,7 +144,7 @@ export function StudioInput({
         />
       </div>
       {error ? (
-        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1 flex items-center gap-1.5 flex-wrap">
+        <p id={errorId} role="alert" className="text-xs text-[var(--accent-red)] mt-1 flex items-center gap-1.5 flex-wrap">
           <span>{error}</span>
           {quickFix && (
             <button
@@ -196,6 +205,7 @@ export function StudioSelect({
   // Browsers without `appearance: base-select` flatten this to plain text and
   // concatenate the spans with nothing between them, so the separator is a
   // real character — Firefox ignores ::before on <option>.
+  const selectId = useId();
   const renderOption = (opt: StudioSelectOption, key: string) => (
     <option key={key} value={opt.value}>
       <span className="sel-name">{opt.label}</span>
@@ -233,12 +243,14 @@ export function StudioSelect({
   return (
     <div className="space-y-1.5 w-full">
       {label && (
-        <div className="text-xs font-medium text-[var(--text-subtext)] flex items-center flex-wrap gap-1">
+        <label htmlFor={selectId} className="text-[13px] font-medium text-[var(--text-subtext)] flex items-center flex-wrap gap-1">
           {label}
-        </div>
+        </label>
       )}
       <div className="relative">
         <select
+          id={selectId}
+          aria-invalid={error ? true : undefined}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={`studio-select w-full px-3 py-1.5 pr-8 text-xs font-mono rounded-[2px] bg-[var(--bg-mantle)] border text-[var(--text-primary)] outline-none transition-[border-color,box-shadow] duration-150 ease-out cursor-pointer ${
@@ -256,7 +268,7 @@ export function StudioSelect({
         <ChevronDown className="studio-select-chevron w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
       </div>
       {error ? (
-        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
+        <p className="text-xs text-[var(--accent-red)] mt-1">
           {error}
         </p>
       ) : helperText && (
@@ -390,7 +402,7 @@ export function StudioTagInput({
             <button
               type="button"
               onClick={handleAdd}
-              className="text-[var(--accent-green)] hover:text-white p-0.5 cursor-pointer"
+              className="text-[var(--accent-green)] hover:text-[var(--text-primary)] p-0.5 cursor-pointer"
               title="Add item"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -406,11 +418,11 @@ export function StudioTagInput({
         </datalist>
       )}
       {error ? (
-        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
+        <p className="text-xs text-[var(--accent-red)] mt-1">
           {error}
         </p>
       ) : dupe ? (
-        <p className="text-[11px] text-[var(--accent-yellow)] font-mono mt-1">
+        <p className="text-xs text-[var(--accent-yellow)] mt-1">
           '{dupe}' is already in the list
         </p>
       ) : helperText ? (

@@ -9,8 +9,8 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
 >
   <defs>
     <linearGradient id="pr-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#fab387" />
-      <stop offset="100%" stopColor="#f38ba8" />
+      <stop offset="0%" stopColor="color-mix(in srgb, var(--accent-peach) 16%, var(--bg-mantle))" />
+      <stop offset="100%" stopColor="color-mix(in srgb, var(--accent-peach) 16%, var(--bg-mantle))" />
     </linearGradient>
   </defs>
 
@@ -35,7 +35,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       fill="var(--accent-mauve)"
       fontSize="14"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       GUEST CLIENT
     </text>
@@ -45,7 +45,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       textAnchor="middle"
       fill="var(--text-muted)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       /usr/local/bin/podbox-guest
     </text>
@@ -65,7 +65,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       textAnchor="middle"
       fill="var(--text-primary)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       1. Client Hello (JSON)
     </text>
@@ -85,7 +85,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       textAnchor="middle"
       fill="var(--text-primary)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       3. Stream Request Frames
     </text>
@@ -112,7 +112,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       fill="var(--accent-blue)"
       fontSize="14"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       HOST BROKER
     </text>
@@ -122,9 +122,9 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       textAnchor="middle"
       fill="var(--text-muted)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
-      /run/user/1000/podbox.sock
+      /run/user/1000/podbox/dev.sock
     </text>
 
     <rect
@@ -142,7 +142,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       textAnchor="middle"
       fill="var(--text-primary)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       2. Verify &amp; HelloAck
     </text>
@@ -162,7 +162,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       textAnchor="middle"
       fill="var(--text-primary)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       4. Dispatch to Session
     </text>
@@ -171,6 +171,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
   {/* Middle Protocol channel */}
   <g transform="translate(280, 100)">
     <path
+    fill="none"
       d="M 0 50 L 290 50"
       stroke="var(--accent-green)"
       strokeWidth="3"
@@ -192,7 +193,7 @@ export function ProtocolDiagram({ selectedNode, onSelect }: ProtocolDiagramProps
       fill="var(--accent-green)"
       fontSize="11"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       UNIX DOMAIN SOCKET
     </text>

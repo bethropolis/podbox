@@ -9,16 +9,16 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
 >
   <defs>
     <linearGradient id="ib-grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#3b82f6" />
-      <stop offset="100%" stopColor="#6366f1" />
+      <stop offset="0%" stopColor="color-mix(in srgb, var(--accent-blue) 16%, var(--bg-mantle))" />
+      <stop offset="100%" stopColor="color-mix(in srgb, var(--accent-blue) 16%, var(--bg-mantle))" />
     </linearGradient>
     <linearGradient id="ib-grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#8b5cf6" />
-      <stop offset="100%" stopColor="#d946ef" />
+      <stop offset="0%" stopColor="color-mix(in srgb, var(--accent-mauve) 16%, var(--bg-mantle))" />
+      <stop offset="100%" stopColor="color-mix(in srgb, var(--accent-mauve) 16%, var(--bg-mantle))" />
     </linearGradient>
     <linearGradient id="ib-grad3" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#6366f1" />
-      <stop offset="100%" stopColor="#a855f7" />
+      <stop offset="0%" stopColor="color-mix(in srgb, var(--accent-blue) 16%, var(--bg-mantle))" />
+      <stop offset="100%" stopColor="color-mix(in srgb, var(--accent-mauve) 16%, var(--bg-mantle))" />
     </linearGradient>
     <marker
       id="ib-arrow"
@@ -35,30 +35,35 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
 
   {/* Connecting Lines */}
   <path
+    fill="none"
     d="M 160 135 L 210 135"
     stroke="var(--border)"
     strokeWidth="2.5"
     markerEnd="url(#ib-arrow)"
   />
   <path
+    fill="none"
     d="M 400 135 C 420 135, 420 55, 440 55"
     stroke="var(--border)"
     strokeWidth="2.5"
     markerEnd="url(#ib-arrow)"
   />
   <path
+    fill="none"
     d="M 400 135 C 420 135, 420 220, 440 220"
     stroke="var(--border)"
     strokeWidth="2.5"
     markerEnd="url(#ib-arrow)"
   />
   <path
+    fill="none"
     d="M 600 55 C 630 55, 630 135, 660 135"
     stroke="var(--border)"
     strokeWidth="2.5"
     markerEnd="url(#ib-arrow)"
   />
   <path
+    fill="none"
     d="M 630 220 C 650 220, 650 135, 660 135"
     stroke="var(--border)"
     strokeWidth="2.5"
@@ -87,9 +92,9 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       fill="var(--text-primary)"
       fontSize="13"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
-      definition.toml
+      podbox.toml
     </text>
     <text
       x="70"
@@ -97,9 +102,9 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       textAnchor="middle"
       fill="var(--text-muted)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
-      Declarative config
+      You write this
     </text>
   </g>
 
@@ -114,7 +119,7 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       height="80"
       rx="6"
       fill="url(#ib-grad1)"
-      stroke={selectedNode === 'build_codegen' ? '#ffffff' : '#334155'}
+      stroke={selectedNode === 'build_codegen' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
       strokeWidth={selectedNode === 'build_codegen' ? '2.5' : '1'}
       className="transition-all group-hover:brightness-110"
     />
@@ -122,10 +127,10 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="95"
       y="38"
       textAnchor="middle"
-      fill="#ffffff"
+      fill="var(--text-primary)"
       fontSize="13"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       podbox build
     </text>
@@ -133,9 +138,9 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="95"
       y="58"
       textAnchor="middle"
-      fill="#e2e8f0"
+      fill="var(--text-subtext)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       Pure codegen, no daemon
     </text>
@@ -152,7 +157,7 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       height="80"
       rx="6"
       fill="url(#ib-grad2)"
-      stroke={selectedNode === 'build_image' ? '#ffffff' : '#334155'}
+      stroke={selectedNode === 'build_image' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
       strokeWidth={selectedNode === 'build_image' ? '2.5' : '1'}
       className="transition-all group-hover:brightness-110"
     />
@@ -160,10 +165,10 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="80"
       y="38"
       textAnchor="middle"
-      fill="#ffffff"
+      fill="var(--text-primary)"
       fontSize="13"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       OCI Image
     </text>
@@ -171,9 +176,9 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="80"
       y="58"
       textAnchor="middle"
-      fill="#e2e8f0"
+      fill="var(--text-subtext)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       Packages baked in
     </text>
@@ -190,7 +195,7 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       height="90"
       rx="6"
       fill="url(#ib-grad3)"
-      stroke={selectedNode === 'build_quadlet' ? '#ffffff' : '#334155'}
+      stroke={selectedNode === 'build_quadlet' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
       strokeWidth={selectedNode === 'build_quadlet' ? '2.5' : '1'}
       className="transition-all group-hover:brightness-110"
     />
@@ -198,10 +203,10 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="95"
       y="34"
       textAnchor="middle"
-      fill="#ffffff"
+      fill="var(--text-primary)"
       fontSize="13"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       Quadlet units
     </text>
@@ -209,9 +214,9 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="95"
       y="54"
       textAnchor="middle"
-      fill="#e2e8f0"
+      fill="var(--text-subtext)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       .container .socket .build
     </text>
@@ -219,9 +224,9 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       x="95"
       y="70"
       textAnchor="middle"
-      fill="#cbd5e1"
+      fill="var(--text-muted)"
       fontSize="10"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       + companion services
     </text>
@@ -249,7 +254,7 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       fill="var(--text-primary)"
       fontSize="13"
       fontWeight="700"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       systemd --user
     </text>
@@ -259,7 +264,7 @@ export function BuildDiagram({ selectedNode, onSelect }: BuildDiagramProps) {
       textAnchor="middle"
       fill="var(--text-muted)"
       fontSize="11"
-      fontFamily="monospace"
+      fontFamily="JetBrains Mono, monospace"
     >
       Owns the lifecycle
     </text>

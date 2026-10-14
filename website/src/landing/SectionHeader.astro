@@ -1,0 +1,18 @@
+---
+// One header style for every landing section. No colored eyebrow labels:
+// the title carries the section, the lede says why it matters.
+interface Props {
+  title: string;
+  lede?: string;
+}
+
+const { title, lede } = Astro.props;
+---
+
+<header class="mb-8 sm:mb-10 max-w-2xl">
+  <h2 class="text-2xl sm:text-[2rem] font-semibold tracking-[-0.025em] leading-[1.15] text-[var(--text-primary)]">
+    {title}
+  </h2>
+  {lede && <p class="mt-3 text-[15px] sm:text-base leading-relaxed text-[var(--text-subtext)]">{lede}</p>}
+  <slot />
+</header>

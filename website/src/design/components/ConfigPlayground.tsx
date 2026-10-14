@@ -197,7 +197,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
                   aria-pressed={gpu === value}
                   className={`px-2 py-2 text-center rounded-[2px] border cursor-pointer text-xs transition-colors ${
                     gpu === value
-                      ? 'border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--accent-blue)] font-bold'
+                      ? 'border-[var(--accent-mauve)] bg-[var(--accent-mauve)]/10 text-[var(--accent-mauve)] font-bold'
                       : 'border-[var(--border)] bg-[var(--bg-base)] text-[var(--text-subtext)] hover:border-[var(--border-focus)]'
                   }`}
                 >
@@ -231,7 +231,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
                     window.location.assign(withBase('/studio'));
                   });
               }}
-              className="flex items-center gap-1.5 text-xs text-[var(--accent-mauve)] hover:text-white font-medium cursor-pointer transition-colors whitespace-nowrap"
+              className="flex items-center gap-1.5 text-xs text-[var(--accent-mauve)] hover:text-[var(--text-primary)] font-medium cursor-pointer transition-colors whitespace-nowrap"
             >
               <span>{linking ? 'opening…' : 'Open in Studio'}</span>
               {!linking && <ArrowRight className="w-3.5 h-3.5" />}
@@ -239,7 +239,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
           </div>
 
           {/* File tabs */}
-          <div className="shrink-0 flex items-end gap-1 px-5 sm:px-6 pt-3 border-b border-[var(--border)]" role="tablist">
+          <div className="shrink-0 flex items-end gap-1 px-3 sm:px-6 pt-3 border-b border-[var(--border)] overflow-x-auto scrollbar-none" role="tablist">
             {tabs.map(({ id, label, note, icon: Icon }) => (
               <button
                 key={id}
@@ -247,7 +247,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
                 role="tab"
                 aria-selected={activeView === id}
                 onClick={() => setActiveView(id)}
-                className={`flex flex-col gap-0.5 px-3 py-2 -mb-px border-b-2 text-left cursor-pointer transition-colors ${
+                className={`shrink-0 flex flex-col gap-0.5 px-3 py-2 -mb-px border-b-2 text-left whitespace-nowrap cursor-pointer transition-colors ${
                   activeView === id
                     ? 'border-[var(--accent-mauve)]'
                     : 'border-transparent hover:bg-[var(--bg-mantle)]/60'

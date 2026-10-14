@@ -12,12 +12,12 @@ export function RuntimeDiagram({ selectedNode, onSelect }: RuntimeDiagramProps) 
 >
   <defs>
     <linearGradient id="rt-grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#3b82f6" />
-      <stop offset="100%" stopColor="#6366f1" />
+      <stop offset="0%" stopColor="color-mix(in srgb, var(--accent-blue) 16%, var(--bg-mantle))" />
+      <stop offset="100%" stopColor="color-mix(in srgb, var(--accent-blue) 16%, var(--bg-mantle))" />
     </linearGradient>
     <linearGradient id="rt-grad3" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#6366f1" />
-      <stop offset="100%" stopColor="#a855f7" />
+      <stop offset="0%" stopColor="color-mix(in srgb, var(--accent-blue) 16%, var(--bg-mantle))" />
+      <stop offset="100%" stopColor="color-mix(in srgb, var(--accent-mauve) 16%, var(--bg-mantle))" />
     </linearGradient>
     <marker
       id="rt-arrow"

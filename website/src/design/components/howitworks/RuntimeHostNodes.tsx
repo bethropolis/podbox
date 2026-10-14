@@ -20,7 +20,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
   fill="var(--text-muted)"
   fontSize="10"
   fontWeight="700"
-  fontFamily="monospace"
+  fontFamily="JetBrains Mono, monospace"
   letterSpacing="1"
 >
   HOST SECURITY BOUNDARY (RESTRICTED ACCESS)
@@ -37,7 +37,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     height="80"
     rx="6"
     fill="url(#rt-grad3)"
-    stroke={selectedNode === 'rt_wayland' ? '#ffffff' : '#334155'}
+    stroke={selectedNode === 'rt_wayland' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
     strokeWidth={selectedNode === 'rt_wayland' ? '2.5' : '1'}
     className="transition-all group-hover:brightness-110"
   />
@@ -45,10 +45,10 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     x="90"
     y="34"
     textAnchor="middle"
-    fill="#ffffff"
+    fill="var(--text-primary)"
     fontSize="13"
     fontWeight="700"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Wayland proxy
   </text>
@@ -56,9 +56,9 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     x="90"
     y="54"
     textAnchor="middle"
-    fill="#e2e8f0"
+    fill="var(--text-subtext)"
     fontSize="11"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Filters registry globals
   </text>
@@ -75,7 +75,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     height="80"
     rx="6"
     fill="url(#rt-grad3)"
-    stroke={selectedNode === 'rt_socket' ? '#ffffff' : '#334155'}
+    stroke={selectedNode === 'rt_socket' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
     strokeWidth={selectedNode === 'rt_socket' ? '2.5' : '1'}
     className="transition-all group-hover:brightness-110"
   />
@@ -83,10 +83,10 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     x="90"
     y="34"
     textAnchor="middle"
-    fill="#ffffff"
+    fill="var(--text-primary)"
     fontSize="13"
     fontWeight="700"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Socket host
   </text>
@@ -94,9 +94,9 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     x="90"
     y="54"
     textAnchor="middle"
-    fill="#e2e8f0"
+    fill="var(--text-subtext)"
     fontSize="11"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Capability-gated handshake
   </text>
@@ -113,7 +113,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     height="80"
     rx="6"
     fill="url(#rt-grad3)"
-    stroke={selectedNode === 'rt_dbus' ? '#ffffff' : '#334155'}
+    stroke={selectedNode === 'rt_dbus' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
     strokeWidth={selectedNode === 'rt_dbus' ? '2.5' : '1'}
     className="transition-all group-hover:brightness-110"
   />
@@ -121,10 +121,10 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     x="90"
     y="34"
     textAnchor="middle"
-    fill="#ffffff"
+    fill="var(--text-primary)"
     fontSize="13"
     fontWeight="700"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     D-Bus proxy
   </text>
@@ -132,9 +132,9 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     x="90"
     y="54"
     textAnchor="middle"
-    fill="#e2e8f0"
+    fill="var(--text-subtext)"
     fontSize="11"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Scoped portal call rules
   </text>
@@ -142,6 +142,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
 
 {/* Fan-in to Host resources */}
 <path
+    fill="none"
   d="M 220 280 C 220 310, 340 310, 340 328"
   stroke="var(--border)"
   strokeWidth="2"
@@ -149,6 +150,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
   markerEnd="url(#rt-arrow)"
 />
 <path
+    fill="none"
   d="M 425 280 L 425 328"
   stroke="var(--border)"
   strokeWidth="2"
@@ -156,6 +158,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
   markerEnd="url(#rt-arrow)"
 />
 <path
+    fill="none"
   d="M 630 280 C 630 310, 510 310, 510 328"
   stroke="var(--border)"
   strokeWidth="2"
@@ -185,7 +188,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     fill="var(--text-primary)"
     fontSize="13"
     fontWeight="700"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Host resources
   </text>
@@ -195,7 +198,7 @@ export function RuntimeHostNodes({ selectedNode, onSelect }: RuntimeHostNodesPro
     textAnchor="middle"
     fill="var(--text-muted)"
     fontSize="11"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     Compositor · session bus · GPU · PipeWire · XDG
   </text>

@@ -1,9 +1,4 @@
 import React, { useState } from 'react';
-import {
-  FileCode,
-  Shield,
-  Radio,
-} from 'lucide-react';
 import { nodeDetails, type TabType } from './howitworks/nodeData';
 import { BuildDiagram } from './howitworks/BuildDiagram';
 import { RuntimeDiagram } from './howitworks/RuntimeDiagram';
@@ -13,6 +8,18 @@ import { NodeInspector } from './howitworks/NodeInspector';
 interface HowItWorksSectionProps {
   // Navigation is plain MPA links; no callback props cross the Astro boundary.
 }
+
+const TABS: { id: TabType; label: string }[] = [
+  { id: 'build', label: 'Build time' },
+  { id: 'runtime', label: 'While it runs' },
+  { id: 'protocol', label: 'Messages' },
+];
+
+const NODE_PREFIX: Record<TabType, string> = {
+  build: 'build_',
+  runtime: 'rt_',
+  protocol: 'proto_',
+};
 
 const DEFAULT_NODE: Record<TabType, string> = {
   build: 'build_codegen',
@@ -32,71 +39,62 @@ export function HowItWorksSection(_props: HowItWorksSectionProps) {
   const currentNode = nodeDetails[selectedNode] || nodeDetails.build_codegen;
 
   return (
-    <section id="architecture" className="w-full my-12 font-mono">
-      {/* Section Header */}
-      <div className="mb-8">
-        <div className="text-xs text-[var(--accent-blue)] uppercase tracking-wider font-bold mb-2">
-          how it works
-        </div>
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-            How it works
-          </h2>
-          <p className="mt-2 text-sm text-[var(--text-subtext)] max-w-2xl leading-relaxed">
-            Click any box to see what that part does.
-          </p>
-        </div>
-      </div>
+    <section id="architecture" className="w-full scroll-mt-20">
+      <header className="mb-10 max-w-2xl">
+        <h2 className="text-2xl sm:text-[2rem] font-semibold tracking-[-0.025em] leading-[1.15] text-[var(--text-primary)]">
+          How it works
+        </h2>
+        <p className="mt-3 text-[15px] sm:text-base leading-relaxed text-[var(--text-subtext)]">
+          Two moments matter: when you build, and while the container runs. Select a box to see what
+          that part does.
+        </p>
+      </header>
 
-      {/* Main Visualizer Container */}
-      <div className="rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden">
-        {/* View switcher. No fake window chrome: a decorative title bar above a
-            diagram the reader is meant to look at, not a terminal. */}
-        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
-          <div className="inline-flex rounded-[2px] p-0.5 bg-[var(--bg-base)] border border-[var(--border)] text-xs">
+      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-mantle)] overflow-hidden">
+        <div role="tablist" aria-label="Diagram" className="flex gap-1 overflow-x-auto scrollbar-none border-b border-[var(--border)] px-3 pt-3">
+          {TABS.map((t) => (
             <button
-              onClick={() => handleTabChange('build')}
+              key={t.id}
+              role="tab"
+              aria-selected={activeTab === t.id}
+              onClick={() => handleTabChange(t.id)}
               type="button"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer ${
-                activeTab === 'build'
-                  ? 'bg-[var(--accent-mauve)] text-[#11111b] font-bold'
-                  : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
+              className={`-mb-px whitespace-nowrap border-b-2 px-3 pb-2.5 pt-1 text-sm transition-colors cursor-pointer ${
+                activeTab === t.id
+                  ? 'border-[var(--accent-mauve)] text-[var(--text-primary)] font-medium'
+                  : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
-              <FileCode className="w-3.5 h-3.5" />
-              <span>Build time</span>
+              {t.label}
             </button>
-            <button
-              onClick={() => handleTabChange('runtime')}
-              type="button"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer ${
-                activeTab === 'runtime'
-                  ? 'bg-[var(--accent-blue)] text-[#11111b] font-bold'
-                  : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>While it runs</span>
-            </button>
-            <button
-              onClick={() => handleTabChange('protocol')}
-              type="button"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer ${
-                activeTab === 'protocol'
-                  ? 'bg-[var(--accent-peach)] text-[#11111b] font-bold'
-                  : 'text-[var(--text-subtext)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5" />
-              <span>Messages</span>
-            </button>
-          </div>
+          ))}
         </div>
 
         {/* SVG CANVAS */}
-        <div className="p-4 sm:p-6 bg-[var(--bg-base)] flex items-center justify-center relative overflow-x-auto min-h-[340px]">
-          {/* Subtle dot background */}
-          <div className="absolute inset-0 bg-terminal-dots pointer-events-none" />
+        {/* Phones: the diagram stays legible by scrolling sideways instead of
+            shrinking, and the parts are also listed as buttons so they can be
+            picked without panning around. */}
+        <div className="sm:hidden flex gap-1.5 overflow-x-auto scrollbar-none px-3 py-3 border-b border-[var(--border)]">
+          {Object.entries(nodeDetails)
+            .filter(([id]) => id.startsWith(NODE_PREFIX[activeTab]))
+            .map(([id, node]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setSelectedNode(id)}
+                aria-pressed={selectedNode === id}
+                className={`shrink-0 rounded border px-2.5 py-1 font-mono text-xs transition-colors ${
+                  selectedNode === id
+                    ? 'border-[var(--accent-mauve)] text-[var(--text-primary)] bg-[var(--bg-surface0)]'
+                    : 'border-[var(--border)] text-[var(--text-subtext)]'
+                }`}
+              >
+                {node.title}
+              </button>
+            ))}
+        </div>
+
+        <div className="p-4 sm:p-8 bg-[var(--bg-base)] flex items-center justify-center-safe relative overflow-x-auto min-h-[260px] sm:min-h-[340px] [&>svg]:min-w-[620px] sm:[&>svg]:min-w-0">
 
           {activeTab === 'build' && (
             <BuildDiagram selectedNode={selectedNode} onSelect={setSelectedNode} />

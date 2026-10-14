@@ -4,9 +4,11 @@ import { ComparisonTable } from '../design/components/ComparisonTable';
 import { HowItWorksSection } from '../design/components/HowItWorksSection';
 import { ConfigPlayground } from '../design/components/ConfigPlayground';
 import Hero from '../landing/Hero.astro';
+import InstallTabs from '../landing/InstallTabs.astro';
 import FeatureGrid from '../landing/FeatureGrid.astro';
 import DayToDay from '../landing/DayToDay.astro';
 import Requirements from '../landing/Requirements.astro';
+import SectionHeader from '../landing/SectionHeader.astro';
 import Footer from '../landing/Footer.astro';
 
 const base = import.meta.env.BASE_URL;
@@ -17,64 +19,59 @@ const base = import.meta.env.BASE_URL;
   description="Define once. Run anywhere. No host daemon. podbox turns one TOML file into an OCI image and systemd Quadlet units for Podman."
   currentPath="/"
 >
-  <div class="w-full font-mono text-[var(--text-primary)]">
-    {/* Background terminal texture */}
-    <div class="relative overflow-hidden border-b border-[var(--border)] bg-[var(--bg-base)]">
-      <div class="absolute inset-0 bg-terminal-dots pointer-events-none" />
-
-      {/* HERO SECTION */}
+  {/* Prose is set in Geist; mono is reserved for code, paths and commands. */}
+  <div class="w-full font-sans text-[var(--text-primary)]">
+    <div class="relative overflow-hidden">
+      {/* One soft wash behind the hero, in the theme's own accent. */}
+      <div
+        class="pointer-events-none absolute inset-x-0 -top-40 h-[520px] opacity-60 [background:radial-gradient(50%_60%_at_70%_30%,color-mix(in_srgb,var(--accent-mauve)_14%,transparent),transparent)]"
+        aria-hidden="true"
+      ></div>
       <Hero />
     </div>
 
-    {/* CORE PHILOSOPHY / WHAT IT DOES */}
+    <section id="install" class="max-w-5xl mx-auto px-4 sm:px-6 pb-20 scroll-mt-20">
+      <div class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-10">
+        <div>
+          <h2 class="text-lg font-semibold tracking-tight">Install</h2>
+          <p class="mt-2 text-sm leading-relaxed text-[var(--text-subtext)]">
+            One static binary. Use whichever channel you already have.
+          </p>
+        </div>
+        <InstallTabs />
+      </div>
+    </section>
+
     <FeatureGrid />
 
-    {/* COMPARISON TABLE SECTION */}
-    <section id="comparison" class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
-      <div class="mb-6">
-        <div class="text-xs text-[var(--accent-mauve)] uppercase tracking-wider font-bold mb-2">
-          comparison
-        </div>
-        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-          podbox, Distrobox, or raw podman
-        </h2>
-        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-xl leading-relaxed">
-          Distrobox shares your home and gets out of the way. podbox shares nothing until you write it down.
-        </p>
-      </div>
-
+    <section id="comparison" class="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 border-t border-[var(--border)] scroll-mt-20">
+      <SectionHeader
+        title="podbox, Distrobox, or raw podman"
+        lede="Distrobox shares your home and gets out of the way. podbox shares nothing until you write it down."
+      />
       <ComparisonTable />
     </section>
 
-    {/* ARCHITECTURE SECTION */}
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 border-b border-[var(--border)]">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 border-t border-[var(--border)]">
       <HowItWorksSection client:visible />
     </div>
 
-    {/* INTERACTIVE CONFIG PLAYGROUND */}
-    <section id="playground" class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)] scroll-mt-20">
-      <div class="mb-6">
-        <div class="text-xs text-[var(--accent-green)] uppercase tracking-wider font-bold mb-2">
-          try it
-        </div>
-        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-          Build your container
-        </h2>
-        <p class="mt-3 text-sm text-[var(--text-subtext)] max-w-xl leading-relaxed">
-          Flip a switch, see the <code class="text-[var(--accent-mauve)]">podbox.toml</code> and the <code class="text-[var(--accent-peach)]">.container</code> unit it produces. <a href={`${base}/studio/`} class="text-[var(--accent-mauve)] font-bold underline cursor-pointer">Studio</a> has everything else.
+    <section id="playground" class="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 border-t border-[var(--border)] scroll-mt-20">
+      <SectionHeader title="Try a config">
+        <p class="mt-3 text-[15px] sm:text-base leading-relaxed text-[var(--text-subtext)]">
+          Flip a switch and watch the <code class="font-mono text-[0.9em] text-[var(--text-primary)]">podbox.toml</code>{' '}
+          and the <code class="font-mono text-[0.9em] text-[var(--text-primary)]">.container</code> unit change.{' '}
+          <a href={`${base}/studio/`} class="text-[var(--accent-mauve)] underline underline-offset-4 decoration-[var(--accent-mauve)]/40 hover:decoration-[var(--accent-mauve)]">Studio</a>{' '}
+          covers every option.
         </p>
-      </div>
-
+      </SectionHeader>
       <ConfigPlayground client:visible />
     </section>
 
-    {/* DAY TO DAY USAGE */}
     <DayToDay />
 
-    {/* REQUIREMENTS & TROUBLESHOOTING */}
     <Requirements />
 
-    {/* FOOTER */}
     <Footer />
   </div>
 </SiteLayout>

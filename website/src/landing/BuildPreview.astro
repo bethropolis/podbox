@@ -1,0 +1,83 @@
+---
+// Hero artifact: a real config and an excerpt of what `podbox build`
+// generates from it. Shows the product instead of describing it.
+// Keep the unit excerpt in step with codegen/quadlet/container.rs.
+
+const toml = `[image]
+name = "dev"
+base = "fedora:44"
+
+[image.packages]
+install = ["neovim", "ripgrep", "gcc"]
+
+[integration]
+wayland = true
+audio   = true
+gpu     = "auto"`;
+
+const unit = `[Container]
+ContainerName=dev
+Image=localhost/podbox-dev:latest
+UserNS=keep-id
+Volume=/home/you/containers/dev:/home/you:Z
+AddDevice=/dev/dri
+
+[Install]
+WantedBy=default.target`;
+
+type Tok = { cls: string; text: string };
+
+function highlight(line: string, kind: 'toml' | 'ini'): Tok[] {
+  const t = line.trim();
+  if (t === '') return [{ cls: '', text: ' ' }];
+  if (t.startsWith('[')) return [{ cls: 'text-[var(--accent-yellow)]', text: line }];
+  const eq = line.indexOf('=');
+  if (eq === -1) return [{ cls: '', text: line }];
+  const key = line.slice(0, eq);
+  const value = line.slice(eq + 1);
+  const valueCls =
+    kind === 'ini'
+      ? 'text-[var(--text-primary)]'
+      : /^\s*(true|false|\d)/.test(value)
+        ? 'text-[var(--accent-peach)]'
+        : 'text-[var(--accent-green)]';
+  return [
+    { cls: 'text-[var(--accent-blue)]', text: key },
+    { cls: 'text-[var(--text-muted)]', text: '=' },
+    { cls: valueCls, text: value },
+  ];
+}
+
+const tomlLines = toml.split('\n').map((l) => highlight(l, 'toml'));
+const unitLines = unit.split('\n').map((l) => highlight(l, 'ini'));
+---
+
+<figure
+  class="relative rounded-md border border-[var(--border)] bg-[var(--bg-mantle)] font-mono text-[11.5px] sm:text-[12.5px] leading-[1.7] shadow-[0_24px_60px_-30px_rgb(0_0_0/0.55)]"
+  aria-label="A podbox config and the systemd unit generated from it"
+>
+  <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-2.5 text-[11px] text-[var(--text-muted)]">
+    <span class="text-[var(--text-subtext)]">dev.toml</span>
+    <span>you write this</span>
+  </div>
+  <pre class="m-0 overflow-x-auto px-4 py-3.5"><code>{tomlLines.map((toks) => (
+    <div>{toks.map((t) => <span class={t.cls}>{t.text}</span>)}</div>
+  ))}</code></pre>
+
+  <div class="flex items-center gap-3 border-y border-[var(--border)] bg-[var(--bg-crust)]/60 px-4 py-2 text-[11px]">
+    <span class="text-[var(--accent-mauve)]">$ podbox build dev</span>
+    <span class="h-px flex-1 bg-[var(--border)]" aria-hidden="true"></span>
+    <span class="text-[var(--text-muted)]">image + units</span>
+  </div>
+
+  <div class="flex items-center justify-between px-4 pt-3 text-[11px] text-[var(--text-muted)]">
+    <span class="truncate text-[var(--text-subtext)]">~/.config/containers/systemd/dev.container</span>
+    <span class="hidden sm:inline shrink-0 pl-3">excerpt</span>
+  </div>
+  <pre class="m-0 overflow-x-auto px-4 pt-2 pb-4"><code>{unitLines.map((toks) => (
+    <div>{toks.map((t) => <span class={t.cls}>{t.text}</span>)}</div>
+  ))}</code></pre>
+  <figcaption class="sr-only">
+    The TOML on top is the whole configuration. podbox build turns it into an image and Quadlet unit files that systemd runs.
+  </figcaption>
+</figure>

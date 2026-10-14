@@ -1,25 +1,22 @@
 ---
 import { TerminalCodeBlock } from '../design/components/TerminalCodeBlock';
 import { dayToDay } from './data';
+import SectionHeader from './SectionHeader.astro';
 ---
 
-<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
-  <div class="mb-8">
-    <div class="text-xs text-[var(--accent-peach)] uppercase tracking-wider font-bold mb-2">
-      every day
-    </div>
-    <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-      The commands you will actually use
-    </h2>
-  </div>
+<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 border-t border-[var(--border)]">
+  <SectionHeader
+    title="The commands you will actually use"
+    lede="Most days it is build, enter, and the occasional export. The rest is plain systemd."
+  />
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
     {dayToDay.map((block) => (
       <div>
-        <h3 class="text-sm font-medium text-[var(--text-primary)] mb-2.5">{block.title}</h3>
-        {/* Bare: the heading above labels the block, so a title bar with
-            traffic lights and a language name would only repeat it. */}
-        <div class="rounded-[3px] border border-[var(--border)]">
+        <h3 class="mb-2.5 text-sm font-medium text-[var(--text-primary)]">{block.title}</h3>
+        {/* Bare: the heading above labels the block, so a title bar would
+            only repeat it. */}
+        <div class="rounded-md border border-[var(--border)] bg-[var(--bg-mantle)]">
           <TerminalCodeBlock code={block.code} language="bash" bare />
         </div>
       </div>

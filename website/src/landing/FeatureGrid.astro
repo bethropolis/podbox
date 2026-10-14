@@ -1,31 +1,24 @@
 ---
 import { features } from './data';
+import SectionHeader from './SectionHeader.astro';
 ---
 
-<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
-  <div class="mb-10">
-    <div class="text-xs text-[var(--accent-mauve)] uppercase tracking-wider font-bold mb-2">
-      what you get
-    </div>
-    <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-      A container you can rebuild from a file
-    </h2>
-    <p class="mt-3 text-sm sm:text-base text-[var(--text-subtext)] leading-relaxed max-w-3xl">
-      Your home directory stays out of it unless you ask. Everything else is written down first.
-    </p>
-  </div>
+<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 border-t border-[var(--border)]">
+  <SectionHeader
+    title="A container you can rebuild from a file"
+    lede="Your home directory stays out of it unless you ask. Everything the container can reach is written down first."
+  />
 
-  {/* Feature Grid */}
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {/* Plain columns, not icon cards: each item ends in the line of config or
+      command that makes it true, so the claim is checkable on the spot. */}
+  <div class="grid gap-x-10 gap-y-9 sm:gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
     {features.map((f) => (
-      <div class={`p-5 rounded-[3px] border border-[var(--border)] ${f.hover} transition-colors`}>
-        <f.icon className={`w-5 h-5 ${f.color} mb-3`} />
-        <h3 class="text-sm font-medium text-[var(--text-primary)] mb-1.5">
-          {f.title}
-        </h3>
-        <p class="text-xs text-[var(--text-subtext)] leading-relaxed">
-          {f.body}
-        </p>
+      <div class="border-t border-[var(--border)] pt-5">
+        <h3 class="text-[15px] font-medium text-[var(--text-primary)]">{f.title}</h3>
+        <p class="mt-2 text-sm leading-relaxed text-[var(--text-subtext)]">{f.body}</p>
+        <code class="mt-4 block truncate font-mono text-xs text-[var(--text-muted)]" title={f.detail}>
+          {f.detail}
+        </code>
       </div>
     ))}
   </div>

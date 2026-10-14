@@ -1,58 +1,49 @@
 ---
 import { TerminalCodeBlock } from '../design/components/TerminalCodeBlock';
+import SectionHeader from './SectionHeader.astro';
 
 const base = import.meta.env.BASE_URL;
+
+const needs = [
+  { text: 'Podman 5.5 or newer', note: '5.6+ for SSH agent passthrough' },
+  { text: 'A systemd user session' },
+  { text: 'Linux with a Wayland compositor', note: 'X11 apps run through Xwayland' },
+];
 ---
 
-<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 border-b border-[var(--border)]">
-  <div class="mb-8">
-    <div class="text-xs text-[var(--accent-green)] uppercase tracking-wider font-bold mb-2">
-      requirements
-    </div>
-    <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-      Before you start
-    </h2>
-  </div>
+<section class="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 border-t border-[var(--border)]">
+  <SectionHeader title="Before you start" />
 
   <div class="grid gap-12 lg:grid-cols-2 lg:gap-16">
-  <div>
-    <h3 class="text-sm font-medium text-[var(--text-primary)]">
-      What you&apos;ll need
-    </h3>
-    <ul class="mt-4 space-y-2.5 text-sm leading-relaxed text-[var(--text-subtext)]">
-      <li class="flex gap-3">
-        <span class="shrink-0 text-[var(--accent-green)]">✓</span><span>Podman 5.5 or newer
-        (5.6+ for SSH agent passthrough)</span>
-      </li>
-      <li class="flex gap-3">
-        <span class="shrink-0 text-[var(--accent-green)]">✓</span><span>A systemd user session</span>
-      </li>
-      <li class="flex gap-3">
-        <span class="shrink-0 text-[var(--accent-green)]">✓</span><span>Linux with a Wayland
-        compositor (X11 apps work via Xwayland)</span>
-      </li>
-      <li class="flex gap-3">
-        <span class="shrink-0 text-[var(--accent-peach)]">optional</span>
-        <span><code class="text-[var(--accent-peach)]">xdg-dbus-proxy</code>, for filtered D-Bus access</span>
-      </li>
-    </ul>
-  </div>
-
-  <div>
-    <h3 class="text-sm font-medium text-[var(--text-primary)]">
-      Something not working?
-    </h3>
-    <p class="mt-4 text-sm leading-relaxed text-[var(--text-subtext)]">
-      Run <code class="text-[var(--accent-peach)]">podbox doctor</code> first. It catches most setup
-      problems on its own, and the{" "}
-      <a href={`${base}/docs/troubleshooting/`} class="text-[var(--accent-mauve)] underline cursor-pointer">
-        troubleshooting guide
-      </a>{" "}
-      goes deeper.
-    </p>
-    <div class="mt-4">
-      <TerminalCodeBlock code={`podbox doctor`} language="bash" />
+    <div>
+      <h3 class="text-sm font-medium text-[var(--text-primary)]">What you need</h3>
+      <ul class="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)] text-sm">
+        {needs.map((n) => (
+          <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
+            <span class="text-[var(--text-primary)]">{n.text}</span>
+            {n.note && <span class="text-xs text-[var(--text-muted)]">{n.note}</span>}
+          </li>
+        ))}
+        <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
+          <span class="text-[var(--text-subtext)]">
+            <code class="font-mono text-[0.9em] text-[var(--text-primary)]">xdg-dbus-proxy</code>, for filtered D-Bus
+          </span>
+          <span class="text-xs text-[var(--text-muted)]">optional</span>
+        </li>
+      </ul>
     </div>
-  </div>
+
+    <div>
+      <h3 class="text-sm font-medium text-[var(--text-primary)]">Something not working?</h3>
+      <p class="mt-4 text-sm leading-relaxed text-[var(--text-subtext)]">
+        Run <code class="font-mono text-[0.9em] text-[var(--text-primary)]">podbox doctor</code> first. It catches most
+        setup problems on its own, and the{' '}
+        <a href={`${base}/docs/troubleshooting/`} class="text-[var(--accent-mauve)] underline underline-offset-4 decoration-[var(--accent-mauve)]/40 hover:decoration-[var(--accent-mauve)]">troubleshooting guide</a>{' '}
+        goes deeper.
+      </p>
+      <div class="mt-4">
+        <TerminalCodeBlock code={`podbox doctor`} language="bash" />
+      </div>
+    </div>
   </div>
 </section>

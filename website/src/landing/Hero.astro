@@ -1,7 +1,7 @@
 ---
 import { GithubIcon } from '../design/components/GithubIcon';
 import { ArrowRight } from 'lucide-react';
-import InstallTabs from './InstallTabs.astro';
+import BuildPreview from './BuildPreview.astro';
 import { VERSION } from './data';
 
 const base = import.meta.env.BASE_URL;
@@ -45,68 +45,64 @@ try {
 }
 ---
 
-<section class="relative max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-18 pb-16">
-  {/* Real Tagline with Blinking Cursor */}
-  <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text-primary)] leading-[1.15] mb-6">
-    Define once. Run anywhere.
-    <br />
-    <span class="text-[var(--accent-mauve)]">No host daemon</span><span class="cursor-blink text-[var(--accent-blue)] ml-1 font-normal">_</span>
-  </h1>
+<section class="relative max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-20 lg:pt-24 pb-14 sm:pb-20 lg:pb-24 grid grid-cols-[minmax(0,1fr)] gap-12 lg:gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-center">
+  <div>
+    <h1 class="text-[clamp(2.35rem,10.5vw,3.75rem)] font-semibold tracking-[-0.032em] leading-[1.04] text-[var(--text-primary)]">
+      Define once.<br />
+      Run anywhere.<br />
+      <span class="text-[var(--accent-mauve)]">No host daemon.</span>
+    </h1>
 
-  {/* Authentic Description */}
-  <p class="text-base sm:text-lg text-[var(--text-subtext)] leading-relaxed max-w-3xl mb-6">
-    You write a TOML file. podbox turns it into an image and a set of systemd units, and from
-    then on systemd does the rest. Nothing of podbox keeps running on your machine.
-  </p>
+    <p class="mt-6 max-w-xl text-base sm:text-lg leading-relaxed text-[var(--text-subtext)]">
+      Write one TOML file. podbox turns it into a container image and a few systemd units,
+      then gets out of the way. Nothing of podbox keeps running on your machine.
+    </p>
 
-  {/* Facts */}
-  <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mb-10 select-none text-xs">
-    <span class="text-[var(--text-muted)]">
-      Version <span class="text-[var(--accent-blue)] font-bold ml-1">v{VERSION}</span>
-    </span>
-    <a
-      href="https://github.com/bethropolis/podbox/actions/workflows/ci.yml"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-    >
-      CI <span class="font-bold ml-1" style={`color: ${ciColor}`}>{ciStatus}</span>
-    </a>
-    <span class="text-[var(--text-muted)]">
-      License <span class="text-[var(--accent-mauve)] font-bold ml-1">MIT</span>
-    </span>
-    <span class="text-[var(--text-muted)]">
-      Platform <span class="text-[var(--accent-peach)] font-bold ml-1">Linux, rootless</span>
-    </span>
+    <div class="mt-8 flex items-center gap-3">
+      <a
+        href={`${base}/docs/getting-started/`}
+        class="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 rounded-md bg-[var(--accent-mauve)] px-4 py-2.5 text-sm font-semibold text-[var(--bg-crust)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-mauve)]"
+      >
+        Get started
+        <ArrowRight className="w-4 h-4" />
+      </a>
+      <a
+        href={`${base}/docs/`}
+        class="inline-flex flex-1 sm:flex-none justify-center items-center rounded-md border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-focus)] hover:bg-[var(--bg-mantle)]"
+      >
+        Documentation
+      </a>
+      <a
+        href="https://github.com/bethropolis/podbox"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="hidden sm:inline-flex items-center gap-2 rounded-md px-3 py-2.5 text-sm text-[var(--text-subtext)] transition-colors hover:text-[var(--text-primary)]"
+      >
+        <GithubIcon className="w-4 h-4" />
+        GitHub
+      </a>
+    </div>
+
+    <ul class="mt-8 sm:mt-10 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-xs text-[var(--text-muted)]">
+      <li>v{VERSION}</li>
+      <li aria-hidden="true" class="hidden sm:block">·</li>
+      <li>
+        <a
+          href="https://github.com/bethropolis/podbox/actions/workflows/ci.yml"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 hover:text-[var(--text-primary)] transition-colors"
+        >
+          <span class="inline-block h-1.5 w-1.5 rounded-full" style={`background: ${ciColor}`} aria-hidden="true"></span>
+          CI {ciStatus}
+        </a>
+      </li>
+      <li aria-hidden="true" class="hidden sm:block">·</li>
+      <li>MIT</li>
+      <li aria-hidden="true" class="hidden sm:block">·</li>
+      <li>Linux, rootless Podman</li>
+    </ul>
   </div>
 
-  {/* CTAs */}
-  <div class="flex flex-wrap items-center gap-3 mb-12">
-    <a
-      href={`${base}/docs/getting-started/`}
-      class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--accent-mauve)] text-[#11111b] font-bold text-xs sm:text-sm hover:brightness-110 transition-all cursor-pointer shadow-xs"
-    >
-      <span>Get Started</span>
-      <ArrowRight className="w-4 h-4" />
-    </a>
-
-    <a
-      href={`${base}/docs/`}
-      class="flex items-center gap-2 px-5 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
-    >
-      <span>Read Documentation</span>
-    </a>
-
-    <a
-      href="https://github.com/bethropolis/podbox"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="flex items-center gap-2 px-4 py-2.5 rounded-[2px] bg-[var(--bg-mantle)] hover:bg-[var(--bg-surface0)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text-subtext)] hover:text-[var(--text-primary)] transition-colors"
-    >
-      <GithubIcon className="w-4 h-4" />
-      <span>GitHub</span>
-    </a>
-  </div>
-
-  <InstallTabs />
+  <BuildPreview />
 </section>

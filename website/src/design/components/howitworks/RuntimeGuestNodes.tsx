@@ -16,7 +16,7 @@ export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesP
     height="78"
     rx="6"
     fill="url(#rt-grad1)"
-    stroke={selectedNode === 'rt_guest' ? '#ffffff' : '#334155'}
+    stroke={selectedNode === 'rt_guest' ? 'var(--accent-mauve)' : 'color-mix(in srgb, var(--accent-mauve) 35%, var(--border))'}
     strokeWidth={selectedNode === 'rt_guest' ? '2.5' : '1'}
     className="transition-all group-hover:brightness-110"
   />
@@ -24,10 +24,10 @@ export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesP
     x="160"
     y="34"
     textAnchor="middle"
-    fill="#ffffff"
+    fill="var(--text-primary)"
     fontSize="13"
     fontWeight="700"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     podbox-guest (in container)
   </text>
@@ -35,9 +35,9 @@ export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesP
     x="160"
     y="56"
     textAnchor="middle"
-    fill="#e2e8f0"
+    fill="var(--text-subtext)"
     fontSize="11"
-    fontFamily="monospace"
+    fontFamily="JetBrains Mono, monospace"
   >
     notify · clipboard · xdg-open · host-exec
   </text>
@@ -57,7 +57,7 @@ export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesP
   y="148"
   fill="var(--accent-mauve)"
   fontSize="10"
-  fontFamily="monospace"
+  fontFamily="JetBrains Mono, monospace"
   fontWeight="600"
 >
   Hello ↔ capability negotiation
@@ -65,6 +65,7 @@ export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesP
 
 {/* Dashed proxy connections */}
 <path
+    fill="none"
   d="M 360 98 C 360 150, 220 150, 220 198"
   stroke="var(--border)"
   strokeWidth="2"
@@ -72,6 +73,7 @@ export function RuntimeGuestNodes({ selectedNode, onSelect }: RuntimeGuestNodesP
   markerEnd="url(#rt-arrow)"
 />
 <path
+    fill="none"
   d="M 490 98 C 490 150, 630 150, 630 198"
   stroke="var(--border)"
   strokeWidth="2"
