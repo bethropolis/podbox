@@ -1,57 +1,128 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, FileText, CornerDownLeft, X, Layers } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Clock, CornerDownLeft, FileText, Hash, KeyRound, Search, SquareTerminal, X } from 'lucide-react';
 import { withBase } from '../base';
-import type { SearchDoc } from '../searchIndex';
-import { predefinedCommands, type SearchResult } from './palette/commands';
+import { highlightParts, rank, snippet, type Hit, type SearchEntry } from '../search';
 import { isPagePaletteActive } from '../paletteGuard';
 
 interface CommandPaletteProps {
   // Only the version string crosses the Astro boundary; the search index
-  // still lazy-loads on first open (separate chunk), so it never ships
-  // with the initial page bundle.
+  // lazy-loads on first open (separate chunk), so it never ships with the
+  // initial page bundle.
   version: string;
+}
+
+// Destinations that aren't docs pages, so they never come from the index.
+const EXTRA: SearchEntry[] = [
+  { kind: 'page', title: 'Studio', page: 'Studio', path: '/studio', text: 'Build a podbox.toml interactively and preview the generated units' },
+  { kind: 'page', title: 'Install podbox', page: 'Home', path: '/#install', text: 'curl script, mise, Homebrew, AUR, cargo, from source' },
+  { kind: 'page', title: 'Compare with Distrobox', page: 'Home', path: '/#comparison', text: 'podbox vs distrobox vs raw podman' },
+];
+
+const QUICK_LINKS: SearchEntry[] = [
+  { kind: 'page', title: 'Getting started', page: 'Docs', path: '/docs/getting-started', text: '' },
+  { kind: 'page', title: 'Configuration reference', page: 'Docs', path: '/docs/config', text: '' },
+  { kind: 'page', title: 'CLI reference', page: 'Docs', path: '/docs/cli', text: '' },
+  { kind: 'page', title: 'Studio', page: 'Studio', path: '/studio', text: '' },
+  { kind: 'page', title: 'Troubleshooting', page: 'Docs', path: '/docs/troubleshooting', text: '' },
+];
+
+const RECENT_KEY = 'podbox-search-recent';
+const RECENT_MAX = 5;
+
+function loadRecent(): SearchEntry[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter((e) => e && typeof e.path === 'string').slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(entry: SearchEntry) {
+  try {
+    const next = [entry, ...loadRecent().filter((e) => e.path !== entry.path || e.title !== entry.title)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode: recents are a convenience only */
+  }
+}
+
+const KIND_LABEL: Record<SearchEntry['kind'], string> = {
+  command: 'Command',
+  key: 'Config key',
+  page: 'Page',
+  section: 'Section',
+};
+
+function KindIcon({ kind, className }: { kind: SearchEntry['kind']; className: string }) {
+  if (kind === 'command') return <SquareTerminal className={className} />;
+  if (kind === 'key') return <KeyRound className={className} />;
+  if (kind === 'section') return <Hash className={className} />;
+  return <FileText className={className} />;
+}
+
+function Highlighted({ text, terms }: { text: string; terms: string[] }) {
+  return (
+    <>
+      {highlightParts(text, terms).map((p, i) =>
+        p.match ? (
+          <mark key={i} className="rounded-[2px] bg-[var(--accent-mauve)]/20 px-px text-inherit">
+            {p.text}
+          </mark>
+        ) : (
+          <React.Fragment key={i}>{p.text}</React.Fragment>
+        ),
+      )}
+    </>
+  );
 }
 
 export function CommandPalette({ version }: CommandPaletteProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [docs, setDocs] = useState<SearchDoc[]>([]);
+  const [entries, setEntries] = useState<SearchEntry[] | null>(null);
   const indexLoading = useRef(false);
   const [query, setQuery] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [recent, setRecent] = useState<SearchEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const openRef = useRef(false);
+  openRef.current = isOpen;
 
-  // Global shortcuts: Cmd+K / Ctrl+K / `/`, plus the navbar trigger event.
-  // The docs index loads on first open (dynamic import = separate chunk).
+  // Global shortcuts: Cmd/Ctrl+K and `/`, plus the navbar trigger event.
   useEffect(() => {
     const ensureIndex = () => {
-      if (docs.length === 0 && !indexLoading.current) {
-        indexLoading.current = true;
-        import('../searchIndex').then(
-          (m) => setDocs(m.SEARCH_DOCS),
-          () => { indexLoading.current = false; },
-        );
-      }
+      if (indexLoading.current) return;
+      indexLoading.current = true;
+      import('../searchIndex').then(
+        (m) => setEntries([...EXTRA, ...m.SEARCH_ENTRIES]),
+        () => {
+          indexLoading.current = false;
+        },
+      );
     };
     const open = () => {
+      returnFocus.current = document.activeElement as HTMLElement | null;
       ensureIndex();
+      setRecent(loadRecent());
       setIsOpen(true);
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       // Studio (and any page that marks itself) owns the shortcut while it
       // is on screen; its own palette opens instead of this one.
       if (isPagePaletteActive()) return;
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsOpen(prev => {
-          if (!prev) ensureIndex();
-          return !prev;
-        });
-      } else if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
-        e.preventDefault();
-        ensureIndex();
-        setIsOpen(true);
-      } else if (e.key === 'Escape') {
+        if (openRef.current) setIsOpen(false);
+        else open();
+      } else if (e.key === 'Escape' && openRef.current) {
         setIsOpen(false);
+      } else if (e.key === '/' && !typing) {
+        e.preventDefault();
+        open();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -62,212 +133,230 @@ export function CommandPalette({ version }: CommandPaletteProps) {
     };
   }, []);
 
-  const navigate = (path: string) => {
+  const close = () => {
     setIsOpen(false);
-    window.location.assign(withBase(path));
+    setQuery('');
+    returnFocus.current?.focus?.();
   };
 
-  // Dynamic search across docs pages and headings
-  const filteredResults: SearchResult[] = React.useMemo(() => {
-    if (!query.trim()) {
-      return predefinedCommands.slice(0, 8);
-    }
-    const q = query.toLowerCase();
-    const results: SearchResult[] = [];
+  const hits: Hit[] = useMemo(() => (entries && query.trim() ? rank(entries, query, 30) : []), [entries, query]);
 
-    // Check predefined commands
-    predefinedCommands.forEach(cmd => {
-      if (cmd.title.toLowerCase().includes(q) || (cmd.snippet && cmd.snippet.toLowerCase().includes(q))) {
-        results.push(cmd);
-      }
-    });
+  // Rows shown: ranked hits for a query; recents + quick links when empty.
+  const rows: { entry: SearchEntry; terms: string[]; section?: string }[] = useMemo(() => {
+    if (query.trim()) return hits.map((h) => ({ entry: h.entry, terms: h.terms }));
+    const r = recent.map((entry, i) => ({ entry, terms: [], section: i === 0 ? 'Recent' : undefined }));
+    const q = QUICK_LINKS.filter((l) => !recent.some((e) => e.path === l.path)).map((entry, i) => ({
+      entry,
+      terms: [],
+      section: i === 0 ? 'Jump to' : undefined,
+    }));
+    return [...r, ...q];
+  }, [query, hits, recent]);
 
-    // Check doc pages and headings
-    docs.forEach(doc => {
-      if (doc.title.toLowerCase().includes(q)) {
-        results.push({
-          title: doc.title,
-          category: 'Documentation',
-          path: doc.path,
-          snippet: doc.description || `Documentation: ${doc.title}`,
-          badge: 'page',
-        });
-      }
-      doc.headings.forEach(h => {
-        if (h.text.toLowerCase().includes(q)) {
-          results.push({
-            title: `${doc.title} > ${h.text}`,
-            category: 'Doc Section',
-            path: `${doc.path}#${h.id}`,
-            snippet: `Heading in ${doc.title}`,
-            badge: 'section',
-          });
-        }
-      });
-    });
-
-    return results.slice(0, 10);
-  }, [query, docs]);
+  useEffect(() => setSelected(0), [query]);
 
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    if (isOpen) requestAnimationFrame(() => inputRef.current?.focus());
   }, [isOpen]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // Keep the keyboard selection visible while arrowing through a long list.
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-row="${selected}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
+  const go = (entry: SearchEntry, newTab = false) => {
+    saveRecent({ ...entry, text: '' });
+    const url = withBase(entry.path);
+    if (newTab) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    setIsOpen(false);
+    setQuery('');
+    window.location.assign(url);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % Math.max(1, filteredResults.length));
+      setSelected((i) => (rows.length ? (i + 1) % rows.length : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredResults.length) % Math.max(1, filteredResults.length));
+      setSelected((i) => (rows.length ? (i - 1 + rows.length) % rows.length : 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filteredResults[selectedIndex]) {
-        navigate(filteredResults[selectedIndex].path);
-      }
+      const row = rows[selected];
+      if (row) go(row.entry, e.metaKey || e.ctrlKey);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setIsOpen(false);
+      close();
+    } else if (e.key === 'Tab') {
+      // Focus stays in the input; Tab moves the selection like the arrows.
+      e.preventDefault();
+      setSelected((i) => (rows.length ? (i + (e.shiftKey ? -1 : 1) + rows.length) % rows.length : 0));
     }
   };
 
   if (!isOpen) return null;
 
+  const loading = entries == null && query.trim() !== '';
+  const activeId = rows[selected] ? `search-row-${selected}` : undefined;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={() => setIsOpen(false)}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 backdrop-blur-[2px] sm:px-4 sm:pt-[12vh]"
+      onMouseDown={close}
     >
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Search documentation and commands"
-        className="w-full max-w-2xl rounded-[4px] border border-[var(--border-focus)] bg-[var(--bg-mantle)] shadow-2xl overflow-hidden font-mono"
-        onClick={e => e.stopPropagation()}
+        aria-label="Search the documentation"
+        className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-mantle)] font-sans shadow-2xl sm:h-auto sm:max-h-[min(640px,76vh)] sm:max-w-2xl sm:rounded-lg sm:border sm:border-[var(--border-focus)]"
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Terminal Chrome Bar */}
-        <div className="flex items-center justify-between px-3.5 py-2 bg-[var(--bg-crust)] border-b border-[var(--border)]">
-          <div className="flex items-center gap-2" aria-hidden="true">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f38ba8]/80 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f9e2af]/80 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-[#a6e3a1]/80 inline-block" />
-            <span className="text-xs text-[var(--text-subtext)] uppercase tracking-wider ml-1">
-              term // podbox-search
-            </span>
-          </div>
-          <button
-            onClick={() => setIsOpen(false)}
-            type="button"
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer p-0.5 rounded"
-            aria-label="Close search (Esc)"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Input Bar */}
-        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-base)]">
-          <span className="text-[var(--accent-mauve)] font-bold select-none text-sm">&gt;</span>
+        <div className="flex items-center gap-3 border-b border-[var(--border)] px-4">
+          <Search className="h-4 w-4 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
           <input
             ref={inputRef}
-            type="text"
-            aria-label="Search query"
+            type="search"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="search-results"
+            aria-activedescendant={activeId}
+            aria-autocomplete="list"
             value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search commands, docs, config keys, quadlets... (Esc to close)"
-            className="w-full bg-transparent text-[var(--text-primary)] placeholder-[var(--text-muted)] text-sm focus:outline-none"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Search docs, commands, config keys…"
+            spellCheck={false}
+            autoComplete="off"
+            className="h-14 w-full bg-transparent text-[15px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
           />
-          {query && (
+          {query ? (
             <button
-              onClick={() => setQuery('')}
-              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              type="button"
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              className="rounded p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              aria-label="Clear search"
             >
-              clear
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={close}
+              className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              aria-label="Close search"
+            >
+              esc
             </button>
           )}
         </div>
 
-        {/* Results List */}
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-[var(--border)]/40">
-          {filteredResults.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[var(--text-muted)]">
-              No matching commands or documentation entries found for &quot;{query}&quot;
+        <div ref={listRef} id="search-results" role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+          {loading && <p className="px-3 py-6 text-center text-sm text-[var(--text-muted)]">Loading the index…</p>}
+          {!loading && query.trim() && rows.length === 0 && (
+            <div className="px-3 py-10 text-center">
+              <p className="text-sm text-[var(--text-subtext)]">Nothing matches “{query.trim()}”.</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Try a config key like gpu, a command like snapshot, or fewer words.</p>
             </div>
-          ) : (
-            filteredResults.map((item, index) => {
-              const isSelected = index === selectedIndex;
-              return (
-                <div
-                  key={`${item.path}-${index}`}
-                  onClick={() => navigate(item.path)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex items-center justify-between p-2.5 rounded-[2px] cursor-pointer transition-colors text-xs ${
-                    isSelected
-                      ? 'bg-[var(--accent-mauve)]/15 border-l-2 border-[var(--accent-mauve)] text-[var(--text-primary)]'
-                      : 'text-[var(--text-subtext)] hover:bg-[var(--bg-surface0)]/50'
+          )}
+          {rows.map(({ entry, terms, section }, i) => {
+            const isSel = i === selected;
+            const sub = query.trim() ? snippet(entry.text, terms, 110) : '';
+            return (
+              <React.Fragment key={`${entry.kind}-${entry.path}-${entry.title}-${i}`}>
+                {section && (
+                  <div className="flex items-center gap-1.5 px-3 pb-1.5 pt-3 text-xs font-medium text-[var(--text-muted)]">
+                    {section === 'Recent' && <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {section}
+                  </div>
+                )}
+                <a
+                  id={`search-row-${i}`}
+                  data-row={i}
+                  role="option"
+                  aria-selected={isSel}
+                  href={withBase(entry.path)}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+                      saveRecent({ ...entry, text: '' });
+                      return;
+                    }
+                    e.preventDefault();
+                    go(entry);
+                  }}
+                  onMouseMove={() => selected !== i && setSelected(i)}
+                  className={`flex items-start gap-3 rounded-md px-3 py-2.5 transition-colors ${
+                    isSel ? 'bg-[var(--bg-surface0)]' : ''
                   }`}
                 >
-                  <div className="flex items-start gap-2.5 min-w-0 pr-2">
-                    {item.category === 'CLI Command' ? (
-                      <Terminal className="w-4 h-4 text-[var(--accent-mauve)] shrink-0 mt-0.5" />
-                    ) : item.category === 'Configuration' ? (
-                      <Layers className="w-4 h-4 text-[var(--accent-blue)] shrink-0 mt-0.5" />
-                    ) : (
-                      <FileText className="w-4 h-4 text-[var(--accent-green)] shrink-0 mt-0.5" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                        <span className="truncate">{item.title}</span>
-                        {item.badge && (
-                          <span className="text-[10px] uppercase px-1.5 py-0.2 rounded-[2px] bg-[var(--bg-surface0)] text-[var(--text-muted)] border border-[var(--border)]">
-                            {item.badge}
-                          </span>
-                        )}
-                      </div>
-                      {item.snippet && (
-                        <p className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-                          {item.snippet}
-                        </p>
+                  <KindIcon
+                    kind={entry.kind}
+                    className={`mt-0.5 h-4 w-4 shrink-0 ${isSel ? 'text-[var(--accent-mauve)]' : 'text-[var(--text-muted)]'}`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-2">
+                      <span
+                        className={`truncate text-sm text-[var(--text-primary)] ${
+                          entry.kind === 'command' || entry.kind === 'key' ? 'font-mono text-[13px]' : 'font-medium'
+                        }`}
+                      >
+                        <Highlighted text={entry.title} terms={terms} />
+                      </span>
+                      {entry.kind !== 'page' && (
+                        <span className="hidden shrink-0 truncate text-xs text-[var(--text-muted)] sm:inline">{entry.page}</span>
                       )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] shrink-0">
-                    <span className="hidden sm:inline text-[10px] text-[var(--text-muted)]">
-                      {item.category}
                     </span>
-                    {isSelected && <CornerDownLeft className="w-3.5 h-3.5 text-[var(--accent-mauve)]" />}
-                  </div>
-                </div>
-              );
-            })
-          )}
+                    {sub && (
+                      <span className="mt-0.5 line-clamp-2 block text-[13px] leading-snug text-[var(--text-subtext)]">
+                        <Highlighted text={sub} terms={terms} />
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 flex shrink-0 items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                    {query.trim() && <span className="hidden sm:inline">{KIND_LABEL[entry.kind]}</span>}
+                    {isSel ? (
+                      <CornerDownLeft className="h-3.5 w-3.5 text-[var(--text-subtext)]" aria-hidden="true" />
+                    ) : (
+                      <ArrowRight className="h-3.5 w-3.5 opacity-0" aria-hidden="true" />
+                    )}
+                  </span>
+                </a>
+              </React.Fragment>
+            );
+          })}
         </div>
 
-        {/* Footer shortcuts */}
-        <div className="flex items-center justify-between px-3 py-2 bg-[var(--bg-crust)] border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] select-none">
-          <div className="flex items-center gap-3">
-            <span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--bg-surface0)] border border-[var(--border)] rounded-[2px] text-[10px]">↑</kbd>{' '}
-              <kbd className="px-1.5 py-0.5 bg-[var(--bg-surface0)] border border-[var(--border)] rounded-[2px] text-[10px]">↓</kbd> navigate
+        <div className="hidden items-center justify-between gap-4 border-t border-[var(--border)] px-4 py-2.5 text-xs text-[var(--text-muted)] sm:flex">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5">
+              <Kbd>↑</Kbd>
+              <Kbd>↓</Kbd> move
             </span>
-            <span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--bg-surface0)] border border-[var(--border)] rounded-[2px] text-[10px]">↵</kbd> select
+            <span className="flex items-center gap-1.5">
+              <Kbd>↵</Kbd> open
             </span>
-            <span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--bg-surface0)] border border-[var(--border)] rounded-[2px] text-[10px]">esc</kbd> close
+            <span className="flex items-center gap-1.5">
+              <Kbd>ctrl ↵</Kbd> new tab
             </span>
           </div>
-          <span className="text-[var(--accent-mauve)]">podbox CLI v{version}</span>
+          <span>
+            {entries ? `${entries.length} entries` : 'index'} · v{version}
+          </span>
         </div>
       </div>
     </div>
+  );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="rounded border border-[var(--border)] bg-[var(--bg-base)] px-1.5 py-px font-mono text-[10.5px] text-[var(--text-subtext)]">
+      {children}
+    </kbd>
   );
 }
