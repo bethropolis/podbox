@@ -127,7 +127,7 @@ podbox doctor
 
 ### What happens
 
-1. `podbox init` creates a config file at `~/.config/podbox/<name>.toml`
+1. `podbox init` creates a config file at `~/.config/podbox/profiles/<name>.toml`
 2. `podbox create` pulls the prebuilt image, writes Quadlet systemd files, and starts the container
 3. The guest daemon (`podbox-guest`) starts inside and connects to the host for notifications, clipboard, and URI forwarding
 4. The container is running and ready — `podbox enter <name>` drops you into a shell
@@ -243,7 +243,7 @@ podbox diff myenv --apply
 
 ### What happens
 
-1. `podbox init` creates a config file at `~/.config/podbox/<name>.toml`
+1. `podbox init` creates a config file at `~/.config/podbox/profiles/<name>.toml`
 2. `podbox build` auto-generates a Containerfile from the config, copies in the guest binary (`podbox-guest`), and runs `podman build`
 3. `podbox enable` writes Quadlet files (`<name>.container`, `<name>.socket`, `<name>-host.service`) to `~/.config/containers/systemd/`
 4. `podbox start` starts the container — the guest daemon connects to the host socket
@@ -468,6 +468,11 @@ podbox edit myenv --rebuild
 |---------|-------------|
 | `podbox profile list` | List all available profiles (bundled + custom) |
 | `podbox profile show <name>` | Show the TOML configuration of a profile |
+| `podbox profile export <name>` | Print a profile's TOML (`--output <file>` to write it) |
+| `podbox profile import <file>` | Install a TOML file into profiles/ (`--name`, `--force`) |
+
+Your own `profiles/<name>.toml` always wins over a bundled profile of the
+same name, so `podbox create dev` builds your file — never the template.
 
 ### Creating and building
 
@@ -478,8 +483,10 @@ podbox edit myenv --rebuild
 | `podbox init <image>` | Scaffold a custom config from a base image |
 | `podbox init -i` | Interactive wizard (custom or profile) |
 | `podbox init --profile <name>` | Scaffold from a prebuilt profile |
-| `podbox create <name>` | Init → build → enable → start in one step |
+| `podbox create <name>` | Init → build → enable → start in one step (on-disk config wins over bundled profile) |
 | `podbox create <image> --name <n>` | Pull + create config + enable + start |
+| `podbox create --import <file>` | Install a TOML file into profiles/ and create from it |
+| `podbox create --edit <name>` | Open the config in your editor first, then create from what you saved |
 | `podbox build [<name>]` | Build or rebuild the container image |
 | `podbox pull <name>` | Pull a prebuilt image without building |
 

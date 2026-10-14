@@ -177,6 +177,104 @@ export const SEARCH_DOCS: SearchDoc[] = [
     ]
   },
   {
+    "id": "clients",
+    "title": "Building clients",
+    "path": "/docs/clients",
+    "description": "\"Build clients on podbox — the CLI as a stable contract: name handling, JSON output, errors, exit codes, streaming, and what is proposed next.\"",
+    "headings": [
+      {
+        "id": "building-clients",
+        "text": "Building clients",
+        "level": 1
+      },
+      {
+        "id": "ground-rules",
+        "text": "Ground rules",
+        "level": 2
+      },
+      {
+        "id": "name-resolution",
+        "text": "Name resolution",
+        "level": 2
+      },
+      {
+        "id": "reading-state",
+        "text": "Reading state",
+        "level": 2
+      },
+      {
+        "id": "podbox-list---output-json-today",
+        "text": "podbox list --output json **Today**",
+        "level": 3
+      },
+      {
+        "id": "podbox-status-name---output-json-today",
+        "text": "podbox status NAME --output json **Today**",
+        "level": 3
+      },
+      {
+        "id": "other-readers-today",
+        "text": "Other readers **Today**",
+        "level": 3
+      },
+      {
+        "id": "acting-on-an-environment",
+        "text": "Acting on an environment",
+        "level": 2
+      },
+      {
+        "id": "interactive-commands",
+        "text": "Interactive commands",
+        "level": 3
+      },
+      {
+        "id": "mutating-commands-in-json-mode",
+        "text": "Mutating commands in JSON mode",
+        "level": 3
+      },
+      {
+        "id": "exports",
+        "text": "Exports",
+        "level": 2
+      },
+      {
+        "id": "creating-and-configuring",
+        "text": "Creating and configuring",
+        "level": 2
+      },
+      {
+        "id": "errors-and-exit-codes",
+        "text": "Errors and exit codes",
+        "level": 2
+      },
+      {
+        "id": "staying-up-to-date-without-polling",
+        "text": "Staying up to date without polling",
+        "level": 2
+      },
+      {
+        "id": "version-and-capability-checks",
+        "text": "Version and capability checks",
+        "level": 2
+      },
+      {
+        "id": "safety",
+        "text": "Safety",
+        "level": 2
+      },
+      {
+        "id": "testing-against-the-contract",
+        "text": "Testing against the contract",
+        "level": 2
+      },
+      {
+        "id": "checklist-for-maintainers",
+        "text": "Checklist for maintainers",
+        "level": 2
+      }
+    ]
+  },
+  {
     "id": "config",
     "title": "Configuration Reference",
     "path": "/docs/config",
