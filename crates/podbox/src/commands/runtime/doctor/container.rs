@@ -117,7 +117,7 @@ pub(crate) fn check_guest_version(config: &Config) -> Vec<Check> {
 
         // 2) Fallback to image labels (works even when not running)
         if guest_ver.is_none() || guest_proto.is_none() {
-            let local_tag = format!("localhost/podbox-{name}:latest");
+            let local_tag = config.local_image_tag();
             if let Ok(labels) = podbox::labels::fetch(&local_tag) {
                 if guest_ver.is_none() {
                     if let Some(v) = labels
@@ -228,12 +228,16 @@ pub(crate) fn check_guest_version(config: &Config) -> Vec<Check> {
 pub(crate) fn check_orphaned_snapshots() -> Vec<Check> {
     let mut out = Vec::new();
     // ── Orphaned snapshot images ──
+    let snapshot_filter = format!(
+        "reference={}*:snapshot-*",
+        podbox::config::IMAGE_REPO_PREFIX
+    );
     if let Ok(output) = podbox::process::run_piped(
         "podman",
         &podbox::process::args(&[
             "images",
             "--filter",
-            "reference=localhost/podbox-*:snapshot-*",
+            &snapshot_filter,
             "--format",
             "{{.Repository}}:{{.Tag}}",
         ]),
@@ -241,7 +245,7 @@ pub(crate) fn check_orphaned_snapshots() -> Vec<Check> {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines().filter(|l| !l.is_empty()) {
             if let Some((repo, full_tag)) = line.rsplit_once(':') {
-                if let Some(box_name) = repo.strip_prefix("localhost/podbox-") {
+                if let Some(box_name) = repo.strip_prefix(podbox::config::IMAGE_REPO_PREFIX) {
                     if let Some(tag) = full_tag.strip_prefix("snapshot-") {
                         let meta_path = podbox::config::config_dir()
                             .join("snapshots")

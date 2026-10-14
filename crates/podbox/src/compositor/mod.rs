@@ -142,7 +142,9 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Instant;
 
-    use super::firewall::{FirewallState, is_blocked_global, rate_allow};
+    use super::firewall::{
+        FirewallState, forbidden_bind, is_blocked_global, rate_allow, track_client_request,
+    };
 
     fn make_global(object_id: u32, name: u32, interface: &str, version: u32) -> Vec<u8> {
         let raw = interface.as_bytes();
@@ -174,76 +176,164 @@ mod tests {
         buf
     }
 
+    /// `wl_display.get_registry(new_id)`, the client message that creates a
+    /// registry the firewall will watch.
+    fn get_registry_msg(new_id: u32) -> Vec<u8> {
+        let mut m = make_message(1, 12, 1);
+        m[8..12].copy_from_slice(&new_id.to_ne_bytes());
+        m
+    }
+
+    /// `wl_registry.bind(name, interface, version, new_id)` from client object `obj`.
+    fn bind_msg(obj: u32, name: u32, iface: &str, new_id: u32) -> Vec<u8> {
+        let mut args = Vec::new();
+        args.extend_from_slice(&name.to_ne_bytes());
+        let raw = iface.as_bytes();
+        args.extend_from_slice(&u32::try_from(raw.len() + 1).unwrap().to_ne_bytes());
+        args.extend_from_slice(raw);
+        args.push(0);
+        while args.len() % 4 != 0 {
+            args.push(0);
+        }
+        args.extend_from_slice(&1u32.to_ne_bytes());
+        args.extend_from_slice(&new_id.to_ne_bytes());
+        let size = u32::try_from(8 + args.len()).unwrap();
+        let mut buf = obj.to_ne_bytes().to_vec();
+        buf.extend_from_slice(&(size << 16).to_ne_bytes());
+        buf.extend_from_slice(&args);
+        buf
+    }
+
+    /// A firewall with `blocked` interfaces and registry object 2, created
+    /// through the real `get_registry` path.
+    fn state_with(blocked: Vec<String>) -> Mutex<FirewallState> {
+        let st = Mutex::new(FirewallState::new(blocked));
+        track_client_request(&st, 1, 1, &get_registry_msg(2));
+        st
+    }
+
     fn blocked_state() -> Mutex<FirewallState> {
-        Mutex::new(FirewallState::new(vec![
+        state_with(vec![
             "zwlr_screencopy_manager_v1".into(),
             "ext_foreign_toplevel_list_v1".into(),
-        ]))
+        ])
     }
 
     fn empty_state() -> Mutex<FirewallState> {
-        Mutex::new(FirewallState::new(vec![]))
+        state_with(vec![])
     }
 
     #[test]
     fn blocks_screencopy_interface() {
         let data = make_global(2, 42, "zwlr_screencopy_manager_v1", 1);
-        assert!(is_blocked_global(&data, 0, &blocked_state()));
+        assert!(is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn blocks_foreign_toplevel() {
         let data = make_global(2, 43, "ext_foreign_toplevel_list_v1", 1);
-        assert!(is_blocked_global(&data, 0, &blocked_state()));
+        assert!(is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn allows_safe_interface() {
         let data = make_global(2, 44, "wl_compositor", 6);
-        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn allows_wl_shm() {
         let data = make_global(2, 1, "wl_shm", 1);
-        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn blocks_nothing_when_empty_blocklist() {
         let data = make_global(2, 42, "zwlr_screencopy_manager_v1", 1);
-        assert!(!is_blocked_global(&data, 0, &empty_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &empty_state()));
     }
 
     #[test]
     fn ignores_non_registry_opcode() {
         let data = make_message(2, 16, 1);
-        assert!(!is_blocked_global(&data, 1, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 1, &blocked_state()));
     }
 
     #[test]
     fn ignores_short_payload() {
         let data = make_message(2, 12, 0);
-        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn ignores_empty_interface_string() {
         let mut data = make_message(2, 16, 0);
         data[12..16].copy_from_slice(&0u32.to_ne_bytes());
-        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn allows_partial_name_prefix_match() {
         let data = make_global(2, 42, "zwlr_screencopy", 1);
-        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &blocked_state()));
     }
 
     #[test]
     fn allows_similar_but_not_blocked() {
         let data = make_global(2, 99, "zwlr_layer_shell_v1", 1);
-        assert!(!is_blocked_global(&data, 0, &blocked_state()));
+        assert!(!is_blocked_global(&data, 2, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn opcode_zero_on_a_non_registry_object_is_not_a_global() {
+        let data = make_global(9, 42, "zwlr_screencopy_manager_v1", 1);
+        assert!(!is_blocked_global(&data, 9, 0, &blocked_state()));
+    }
+
+    #[test]
+    fn bind_to_a_hidden_global_name_is_refused() {
+        let st = blocked_state();
+        let global = make_global(2, 42, "zwlr_screencopy_manager_v1", 1);
+        assert!(is_blocked_global(&global, 2, 0, &st));
+        // The client guesses the name and binds anyway.
+        let bind = bind_msg(2, 42, "zwlr_screencopy_manager_v1", 9);
+        assert!(forbidden_bind(&bind, 2, 0, &st).is_some());
+    }
+
+    #[test]
+    fn allowed_name_with_a_blocked_interface_string_is_refused() {
+        let st = blocked_state();
+        // Name 3 was never hidden, but the interface it carries is blocked.
+        let bind = bind_msg(2, 3, "zwlr_screencopy_manager_v1", 9);
+        assert!(forbidden_bind(&bind, 2, 0, &st).is_some());
+    }
+
+    #[test]
+    fn allowed_bind_is_not_refused() {
+        let st = blocked_state();
+        let bind = bind_msg(2, 1, "wl_shm", 9);
+        assert!(forbidden_bind(&bind, 2, 0, &st).is_none());
+    }
+
+    #[test]
+    fn bind_on_a_non_registry_object_is_not_checked() {
+        let st = blocked_state();
+        let bind = bind_msg(9, 42, "zwlr_screencopy_manager_v1", 10);
+        assert!(forbidden_bind(&bind, 9, 0, &st).is_none());
+    }
+
+    #[test]
+    fn global_remove_for_a_hidden_name_is_hidden_too() {
+        let st = blocked_state();
+        assert!(is_blocked_global(
+            &make_global(2, 42, "zwlr_screencopy_manager_v1", 1),
+            2,
+            0,
+            &st
+        ));
+        let mut remove = make_message(2, 12, 1);
+        remove[8..12].copy_from_slice(&42u32.to_ne_bytes());
+        assert!(is_blocked_global(&remove, 2, 1, &st));
     }
 
     #[test]

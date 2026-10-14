@@ -72,7 +72,13 @@ fn parse_set_value(raw: &str) -> toml_edit::Value {
 /// The edit is verified before it lands: the new text must parse (with
 /// `extends` resolved) and the key must exist in the resulting config, so
 /// typos fail instead of writing dead keys. Nothing is written on failure.
-pub fn run_set(path: &Path, key: &str, raw_value: &str, output: OutputFormat) -> Result<()> {
+pub fn run_set(
+    path: &Path,
+    key: &str,
+    raw_value: &str,
+    dry_run: bool,
+    output: OutputFormat,
+) -> Result<()> {
     let segments = split_key(key)?;
     let original = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read '{}'", path.display()))?;
@@ -117,6 +123,10 @@ pub fn run_set(path: &Path, key: &str, raw_value: &str, output: OutputFormat) ->
         anyhow::bail!("unknown key '{key}'");
     }
 
+    if dry_run {
+        podbox::ui::would(&format!("set {key} = {raw_value} in {}", path.display()));
+        return Ok(());
+    }
     std::fs::write(path, &new_text)?;
     let rebuild_required = segments[0] == "image";
     match output {

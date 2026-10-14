@@ -297,7 +297,7 @@ fn check_version_drift(
             actions: vec![],
             app_name: "podbox".to_string(),
         };
-        let _ = crate::socket::connect_and_send_oneshot(&msg);
+        let _ = crate::socket::connect_and_send_oneshot(&msg, crate::protocol::CAP_NOTIFY);
     } else {
         tracing::warn!(
             "image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`."

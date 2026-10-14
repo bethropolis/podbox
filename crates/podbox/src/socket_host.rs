@@ -1,5 +1,5 @@
 use std::os::fd::FromRawFd;
-use std::os::unix::net::UnixListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -7,10 +7,14 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::config::validation::parse_idle_timeout_secs;
+use crate::protocol::{HostMessage, write_frame};
 
+mod actions;
 mod conn;
 mod handlers;
 mod monitor;
+
+pub use actions::{HostActions, SystemActions};
 
 use conn::handle_connection;
 use monitor::{listen_fd, setup_signal_handler};
@@ -28,6 +32,13 @@ const MAX_SESSIONS: u32 = 64;
 /// How often the host sends a keepalive `Ping` to a connected guest.
 const PING_INTERVAL: Duration = Duration::from_mins(1);
 
+/// A new connection must send `Hello` within this long, or it is closed. A
+/// silent peer then holds a slot for seconds rather than indefinitely.
+pub(crate) const HELLO_DEADLINE: Duration = Duration::from_secs(5);
+
+/// Once a frame has started, the rest of it must arrive within this long.
+pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(10);
+
 /// Shared mutable state between all connections and PID monitor threads.
 pub(crate) struct SharedState {
     /// Number of active terminal sessions tracked via pidfd.
@@ -41,6 +52,24 @@ pub(crate) struct SharedState {
     /// self-terminate on idle timeout — systemd will re-spawn it via
     /// socket activation on the next connection.
     pub(crate) was_socket_activated: bool,
+}
+
+/// Serve one guest connection with the real message loop and the given host
+/// actions. [`run`] uses the same loop with [`SystemActions`]. This entry point
+/// lets the protocol tests drive that loop over a socket pair with a fake.
+pub fn serve_connection(
+    stream: &mut UnixStream,
+    config: &Config,
+    container_name: &str,
+    actions: &dyn HostActions,
+) -> anyhow::Result<()> {
+    let state = Arc::new(SharedState {
+        session_count: AtomicU32::new(0),
+        container_name: container_name.to_string(),
+        idle_timeout_secs: parse_idle_timeout_secs(&config.lifecycle.idle_timeout),
+        was_socket_activated: false,
+    });
+    handle_connection(stream, config, &state, actions)
 }
 
 /// Run the host socket server for a container.
@@ -100,9 +129,17 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 handles.retain_mut(|h| !h.is_finished());
 
                 if handles.len() >= MAX_CONCURRENT {
+                    // Say so, rather than dropping the peer silently. The guest
+                    // retries on its own; a silent drop looks like a dead host.
                     tracing::warn!(
-                        "dropping connection: {} concurrent clients already in flight",
+                        "refusing connection: {} concurrent clients already in flight",
                         handles.len()
+                    );
+                    let _ = write_frame(
+                        &mut stream,
+                        &HostMessage::Error {
+                            reason: "busy: too many concurrent connections".into(),
+                        },
                     );
                     continue;
                 }
@@ -110,7 +147,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 let cfg = config.clone();
                 let state = Arc::clone(&state);
                 let handle = std::thread::spawn(move || {
-                    if let Err(e) = handle_connection(&mut stream, &cfg, &state) {
+                    if let Err(e) = handle_connection(&mut stream, &cfg, &state, &SystemActions) {
                         tracing::error!("error handling connection: {}", e);
                     }
                 });
@@ -133,54 +170,81 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
 #[cfg(test)]
 mod tests {
     use super::conn::{has_cap, note_failure};
-    use super::handlers::{validate_host_exec_args, validate_uri};
+    use super::handlers::{MAX_URI_LEN, UriError, validate_host_exec_args, validate_uri};
     use std::collections::HashSet;
 
     // ── validate_uri tests ──
 
+    fn ok(uri: &str) -> String {
+        validate_uri(uri).unwrap_or_else(|e| panic!("{uri:?} should be accepted: {e}"))
+    }
+
     #[test]
     fn allows_http_https_mailto() {
-        assert_eq!(
-            validate_uri("https://example.com"),
-            Some("https://example.com".to_string())
-        );
-        assert_eq!(
-            validate_uri("http://example.com"),
-            Some("http://example.com".to_string())
-        );
-        assert_eq!(
-            validate_uri("mailto:user@host"),
-            Some("mailto:user@host".to_string())
-        );
+        assert_eq!(ok("https://example.com"), "https://example.com");
+        assert_eq!(ok("http://example.com"), "http://example.com");
+        assert_eq!(ok("mailto:a@b"), "mailto:a@b");
     }
 
     #[test]
-    fn refuses_path_traversal() {
-        assert_eq!(validate_uri("/etc/passwd"), None);
-        assert_eq!(validate_uri("../foo"), None);
-        assert_eq!(validate_uri(""), None);
+    fn refuses_schemes_outside_the_allowlist() {
+        for uri in [
+            "smb://attacker/share",
+            "archive://file%3A%2F%2F%2Fhome%2Fuser",
+            "trash:///",
+            "recent:///",
+            "computer:///",
+            "steam://run/1",
+            "vscode://file/etc/passwd",
+            "sftp://host/",
+            "davs://host/",
+            "file:///etc/passwd",
+            "FILE:///etc/passwd",
+            "javascript:alert(1)",
+            "ms-settings:display",
+        ] {
+            assert!(
+                matches!(validate_uri(uri), Err(UriError::SchemeNotAllowed(_))),
+                "{uri:?} should be refused by scheme"
+            );
+        }
     }
 
     #[test]
-    fn refuses_unknown_alphabetic_schemes() {
-        assert_eq!(validate_uri("javascript:alert(1)"), None);
-        assert_eq!(validate_uri("file:///etc/passwd"), None);
+    fn refuses_paths_and_empty_input() {
+        assert_eq!(validate_uri("/etc/passwd"), Err(UriError::Malformed));
+        assert_eq!(validate_uri("../foo"), Err(UriError::Malformed));
+        assert_eq!(validate_uri(""), Err(UriError::Empty));
+        assert_eq!(validate_uri("   "), Err(UriError::Empty));
+    }
+
+    #[test]
+    fn refuses_control_characters_and_oversized_input() {
+        assert_eq!(
+            validate_uri("https://example.com/\nrm"),
+            Err(UriError::ControlCharacter)
+        );
+        assert_eq!(
+            validate_uri("https://example.com/\0"),
+            Err(UriError::ControlCharacter)
+        );
+        let long = format!("https://example.com/{}", "a".repeat(MAX_URI_LEN));
+        assert_eq!(validate_uri(&long), Err(UriError::TooLong));
+    }
+
+    #[test]
+    fn refuses_web_urls_without_a_host() {
+        assert_eq!(validate_uri("https://"), Err(UriError::Malformed));
     }
 
     #[test]
     fn wraps_bare_domain() {
-        assert_eq!(
-            validate_uri("example.com"),
-            Some("https://example.com".to_string())
-        );
+        assert_eq!(ok("example.com"), "https://example.com");
     }
 
     #[test]
     fn trims_whitespace() {
-        assert_eq!(
-            validate_uri("  https://example.com  "),
-            Some("https://example.com".to_string())
-        );
+        assert_eq!(ok("  https://example.com  "), "https://example.com");
     }
 
     // ── validate_host_exec_args tests ──

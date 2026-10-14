@@ -15,11 +15,11 @@ pub mod validation;
 pub use defaults::EMBEDDED_DEFAULT;
 pub use enums::{CapPreset, GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
 pub use fs::{
-    active_context_path, clear_active_context, config_dir, expand_tilde, find_config_path,
-    find_definition, find_legacy_root_configs, list_configs, profiles_dir, read_active_context,
-    write_active_context,
+    active_context_path, clear_active_context, config_dir, expand_tilde, find_by_runtime_name,
+    find_config_path, find_definition, find_legacy_root_configs, list_configs, profiles_dir,
+    read_active_context, write_active_context,
 };
-pub use schema::{Config, SchemaVersion};
+pub use schema::{Config, IMAGE_REPO_PREFIX, SchemaVersion};
 pub use types::{
     BuiltinCachePath, BuiltinCaches, ContainerConfig, ContainerEnvConfig, CustomCacheConfig,
     DbusConfig, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig, HostCacheConfig,
@@ -29,3 +29,4 @@ pub use types::{
     ServiceDetailConfig, SharedCachesConfig, StorageConfig, SystemdConfig, WaylandConfig,
     XdgDirConfig, all_builtin_cache_paths, builtin_cache_mount_names, builtin_cache_names,
 };
+pub use validation::validate_container_name;

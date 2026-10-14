@@ -196,13 +196,21 @@ Exit codes are part of the contract. **Today**
 
 | Code | Meaning |
 |------|---------|
+| Code | Meaning |
+|------|---------|
 | 0 | Success |
 | 1 | Any other error |
-| 2 | Definition file missing or unreadable |
-| 3 | Container or config not found |
+| 2 | Definition file missing or unreadable, including an explicit `--config` path that does not exist (`config_missing`) |
+| 3 | Container or config not found (`container_missing`) |
 | 4 | Build failure or inspect failure |
 | 5 | podman not installed |
 | 6 | Image pull or tag failure |
+| 64 | Invalid name: a container, profile or snapshot tag that fails the name rule (`invalid_name`). Clap argument-parse errors still exit 2 |
+| child's status | `enter`, `run`, `logs`: the child's own exit status, or 128+n for signal n (`child_exit`) |
+
+`child_exit` has no fixed number: it is whatever the child exited with. These
+commands take no `--output`, so there is no JSON envelope for it. Read the
+exit status.
 
 Data goes to stdout. Diagnostics go to stderr. A client should show stderr to
 the user, and should not parse it.

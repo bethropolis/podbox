@@ -660,7 +660,7 @@ pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()
     crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     prepare_git_bridge(ctx, &env.username, None, &mut exec_args);
     register_session(name, &env.xdg_runtime_dir);
-    podbox::process::spawn_interactive("podman", &exec_args).map(|_| ())
+    podbox::process::spawn_interactive_checked("podman", &exec_args)
 }
 
 fn quadlet_installed(name: &str) -> bool {
@@ -764,7 +764,7 @@ pub fn run_logs(
             return Ok(());
         }
         println!("Showing logs for: {name}.service");
-        podbox::process::spawn_interactive("journalctl", &args).map(|_| ())
+        podbox::process::spawn_interactive_checked("journalctl", &args)
     } else {
         let mut args: Vec<OsString> = vec!["logs".into()];
         if follow {
@@ -781,7 +781,7 @@ pub fn run_logs(
             println!("podman {}", args_to_string(&args));
             return Ok(());
         }
-        podbox::process::spawn_interactive("podman", &args).map(|_| ())
+        podbox::process::spawn_interactive_checked("podman", &args)
     }
 }
 

@@ -4,7 +4,17 @@ use podbox::cli::ExportCommand;
 use podbox::config::Config;
 
 /// Export an app (desktop entry) or binary from the container.
-pub fn run_export(name: &str, config: Option<&Config>, export_cmd: &ExportCommand) -> Result<()> {
+pub fn run_export(
+    name: &str,
+    config: Option<&Config>,
+    export_cmd: &ExportCommand,
+    dry_run: bool,
+) -> Result<()> {
+    // The export helpers write desktop entries and wrappers directly, so
+    // there is no plan to print. Refuse rather than act under --dry-run.
+    if dry_run && !matches!(export_cmd, ExportCommand::List { .. }) {
+        anyhow::bail!("--dry-run is not supported for `podbox export` (only `export list`)");
+    }
     match export_cmd {
         ExportCommand::App {
             name: app_name,

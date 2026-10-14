@@ -177,6 +177,25 @@ pub fn clear_active_context() -> Result<()> {
     Ok(())
 }
 
+/// Config whose `container.name` is `runtime`, the name podman and systemd use.
+///
+/// A config that fails to load still owns its file-stem name, so it is matched
+/// by stem. Otherwise an installed box with a broken config would look stale.
+pub fn find_by_runtime_name(runtime: &str) -> Option<PathBuf> {
+    find_by_runtime_in(&list_configs(), runtime)
+}
+
+/// [`find_by_runtime_name`] over an explicit list of config paths.
+pub(crate) fn find_by_runtime_in(paths: &[PathBuf], runtime: &str) -> Option<PathBuf> {
+    paths
+        .iter()
+        .find(|path| match super::Config::load(path) {
+            Ok(cfg) => cfg.container.name == runtime,
+            Err(_) => path.file_stem().is_some_and(|stem| stem == runtime),
+        })
+        .cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +206,46 @@ mod tests {
         assert_eq!(expand_tilde("~/foo"), home.join("foo"));
         assert_eq!(expand_tilde("~"), home.clone());
         assert_eq!(expand_tilde("/foo/bar"), PathBuf::from("/foo/bar"));
+    }
+
+    /// `work.toml` whose `container.name` is `dev`: the runtime name `dev`
+    /// must resolve to it, and the file name `work` must not.
+    #[test]
+    fn runtime_lookup_uses_container_name_not_file_name() {
+        let dir = std::env::temp_dir().join(format!("podbox-rt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fixture = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/full.toml"),
+        )
+        .unwrap();
+        let work = dir.join("work.toml");
+        std::fs::write(
+            &work,
+            fixture.replace("name  = \"myenv\"", "name  = \"dev\""),
+        )
+        .unwrap();
+        let paths = vec![work.clone()];
+
+        assert_eq!(find_by_runtime_in(&paths, "dev"), Some(work.clone()));
+        assert_eq!(find_by_runtime_in(&paths, "work"), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A config that no longer parses still owns its file-stem name, so an
+    /// installed box with that name is not reported stale.
+    #[test]
+    fn broken_config_still_claims_its_stem() {
+        let dir = std::env::temp_dir().join(format!("podbox-rt-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let broken = dir.join("box.toml");
+        std::fs::write(&broken, "not = [valid").unwrap();
+
+        assert_eq!(
+            find_by_runtime_in(std::slice::from_ref(&broken), "box"),
+            Some(broken)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

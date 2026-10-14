@@ -110,7 +110,11 @@ pub fn run_enable(
 }
 
 /// Remove Quadlet files (disable systemd container lifecycle).
-pub fn run_disable(name: &str) -> Result<()> {
+pub fn run_disable(name: &str, dry_run: bool) -> Result<()> {
+    if dry_run {
+        podbox::ui::would(&format!("remove Quadlet units and files for '{name}'"));
+        return Ok(());
+    }
     podbox::quadlet_install::uninstall(name)?;
     let _ = podbox::history::record(name, "disable", "");
     Ok(())
@@ -130,7 +134,7 @@ pub fn run_start(
         return Ok(());
     }
 
-    let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
+    let local_tag = config.local_image_tag();
     if !podbox::podman::image_exists(&local_tag).unwrap_or(false) {
         println!("Image not found, building first...");
         podbox::build::run(
@@ -198,7 +202,7 @@ pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
         systemd::stop_unit(name)?;
     } else {
         let args = podbox::process::args(&["stop", name]);
-        podbox::process::spawn_interactive("podman", &args)?;
+        podbox::process::spawn_interactive_checked("podman", &args)?;
     }
     let _ = podbox::history::record(name, "stop", "");
     Ok(())
@@ -223,7 +227,7 @@ pub fn run_restart(config: &Config, name: &str, dry_run: bool) -> Result<()> {
         systemd::restart_unit(name)?;
     } else {
         let args = podbox::process::args(&["restart", name]);
-        podbox::process::spawn_interactive("podman", &args)?;
+        podbox::process::spawn_interactive_checked("podman", &args)?;
     }
     let _ = podbox::history::record(name, "restart", "");
     Ok(())
@@ -239,11 +243,18 @@ pub fn run_stop_all(dry_run: bool) -> Result<()> {
     let mut stopped = 0u32;
     let mut failed = 0u32;
     for path in podbox::config::list_configs() {
-        let name = path
+        let stem = path
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
+        // Podman and systemd know the box by `container.name`, which can differ
+        // from the file name. A config that fails to load falls back to the stem.
+        let loaded = podbox::config::Config::load(&path);
+        let name = match &loaded {
+            Ok(cfg) => cfg.runtime_name().to_string(),
+            Err(_) => stem.clone(),
+        };
         if !matches!(
             podbox::podman::query_state(&name),
             Ok(podbox::podman::ContainerState::Running)
@@ -251,17 +262,17 @@ pub fn run_stop_all(dry_run: bool) -> Result<()> {
             continue;
         }
         if dry_run {
-            println!("would stop {name}");
+            podbox::ui::would(&format!("stop {name}"));
             stopped += 1;
             continue;
         }
-        let result = match podbox::config::Config::load(&path) {
+        let result = match loaded {
             Ok(cfg) => run_stop(&cfg, &name, false),
             Err(e) => {
                 eprintln!(
-                    "Warning: config for '{name}' failed to load ({e:#}); stopping directly."
+                    "Warning: config for '{stem}' failed to load ({e:#}); stopping directly."
                 );
-                stop_by_name(&name)
+                stop_by_name(&stem)
             }
         };
         match result {
@@ -278,6 +289,9 @@ pub fn run_stop_all(dry_run: bool) -> Result<()> {
     if stopped == 0 && failed == 0 {
         println!("No running containers.");
     }
+    if failed > 0 {
+        anyhow::bail!("{failed} container(s) failed to stop");
+    }
     Ok(())
 }
 
@@ -288,7 +302,7 @@ fn stop_by_name(name: &str) -> Result<()> {
         podbox::systemd::stop_unit(name)?;
     } else {
         let args = podbox::process::args(&["stop", name]);
-        podbox::process::spawn_interactive("podman", &args)?;
+        podbox::process::spawn_interactive_checked("podman", &args)?;
     }
     let _ = podbox::history::record(name, "stop", "");
     Ok(())
@@ -345,7 +359,7 @@ pub fn run_update(
         systemd::restart_unit(name)?;
     } else {
         let args = podbox::process::args(&["restart", name]);
-        podbox::process::spawn_interactive("podman", &args)?;
+        podbox::process::spawn_interactive_checked("podman", &args)?;
     }
 
     println!("Update complete.");
@@ -354,14 +368,14 @@ pub fn run_update(
 }
 
 fn checkpoint_previous(config: &Config, name: &str, dry_run: bool) -> Result<()> {
-    let local_latest = format!("localhost/podbox-{name}:latest");
+    let local_latest = config.local_image_tag();
     let fallback =
         if config.image.source().is_prebuilt() && config.image.packages.install.is_empty() {
             config.image.image_ref.as_deref().unwrap_or(&local_latest)
         } else {
             &local_latest
         };
-    let previous = format!("localhost/podbox-{name}:checkpoint-prev");
+    let previous = format!("{}:checkpoint-prev", config.image_repo());
     if dry_run {
         println!("podman tag \"$(podman inspect --format '{{{{.Image}}}}' {name})\" {previous}");
         return Ok(());
@@ -405,7 +419,7 @@ pub fn run_rollback(
     if !dry_run && (!podbox::quadlet_install::is_installed(name) || !systemd::is_available()) {
         anyhow::bail!("rollback requires an installed, systemd-managed Quadlet container");
     }
-    let image = format!("localhost/podbox-{name}:checkpoint-prev");
+    let image = format!("{}:checkpoint-prev", config.image_repo());
     if !dry_run && !podbox::podman::image_exists(&image).unwrap_or(false) {
         anyhow::bail!("no previous checkpoint exists for '{name}' ({image})");
     }
@@ -463,12 +477,15 @@ pub fn run_remove(
     }
 
     // 1. Stop and remove the podman container (best-effort)
-    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name])) {
+    if let Err(e) = podbox::process::run_checked("podman", &podbox::process::args(&["stop", name]))
+    {
         eprintln!("Warning: failed to stop container '{name}': {e}");
     }
-    if let Err(e) =
-        podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]))
-    {
+    // `--ignore`: a container that was never created is not an error here.
+    if let Err(e) = podbox::process::run_checked(
+        "podman",
+        &podbox::process::args(&["rm", "-f", "--ignore", name]),
+    ) {
         eprintln!("Warning: failed to remove container '{name}': {e}");
     }
 
@@ -537,7 +554,7 @@ fn find_stale_containers() -> Vec<String> {
     let mut stale = Vec::new();
 
     for name in podbox::quadlet_install::list_installed_names() {
-        if podbox::config::find_config_path(&name).is_none() {
+        if podbox::config::find_by_runtime_name(&name).is_none() {
             stale.push(name);
         }
     }
@@ -582,9 +599,11 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
             eprintln!("Warning: failed to uninstall '{name}': {e}");
         }
 
-        if let Err(e) =
-            podbox::process::run_piped("podman", &podbox::process::args(&["rm", "-f", name]))
-        {
+        // `--ignore`: the stale runtime may have no container left to remove.
+        if let Err(e) = podbox::process::run_checked(
+            "podman",
+            &podbox::process::args(&["rm", "-f", "--ignore", name]),
+        ) {
             eprintln!("Warning: failed to remove container '{name}': {e}");
         }
 

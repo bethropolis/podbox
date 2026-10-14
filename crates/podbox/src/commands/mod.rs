@@ -47,7 +47,7 @@ pub fn ensure_running(name: &str, dry_run: bool, timeout_secs: u64) -> Result<()
                 systemd::start_unit_friendly(name, timeout_secs)
             } else {
                 let args = podbox::process::args(&["start", name]);
-                podbox::process::spawn_interactive("podman", &args)?;
+                podbox::process::spawn_interactive_checked("podman", &args)?;
                 wait_for_running(name, timeout_secs)
             }
         }

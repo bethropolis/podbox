@@ -69,7 +69,18 @@ binaries via `PATH` (`/etc/profile.d/podbox.sh`, `/etc/fish/conf.d/podbox.fish`)
 | `host-exec` | `host_exec` | Runs the command on the host, relays output, exits with its code |
 
 Each opens its own short-lived socket connection, sends one message, waits
-for the reply, exits.
+for the reply, exits. `xdg-open` is the one that waits for the host to close
+the connection: a clean close exits 0, and a refusal exits 1 with the reason.
+
+### xdg-open scheme allowlist
+
+The host opens only `http`, `https` and `mailto` URIs. Anything else is
+refused with an error the guest prints, exit 1. Refused include `file:`,
+`smb:`, `sftp:`, `trash:`, `archive:` and app handlers such as `vscode:` or
+`steam:`. A bare hostname such as `example.com` is opened as `https://`.
+Control characters, URIs over 8 KiB and `http(s)` URLs without a host are
+refused too. The list is fixed in this release; making it configurable is a
+separate change.
 
 ### Host-exec security
 

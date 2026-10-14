@@ -21,7 +21,7 @@ use anyhow::Result;
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 
 use super::firewall::{
-    FirewallState, fd_arity, is_blocked_global, rate_allow, track_client_request,
+    FirewallState, fd_arity, forbidden_bind, is_blocked_global, rate_allow, track_client_request,
     track_server_event,
 };
 
@@ -116,6 +116,7 @@ pub(super) fn bridge_loop(
         // Tuple: (start, end, fds, drop).
         let mut pending: Vec<(usize, usize, Vec<OwnedFd>, bool)> = Vec::new();
         let mut consumed = 0;
+        let mut violation: Option<String> = None;
         while consumed + 8 <= bytes_cache.len() {
             let header = &bytes_cache[consumed..consumed + 8];
             let obj_id = u32::from_ne_bytes(header[0..4].try_into().unwrap());
@@ -135,8 +136,14 @@ pub(super) fn bridge_loop(
             }
 
             let message_bytes = &bytes_cache[consumed..consumed + msg_size];
+            if is_client_to_host
+                && let Some(reason) = forbidden_bind(message_bytes, obj_id, opcode, &state)
+            {
+                violation = Some(reason);
+                break;
+            }
             let should_drop =
-                !is_client_to_host && is_blocked_global(message_bytes, opcode, &state);
+                !is_client_to_host && is_blocked_global(message_bytes, obj_id, opcode, &state);
             let bearer_count = if is_client_to_host {
                 track_client_request(&state, obj_id, opcode, message_bytes);
                 fd_arity(&state, obj_id, opcode, true)
@@ -148,6 +155,16 @@ pub(super) fn bridge_loop(
 
             pending.push((consumed, consumed + msg_size, msg_fds, should_drop));
             consumed += msg_size;
+        }
+
+        // A refused bind ends the connection before anything in this batch is
+        // forwarded, so the client never reaches the global it was refused.
+        if let Some(reason) = violation {
+            done.store(true, Ordering::Relaxed);
+            let _ = in_socket.shutdown(std::net::Shutdown::Both);
+            let _ = out_socket.shutdown(std::net::Shutdown::Both);
+            tracing::warn!("compositor: {reason}; closing connection");
+            return Ok(());
         }
 
         // Phase 2: descriptors from fully processed reads that no bearer

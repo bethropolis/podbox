@@ -1,5 +1,5 @@
-use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
-use crate::socket::{connect_to_host, container_name, handshake, host_socket_path};
+use crate::protocol::{CAP_HOST_EXEC, GuestMessage, HostMessage, read_frame, write_frame};
+use crate::socket::connect_negotiated;
 
 pub fn run(args: &[String]) {
     if args.len() < 2 {
@@ -15,32 +15,12 @@ pub fn run_as_command(cmd: &str, args: &[String]) {
         args: args.to_vec(),
     };
 
-    let path = host_socket_path().unwrap_or_else(|e| {
+    // Negotiation happens before the request is written; a refused capability
+    // is reported here rather than by the host dropping the connection.
+    let mut stream = connect_negotiated(&[CAP_HOST_EXEC]).unwrap_or_else(|e| {
         eprintln!("host-exec: {e}");
         std::process::exit(1);
     });
-    let mut stream = connect_to_host(&path).unwrap_or_else(|e| {
-        eprintln!("host-exec: connect failed: {e}");
-        std::process::exit(1);
-    });
-
-    // The host gates each connection on a `Hello` negotiation before any
-    // privileged message is honored. Advertise host-exec (matching what the
-    // guest daemon itself requests) so the host grants the capability here.
-    let container = container_name().unwrap_or_default();
-    let caps: Vec<String> = crate::protocol::ALL_CAPABILITIES
-        .iter()
-        .map(|&s| s.to_string())
-        .collect();
-    let (accepted, _idle_timeout, _) =
-        handshake(&mut stream, &container, &caps).unwrap_or_else(|e| {
-            eprintln!("host-exec: negotiation failed: {e}");
-            std::process::exit(1);
-        });
-    if !accepted.iter().any(|c| c == crate::protocol::CAP_HOST_EXEC) {
-        eprintln!("host-exec: capability 'host_exec' not accepted by host");
-        std::process::exit(1);
-    }
     if write_frame(&mut stream, &msg).is_err() {
         std::process::exit(1);
     }

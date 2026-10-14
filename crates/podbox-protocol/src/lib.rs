@@ -146,6 +146,91 @@ pub fn read_frame<R: Read>(r: &mut R) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(buf))
 }
 
+/// Incremental frame reader that survives read timeouts.
+///
+/// [`read_frame`] uses `read_exact`, which discards bytes it already read when
+/// a timeout fires mid-frame. The stream is then misaligned: the next read
+/// parses payload bytes as a length prefix. `FrameReader` keeps the partial
+/// frame, so a timeout returns `WouldBlock`/`TimedOut` with nothing lost and
+/// the caller can retry, or give up once [`FrameReader::stalled_for`] is long.
+#[derive(Debug, Default)]
+pub struct FrameReader {
+    prefix: [u8; 4],
+    prefix_filled: usize,
+    body: Vec<u8>,
+    body_filled: usize,
+    body_len: Option<usize>,
+    /// When the first byte of the frame in progress arrived.
+    started: Option<std::time::Instant>,
+}
+
+/// What a [`FrameReader::read`] call produced.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FrameRead {
+    /// A complete frame payload.
+    Frame(Vec<u8>),
+    /// The peer closed the stream at a frame boundary.
+    Eof,
+}
+
+impl FrameReader {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// True when part of a frame has been read and the rest is still due.
+    pub fn in_progress(&self) -> bool {
+        self.started.is_some()
+    }
+
+    /// Time since the first byte of the frame in progress, if one is in progress.
+    pub fn stalled_for(&self) -> Option<std::time::Duration> {
+        self.started.map(|t| t.elapsed())
+    }
+
+    /// Read until one frame is complete. A timeout returns `Err` and keeps the
+    /// partial frame, so a later call resumes exactly where this one stopped.
+    pub fn read<R: Read>(&mut self, r: &mut R) -> io::Result<FrameRead> {
+        while self.prefix_filled < 4 {
+            let n = r.read(&mut self.prefix[self.prefix_filled..])?;
+            if n == 0 {
+                return if self.prefix_filled == 0 {
+                    Ok(FrameRead::Eof)
+                } else {
+                    Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                };
+            }
+            self.started.get_or_insert_with(std::time::Instant::now);
+            self.prefix_filled += n;
+        }
+        let len = match self.body_len {
+            Some(len) => len,
+            None => {
+                let len = u32::from_be_bytes(self.prefix) as usize;
+                if len > MAX_FRAME_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("frame too large: {len} bytes (max {MAX_FRAME_SIZE})"),
+                    ));
+                }
+                self.body = vec![0u8; len];
+                self.body_len = Some(len);
+                len
+            }
+        };
+        while self.body_filled < len {
+            let n = r.read(&mut self.body[self.body_filled..])?;
+            if n == 0 {
+                return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+            }
+            self.body_filled += n;
+        }
+        let frame = std::mem::take(&mut self.body);
+        *self = Self::default();
+        Ok(FrameRead::Frame(frame))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +340,95 @@ mod tests {
             } => assert!(host_exec_shims.is_empty()),
             _ => panic!("wrong message type"),
         }
+    }
+
+    /// One scripted step of a fake socket: bytes, or a read timeout.
+    enum Step {
+        Bytes(Vec<u8>),
+        Timeout,
+    }
+
+    struct Scripted(std::collections::VecDeque<Step>);
+
+    impl Read for Scripted {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            match self.0.pop_front() {
+                None => Ok(0),
+                Some(Step::Timeout) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
+                Some(Step::Bytes(mut b)) => {
+                    let n = b.len().min(buf.len());
+                    buf[..n].copy_from_slice(&b[..n]);
+                    if n < b.len() {
+                        b.drain(..n);
+                        self.0.push_front(Step::Bytes(b));
+                    }
+                    Ok(n)
+                }
+            }
+        }
+    }
+
+    fn encoded(msg: &str) -> Vec<u8> {
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &msg).unwrap();
+        buf
+    }
+
+    /// A timeout after the first two length bytes must not lose them: the
+    /// frame still comes out whole, with no misparse of the payload.
+    #[test]
+    fn frame_survives_a_timeout_in_the_length_prefix() {
+        let bytes = encoded("hello there");
+        let mut r = Scripted(
+            [
+                Step::Bytes(bytes[..2].to_vec()),
+                Step::Timeout,
+                Step::Bytes(bytes[2..].to_vec()),
+            ]
+            .into(),
+        );
+        let mut fr = FrameReader::new();
+        assert!(fr.read(&mut r).is_err());
+        assert!(fr.in_progress());
+        let got = fr.read(&mut r).unwrap();
+        assert_eq!(
+            got,
+            FrameRead::Frame(serde_json::to_vec("hello there").unwrap())
+        );
+        assert!(!fr.in_progress());
+    }
+
+    #[test]
+    fn frame_survives_a_timeout_in_the_payload() {
+        let bytes = encoded("a longer payload to split");
+        let cut = 4 + 7;
+        let mut r = Scripted(
+            [
+                Step::Bytes(bytes[..cut].to_vec()),
+                Step::Timeout,
+                Step::Bytes(bytes[cut..].to_vec()),
+            ]
+            .into(),
+        );
+        let mut fr = FrameReader::new();
+        assert!(fr.read(&mut r).is_err());
+        assert_eq!(
+            fr.read(&mut r).unwrap(),
+            FrameRead::Frame(serde_json::to_vec("a longer payload to split").unwrap())
+        );
+    }
+
+    #[test]
+    fn clean_eof_between_frames_is_eof_not_an_error() {
+        let mut r = Scripted(std::collections::VecDeque::new());
+        assert_eq!(FrameReader::new().read(&mut r).unwrap(), FrameRead::Eof);
+    }
+
+    #[test]
+    fn eof_inside_a_frame_is_an_error() {
+        let bytes = encoded("cut short");
+        let mut r = Scripted([Step::Bytes(bytes[..6].to_vec())].into());
+        let err = FrameReader::new().read(&mut r).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
 }

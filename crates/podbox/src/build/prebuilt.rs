@@ -29,7 +29,7 @@ pub(crate) fn run_prebuilt(
         crate::config::ImageSource::Prebuilt { ref_str } => ref_str,
         _ => config.image.base.clone(),
     };
-    let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
+    let local_tag = config.local_image_tag();
     let context_dir = build_context_dir(&config.container.name);
     let lock_path = context_dir.join(".podbox.lock");
     let has_packages = !config.image.packages.install.is_empty();

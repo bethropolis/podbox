@@ -290,7 +290,7 @@ Controls which host resources are shared with the container.
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
 | `dbus` | bool | `false` | Enable D-Bus session bus access. Talk/own/preset rules without it are rejected |
 | `notify` | bool | `false` | Desktop notification forwarding |
-| `xdg_open` | bool | `false` | URI opening via host (`xdg-open`) |
+| `xdg_open` | bool | `false` | URI opening via host (`xdg-open`). Only `http`, `https` and `mailto` are opened; see [guest.md](guest.md#xdg-open-scheme-allowlist) |
 | `clipboard` | bool | `false` | Clipboard sharing |
 | `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
 | `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |

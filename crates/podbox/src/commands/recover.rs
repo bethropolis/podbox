@@ -70,7 +70,7 @@ pub fn run_recover(
     }
 
     // 3 — rebuild only when the image is actually absent.
-    let tag = format!("localhost/podbox-{}:latest", config.image.name);
+    let tag = config.local_image_tag();
     let image_ok = podbox::podman::image_exists(&tag).unwrap_or(false);
     if !image_ok && confirmed(&opts, "Image is missing - build it now?") {
         podbox::build::run(

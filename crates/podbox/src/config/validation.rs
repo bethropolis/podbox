@@ -29,9 +29,11 @@ impl Config {
         }
         if self.image.name.trim().is_empty() {
             errors.push("image.name: must not be empty".into());
-        } else if !is_valid_name(&self.image.name) {
+        } else if let Err(e) = validate_container_name("image", &self.image.name) {
+            errors.push(format!("image.name: {e}"));
+        } else if !is_lowercase_image_name(&self.image.name) {
             errors.push(format!(
-                "image.name: '{}' contains invalid characters (use letters, digits, hyphens, underscores, dots)",
+                "image.name: '{}' must be lowercase (podman rejects uppercase image repository names)",
                 self.image.name
             ));
         }
@@ -47,11 +49,8 @@ impl Config {
 
         if self.container.name.trim().is_empty() {
             errors.push("container.name: must not be empty".into());
-        } else if !is_valid_name(&self.container.name) {
-            errors.push(format!(
-                "container.name: '{}' contains invalid characters (use letters, digits, hyphens, underscores, dots)",
-                self.container.name
-            ));
+        } else if let Err(e) = validate_container_name("container", &self.container.name) {
+            errors.push(format!("container.name: {e}"));
         }
         if self.container.home.as_os_str().is_empty() {
             errors.push("container.home: must not be empty".into());
@@ -321,10 +320,34 @@ impl Config {
     }
 }
 
-fn is_valid_name(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+/// Longest accepted container, image, profile, or tag name.
+const MAX_NAME_LEN: usize = 63;
+
+/// Validate a name that becomes a file name, a systemd unit name, or a podman
+/// argument. `kind` labels the error (`"container"`, `"profile"`, ...).
+///
+/// Accepts `[A-Za-z0-9][A-Za-z0-9_.-]{0,62}`. Requiring an alphanumeric first
+/// character rules out `.` and `..` (path traversal when the name is joined
+/// onto a directory), hidden names, and a leading `-` (which podman would read
+/// as a flag). Path separators, NUL and whitespace are rejected everywhere.
+pub fn validate_container_name(kind: &'static str, name: &str) -> Result<(), PodboxError> {
+    let mut chars = name.chars();
+    let first_ok = chars.next().is_some_and(|c| c.is_ascii_alphanumeric());
+    let rest_ok = chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+    if first_ok && rest_ok && name.len() <= MAX_NAME_LEN {
+        Ok(())
+    } else {
+        Err(PodboxError::InvalidName {
+            kind,
+            name: name.to_string(),
+        })
+    }
+}
+
+/// Podman rejects uppercase image repository names, so `image.name` must be
+/// lowercase. Container names keep their case; only the image repo is checked.
+pub fn is_lowercase_image_name(name: &str) -> bool {
+    !name.chars().any(|c| c.is_ascii_uppercase())
 }
 
 fn is_absolute_path(s: &str) -> bool {
@@ -486,4 +509,53 @@ fn validate_provision(steps: &[crate::config::types::ProvisionStep]) -> Vec<Stri
         }
     }
     errors
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::{is_lowercase_image_name, validate_container_name};
+
+    #[test]
+    fn image_names_must_be_lowercase() {
+        assert!(is_lowercase_image_name("dev-box_2"));
+        assert!(!is_lowercase_image_name("Dev"));
+        // Container names may keep their case.
+        assert!(validate_container_name("container", "Dev").is_ok());
+    }
+
+    #[test]
+    fn rejects_names_unsafe_as_paths_or_flags() {
+        for bad in [
+            ".",
+            "..",
+            "-x",
+            "a/b",
+            "",
+            "a b",
+            ".hidden",
+            "a\0b",
+            "tab\tname",
+        ] {
+            assert!(
+                validate_container_name("container", bad).is_err(),
+                "should reject {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_ordinary_names() {
+        for good in ["dev", "my-box_2", "a.b", "a..b", "Work", "9lives"] {
+            assert!(
+                validate_container_name("container", good).is_ok(),
+                "should accept {good:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn enforces_length_limit() {
+        assert!(validate_container_name("container", &"a".repeat(63)).is_ok());
+        assert!(validate_container_name("container", &"a".repeat(64)).is_err());
+    }
 }

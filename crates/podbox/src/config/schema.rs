@@ -224,3 +224,28 @@ fn migrate_v1_to_v2(_config: &mut Config) {}
 
 #[cfg(test)]
 mod tests;
+
+/// Prefix of every image this crate builds: `localhost/podbox-<image.name>`.
+/// The only place the literal lives, so tags can't drift apart.
+pub const IMAGE_REPO_PREFIX: &str = "localhost/podbox-";
+
+impl Config {
+    /// Name used for podman containers and systemd units (`container.name`).
+    ///
+    /// Not the config's file name: `work.toml` may set `name = "dev"`, and the
+    /// runtime name is the one that must be used everywhere after load.
+    pub fn runtime_name(&self) -> &str {
+        &self.container.name
+    }
+
+    /// Local image repository, `localhost/podbox-<image.name>`. Keyed on
+    /// `image.name`, not `container.name`, because builds tag with it.
+    pub fn image_repo(&self) -> String {
+        format!("{IMAGE_REPO_PREFIX}{}", self.image.name)
+    }
+
+    /// `image_repo():latest`: the tag every build writes and Quadlet runs.
+    pub fn local_image_tag(&self) -> String {
+        format!("{}:latest", self.image_repo())
+    }
+}

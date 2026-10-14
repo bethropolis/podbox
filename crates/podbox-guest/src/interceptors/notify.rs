@@ -1,5 +1,5 @@
 use crate::interceptors::{send_to_host, send_to_host_and_read_response};
-use crate::protocol::{GuestMessage, HostMessage, NotifyAction};
+use crate::protocol::{CAP_NOTIFY, GuestMessage, HostMessage, NotifyAction};
 
 pub fn run(args: &[String]) {
     let (summary, body, urgency, actions) = parse_args(args);
@@ -15,7 +15,7 @@ pub fn run(args: &[String]) {
     };
 
     if has_actions {
-        match send_to_host_and_read_response(&msg) {
+        match send_to_host_and_read_response(CAP_NOTIFY, &msg) {
             Ok(HostMessage::NotifyActionResult { action_key, .. }) => {
                 if !action_key.is_empty() {
                     println!("{action_key}");
@@ -24,10 +24,12 @@ pub fn run(args: &[String]) {
             Ok(_) => {}
             Err(e) => {
                 eprintln!("notify-send interceptor: failed: {e}");
+                std::process::exit(1);
             }
         }
-    } else if let Err(e) = send_to_host(&msg) {
+    } else if let Err(e) = send_to_host(CAP_NOTIFY, &msg) {
         eprintln!("notify-send interceptor: failed to send: {e}");
+        std::process::exit(1);
     }
 }
 

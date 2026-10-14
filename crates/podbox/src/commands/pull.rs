@@ -14,13 +14,10 @@ pub fn run_pull(config: &Config, image: &Option<String>, dry_run: bool) -> Resul
     };
     if dry_run {
         println!("podman pull {image_ref}");
-        println!(
-            "podman tag {} localhost/podbox-{}:latest",
-            image_ref, config.image.name
-        );
+        println!("podman tag {} {}", image_ref, config.local_image_tag());
         return Ok(());
     }
-    let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
+    let local_tag = config.local_image_tag();
     println!("Pulling {image_ref}...");
     let status = std::process::Command::new("podman")
         .args(["pull", &image_ref])

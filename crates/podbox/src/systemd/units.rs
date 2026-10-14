@@ -163,31 +163,35 @@ pub(crate) fn heal_missing_guest_socket(name: &str) -> Result<bool> {
     Ok(true)
 }
 
-/// Start a service unit via `systemctl --user start`.
-pub fn start_unit(name: &str) -> Result<()> {
-    let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "start", &format!("{name}.service")]);
-    let status = cmd.status().context("failed to spawn systemctl start")?;
+/// Run `systemctl --user <verb> <name>.service` and fail on a non-zero exit.
+///
+/// Used by the lifecycle helpers below, so callers see a failed stop or restart
+/// as an error instead of a silent success.
+fn unit_action(verb: &str, name: &str) -> Result<()> {
+    let unit = format!("{name}.service");
+    let status = Command::new("systemctl")
+        .args(["--user", verb, &unit])
+        .status()
+        .with_context(|| format!("failed to spawn systemctl {verb}"))?;
     if !status.success() {
-        anyhow::bail!("systemctl start failed for '{name}.service'");
+        anyhow::bail!("systemctl --user {verb} {unit} failed ({status})");
     }
     Ok(())
 }
 
+/// Start a service unit via `systemctl --user start`.
+pub fn start_unit(name: &str) -> Result<()> {
+    unit_action("start", name)
+}
+
 /// Stop a service unit via `systemctl --user stop`.
 pub fn stop_unit(name: &str) -> Result<()> {
-    let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "stop", &format!("{name}.service")]);
-    cmd.status()?;
-    Ok(())
+    unit_action("stop", name)
 }
 
 /// Restart a service unit via `systemctl --user restart`.
 pub fn restart_unit(name: &str) -> Result<()> {
-    let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "restart", &format!("{name}.service")]);
-    cmd.status()?;
-    Ok(())
+    unit_action("restart", name)
 }
 
 /// Check whether a unit is enabled in systemd.

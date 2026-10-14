@@ -1,6 +1,6 @@
 import React from 'react';
 import { Copy, FileText } from 'lucide-react';
-import { highlightDocument, langFromFence } from '../highlight';
+import { highlightDocument, langFromFence } from '../../design/highlight';
 
 interface TerminalCodeBlockProps {
   code: string;

@@ -197,10 +197,22 @@ pub(crate) fn remove_flat_units(name: &str) {
     }
 }
 
+/// True when `path` resolves inside `base`, following symlinks.
+///
+/// Checked before any recursive delete: a symlink or a crafted name must not
+/// widen the removal outside the directory it is meant to clear.
+pub(crate) fn is_within(path: &std::path::Path, base: &std::path::Path) -> bool {
+    match (path.canonicalize(), base.canonicalize()) {
+        (Ok(p), Ok(b)) => p.starts_with(b),
+        _ => false,
+    }
+}
+
 /// Best-effort removal of leftover application-scoped install dirs.
 pub(crate) fn remove_application_dir(name: &str) {
-    let app_dir = quadlet_dir().join(name);
-    if app_dir.is_dir() {
+    let base = quadlet_dir();
+    let app_dir = base.join(name);
+    if app_dir.is_dir() && is_within(&app_dir, &base) {
         let _ = std::fs::remove_dir_all(&app_dir);
     }
 }
@@ -208,6 +220,21 @@ pub(crate) fn remove_application_dir(name: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_within_refuses_symlink_escape() {
+        let root = std::env::temp_dir().join(format!("podbox-within-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let base = root.join("base");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, base.join("link")).unwrap();
+
+        assert!(!is_within(&base.join("link"), &base));
+        assert!(is_within(&base, &base));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// `podbox disable` used to build names like `<name>.host.service` while
     /// the installer wrote `<name>-host.service`, so every disable orphaned the

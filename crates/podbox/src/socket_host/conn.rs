@@ -13,19 +13,26 @@ use nix::sys::socket::{getsockopt, sockopt};
 
 use crate::config::Config;
 use crate::process;
-use crate::protocol::{GuestMessage, HostMessage, read_frame, write_frame};
-use crate::systemd;
+use crate::protocol::{FrameRead, FrameReader, GuestMessage, HostMessage, write_frame};
 
+use super::actions::HostActions;
 use super::handlers;
 use super::monitor::monitor_pidfd;
-use super::{MAX_NEGOTIATION_FAILURES, MAX_SESSIONS, PING_INTERVAL, SharedState};
+use super::{
+    FRAME_DEADLINE, HELLO_DEADLINE, MAX_NEGOTIATION_FAILURES, MAX_SESSIONS, PING_INTERVAL,
+    SharedState,
+};
 
 pub(crate) fn handle_connection(
     stream: &mut UnixStream,
     config: &Config,
     state: &Arc<SharedState>,
+    actions: &dyn HostActions,
 ) -> anyhow::Result<()> {
-    stream.set_read_timeout(Some(PING_INTERVAL))?;
+    // Until `Hello`, a short read timeout enforces the handshake deadline.
+    // Afterwards the connection pings at the normal interval.
+    let connected = std::time::Instant::now();
+    stream.set_read_timeout(Some(HELLO_DEADLINE))?;
     let mut last_ping = std::time::Instant::now();
     // Capabilities accepted for this connection during `Hello`. Privileged
     // messages are rejected until this is populated, and each is further
@@ -35,14 +42,37 @@ pub(crate) fn handle_connection(
     // once this reaches `MAX_NEGOTIATION_FAILURES`.
     let mut failures: u32 = 0;
 
+    // Keeps a partly received frame across read timeouts. Dropping those bytes
+    // (as `read_frame` would) misaligns the stream for every later frame.
+    let mut reader = FrameReader::new();
+
     loop {
-        let msg_bytes = match read_frame(stream) {
-            Ok(Some(b)) => b,
-            Ok(None) => return Ok(()),
+        let msg_bytes = match reader.read(stream) {
+            Ok(FrameRead::Frame(b)) => b,
+            Ok(FrameRead::Eof) => return Ok(()),
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
             {
+                // Mid-frame: the rest is due. Wait for it, but not forever.
+                if let Some(stalled) = reader.stalled_for() {
+                    if stalled >= FRAME_DEADLINE {
+                        tracing::warn!("closing connection: frame stalled for {stalled:?}");
+                        return Ok(());
+                    }
+                    continue;
+                }
+                // Between frames: the idle ping and the Hello deadline apply.
+                if negotiated.is_none() && connected.elapsed() >= HELLO_DEADLINE {
+                    tracing::warn!("closing connection: no Hello within {HELLO_DEADLINE:?}");
+                    let _ = write_frame(
+                        stream,
+                        &HostMessage::Error {
+                            reason: "hello deadline exceeded".into(),
+                        },
+                    );
+                    return Ok(());
+                }
                 if last_ping.elapsed() >= PING_INTERVAL {
                     if write_frame(stream, &HostMessage::Ping).is_err() {
                         return Ok(());
@@ -91,6 +121,7 @@ pub(crate) fn handle_connection(
                     continue;
                 };
                 negotiated = Some(accepted.into_iter().collect());
+                stream.set_read_timeout(Some(PING_INTERVAL))?;
 
                 // Idle shutdown is driven entirely by the guest's own idle
                 // timer (which respects idle_timeout). The host must NOT
@@ -154,7 +185,7 @@ pub(crate) fn handle_connection(
                 if state.idle_timeout_secs > 0 {
                     let name = &state.container_name;
                     tracing::info!("container '{}' idle — stopping", name);
-                    let _ = systemd::stop_unit(name);
+                    let _ = actions.stop_unit(name);
                     // If socket-activated, self-terminate so the host
                     // service doesn't sit resident forever.  systemd
                     // re-spawns it via socket activation on the next
@@ -169,7 +200,7 @@ pub(crate) fn handle_connection(
                 summary,
                 body,
                 urgency: _,
-                actions,
+                actions: choices,
                 app_name: _,
             } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_NOTIFY) {
@@ -178,7 +209,8 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
-                handlers::handle_notify(stream, summary, body, actions)?
+                failures = 0;
+                handlers::handle_notify(stream, actions, summary, body, choices)?
             }
             GuestMessage::XdgOpen { uri } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN) {
@@ -187,7 +219,9 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
-                handlers::handle_xdg_open(uri)?
+                handlers::handle_xdg_open(stream, actions, uri)?;
+                // One request per connection: closing lets the guest's xdg-open exit.
+                return Ok(());
             }
             GuestMessage::ClipboardSet { text } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
@@ -196,7 +230,8 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
-                handlers::handle_clipboard_set(text)?
+                failures = 0;
+                handlers::handle_clipboard_set(actions, text)?
             }
             GuestMessage::ClipboardGet => {
                 if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
@@ -205,7 +240,8 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
-                handlers::handle_clipboard_get(stream)?
+                failures = 0;
+                handlers::handle_clipboard_get(stream, actions)?
             }
             GuestMessage::HostExec { cmd, args } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC) {
@@ -214,6 +250,7 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
+                failures = 0;
                 handlers::handle_host_exec(stream, &config.integration, cmd, args)?
             }
             GuestMessage::Info {

@@ -57,7 +57,11 @@ pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
         | Command::FindDefinition { name }
         | Command::Recover { name, .. }
         | Command::Edit { name, .. }
-        | Command::Doctor { name, .. } => name.clone(),
+        | Command::Doctor { name, .. }
+        | Command::Stats { name, .. } => name.clone(),
+        // Always named; dispatched before generic resolution (see `run`), but
+        // listed here so `validate_cli_names` checks the name too.
+        Command::Serve { name } | Command::Compositor { name } => Some(name.clone()),
         Command::Dotfiles { dotfiles_cmd } => match dotfiles_cmd {
             podbox::cli::DotfilesCommand::Sync { name }
             | podbox::cli::DotfilesCommand::Status { name } => name.clone(),
@@ -104,20 +108,12 @@ pub(crate) fn promote_leading_container_name(
 
 pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, String)> {
     let mut config = if let Some(ref path) = cli.config {
-        match Config::load(path) {
-            Ok(cfg) => cfg,
-            Err(e)
-                if e.downcast_ref::<PodboxError>()
-                    .is_some_and(|pe| matches!(pe, PodboxError::DefinitionNotFound { .. })) =>
-            {
-                ui::warn(&format!(
-                    "config file not found at '{}', using embedded default.",
-                    path.display()
-                ));
-                Config::embedded()
-            }
-            Err(e) => return Err(e),
+        // A missing explicit path is an error, never the embedded default:
+        // `--config typo.toml rm --force` must not act on some other box.
+        if !path.is_file() {
+            return Err(PodboxError::ConfigFileMissing { path: path.clone() }.into());
         }
+        Config::load(path)?
     } else if let Some(ref container_name) = target_name {
         let config_path = config::find_config_path(container_name).ok_or_else(|| {
             // Human detail stays on stderr; the typed error carries exit 3
@@ -159,7 +155,14 @@ pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(
                     .unwrap_or(false);
             if launch {
                 commands::create::run_init(cli.dry_run, None, None, true, None)?;
-                return Ok((Config::embedded(), String::new()));
+                // Continue with the config the wizard wrote, not the embedded
+                // default. The retry sees a non-empty list, so it cannot loop.
+                if config::list_configs().is_empty() {
+                    anyhow::bail!(
+                        "Setup finished without creating a config. Run `podbox init` to create one."
+                    );
+                }
+                return resolve_config(cli, target_name);
             }
         }
 
@@ -209,7 +212,7 @@ pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(
     let name = config.container.name.clone();
 
     if needs_image_labels(&cli.command) {
-        let local_tag = format!("localhost/podbox-{}:latest", config.image.name);
+        let local_tag = config.local_image_tag();
         if let Ok(true) = podbox::podman::image_exists(&local_tag)
             && let Ok(labels) = podbox::labels::fetch(&local_tag)
         {
@@ -282,16 +285,13 @@ pub(crate) fn run_snapshot_command(
     resolved_name: &str,
     dry_run: bool,
 ) -> Result<()> {
-    let name = match cmd {
-        podbox::cli::SnapshotCommand::Create { name: n, .. }
-        | podbox::cli::SnapshotCommand::List { name: n, .. }
-        | podbox::cli::SnapshotCommand::Prune { name: n, .. } => {
-            n.as_deref().unwrap_or(resolved_name)
-        }
-    };
+    // The config was already resolved from any positional name, so the
+    // runtime name it carries is authoritative. The raw argument may be a
+    // file name that differs from `container.name`.
+    let name = resolved_name;
     match cmd {
         podbox::cli::SnapshotCommand::Create { tag, .. } => {
-            commands::lifecycle::run_snapshot(config, name, tag.as_deref())?;
+            commands::lifecycle::run_snapshot(config, name, tag.as_deref(), dry_run)?;
         }
         podbox::cli::SnapshotCommand::List { output, .. } => {
             commands::lifecycle::run_snapshot_list(name, *output)?;
@@ -303,7 +303,7 @@ pub(crate) fn run_snapshot_command(
     Ok(())
 }
 
-pub(crate) fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<()> {
+pub(crate) fn run_profile_command(cmd: &podbox::cli::ProfileCommand, dry_run: bool) -> Result<()> {
     match cmd {
         podbox::cli::ProfileCommand::List => {
             let list = podbox::profiles::all();
@@ -330,6 +330,14 @@ pub(crate) fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<(
             }
         }
         podbox::cli::ProfileCommand::Import { path, name, force } => {
+            // Import stages and, with `--force`, deletes the target first. Both
+            // are real writes; `stage_import` honors dry_run, but the delete
+            // below does not, so `--force` under dry-run would lose the profile.
+            if dry_run && *force {
+                anyhow::bail!(
+                    "--dry-run is not supported for `podbox profile import --force` (it deletes the existing profile first)"
+                );
+            }
             if *force {
                 // `--force` stages over an existing file: remove first so the
                 // shared staging helper's clobber guard stays unconditional.
@@ -343,7 +351,7 @@ pub(crate) fn run_profile_command(cmd: &podbox::cli::ProfileCommand) -> Result<(
                     std::fs::remove_file(&target)?;
                 }
             }
-            commands::create::stage_import(path, name.as_deref(), None, false)?;
+            commands::create::stage_import(path, name.as_deref(), None, dry_run)?;
         }
     }
     Ok(())

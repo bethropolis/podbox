@@ -255,6 +255,12 @@ pub fn uninstall(name: &str) -> Result<()> {
     // Remove the clean-stop drop-in directory for the generated container unit.
     let dropin_dir = sdir.join(format!("{name}.service.d"));
     if dropin_dir.is_dir() {
+        anyhow::ensure!(
+            units::is_within(&dropin_dir, &sdir),
+            "refusing to remove '{}': it resolves outside {}",
+            dropin_dir.display(),
+            sdir.display()
+        );
         std::fs::remove_dir_all(&dropin_dir)?;
     }
 

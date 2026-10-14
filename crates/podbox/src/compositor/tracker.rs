@@ -184,6 +184,11 @@ fn read_new_id_tail(msg: &[u8]) -> Option<u32> {
 }
 
 impl Tracker {
+    /// True when `obj` is a `wl_registry` this connection created.
+    pub(crate) fn is_registry(&self, obj: u32) -> bool {
+        self.registries.contains(&obj)
+    }
+
     /// Learn ids minted by client→host requests: registries, binds, and the
     /// `get_*`/`create_*` factories whose children are tracked. Factories
     /// take the new id as the first arg.

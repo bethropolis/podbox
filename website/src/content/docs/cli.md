@@ -51,13 +51,23 @@ Two settings have no per-command override:
 
 | Code | Meaning |
 |------|---------|
+| Code | Meaning |
+|------|---------|
 | 0 | success |
-| 2 | definition file missing / unreadable (includes `find-definition NAME` miss) |
-| 3 | container/config not found for the requested operation |
+| 1 | anything else |
+| 2 | definition file missing / unreadable: includes `find-definition NAME` miss, and an explicit `--config PATH` that does not exist (`config_missing`) |
+| 3 | container/config not found for the requested operation (`container_missing`) |
 | 4 | build failure or podman inspect failure |
 | 5 | podman not installed |
 | 6 | image pull/tag failure |
-| 1 | anything else |
+| 64 | invalid name: a container, profile or snapshot tag that fails the name rule (`invalid_name`). Clap argument-parse errors still exit 2 |
+| child's status | `enter`, `run` and `logs` exit with the child process's own status; 128+n when it was killed by signal n. No JSON envelope (these take no `--output`) |
+
+A missing `--config` never falls back to a default box. Destructive commands
+stop before touching anything.
+
+Under `--dry-run`, planned actions print as `would: …` lines on **stderr**, so
+`--output json` keeps stdout a single JSON document.
 
 ## JSON output
 

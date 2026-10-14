@@ -92,3 +92,11 @@ pub fn error(msg: &str) {
     let head = "Error:".if_supports_color(Stream::Stderr, |t| t.red().bold().to_string());
     write_stderr(&format!("\n{head} {msg}"));
 }
+
+/// Print a dry-run plan line (`would: …`) to stderr, never suppressed.
+///
+/// Plans are diagnostics, not data: under `--output json` stdout must stay a
+/// single JSON document, so they never go to stdout.
+pub fn would(msg: &str) {
+    write_stderr(&format!("would: {msg}"));
+}

@@ -10,11 +10,14 @@ use podbox::error::PodboxError;
 use podbox::systemd;
 
 /// Build image, install Quadlet, and start the container.
-fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bool) -> Result<()> {
+fn finish_create(cfg: &Config, _caller_name: &str, dry_run: bool, no_start: bool) -> Result<()> {
+    // The caller's name can be a file name or `--name`; the box itself is
+    // installed under `container.name`, so that is what starts and exports.
+    let container_name = cfg.runtime_name();
     if dry_run {
         println!("podbox build");
     } else {
-        let local_tag = format!("localhost/podbox-{}:latest", cfg.image.name);
+        let local_tag = cfg.local_image_tag();
         if podbox::podman::image_exists(&local_tag).unwrap_or(false) {
             println!("Image already exists, skipping build.");
         } else {
@@ -74,7 +77,7 @@ fn finish_create(cfg: &Config, container_name: &str, dry_run: bool, no_start: bo
             systemd::start_unit(container_name)?;
         } else {
             let args = podbox::process::args(&["start", container_name]);
-            podbox::process::spawn_interactive("podman", &args)?;
+            podbox::process::spawn_interactive_checked("podman", &args)?;
         }
         podbox::ui::ok(&format!("Container '{container_name}' is running"));
         // `create` starts via systemd/podman directly, bypassing `run_start`,
@@ -223,6 +226,25 @@ pub(super) fn read_profile_content(profile: &str) -> Result<String> {
     }
 }
 
+/// Refuse a new config whose runtime name another config already claims.
+///
+/// Lookups by name use the file stem, so `work.toml` with `container.name =
+/// "dev"` would not be found by `create --name dev`. Writing `dev.toml` then
+/// would give two configs for one container. Checking the runtime name here
+/// stops that.
+fn ensure_runtime_name_free(existing: &[PathBuf], container_name: &str) -> Result<()> {
+    let taken = existing
+        .iter()
+        .find(|path| Config::load(path).is_ok_and(|cfg| cfg.container.name == container_name));
+    if let Some(path) = taken {
+        anyhow::bail!(
+            "container '{container_name}' is already defined by '{}'. Choose another name or edit that config.",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn derive_container_name(image: &str, custom_name: Option<&str>) -> String {
     if let Some(name) = custom_name {
         return name.to_string();
@@ -329,6 +351,7 @@ pub fn run_create(
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
         cfg.container.name.clone_from(&container_name);
         cfg.image.name.clone_from(&container_name);
+        ensure_runtime_name_free(&config::list_configs(), &container_name)?;
         let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
 
@@ -458,6 +481,7 @@ pub fn run_create(
         }
         cfg.validate()?;
 
+        ensure_runtime_name_free(&config::list_configs(), &container_name)?;
         let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
         // Any on-disk config returned early above, so this always writes.
@@ -487,4 +511,34 @@ pub fn run_create(
         "Run `podbox init {image} --name <name>` to create a config (e.g. --name {suggested})."
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_config(dir: &Path, file: &str, runtime: &str) -> PathBuf {
+        let mut cfg = Config::embedded();
+        cfg.container.name = runtime.to_string();
+        cfg.image.name = runtime.to_string();
+        let path = dir.join(file);
+        std::fs::write(&path, toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        path
+    }
+
+    #[test]
+    fn new_config_refused_when_runtime_name_is_claimed_by_another_file() {
+        let dir = std::env::temp_dir().join(format!("podbox-create-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let work = write_config(&dir, "work.toml", "dev");
+        let other = write_config(&dir, "other.toml", "other");
+        let existing = vec![work.clone(), other];
+
+        let err = ensure_runtime_name_free(&existing, "dev").unwrap_err();
+        assert!(err.to_string().contains("already defined by"), "{err}");
+        assert!(err.to_string().contains(&work.display().to_string()));
+        assert!(ensure_runtime_name_free(&existing, "fresh").is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

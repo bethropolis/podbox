@@ -5,13 +5,13 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use podbox::config::Config;
 
-pub(crate) fn snapshot_tag(tag: &str, name: &str) -> String {
-    format!("localhost/podbox-{name}:snapshot-{tag}")
+pub(crate) fn snapshot_tag(tag: &str, image_repo: &str) -> String {
+    format!("{image_repo}:snapshot-{tag}")
 }
 
 pub(crate) fn snapshots_dir() -> PathBuf {
@@ -19,7 +19,7 @@ pub(crate) fn snapshots_dir() -> PathBuf {
 }
 
 /// Snapshot the current container state as a tagged image.
-pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<()> {
+pub fn run_snapshot(config: &Config, name: &str, tag: Option<&str>, dry_run: bool) -> Result<()> {
     let tag: String = match tag {
         Some(t) => t.to_string(),
         None => std::time::SystemTime::now()
@@ -28,11 +28,18 @@ pub fn run_snapshot(_config: &Config, name: &str, tag: Option<&str>) -> Result<(
     };
 
     let container_name = name.to_string();
-    let image_tag = snapshot_tag(&tag, name);
+    let image_tag = snapshot_tag(&tag, &config.image_repo());
+
+    if dry_run {
+        podbox::ui::would(&format!(
+            "commit '{container_name}' as '{image_tag}' and record its metadata"
+        ));
+        return Ok(());
+    }
 
     eprintln!("Snapshotting container '{container_name}' as '{image_tag}'...");
 
-    let output = podbox::process::run_piped(
+    let output = podbox::process::run_checked(
         "podman",
         &podbox::process::args(&["commit", &container_name, &image_tag]),
     )?;
@@ -120,19 +127,22 @@ pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> 
     let to_remove: Vec<&SnapshotMeta> = snapshots.iter().skip(keep).collect();
     println!("Pruning {} snapshot(s), keeping {}:", to_remove.len(), keep);
 
+    let mut failed = 0u32;
     for s in &to_remove {
         if dry_run {
             println!("  Would remove: {} (image: {})", s.tag, s.image);
             continue;
         }
-        // Remove podman image
+        // Remove podman image. Keep the metadata when this fails, so the
+        // snapshot stays listed and can be pruned again later.
         let result =
-            podbox::process::run_piped("podman", &podbox::process::args(&["rmi", &s.image]));
+            podbox::process::run_checked("podman", &podbox::process::args(&["rmi", &s.image]));
         if let Err(e) = result {
-            eprintln!("Warning: failed to remove image '{}': {e}", s.image);
-        } else {
-            println!("  Removed image: {}", s.image);
+            eprintln!("Warning: failed to remove image '{}': {e:#}", s.image);
+            failed += 1;
+            continue;
         }
+        println!("  Removed image: {}", s.image);
 
         // Delete metadata file
         let meta_path = snapshots_dir().join(name).join(format!("{}.toml", s.tag));
@@ -143,6 +153,9 @@ pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> 
 
     if dry_run {
         println!("(dry run, no changes made)");
+    }
+    if failed > 0 {
+        anyhow::bail!("{failed} snapshot image(s) could not be removed; their metadata was kept");
     }
     Ok(())
 }
@@ -182,37 +195,43 @@ fn days_to_date(days: i64) -> (i64, u32, u32) {
 }
 
 /// Restore a container from a snapshot image.
-pub fn run_restore(_config: &Config, name: &str, tag: &str) -> Result<()> {
-    let snapshot_img = snapshot_tag(tag, name);
-    let latest_img = format!("localhost/podbox-{name}:latest");
+pub fn run_restore(config: &Config, name: &str, tag: &str, dry_run: bool) -> Result<()> {
+    let snapshot_img = snapshot_tag(tag, &config.image_repo());
+    let latest_img = config.local_image_tag();
 
-    // Verify snapshot exists
+    // Verify snapshot exists (a read, so it is safe under dry-run)
     let exists = podbox::podman::image_exists(&snapshot_img).unwrap_or(false);
     if !exists {
         anyhow::bail!("Snapshot '{tag}' not found as image '{snapshot_img}'");
     }
 
+    if dry_run {
+        podbox::ui::would(&format!(
+            "stop '{name}', tag '{snapshot_img}' as '{latest_img}', start '{name}'"
+        ));
+        return Ok(());
+    }
+
     // Stop the container
     eprintln!("Stopping container '{name}'...");
-    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["stop", name])) {
-        eprintln!("Warning: failed to stop container '{name}': {e}");
+    if let Err(e) = podbox::process::run_checked("podman", &podbox::process::args(&["stop", name]))
+    {
+        eprintln!("Warning: failed to stop container '{name}': {e:#}");
     }
 
     // Re-tag snapshot as the main image
     eprintln!("Restoring from snapshot '{snapshot_img}'...");
-    let output = podbox::process::run_piped(
+    podbox::process::run_checked(
         "podman",
         &podbox::process::args(&["tag", &snapshot_img, &latest_img]),
-    )?;
-    if !output.status.success() {
-        anyhow::bail!("Failed to tag snapshot image");
-    }
+    )
+    .context("failed to tag snapshot image")?;
 
-    // Start the container
+    // Start the container. A failed start is an error, not a warning, because
+    // the restore has not produced a running box.
     eprintln!("Starting container...");
-    if let Err(e) = podbox::process::run_piped("podman", &podbox::process::args(&["start", name])) {
-        eprintln!("Warning: failed to start container '{name}': {e}");
-    }
+    podbox::process::run_checked("podman", &podbox::process::args(&["start", name]))
+        .with_context(|| format!("failed to start '{name}' after restore"))?;
 
     println!("✓ Restored '{name}' from snapshot '{tag}'");
     Ok(())

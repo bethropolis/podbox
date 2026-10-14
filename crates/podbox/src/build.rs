@@ -196,8 +196,8 @@ fn run_build(
         println!("=== Embedded podbox-guest ===");
         println!("{} bytes (embedded in podbox binary)", guest_bin.len());
         println!(
-            "podman build -t localhost/podbox-{}:latest {}",
-            config.image.name,
+            "podman build -t {} {}",
+            config.local_image_tag(),
             context_dir.display()
         );
         return Ok(());
@@ -236,7 +236,7 @@ fn run_build(
         Ok(())
     })?;
 
-    let tag = format!("localhost/podbox-{}:latest", config.image.name);
+    let tag = config.local_image_tag();
     let args: Vec<OsString> = vec![
         "build".into(),
         "-t".into(),

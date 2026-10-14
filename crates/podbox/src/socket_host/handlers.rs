@@ -2,10 +2,10 @@
 //! `host-exec`, `notify`, `xdg-open`, `clipboard`). Single cohesive concern;
 //! stays above ~300 LOC because the message-dispatch contract is one unit
 //! (documented exemption, per the modularization guide 1/8).
-use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
+use super::actions::HostActions;
 use crate::config::IntegrationConfig;
 use crate::protocol::{HostMessage, write_frame};
 
@@ -78,78 +78,153 @@ pub(super) fn handle_hello(
 }
 
 /// Handle a `Notify` message from the guest.
+///
+/// Without actions the notification is fire-and-forget. With actions the
+/// chosen key (or an empty key when the user picked none, or the notification
+/// could not be shown) goes back to the guest.
 pub(super) fn handle_notify(
     stream: &mut UnixStream,
+    actions: &dyn HostActions,
     summary: String,
     body: String,
-    actions: Vec<crate::protocol::NotifyAction>,
+    choices: Vec<crate::protocol::NotifyAction>,
 ) -> anyhow::Result<()> {
-    if actions.is_empty() {
-        let _ = notify_rust::Notification::new()
-            .summary(&summary)
-            .body(&body)
-            .show();
-    } else {
-        let mut notif = notify_rust::Notification::new();
-        notif.summary(&summary).body(&body);
-        for action in &actions {
-            notif.action(&action.key, &action.label);
+    if choices.is_empty() {
+        if let Err(e) = actions.notify(&summary, &body, &choices) {
+            tracing::debug!("notification not shown: {e:#}");
         }
-        let handle = match notif.show() {
-            Ok(h) => h,
-            Err(_) => {
-                let _ = write_frame(
-                    stream,
-                    &HostMessage::NotifyActionResult {
-                        notification_id: 0,
-                        action_key: String::new(),
-                    },
-                );
-                return Ok(());
-            }
-        };
-        let mut chosen_key = String::new();
-        handle.wait_for_action(|action| {
-            chosen_key = action.to_string();
-        });
-        let _ = write_frame(
-            stream,
-            &HostMessage::NotifyActionResult {
-                notification_id: 0,
-                action_key: chosen_key,
-            },
-        );
+        return Ok(());
     }
+    let action_key = actions
+        .notify(&summary, &body, &choices)
+        .unwrap_or_else(|e| {
+            tracing::warn!("notification with actions not shown: {e:#}");
+            String::new()
+        });
+    write_frame(
+        stream,
+        &HostMessage::NotifyActionResult {
+            notification_id: 0,
+            action_key,
+        },
+    )?;
     Ok(())
 }
 
+/// Schemes the host will open with `xdg-open`. Anything else is refused.
+///
+/// An allowlist, not a blocklist: a blocklist misses every handler the host
+/// has installed (`smb:`, `vscode:`, `steam:`, `trash:`, ...), and each one is
+/// a way for guest input to reach a host app or a network share.
+pub(crate) const ALLOWED_URI_SCHEMES: &[&str] = &["http", "https", "mailto"];
+
+/// Longest URI accepted from the guest.
+pub(crate) const MAX_URI_LEN: usize = 8192;
+
+/// Why a guest-supplied URI was refused.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum UriError {
+    Empty,
+    TooLong,
+    ControlCharacter,
+    Malformed,
+    SchemeNotAllowed(String),
+    MissingHost,
+}
+
+impl std::fmt::Display for UriError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "empty URI"),
+            Self::TooLong => write!(f, "URI longer than {MAX_URI_LEN} bytes"),
+            Self::ControlCharacter => write!(f, "URI contains a control character"),
+            Self::Malformed => write!(f, "not a URI"),
+            Self::SchemeNotAllowed(scheme) => write!(
+                f,
+                "scheme '{scheme}' is not allowed (allowed: {})",
+                ALLOWED_URI_SCHEMES.join(", ")
+            ),
+            Self::MissingHost => write!(f, "web URL has no host"),
+        }
+    }
+}
+
+/// Check a guest-supplied URI and return the text to open.
+///
+/// A bare host such as `example.com` is opened over https. Paths and anything
+/// that is not a URI are refused.
+pub(crate) fn validate_uri(uri: &str) -> Result<String, UriError> {
+    let s = uri.trim();
+    if s.is_empty() {
+        return Err(UriError::Empty);
+    }
+    if s.len() > MAX_URI_LEN {
+        return Err(UriError::TooLong);
+    }
+    if s.chars().any(char::is_control) {
+        return Err(UriError::ControlCharacter);
+    }
+    if s.starts_with('/') || s.starts_with('.') {
+        return Err(UriError::Malformed);
+    }
+
+    let (text, parsed) = match url::Url::parse(s) {
+        Ok(parsed) => (s.to_string(), parsed),
+        Err(url::ParseError::RelativeUrlWithoutBase) => {
+            let wrapped = format!("https://{s}");
+            let parsed = url::Url::parse(&wrapped).map_err(|_| UriError::Malformed)?;
+            (wrapped, parsed)
+        }
+        Err(_) => return Err(UriError::Malformed),
+    };
+
+    let scheme = parsed.scheme().to_ascii_lowercase();
+    if !ALLOWED_URI_SCHEMES.contains(&scheme.as_str()) {
+        return Err(UriError::SchemeNotAllowed(scheme));
+    }
+    let web = scheme == "http" || scheme == "https";
+    if web && parsed.host_str().is_none_or(str::is_empty) {
+        return Err(UriError::MissingHost);
+    }
+    Ok(text)
+}
+
 /// Handle an `XdgOpen` message from the guest.
-pub(super) fn handle_xdg_open(uri: String) -> anyhow::Result<()> {
-    if let Some(validated) = validate_uri(&uri) {
-        let args = [validated.into()];
-        let _ =
-            crate::process::spawn_interactive_timeout("xdg-open", &args, Duration::from_secs(30));
+///
+/// A refused URI gets an `Error` frame with the reason. Accepted or refused,
+/// the caller closes the connection afterwards: the guest's `xdg-open` waits
+/// for that close, and treats an `Error` frame as failure.
+pub(super) fn handle_xdg_open(
+    stream: &mut UnixStream,
+    actions: &dyn HostActions,
+    uri: String,
+) -> anyhow::Result<()> {
+    match validate_uri(&uri) {
+        Ok(validated) => actions.open_uri(&validated)?,
+        Err(e) => {
+            tracing::warn!("refused xdg-open request: {e}");
+            write_frame(
+                stream,
+                &HostMessage::Error {
+                    reason: format!("xdg-open refused: {e}"),
+                },
+            )?;
+        }
     }
     Ok(())
 }
 
 /// Handle a `ClipboardSet` message from the guest.
-pub(super) fn handle_clipboard_set(text: String) -> anyhow::Result<()> {
-    let mut child = std::process::Command::new("wl-copy")
-        .stdin(std::process::Stdio::piped())
-        .spawn()?;
-    if let Some(ref mut stdin) = child.stdin {
-        let _ = stdin.write_all(text.as_bytes());
-    }
-    drop(child.stdin.take());
-    let _ = crate::process::wait_child_timeout(child, Duration::from_secs(10))?;
-    Ok(())
+pub(super) fn handle_clipboard_set(actions: &dyn HostActions, text: String) -> anyhow::Result<()> {
+    actions.clipboard_set(&text)
 }
 
 /// Handle a `ClipboardGet` message from the guest.
-pub(super) fn handle_clipboard_get(stream: &mut UnixStream) -> anyhow::Result<()> {
-    let output = std::process::Command::new("wl-paste").output()?;
-    let text = String::from_utf8_lossy(&output.stdout);
+pub(super) fn handle_clipboard_get(
+    stream: &mut UnixStream,
+    actions: &dyn HostActions,
+) -> anyhow::Result<()> {
+    let text = actions.clipboard_get()?;
     let response = HostMessage::ClipboardData {
         text: text.trim().to_string(),
     };
@@ -368,54 +443,4 @@ pub(super) fn validate_host_exec_args(args: &[String]) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-pub(super) fn validate_uri(uri: &str) -> Option<String> {
-    let s = uri.trim();
-    if s.is_empty() || s.starts_with('/') || s.starts_with('.') {
-        return None;
-    }
-
-    match url::Url::parse(s) {
-        Ok(parsed) => {
-            let scheme = parsed.scheme().to_ascii_lowercase();
-
-            // Blacklist local disk access, XSS, and command-injection vectors
-            let dangerous_schemes = [
-                "file",
-                "javascript",
-                "data",
-                "ghelp",
-                "help",
-                "info",
-                "man",
-                "shell",
-                "exec",
-                "run",
-                "local",
-                "ssh",
-            ];
-
-            if dangerous_schemes.contains(&scheme.as_str()) {
-                return None;
-            }
-
-            // Ensure the schema format complies with RFC 3986 standards
-            let is_valid_format = scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-                && scheme
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-');
-
-            if is_valid_format {
-                Some(s.to_string())
-            } else {
-                None
-            }
-        }
-        Err(url::ParseError::RelativeUrlWithoutBase) => {
-            // Automatically wrap raw hostnames like "github.com"
-            Some(format!("https://{s}"))
-        }
-        _ => None,
-    }
 }

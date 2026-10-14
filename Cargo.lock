@@ -1186,6 +1186,7 @@ dependencies = [
  "nix",
  "notify-rust",
  "owo-colors",
+ "podbox-guest",
  "podbox-protocol",
  "predicates",
  "rustix 1.1.4",

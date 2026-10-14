@@ -17,10 +17,7 @@ pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
     lines.push(String::new());
 
     lines.push("[Build]".into());
-    lines.push(format!(
-        "ImageTag=localhost/podbox-{}:latest",
-        config.image.name
-    ));
+    lines.push(format!("ImageTag={}", config.local_image_tag()));
     lines.push(format!("File={}", containerfile_path.to_string_lossy()));
     lines.push(format!("Retry={}", config.image.pull_retry));
     lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));

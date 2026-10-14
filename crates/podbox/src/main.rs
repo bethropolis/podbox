@@ -78,7 +78,12 @@ fn main() -> ExitCode {
                 }
             }
         }
-        ui::error(&format!("{e:#}"));
+        if !matches!(
+            e.downcast_ref::<PodboxError>(),
+            Some(PodboxError::ChildExit(_))
+        ) {
+            ui::error(&format!("{e:#}"));
+        }
         exit_code_for_error(&e)
     } else {
         ExitCode::SUCCESS
@@ -88,7 +93,10 @@ fn main() -> ExitCode {
 fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
     if let Some(podbox_err) = err.downcast_ref::<PodboxError>() {
         match podbox_err {
+            // 2: the definition file (or the explicit `--config` file) is missing,
+            // unreadable or unparseable. A missing `--config` is a hard error here.
             PodboxError::DefinitionNotFound { .. }
+            | PodboxError::ConfigFileMissing { .. }
             | PodboxError::DefinitionReadFailed(_)
             | PodboxError::DefinitionParseFailed(_) => ExitCode::from(2),
             PodboxError::ContainerMissing(_) => ExitCode::from(3),
@@ -96,6 +104,10 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
                 ExitCode::from(4)
             }
             PodboxError::PodmanNotFound => ExitCode::from(5),
+            // 64 is EX_USAGE: a name that cannot be used. Not 2, which is the
+            // definition-file code above.
+            PodboxError::InvalidName { .. } => ExitCode::from(64),
+            PodboxError::ChildExit(code) => ExitCode::from(u8::try_from(*code).unwrap_or(1)),
             PodboxError::PullFailed { .. } | PodboxError::TagFailed { .. } => ExitCode::from(6),
             _ => ExitCode::FAILURE,
         }
@@ -145,6 +157,57 @@ fn command_output_format(cmd: &Command) -> Option<podbox::cli::OutputFormat> {
     is_machine(&format).then_some(format)
 }
 
+/// `--edit` on build, start and enter: open the config in the editor, or only
+/// say so under `--dry-run` (an editor session is not a dry-run action).
+fn edit_config_for_command(cli: &Cli) -> Result<()> {
+    let config_path = resolve_config_path(cli.container.as_deref())?;
+    if cli.dry_run {
+        ui::would(&format!("open '{}' in $EDITOR", config_path.display()));
+        return Ok(());
+    }
+    let ed = editor::resolve()?;
+    editor::open(&ed, &config_path)
+}
+
+/// Reject unsafe names before any command touches the filesystem or podman.
+///
+/// Names feed file paths (`quadlet_dir().join(name)`), unit names and podman
+/// arguments, so `.`, `..`, a leading `-` or a `/` must never get past here.
+/// Covers every place a name can enter: the global `-C`, positional names,
+/// `create --name`, `clone` (both names), profile names, and snapshot tags.
+fn validate_cli_names(cli: &Cli) -> Result<()> {
+    use podbox::cli::{ProfileCommand, SnapshotCommand};
+    use podbox::config::validate_container_name as check;
+
+    if let Some(name) = &cli.container {
+        check("container", name)?;
+    }
+    if let Some(name) = handlers::extract_positional_name(&cli.command) {
+        check("container", &name)?;
+    }
+    match &cli.command {
+        Command::Create {
+            name: Some(name), ..
+        } => check("container", name)?,
+        Command::Clone { src, dst, .. } => {
+            check("container", src)?;
+            check("container", dst)?;
+        }
+        Command::Profile { profile_cmd } => match profile_cmd {
+            ProfileCommand::Show { name } => check("profile", name)?,
+            ProfileCommand::Import {
+                name: Some(name), ..
+            } => check("profile", name)?,
+            _ => {}
+        },
+        Command::Snapshot {
+            snapshot_cmd: SnapshotCommand::Create { tag: Some(tag), .. },
+        } => check("snapshot tag", tag)?,
+        _ => {}
+    }
+    Ok(())
+}
+
 fn run(mut cli: Cli) -> Result<()> {
     ui::set_quiet(cli.quiet);
     ui::set_verbose(cli.verbose);
@@ -154,6 +217,7 @@ fn run(mut cli: Cli) -> Result<()> {
     // Must run before config resolution so the promoted name wins over
     // PODBOX_CONTAINER / active context, but never overrides an explicit -C.
     promote_leading_container_name(&mut cli.command, &mut cli.container);
+    validate_cli_names(&cli)?;
 
     // Exit early if podman is not installed — clean error instead of a cryptic
     // spawn failure deep in the stack.
@@ -242,7 +306,7 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Profile { profile_cmd } => {
-            return run_profile_command(profile_cmd);
+            return run_profile_command(profile_cmd, cli.dry_run);
         }
 
         Command::List { output } => {
@@ -277,7 +341,7 @@ fn run(mut cli: Cli) -> Result<()> {
                     Some(p) => p.clone(),
                     None => resolve_config_path(cli.container.as_deref())?,
                 };
-                return commands::config::run_set(&path, key, value, *output);
+                return commands::config::run_set(&path, key, value, cli.dry_run, *output);
             }
             podbox::cli::ConfigCommand::Validate { output } => {
                 let path = match &cli.config {
@@ -317,6 +381,26 @@ fn run(mut cli: Cli) -> Result<()> {
             return run_edit(cli.dry_run, container_name.as_deref(), *rebuild);
         }
 
+        // Systemd runs these with the box name in the unit. They load that
+        // config directly: generic resolution would ignore the name and could
+        // fail on other boxes' configs (several configs, no `.active`).
+        Command::Serve { name } => {
+            return commands::serve::run_serve(cli.config.as_ref(), name, cli.dry_run);
+        }
+
+        Command::Compositor { name } => {
+            let config_path = podbox::config::find_config_path(name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no config found for container '{}' at '{}/{{profiles/,}}{}.toml'",
+                    name,
+                    podbox::config::config_dir().display(),
+                    name
+                )
+            })?;
+            let config = podbox::config::Config::load(&config_path)?;
+            return podbox::compositor::run_compositor(&config, name);
+        }
+
         _ => {}
     }
 
@@ -336,7 +420,7 @@ fn run(mut cli: Cli) -> Result<()> {
     if let Command::Disable { force: true, .. } = &cli.command {
         let n = target_name.clone()
             .context("--force requires a container name (positional, -C, PODBOX_CONTAINER env, or active context)")?;
-        return commands::lifecycle::run_disable(&n);
+        return commands::lifecycle::run_disable(&n, cli.dry_run);
     }
 
     if let Command::Remove {
@@ -354,22 +438,27 @@ fn run(mut cli: Cli) -> Result<()> {
     // Doctor needs special handling: bare `memory = "2"` now fails validation,
     // so `resolve_config` would bail before `run_doctor` can offer --fix.
     if let Command::Doctor { fix, output, .. } = &cli.command {
+        // `--fix` writes config and units; under --dry-run it only reports.
+        let apply_fix = *fix && !cli.dry_run;
+        if *fix && cli.dry_run {
+            ui::warn("--fix is skipped under --dry-run; reporting only");
+        }
         let target_for_doctor = target_name.clone();
         match resolve_config(&cli, target_for_doctor.clone()) {
             Ok((config, _)) => {
                 let env = podbox::env::resolve()?;
-                return commands::runtime::run_doctor(&config, &env, *fix, *output);
+                return commands::runtime::run_doctor(&config, &env, apply_fix, *output);
             }
             Err(err) => {
                 let err_str = format!("{err:#}");
-                if err_str.contains("container.memory") && *fix {
+                if err_str.contains("container.memory") && apply_fix {
                     if commands::runtime::try_fix_bare_memory_for_target(
                         target_for_doctor.as_deref(),
-                        *fix,
+                        apply_fix,
                     )? {
                         let (config2, _) = resolve_config(&cli, target_for_doctor)?;
                         let env2 = podbox::env::resolve()?;
-                        return commands::runtime::run_doctor(&config2, &env2, *fix, *output);
+                        return commands::runtime::run_doctor(&config2, &env2, apply_fix, *output);
                     }
                 }
                 return Err(err);
@@ -400,9 +489,7 @@ fn run(mut cli: Cli) -> Result<()> {
                 ));
             }
             if *edit {
-                let config_path = resolve_config_path(cli.container.as_deref())?;
-                let ed = editor::resolve()?;
-                editor::open(&ed, &config_path)?;
+                edit_config_for_command(&cli)?;
             }
             commands::lifecycle::run_build(
                 &config,
@@ -420,7 +507,7 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Disable { .. } => {
-            commands::lifecycle::run_disable(&name)?;
+            commands::lifecycle::run_disable(&name, cli.dry_run)?;
         }
 
         Command::Start {
@@ -429,9 +516,7 @@ fn run(mut cli: Cli) -> Result<()> {
             edit,
         } => {
             if *edit {
-                let config_path = resolve_config_path(cli.container.as_deref())?;
-                let ed = editor::resolve()?;
-                editor::open(&ed, &config_path)?;
+                edit_config_for_command(&cli)?;
             }
             commands::lifecycle::run_start(&config, &env, &xdg, &name, cli.dry_run, *timeout)?;
         }
@@ -451,9 +536,7 @@ fn run(mut cli: Cli) -> Result<()> {
             env: env_overrides,
         } => {
             if *edit {
-                let config_path = resolve_config_path(cli.container.as_deref())?;
-                let ed = editor::resolve()?;
-                editor::open(&ed, &config_path)?;
+                edit_config_for_command(&cli)?;
             }
             let ctx = commands::runtime::RunContext {
                 env: &env,
@@ -526,7 +609,7 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Diff { apply, output, .. } => {
-            commands::diff::run_diff(&config, &name, &env.username, *apply, *output)?;
+            commands::diff::run_diff(&config, &name, &env.username, *apply, cli.dry_run, *output)?;
         }
 
         Command::Snapshot { snapshot_cmd } => {
@@ -534,7 +617,7 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Restore { tag, .. } => {
-            commands::lifecycle::run_restore(&config, &name, tag)?;
+            commands::lifecycle::run_restore(&config, &name, tag, cli.dry_run)?;
         }
 
         Command::Rollback { .. } => {
@@ -561,7 +644,7 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Export { export_cmd } => {
-            commands::export::run_export(&name, Some(&config), export_cmd)?;
+            commands::export::run_export(&name, Some(&config), export_cmd, cli.dry_run)?;
         }
 
         Command::Remove {
@@ -579,23 +662,6 @@ fn run(mut cli: Cli) -> Result<()> {
                 *force,
                 *remove_config,
             )?;
-        }
-
-        Command::Serve { name: serve_name } => {
-            commands::serve::run_serve(cli.config.as_ref(), serve_name, cli.dry_run)?;
-        }
-
-        Command::Compositor { name: comp_name } => {
-            let config_path = podbox::config::find_config_path(comp_name).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no config found for container '{}' at '{}/{{profiles/,}}{}.toml'",
-                    comp_name,
-                    podbox::config::config_dir().display(),
-                    comp_name
-                )
-            })?;
-            let config = podbox::config::Config::load(&config_path)?;
-            podbox::compositor::run_compositor(&config, comp_name)?;
         }
 
         Command::Update { no_restart, .. } => {
@@ -629,7 +695,7 @@ fn run(mut cli: Cli) -> Result<()> {
             fix,
             output,
         } => {
-            commands::runtime::run_doctor(&config, &env, *fix, *output)?;
+            commands::runtime::run_doctor(&config, &env, *fix && !cli.dry_run, *output)?;
         }
 
         Command::Recover { name: _, yes } => {
@@ -665,7 +731,9 @@ fn run(mut cli: Cli) -> Result<()> {
         | Command::Watch { .. }
         | Command::Use { .. }
         | Command::Migrate { .. }
-        | Command::Edit { .. } => unreachable!(),
+        | Command::Edit { .. }
+        | Command::Serve { .. }
+        | Command::Compositor { .. } => unreachable!(),
         Command::Cache { .. } => unreachable!(),
     }
 

@@ -84,10 +84,43 @@ pub fn handshake(
     }
 }
 
-/// Open a fresh connection to the host socket, send one message, and close.
-pub fn connect_and_send_oneshot(msg: &GuestMessage) -> Result<(), GuestError> {
+/// Connect to the host socket and negotiate `caps` before anything else.
+///
+/// The host rejects every privileged message on a connection that has not
+/// completed `Hello`, so every guest-side request must go through here.
+/// Fails with [`GuestError::CapabilityRefused`] if the host did not grant
+/// one of the requested capabilities.
+pub fn connect_negotiated(caps: &[&str]) -> Result<UnixStream, GuestError> {
     let socket_path = host_socket_path()?;
-    let mut stream = UnixStream::connect(&socket_path)?;
+    let container = container_name()?;
+    negotiate_at(&socket_path, &container, caps)
+}
+
+/// [`connect_negotiated`] with the socket path and container name supplied
+/// by the caller, so tests need not touch the process environment.
+///
+/// Makes a single connect attempt and fails immediately. Interceptors are
+/// one-shot and short-lived, so they should not sit in a retry loop; the
+/// daemon keeps its own retry logic via [`connect_to_host`].
+pub fn negotiate_at(
+    socket_path: &Path,
+    container: &str,
+    caps: &[&str],
+) -> Result<UnixStream, GuestError> {
+    let mut stream = UnixStream::connect(socket_path)?;
+    let requested: Vec<String> = caps.iter().map(|c| (*c).to_string()).collect();
+    let (accepted, _idle_timeout, _shims) = handshake(&mut stream, container, &requested)?;
+    for cap in caps {
+        if !accepted.iter().any(|a| a == cap) {
+            return Err(GuestError::CapabilityRefused((*cap).to_string()));
+        }
+    }
+    Ok(stream)
+}
+
+/// Negotiate `cap`, send one message on the same connection, and close.
+pub fn connect_and_send_oneshot(msg: &GuestMessage, cap: &str) -> Result<(), GuestError> {
+    let mut stream = connect_negotiated(&[cap])?;
     write_frame(&mut stream, msg)?;
     Ok(())
 }

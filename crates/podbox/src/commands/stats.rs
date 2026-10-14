@@ -15,7 +15,7 @@ pub fn run_stats(name: &str, no_stream: bool, output: OutputFormat) -> Result<()
             args.push("--no-stream".into());
         }
         args.push(container_name.into());
-        process::spawn_interactive("podman", &args)?;
+        process::spawn_interactive_checked("podman", &args)?;
         return Ok(());
     }
 
@@ -25,6 +25,6 @@ pub fn run_stats(name: &str, no_stream: bool, output: OutputFormat) -> Result<()
     }
     args.push(container_name.into());
 
-    process::spawn_interactive("podman", &args)?;
+    process::spawn_interactive_checked("podman", &args)?;
     Ok(())
 }

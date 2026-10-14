@@ -59,10 +59,7 @@ pub(super) fn emit_container_image(
         lines.push(format!("Retry={}", config.image.pull_retry));
         lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
     } else {
-        lines.push(format!(
-            "Image=localhost/podbox-{}:latest",
-            config.image.name
-        ));
+        lines.push(format!("Image={}", config.local_image_tag()));
     }
     lines.push(format!("ContainerName={name}"));
     if let Some(ref mode) = config.security.userns {

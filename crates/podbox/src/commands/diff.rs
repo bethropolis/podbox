@@ -17,6 +17,7 @@ pub fn run_diff(
     name: &str,
     username: &str,
     apply: bool,
+    dry_run: bool,
     output: OutputFormat,
 ) -> Result<()> {
     let result = diff::compute(config, name, username)?;
@@ -56,6 +57,13 @@ pub fn run_diff(
         reconciled.sort();
 
         let patched = diff::patch_toml(&original, &reconciled)?;
+        if dry_run {
+            podbox::ui::would(&format!(
+                "rewrite install list in {}",
+                definition_path.display()
+            ));
+            return Ok(());
+        }
         std::fs::write(&definition_path, patched)?;
         // Stdout stays a single JSON document in JSON mode; the
         // confirmation is a diagnostic and goes to stderr there.

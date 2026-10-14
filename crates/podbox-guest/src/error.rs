@@ -13,4 +13,7 @@ pub enum GuestError {
 
     #[error("handshake failed: {0}")]
     HandshakeFailed(String),
+
+    #[error("host did not accept capability '{0}' (is it enabled in the podbox config?)")]
+    CapabilityRefused(String),
 }
