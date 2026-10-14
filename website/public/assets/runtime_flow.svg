@@ -1,86 +1,89 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 640" width="100%" height="auto">
-  <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#d946ef"/>
-    </linearGradient>
-  </defs>
-  <style>
-    :root {
-      --bg-canvas: #ffffff;
-      --bg-box: #f8fafc;
-      --border-box: #cbd5e1;
-      --text-main: #0f172a;
-      --text-sub: #64748b;
-      --line: #94a3b8;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-canvas: #0d1117;
-        --bg-box: #161b22;
-        --border-box: #30363d;
-        --text-main: #c9d1d9;
-        --text-sub: #8b949e;
-        --line: #484f58;
-      }
-    }
-    
-    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
-    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: start; }
-    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: start; }
-    .conn-line { fill: none; stroke: var(--line); stroke-width: 1.5px; }
-    .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 2px; stroke-dasharray: 4,4; }
-  </style>
-  <!-- Left: Timeline Track Line -->
-  <line class="conn-line-dashed" x1="80" y1="30" x2="80" y2="610"/>
-  <!-- Milestone Track Indicators (Circles) -->
-  <circle cx="80" cy="50" r="8" fill="url(#grad1)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <circle cx="80" cy="130" r="8" fill="url(#grad1)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <circle cx="80" cy="210" r="8" fill="url(#grad1)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <circle cx="80" cy="290" r="8" fill="url(#grad1)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <circle cx="80" cy="370" r="8" fill="url(#grad1)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <circle cx="80" cy="460" r="8" fill="url(#grad2)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <circle cx="80" cy="565" r="8" fill="url(#grad2)" stroke="var(--bg-canvas)" stroke-width="2"/>
-  <!-- Chronological Cards -->
-  <g transform="translate(120, 25)">
-    <rect class="box-bg" width="670" height="50" rx="8"/>
-    <text class="text-title" x="20" y="22">1. User Login Session Init</text>
-    <text class="text-desc" x="20" y="38">Host login triggers standard systemd user runtime manager instantiation.</text>
-  </g>
-  <g transform="translate(120, 105)">
-    <rect class="box-bg" width="670" height="50" rx="8"/>
-    <text class="text-title" x="20" y="22">2. systemd-user Instantiates Socket Unit</text>
-    <text class="text-desc" x="20" y="38">myenv.socket sets up and listens for guest connections at %t/podbox/myenv.sock.</text>
-  </g>
-  <g transform="translate(120, 185)">
-    <rect class="box-bg" width="670" height="50" rx="8"/>
-    <text class="text-title" x="20" y="22">3. systemd-user Launches myenv.service</text>
-    <text class="text-desc" x="20" y="38">The .container file translates directly to active systemd user processes.</text>
-  </g>
-  <g transform="translate(120, 265)">
-    <rect class="box-bg" width="670" height="55" rx="8"/>
-    <text class="text-title" x="20" y="22">4. Podman Invocation</text>
-    <text class="text-desc" x="20" y="38">The engine mounts standard isolation paths (Wayland displays, volume paths, host-guest sockets).</text>
-  </g>
-  <g transform="translate(120, 345)">
-    <rect class="box-bg" width="670" height="50" rx="8"/>
-    <text class="text-title" x="20" y="22">5. Entrypoint Handover</text>
-    <text class="text-desc" x="20" y="38">catatonit starts up at PID 1 and calls into podbox-guest --entry inside the container sandbox.</text>
-  </g>
-  <g transform="translate(120, 415)">
-    <rect class="box-bg" width="670" height="90" rx="8"/>
-    <text class="text-title" x="20" y="24">6. Guest Execution Split</text>
-    <text class="text-desc" x="20" y="42">The parent process forks a guest daemon connection and replaces its own thread with</text>
-    <text class="text-desc" x="20" y="58">the user shell. The child daemon executes connection setups and installs interceptors.</text>
-  </g>
-  <g transform="translate(120, 525)">
-    <rect class="box-bg" width="670" height="80" rx="8"/>
-    <text class="text-title" x="20" y="24">7. Secure Execution Feedback Loop</text>
-    <text class="text-desc" x="20" y="42">Guest commands are intercepted at `/run/podbox/bin` and securely routed over</text>
-    <text class="text-desc" x="20" y="58">the local socket up to host graphical output structures.</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" class="pbx" viewBox="0 0 960 670" width="960" height="670" role="img" aria-labelledby="pbx-rf-title pbx-rf-desc">
+<title id="pbx-rf-title">podbox runtime flow</title>
+<desc id="pbx-rf-desc">Sequence from login to a ready shell: systemd starts the socket and the container, catatonit runs podbox-guest --entry, which spawns the daemon, drops privileges and execs your shell; the daemon connects to the host socket and completes the handshake.</desc>
+<style>
+.pbx{--k-surface:#e6e9ef;--k-base:#eff1f5;--k-border:#acb0be;--k-faint:#ccd0da;--k-text:#4c4f69;--k-sub:#5c5f77;--k-muted:#8c8fa1;--k-mauve:#8839ef;--k-blue:#1e66f5;--k-green:#40a02b;--k-peach:#fe640b}
+@media (prefers-color-scheme:dark){.pbx{--k-surface:#181825;--k-base:#1e1e2e;--k-border:#585b70;--k-faint:#313244;--k-text:#cdd6f4;--k-sub:#a6adc8;--k-muted:#7f849c;--k-mauve:#cba6f7;--k-blue:#89b4fa;--k-green:#a6e3a1;--k-peach:#fab387}}
+.pbx{--c-surface:var(--bg-mantle,var(--k-surface));--c-base:var(--bg-base,var(--k-base));--c-border:var(--border-focus,var(--k-border));--c-faint:var(--border,var(--k-faint));--c-text:var(--text-primary,var(--k-text));--c-sub:var(--text-subtext,var(--k-sub));--c-muted:var(--text-muted,var(--k-muted));--c-mauve:var(--accent-mauve,var(--k-mauve));--c-blue:var(--accent-blue,var(--k-blue));--c-green:var(--accent-green,var(--k-green));--c-peach:var(--accent-peach,var(--k-peach))}
+.pbx text{font-family:Geist,Inter,-apple-system,'Segoe UI',Roboto,Ubuntu,sans-serif;fill:var(--c-text)}
+.pbx .mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-ligatures:none}
+.pbx .t{font-size:13px;font-weight:600}
+.pbx .s{font-size:10.5px;fill:var(--c-sub)}
+.pbx .m{font-size:10.5px;fill:var(--c-muted)}
+.pbx .lbl{font-size:11px;fill:var(--c-muted);letter-spacing:.02em}
+.pbx .num{font-size:11px;font-weight:600;fill:var(--c-base)}
+.pbx .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1}
+.pbx .opt{stroke-dasharray:4 3}
+.pbx .acc-mauve{fill:color-mix(in srgb,var(--c-mauve) 13%,var(--c-surface));stroke:var(--c-mauve)}
+.pbx .acc-blue{fill:color-mix(in srgb,var(--c-blue) 13%,var(--c-surface));stroke:var(--c-blue)}
+.pbx .acc-peach{fill:color-mix(in srgb,var(--c-peach) 13%,var(--c-surface));stroke:var(--c-peach)}
+.pbx .acc-green{fill:color-mix(in srgb,var(--c-green) 13%,var(--c-surface));stroke:var(--c-green)}
+.pbx .region{fill:color-mix(in srgb,var(--c-faint) 22%,transparent);stroke:var(--c-faint);stroke-width:1}
+.pbx .wire{fill:none;stroke:var(--c-muted);stroke-width:1.4}
+.pbx .wire.dash{stroke-dasharray:5 4}
+.pbx .wire.acc{stroke:var(--c-mauve)}
+.pbx .head{fill:var(--c-muted)}
+.pbx .head.acc{fill:var(--c-mauve)}
+.pbx .boundary{stroke:var(--c-border);stroke-width:1;stroke-dasharray:6 5}
+.pbx .life{stroke:var(--c-faint);stroke-width:1.2;stroke-dasharray:3 4}
+.pbx .dot{fill:var(--c-mauve)}
+</style>
+<defs><marker id="pbx-rf-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head"/></marker><marker id="pbx-rf-ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head acc"/></marker></defs>
+<rect x="20" y="24" width="420" height="622" rx="10" class="region"/>
+<text x="34" y="44" class="lbl mono" text-anchor="start">host · systemd --user</text>
+<rect x="520" y="24" width="420" height="622" rx="10" class="region"/>
+<text x="534" y="44" class="lbl mono" text-anchor="start">container</text>
+<rect x="40" y="82" width="380" height="46" rx="7" class="box"/>
+<text x="84" y="101.5" class="t" text-anchor="start">Login, or podbox start</text>
+<text x="84" y="118.5" class="s mono" text-anchor="start">systemd --user is running</text>
+<circle cx="62" cy="105.0" r="10" class="dot"/>
+<text x="62" y="109.0" class="num" text-anchor="middle">1</text>
+<rect x="40" y="144" width="380" height="46" rx="7" class="box"/>
+<text x="84" y="163.5" class="t" text-anchor="start">&lt;name&gt;.socket listens</text>
+<text x="84" y="180.5" class="s mono" text-anchor="start">$XDG_RUNTIME_DIR/podbox/&lt;name&gt;.sock</text>
+<circle cx="62" cy="167.0" r="10" class="dot"/>
+<text x="62" y="171.0" class="num" text-anchor="middle">2</text>
+<path d="M 230.0 128 L 230.0 144" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="40" y="206" width="380" height="46" rx="7" class="box"/>
+<text x="84" y="225.5" class="t" text-anchor="start">&lt;name&gt;.service starts</text>
+<text x="84" y="242.5" class="s mono" text-anchor="start">podman run --init, from the .container unit</text>
+<circle cx="62" cy="229.0" r="10" class="dot"/>
+<text x="62" y="233.0" class="num" text-anchor="middle">3</text>
+<path d="M 230.0 190 L 230.0 206" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="540" y="268" width="380" height="46" rx="7" class="box"/>
+<text x="584" y="287.5" class="t" text-anchor="start">catatonit is PID 1</text>
+<text x="584" y="304.5" class="s mono" text-anchor="start">reaps zombies, forwards signals</text>
+<circle cx="562" cy="291.0" r="10" class="dot"/>
+<text x="562" y="295.0" class="num" text-anchor="middle">4</text>
+<path d="M 420 237.28 L 480 237.28 L 480 282.72 L 540 282.72" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="540" y="330" width="380" height="46" rx="7" class="box acc-mauve"/>
+<text x="584" y="349.5" class="t" text-anchor="start">podbox-guest --entry</text>
+<text x="584" y="366.5" class="s mono" text-anchor="start">first boot: creates your user and home</text>
+<circle cx="562" cy="353.0" r="10" class="dot"/>
+<text x="562" y="357.0" class="num" text-anchor="middle">5</text>
+<path d="M 730.0 314 L 730.0 330" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="540" y="392" width="380" height="46" rx="7" class="box"/>
+<text x="584" y="411.5" class="t" text-anchor="start">Spawns podbox-guest --daemon</text>
+<text x="584" y="428.5" class="s mono" text-anchor="start">as root, so it can install interceptors</text>
+<circle cx="562" cy="415.0" r="10" class="dot"/>
+<text x="562" y="419.0" class="num" text-anchor="middle">6</text>
+<path d="M 730.0 376 L 730.0 392" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="540" y="454" width="380" height="46" rx="7" class="box"/>
+<text x="584" y="473.5" class="t" text-anchor="start">Drops to your user, execs the shell</text>
+<text x="584" y="490.5" class="s mono" text-anchor="start">or the command you passed</text>
+<circle cx="562" cy="477.0" r="10" class="dot"/>
+<text x="562" y="481.0" class="num" text-anchor="middle">7</text>
+<path d="M 730.0 438 L 730.0 454" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="40" y="516" width="380" height="46" rx="7" class="box"/>
+<text x="84" y="535.5" class="t" text-anchor="start">Meanwhile, the daemon connects</text>
+<text x="84" y="552.5" class="s mono" text-anchor="start">socket activates &lt;name&gt;-host.service</text>
+<circle cx="62" cy="539.0" r="10" class="dot"/>
+<text x="62" y="543.0" class="num" text-anchor="middle">8</text>
+<path d="M 540 485.28 L 480 485.28 L 480 530.72 L 420 530.72" class="wire" marker-end="url(#pbx-rf-h)"/>
+<rect x="540" y="578" width="380" height="46" rx="7" class="box acc-mauve"/>
+<text x="584" y="597.5" class="t" text-anchor="start">Hello / HelloAck</text>
+<text x="584" y="614.5" class="s mono" text-anchor="start">interceptors installed for accepted capabilities</text>
+<circle cx="562" cy="601.0" r="10" class="dot"/>
+<text x="562" y="605.0" class="num" text-anchor="middle">9</text>
+<path d="M 420 547.28 L 480 547.28 L 480 592.72 L 540 592.72" class="wire" marker-end="url(#pbx-rf-h)"/>
 </svg>

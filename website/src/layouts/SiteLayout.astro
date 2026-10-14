@@ -70,8 +70,11 @@ const jsonLd = {
       }}
       extend={{
         link: [
-          { rel: 'icon', type: 'image/svg+xml', href: `${base}/favicon.svg` },
+          // Fallback first: browsers that match several icons use the last
+          // match, so the theme-specific SVGs must come after it.
           { rel: 'icon', href: `${base}/favicon.ico`, sizes: 'any' },
+          { rel: 'icon', type: 'image/svg+xml', href: `${base}/favicon-light.svg`, media: '(prefers-color-scheme: light)' },
+          { rel: 'icon', type: 'image/svg+xml', href: `${base}/favicon-dark.svg`, media: '(prefers-color-scheme: dark)' },
           { rel: 'apple-touch-icon', href: `${base}/podbox-logo.png` },
         ],
         meta: [
@@ -101,7 +104,7 @@ const jsonLd = {
   <body>
     <a
       href="#main-content"
-      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[999999] focus:px-4 focus:py-2 focus:bg-[var(--accent-mauve)] focus:text-[#11111b] focus:font-bold focus:rounded-[3px] focus:shadow-2xl focus:outline-none focus:ring-2 focus:ring-white"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[999999] focus:px-4 focus:py-2 focus:bg-[var(--accent-mauve)] focus:text-[var(--bg-crust)] focus:font-bold focus:rounded-[3px] focus:shadow-2xl focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
     >
       Skip to main content
     </a>

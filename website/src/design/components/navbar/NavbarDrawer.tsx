@@ -21,7 +21,7 @@ export function NavbarDrawer({ currentPath, version, isDark, onToggleTheme, onCl
       role="dialog"
       aria-modal="true"
       aria-label="Navigation menu"
-      className="fixed inset-0 z-50 md:hidden flex"
+      className="fixed inset-0 z-50 lg:hidden flex"
     >
       {/* Backdrop */}
       <div

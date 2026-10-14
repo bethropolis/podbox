@@ -1,109 +1,84 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 440" width="100%" height="auto">
-  <defs>
-    <filter id="text-shadow">
-      <feDropShadow dx="0" dy="1" stdDeviation="0.5" flood-color="#000000" flood-opacity="0.35"/>
-    </filter>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#d946ef"/>
-    </linearGradient>
-    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#a855f7"/>
-    </linearGradient>
-  </defs>
-
-  <style>
-    :root {
-      --bg-canvas: #ffffff;
-      --bg-box: #f8fafc;
-      --border-box: #cbd5e1;
-      --text-main: #0f172a;
-      --text-sub: #64748b;
-      --line: #94a3b8;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-canvas: #0d1117;
-        --bg-box: #161b22;
-        --border-box: #30363d;
-        --text-main: #c9d1d9;
-        --text-sub: #8b949e;
-        --line: #484f58;
-      }
-    }
-
-    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
-    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
-    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
-    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #e2e8f0; text-anchor: middle; filter: url(#text-shadow); }
-    .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
-    .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 1.5px; stroke-dasharray: 4,4; }
-
-    .accent-gradient-1 { fill: url(#grad1); stroke: #334155; stroke-width: 1px; }
-    .accent-gradient-2 { fill: url(#grad2); stroke: #334155; stroke-width: 1px; }
-    .accent-gradient-3 { fill: url(#grad3); stroke: #334155; stroke-width: 1px; }
-  </style>
-
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--line)"/>
-    </marker>
-  </defs>
-
-  <!-- Guest daemon, in-container -->
-  <g transform="translate(265, 20)">
-    <rect class="accent-gradient-1" width="320" height="80" rx="8"/>
-    <text class="text-title" x="160" y="34" fill="#ffffff">podbox-guest (in container)</text>
-    <text class="text-desc-shadow" x="160" y="56">notify &#183; clipboard &#183; xdg-open &#183; host-exec</text>
-  </g>
-
-  <!-- Hello handshake, direct to socket host -->
-  <path class="conn-line" d="M 425 100 L 425 198" marker-end="url(#arrow)"/>
-  <text class="text-desc" x="458" y="147" text-anchor="start">Hello &#8596; capability negotiation</text>
-
-  <!-- Direct proxy socket connections (dashed = passthrough, not the Hello channel) -->
-  <path class="conn-line-dashed" d="M 380 100 C 380 150, 220 150, 220 198" marker-end="url(#arrow)"/>
-  <path class="conn-line-dashed" d="M 470 100 C 470 150, 630 150, 630 198" marker-end="url(#arrow)"/>
-
-  <!-- Host Security Boundary -->
-  <line x1="20" y1="150" x2="830" y2="150" stroke="var(--border-box)" stroke-width="1.5" stroke-dasharray="6,6"/>
-  <text x="30" y="142" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="600" fill="var(--text-sub)" letter-spacing="1">HOST SECURITY BOUNDARY</text>
-
-  <!-- Wayland proxy -->
-  <g transform="translate(130, 200)">
-    <rect class="accent-gradient-3" width="180" height="80" rx="8"/>
-    <text class="text-title" x="90" y="34" fill="#ffffff">Wayland proxy</text>
-    <text class="text-desc-shadow" x="90" y="54">Filters registry globals</text>
-  </g>
-
-  <!-- Socket host -->
-  <g transform="translate(335, 200)">
-    <rect class="accent-gradient-3" width="180" height="80" rx="8"/>
-    <text class="text-title" x="90" y="34" fill="#ffffff">Socket host</text>
-    <text class="text-desc-shadow" x="90" y="54">Capability-gated handshake</text>
-  </g>
-
-  <!-- D-Bus proxy -->
-  <g transform="translate(540, 200)">
-    <rect class="accent-gradient-3" width="180" height="80" rx="8"/>
-    <text class="text-title" x="90" y="34" fill="#ffffff">D-Bus proxy</text>
-    <text class="text-desc-shadow" x="90" y="54">Scoped portal call rules</text>
-  </g>
-
-  <!-- Fan-in to host resources -->
-  <path class="conn-line-dashed" d="M 220 280 C 220 310, 340 310, 340 328" marker-end="url(#arrow)"/>
-  <path class="conn-line-dashed" d="M 425 280 L 425 328" marker-end="url(#arrow)"/>
-  <path class="conn-line-dashed" d="M 630 280 C 630 310, 510 310, 510 328" marker-end="url(#arrow)"/>
-
-  <!-- Host resources -->
-  <g transform="translate(265, 330)">
-    <rect class="box-bg" width="320" height="80" rx="8"/>
-    <text class="text-title" x="160" y="34">Host resources</text>
-    <text class="text-desc" x="160" y="54">Compositor &#183; session bus &#183; GPU &#183; PipeWire &#183; XDG</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" class="pbx" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="pbx-ar-title pbx-ar-desc">
+<title id="pbx-ar-title">podbox while a container runs</title>
+<desc id="pbx-ar-desc">Inside the container, interceptors and the podbox-guest daemon talk to the host over one Unix socket served by podbox serve. Wayland and D-Bus traffic pass through a Wayland filter and an optional xdg-dbus-proxy before reaching the desktop.</desc>
+<style>
+.pbx{--k-surface:#e6e9ef;--k-base:#eff1f5;--k-border:#acb0be;--k-faint:#ccd0da;--k-text:#4c4f69;--k-sub:#5c5f77;--k-muted:#8c8fa1;--k-mauve:#8839ef;--k-blue:#1e66f5;--k-green:#40a02b;--k-peach:#fe640b}
+@media (prefers-color-scheme:dark){.pbx{--k-surface:#181825;--k-base:#1e1e2e;--k-border:#585b70;--k-faint:#313244;--k-text:#cdd6f4;--k-sub:#a6adc8;--k-muted:#7f849c;--k-mauve:#cba6f7;--k-blue:#89b4fa;--k-green:#a6e3a1;--k-peach:#fab387}}
+.pbx{--c-surface:var(--bg-mantle,var(--k-surface));--c-base:var(--bg-base,var(--k-base));--c-border:var(--border-focus,var(--k-border));--c-faint:var(--border,var(--k-faint));--c-text:var(--text-primary,var(--k-text));--c-sub:var(--text-subtext,var(--k-sub));--c-muted:var(--text-muted,var(--k-muted));--c-mauve:var(--accent-mauve,var(--k-mauve));--c-blue:var(--accent-blue,var(--k-blue));--c-green:var(--accent-green,var(--k-green));--c-peach:var(--accent-peach,var(--k-peach))}
+.pbx text{font-family:Geist,Inter,-apple-system,'Segoe UI',Roboto,Ubuntu,sans-serif;fill:var(--c-text)}
+.pbx .mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-ligatures:none}
+.pbx .t{font-size:13px;font-weight:600}
+.pbx .s{font-size:10.5px;fill:var(--c-sub)}
+.pbx .m{font-size:10.5px;fill:var(--c-muted)}
+.pbx .lbl{font-size:11px;fill:var(--c-muted);letter-spacing:.02em}
+.pbx .num{font-size:11px;font-weight:600;fill:var(--c-base)}
+.pbx .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1}
+.pbx .opt{stroke-dasharray:4 3}
+.pbx .acc-mauve{fill:color-mix(in srgb,var(--c-mauve) 13%,var(--c-surface));stroke:var(--c-mauve)}
+.pbx .acc-blue{fill:color-mix(in srgb,var(--c-blue) 13%,var(--c-surface));stroke:var(--c-blue)}
+.pbx .acc-peach{fill:color-mix(in srgb,var(--c-peach) 13%,var(--c-surface));stroke:var(--c-peach)}
+.pbx .acc-green{fill:color-mix(in srgb,var(--c-green) 13%,var(--c-surface));stroke:var(--c-green)}
+.pbx .region{fill:color-mix(in srgb,var(--c-faint) 22%,transparent);stroke:var(--c-faint);stroke-width:1}
+.pbx .wire{fill:none;stroke:var(--c-muted);stroke-width:1.4}
+.pbx .wire.dash{stroke-dasharray:5 4}
+.pbx .wire.acc{stroke:var(--c-mauve)}
+.pbx .head{fill:var(--c-muted)}
+.pbx .head.acc{fill:var(--c-mauve)}
+.pbx .boundary{stroke:var(--c-border);stroke-width:1;stroke-dasharray:6 5}
+.pbx .life{stroke:var(--c-faint);stroke-width:1.2;stroke-dasharray:3 4}
+.pbx .dot{fill:var(--c-mauve)}
+</style>
+<defs><marker id="pbx-ar-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head"/></marker><marker id="pbx-ar-ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head acc"/></marker></defs>
+<rect x="20" y="30" width="420" height="440" rx="10" class="region"/>
+<text x="34" y="50" class="lbl mono" text-anchor="start">container</text>
+<rect x="480" y="30" width="460" height="440" rx="10" class="region"/>
+<text x="494" y="50" class="lbl mono" text-anchor="start">host</text>
+<rect x="40" y="70" width="380" height="56" rx="7" class="box"/>
+<text x="230.0" y="94.5" class="t" text-anchor="middle">Your shell and apps</text>
+<text x="230.0" y="111.5" class="s" text-anchor="middle">runs as you · home is ~/containers/&lt;name&gt;</text>
+<rect x="40" y="156" width="380" height="56" rx="7" class="box"/>
+<text x="230.0" y="180.5" class="t" text-anchor="middle">Interceptors on PATH</text>
+<text x="230.0" y="197.5" class="s mono" text-anchor="middle">notify-send  xdg-open  podbox-clipboard  host-exec</text>
+<rect x="40" y="242" width="380" height="56" rx="7" class="box acc-mauve"/>
+<text x="230.0" y="266.5" class="t mono" text-anchor="middle">podbox-guest --daemon</text>
+<text x="230.0" y="283.5" class="s" text-anchor="middle">handshake, installs the interceptors</text>
+<rect x="40" y="328" width="380" height="56" rx="7" class="box"/>
+<text x="230.0" y="352.5" class="t" text-anchor="middle">Wayland clients</text>
+<text x="230.0" y="369.5" class="s mono" text-anchor="middle">$WAYLAND_DISPLAY</text>
+<rect x="40" y="396" width="380" height="56" rx="7" class="box opt"/>
+<text x="230.0" y="420.5" class="t" text-anchor="middle">D-Bus clients</text>
+<text x="230.0" y="437.5" class="s mono" text-anchor="middle">$DBUS_SESSION_BUS_ADDRESS</text>
+<rect x="500" y="156" width="230" height="56" rx="7" class="box"/>
+<text x="615.0" y="180.5" class="t mono" text-anchor="middle">&lt;name&gt;.socket</text>
+<text x="615.0" y="197.5" class="s mono" text-anchor="middle">$XDG_RUNTIME_DIR/podbox/</text>
+<rect x="500" y="242" width="230" height="56" rx="7" class="box acc-mauve"/>
+<text x="615.0" y="266.5" class="t mono" text-anchor="middle">podbox serve</text>
+<text x="615.0" y="283.5" class="s mono" text-anchor="middle">&lt;name&gt;-host.service</text>
+<rect x="500" y="328" width="230" height="56" rx="7" class="box"/>
+<text x="615.0" y="352.5" class="t" text-anchor="middle">Wayland filter</text>
+<text x="615.0" y="369.5" class="s mono" text-anchor="middle">&lt;name&gt;-compositor.service</text>
+<rect x="500" y="396" width="230" height="56" rx="7" class="box opt"/>
+<text x="615.0" y="420.5" class="t" text-anchor="middle">xdg-dbus-proxy</text>
+<text x="615.0" y="437.5" class="s mono" text-anchor="middle">&lt;name&gt;-proxy.service</text>
+<rect x="770" y="156" width="150" height="296" rx="7" class="box"/>
+<text x="845.0" y="248.0" class="t" text-anchor="middle">Your desktop</text>
+<text x="845.0" y="265.0" class="s mono" text-anchor="middle"></text>
+<text x="845.0" y="280.0" class="s mono" text-anchor="middle">compositor</text>
+<text x="845.0" y="295.0" class="s mono" text-anchor="middle">notifications</text>
+<text x="845.0" y="310.0" class="s mono" text-anchor="middle">clipboard</text>
+<text x="845.0" y="325.0" class="s mono" text-anchor="middle">browser</text>
+<text x="845.0" y="340.0" class="s mono" text-anchor="middle">session bus</text>
+<text x="845.0" y="355.0" class="s mono" text-anchor="middle">allowed commands</text>
+<text x="845.0" y="370.0" class="s mono" text-anchor="middle"></text>
+<path d="M 230 126 L 230 156" class="wire" marker-end="url(#pbx-ar-h)"/>
+<path d="M 420 184 L 500 184" class="wire acc" marker-end="url(#pbx-ar-ha)"/>
+<path d="M 420 270 L 460 270 L 460 196 L 500 196" class="wire acc" marker-end="url(#pbx-ar-ha)"/>
+<path d="M 615 212 L 615 242" class="wire" marker-end="url(#pbx-ar-h)"/>
+<text x="624" y="231" class="m" text-anchor="start">activates</text>
+<path d="M 730 270 L 770 270" class="wire" marker-end="url(#pbx-ar-h)"/>
+<path d="M 420 356 L 500 356" class="wire" marker-end="url(#pbx-ar-h)"/>
+<path d="M 730 356 L 770 356" class="wire" marker-end="url(#pbx-ar-h)"/>
+<path d="M 420 424 L 500 424" class="wire dash" marker-end="url(#pbx-ar-h)"/>
+<path d="M 730 424 L 770 424" class="wire dash" marker-end="url(#pbx-ar-h)"/>
+<text x="20" y="492" class="m" text-anchor="start">Dashed: only when enabled in the config. Nothing reaches the host except through these paths.</text>
 </svg>

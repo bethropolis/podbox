@@ -1,100 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 300" width="100%" height="auto">
-  <defs>
-    <filter id="text-shadow">
-      <feDropShadow dx="0" dy="1" stdDeviation="0.5" flood-color="#000000" flood-opacity="0.35"/>
-    </filter>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#d946ef"/>
-    </linearGradient>
-    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#a855f7"/>
-    </linearGradient>
-  </defs>
-
-  <style>
-    :root {
-      --bg-canvas: #ffffff;
-      --bg-box: #f8fafc;
-      --border-box: #cbd5e1;
-      --text-main: #0f172a;
-      --text-sub: #64748b;
-      --line: #94a3b8;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-canvas: #0d1117;
-        --bg-box: #161b22;
-        --border-box: #30363d;
-        --text-main: #c9d1d9;
-        --text-sub: #8b949e;
-        --line: #484f58;
-      }
-    }
-
-    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
-    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
-    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
-    .text-desc-shadow { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: #e2e8f0; text-anchor: middle; filter: url(#text-shadow); }
-    .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
-    .conn-line-dashed { fill: none; stroke: var(--line); stroke-width: 1.5px; stroke-dasharray: 4,4; }
-
-    .accent-gradient-1 { fill: url(#grad1); stroke: #334155; stroke-width: 1px; }
-    .accent-gradient-2 { fill: url(#grad2); stroke: #334155; stroke-width: 1px; }
-    .accent-gradient-3 { fill: url(#grad3); stroke: #334155; stroke-width: 1px; }
-  </style>
-
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--line)"/>
-    </marker>
-  </defs>
-
-  <!-- Step 1: Definition -->
-  <g transform="translate(20, 90)">
-    <rect class="box-bg" width="140" height="80" rx="8"/>
-    <text class="text-title" x="70" y="38">definition.toml</text>
-    <text class="text-desc" x="70" y="56">Declarative config</text>
-  </g>
-
-  <!-- Step 2: Codegen -->
-  <g transform="translate(210, 90)">
-    <rect class="accent-gradient-1" width="190" height="80" rx="8"/>
-    <text class="text-title" x="95" y="38" fill="#ffffff">podbox build / enable</text>
-    <text class="text-desc-shadow" x="95" y="56">Pure codegen, no daemon</text>
-  </g>
-
-  <!-- Step 3a: OCI Image -->
-  <g transform="translate(440, 10)">
-    <rect class="accent-gradient-2" width="150" height="80" rx="8"/>
-    <text class="text-title" x="75" y="38" fill="#ffffff">OCI Image</text>
-    <text class="text-desc-shadow" x="75" y="56">Distro packages baked in</text>
-  </g>
-
-  <!-- Step 3b: Quadlet Units -->
-  <g transform="translate(440, 190)">
-    <rect class="accent-gradient-3" width="190" height="96" rx="8"/>
-    <text class="text-title" x="95" y="34" fill="#ffffff">Quadlet units</text>
-    <text class="text-desc-shadow" x="95" y="54">.container .socket .build</text>
-    <text class="text-desc-shadow" x="95" y="70">+ 3 companion services</text>
-  </g>
-
-  <!-- Step 4: systemd -->
-  <g transform="translate(660, 90)">
-    <rect class="box-bg" width="150" height="80" rx="8"/>
-    <text class="text-title" x="75" y="38">systemd --user</text>
-    <text class="text-desc" x="75" y="56">Owns the lifecycle</text>
-  </g>
-
-  <!-- Flow -->
-  <path class="conn-line" d="M 160 130 L 208 130" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 400 130 C 420 130, 420 50, 438 50" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 400 130 C 420 130, 420 238, 438 238" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 590 50 C 620 50, 620 130, 658 130" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 630 238 C 650 238, 650 130, 658 130" marker-end="url(#arrow)"/>
+<svg xmlns="http://www.w3.org/2000/svg" class="pbx" viewBox="0 0 960 300" width="960" height="300" role="img" aria-labelledby="pbx-ab-title pbx-ab-desc">
+<title id="pbx-ab-title">podbox at build time</title>
+<desc id="pbx-ab-desc">podbox.toml goes into podbox build, which writes a Containerfile that podman builds into an OCI image, and Quadlet units that are installed for systemd --user.</desc>
+<style>
+.pbx{--k-surface:#e6e9ef;--k-base:#eff1f5;--k-border:#acb0be;--k-faint:#ccd0da;--k-text:#4c4f69;--k-sub:#5c5f77;--k-muted:#8c8fa1;--k-mauve:#8839ef;--k-blue:#1e66f5;--k-green:#40a02b;--k-peach:#fe640b}
+@media (prefers-color-scheme:dark){.pbx{--k-surface:#181825;--k-base:#1e1e2e;--k-border:#585b70;--k-faint:#313244;--k-text:#cdd6f4;--k-sub:#a6adc8;--k-muted:#7f849c;--k-mauve:#cba6f7;--k-blue:#89b4fa;--k-green:#a6e3a1;--k-peach:#fab387}}
+.pbx{--c-surface:var(--bg-mantle,var(--k-surface));--c-base:var(--bg-base,var(--k-base));--c-border:var(--border-focus,var(--k-border));--c-faint:var(--border,var(--k-faint));--c-text:var(--text-primary,var(--k-text));--c-sub:var(--text-subtext,var(--k-sub));--c-muted:var(--text-muted,var(--k-muted));--c-mauve:var(--accent-mauve,var(--k-mauve));--c-blue:var(--accent-blue,var(--k-blue));--c-green:var(--accent-green,var(--k-green));--c-peach:var(--accent-peach,var(--k-peach))}
+.pbx text{font-family:Geist,Inter,-apple-system,'Segoe UI',Roboto,Ubuntu,sans-serif;fill:var(--c-text)}
+.pbx .mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-ligatures:none}
+.pbx .t{font-size:13px;font-weight:600}
+.pbx .s{font-size:10.5px;fill:var(--c-sub)}
+.pbx .m{font-size:10.5px;fill:var(--c-muted)}
+.pbx .lbl{font-size:11px;fill:var(--c-muted);letter-spacing:.02em}
+.pbx .num{font-size:11px;font-weight:600;fill:var(--c-base)}
+.pbx .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1}
+.pbx .opt{stroke-dasharray:4 3}
+.pbx .acc-mauve{fill:color-mix(in srgb,var(--c-mauve) 13%,var(--c-surface));stroke:var(--c-mauve)}
+.pbx .acc-blue{fill:color-mix(in srgb,var(--c-blue) 13%,var(--c-surface));stroke:var(--c-blue)}
+.pbx .acc-peach{fill:color-mix(in srgb,var(--c-peach) 13%,var(--c-surface));stroke:var(--c-peach)}
+.pbx .acc-green{fill:color-mix(in srgb,var(--c-green) 13%,var(--c-surface));stroke:var(--c-green)}
+.pbx .region{fill:color-mix(in srgb,var(--c-faint) 22%,transparent);stroke:var(--c-faint);stroke-width:1}
+.pbx .wire{fill:none;stroke:var(--c-muted);stroke-width:1.4}
+.pbx .wire.dash{stroke-dasharray:5 4}
+.pbx .wire.acc{stroke:var(--c-mauve)}
+.pbx .head{fill:var(--c-muted)}
+.pbx .head.acc{fill:var(--c-mauve)}
+.pbx .boundary{stroke:var(--c-border);stroke-width:1;stroke-dasharray:6 5}
+.pbx .life{stroke:var(--c-faint);stroke-width:1.2;stroke-dasharray:3 4}
+.pbx .dot{fill:var(--c-mauve)}
+</style>
+<defs><marker id="pbx-ab-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head"/></marker><marker id="pbx-ab-ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head acc"/></marker></defs>
+<rect x="20" y="118" width="150" height="64" rx="7" class="box"/>
+<text x="95.0" y="146.5" class="t mono" text-anchor="middle">podbox.toml</text>
+<text x="95.0" y="163.5" class="s" text-anchor="middle">you write this</text>
+<rect x="210" y="118" width="150" height="64" rx="7" class="box acc-mauve"/>
+<text x="285.0" y="146.5" class="t mono" text-anchor="middle">podbox build</text>
+<text x="285.0" y="163.5" class="s" text-anchor="middle">pure codegen</text>
+<rect x="410" y="40" width="170" height="64" rx="7" class="box"/>
+<text x="495.0" y="68.5" class="t" text-anchor="middle">Containerfile</text>
+<text x="495.0" y="85.5" class="s mono" text-anchor="middle">packages, run steps</text>
+<rect x="620" y="40" width="180" height="64" rx="7" class="box"/>
+<text x="710.0" y="68.5" class="t" text-anchor="middle">OCI image</text>
+<text x="710.0" y="85.5" class="s mono" text-anchor="middle">podman build</text>
+<rect x="410" y="196" width="170" height="64" rx="7" class="box"/>
+<text x="495.0" y="224.5" class="t" text-anchor="middle">Quadlet units</text>
+<text x="495.0" y="241.5" class="s mono" text-anchor="middle">.container .socket .build</text>
+<rect x="620" y="196" width="180" height="64" rx="7" class="box"/>
+<text x="710.0" y="224.5" class="t" text-anchor="middle">Installed</text>
+<text x="710.0" y="241.5" class="s mono" text-anchor="middle">~/.config/containers/systemd</text>
+<rect x="840" y="118" width="104" height="64" rx="7" class="box"/>
+<text x="892.0" y="146.5" class="t" text-anchor="middle">systemd</text>
+<text x="892.0" y="163.5" class="s mono" text-anchor="middle">--user</text>
+<path d="M 170 150 L 210 150" class="wire" marker-end="url(#pbx-ab-h)"/>
+<path d="M 360 150 L 385 150 L 385 72 L 410 72" class="wire" marker-end="url(#pbx-ab-h)"/>
+<path d="M 360 150 L 385 150 L 385 228 L 410 228" class="wire" marker-end="url(#pbx-ab-h)"/>
+<path d="M 580 72 L 620 72" class="wire" marker-end="url(#pbx-ab-h)"/>
+<path d="M 580 228 L 620 228" class="wire" marker-end="url(#pbx-ab-h)"/>
+<path d="M 800 72 L 820 72 L 820 150 L 840 150" class="wire" marker-end="url(#pbx-ab-h)"/>
+<path d="M 800 228 L 820 228 L 820 150 L 840 150" class="wire" marker-end="url(#pbx-ab-h)"/>
+<text x="20" y="284" class="m" text-anchor="start">Everything right of podbox.toml is generated. Edit the TOML, run podbox build again.</text>
 </svg>

@@ -1,72 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" width="100%" height="auto">
-  <defs>
-    <linearGradient id="wf-grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="wf-grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#d946ef"/>
-    </linearGradient>
-  </defs>
-  <style>
-    :root {
-      --bg-canvas: #ffffff;
-      --bg-box: #f8fafc;
-      --border-box: #cbd5e1;
-      --text-main: #0f172a;
-      --text-sub: #64748b;
-      --line: #94a3b8;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-canvas: #0d1117;
-        --bg-box: #161b22;
-        --border-box: #30363d;
-        --text-main: #c9d1d9;
-        --text-sub: #8b949e;
-        --line: #484f58;
-      }
-    }
-    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
-    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
-    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11.5px; fill: var(--text-sub); text-anchor: middle; }
-    .text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: var(--text-main); text-anchor: middle; }
-    .text-offset { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10px; font-weight: 700; fill: var(--text-sub); letter-spacing: 1px; text-anchor: middle; }
-    .accent-1 { fill: url(#wf-grad1); }
-    .accent-2 { fill: url(#wf-grad2); }
-    .tick { stroke: var(--line); stroke-width: 1.5px; }
-  </style>
-  <!-- Byte offsets -->
-  <text class="text-offset" x="140" y="20">BYTES 0–3</text>
-  <text class="text-offset" x="520" y="20">BYTES 4 – N+3</text>
-  <!-- Segment 1: length prefix -->
-  <g transform="translate(30, 30)">
-    <rect class="accent-1" width="220" height="96" rx="8"/>
-    <text class="text-title" x="110" y="30" fill="#ffffff">Length prefix</text>
-    <text class="text-desc" x="110" y="50" fill="#ffffff" opacity="0.85">4 bytes · big-endian</text>
-    <text class="text-mono" x="110" y="74" fill="#ffffff">value = N</text>
-  </g>
-  <!-- Segment 2: payload -->
-  <g transform="translate(260, 30)">
-    <rect class="accent-2" width="530" height="96" rx="8"/>
-    <text class="text-title" x="265" y="30" fill="#ffffff">Payload</text>
-    <text class="text-desc" x="265" y="50" fill="#ffffff" opacity="0.85">N bytes · UTF-8 JSON</text>
-    <text class="text-mono" x="265" y="74" fill="#ffffff">one message</text>
-  </g>
-  <!-- Ticks joining offsets to segments -->
-  <line class="tick" x1="30" y1="24" x2="30" y2="30"/>
-  <line class="tick" x1="250" y1="24" x2="250" y2="30"/>
-  <line class="tick" x1="260" y1="24" x2="260" y2="30"/>
-  <line class="tick" x1="790" y1="24" x2="790" y2="30"/>
-  <!-- Example -->
-  <text class="text-offset" x="410" y="168">EXAMPLE — N = 15</text>
-  <g transform="translate(30, 178)">
-    <rect class="box-bg" width="760" height="92" rx="8"/>
-    <text class="text-mono" x="90" y="38">00  00  00  0F</text>
-    <text class="text-desc" x="90" y="58">15 in hex</text>
-    <line class="tick" x1="200" y1="14" x2="200" y2="78"/>
-    <text class="text-mono" x="495" y="38">{"type":"ping"}</text>
-    <text class="text-desc" x="495" y="58">15 bytes of JSON follow</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" class="pbx" viewBox="0 0 860 270" width="860" height="270" role="img" aria-labelledby="pbx-wf-title pbx-wf-desc">
+<title id="pbx-wf-title">Wire format</title>
+<desc id="pbx-wf-desc">Each message is a 4-byte big-endian length followed by that many bytes of UTF-8 JSON. Example: 00 00 00 0F followed by the 15 bytes {&quot;type&quot;:&quot;ping&quot;}.</desc>
+<style>
+.pbx{--k-surface:#e6e9ef;--k-base:#eff1f5;--k-border:#acb0be;--k-faint:#ccd0da;--k-text:#4c4f69;--k-sub:#5c5f77;--k-muted:#8c8fa1;--k-mauve:#8839ef;--k-blue:#1e66f5;--k-green:#40a02b;--k-peach:#fe640b}
+@media (prefers-color-scheme:dark){.pbx{--k-surface:#181825;--k-base:#1e1e2e;--k-border:#585b70;--k-faint:#313244;--k-text:#cdd6f4;--k-sub:#a6adc8;--k-muted:#7f849c;--k-mauve:#cba6f7;--k-blue:#89b4fa;--k-green:#a6e3a1;--k-peach:#fab387}}
+.pbx{--c-surface:var(--bg-mantle,var(--k-surface));--c-base:var(--bg-base,var(--k-base));--c-border:var(--border-focus,var(--k-border));--c-faint:var(--border,var(--k-faint));--c-text:var(--text-primary,var(--k-text));--c-sub:var(--text-subtext,var(--k-sub));--c-muted:var(--text-muted,var(--k-muted));--c-mauve:var(--accent-mauve,var(--k-mauve));--c-blue:var(--accent-blue,var(--k-blue));--c-green:var(--accent-green,var(--k-green));--c-peach:var(--accent-peach,var(--k-peach))}
+.pbx text{font-family:Geist,Inter,-apple-system,'Segoe UI',Roboto,Ubuntu,sans-serif;fill:var(--c-text)}
+.pbx .mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-ligatures:none}
+.pbx .t{font-size:13px;font-weight:600}
+.pbx .s{font-size:10.5px;fill:var(--c-sub)}
+.pbx .m{font-size:10.5px;fill:var(--c-muted)}
+.pbx .lbl{font-size:11px;fill:var(--c-muted);letter-spacing:.02em}
+.pbx .num{font-size:11px;font-weight:600;fill:var(--c-base)}
+.pbx .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1}
+.pbx .opt{stroke-dasharray:4 3}
+.pbx .acc-mauve{fill:color-mix(in srgb,var(--c-mauve) 13%,var(--c-surface));stroke:var(--c-mauve)}
+.pbx .acc-blue{fill:color-mix(in srgb,var(--c-blue) 13%,var(--c-surface));stroke:var(--c-blue)}
+.pbx .acc-peach{fill:color-mix(in srgb,var(--c-peach) 13%,var(--c-surface));stroke:var(--c-peach)}
+.pbx .acc-green{fill:color-mix(in srgb,var(--c-green) 13%,var(--c-surface));stroke:var(--c-green)}
+.pbx .region{fill:color-mix(in srgb,var(--c-faint) 22%,transparent);stroke:var(--c-faint);stroke-width:1}
+.pbx .wire{fill:none;stroke:var(--c-muted);stroke-width:1.4}
+.pbx .wire.dash{stroke-dasharray:5 4}
+.pbx .wire.acc{stroke:var(--c-mauve)}
+.pbx .head{fill:var(--c-muted)}
+.pbx .head.acc{fill:var(--c-mauve)}
+.pbx .boundary{stroke:var(--c-border);stroke-width:1;stroke-dasharray:6 5}
+.pbx .life{stroke:var(--c-faint);stroke-width:1.2;stroke-dasharray:3 4}
+.pbx .dot{fill:var(--c-mauve)}
+</style>
+<defs><marker id="pbx-wf-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head"/></marker><marker id="pbx-wf-ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head acc"/></marker></defs>
+<text x="30" y="34" class="lbl mono" text-anchor="start">bytes 0–3</text>
+<text x="250" y="34" class="lbl mono" text-anchor="start">bytes 4 … N+3</text>
+<rect x="30" y="44" width="200" height="72" rx="7" class="box acc-blue"/>
+<text x="130.0" y="76.5" class="t mono" text-anchor="middle">length = N</text>
+<text x="130.0" y="93.5" class="s mono" text-anchor="middle">u32, big-endian</text>
+<rect x="250" y="44" width="580" height="72" rx="7" class="box acc-mauve"/>
+<text x="540.0" y="76.5" class="t" text-anchor="middle">payload</text>
+<text x="540.0" y="93.5" class="s" text-anchor="middle">N bytes of UTF-8 JSON, one message</text>
+<text x="30" y="160" class="lbl mono" text-anchor="start">example</text>
+<rect x="30" y="170" width="200" height="64" rx="7" class="box"/>
+<text x="130.0" y="198.5" class="t mono" text-anchor="middle">00 00 00 0F</text>
+<text x="130.0" y="215.5" class="s mono" text-anchor="middle">= 15</text>
+<rect x="250" y="170" width="580" height="64" rx="7" class="box"/>
+<text x="540.0" y="198.5" class="t mono" text-anchor="middle">{&quot;type&quot;:&quot;ping&quot;}</text>
+<text x="540.0" y="215.5" class="s mono" text-anchor="middle">15 bytes</text>
+<text x="30" y="260" class="m" text-anchor="start">Frames over 16 MiB are rejected. Both directions use the same framing.</text>
 </svg>

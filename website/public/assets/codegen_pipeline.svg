@@ -1,135 +1,109 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 475" width="100%" height="auto">
-  <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#d946ef"/>
-    </linearGradient>
-  </defs>
-  <style>
-    :root {
-      --bg-canvas: #ffffff;
-      --bg-box: #f8fafc;
-      --border-box: #cbd5e1;
-      --text-main: #0f172a;
-      --text-sub: #64748b;
-      --line: #94a3b8;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-canvas: #0d1117;
-        --bg-box: #161b22;
-        --border-box: #30363d;
-        --text-main: #c9d1d9;
-        --text-sub: #8b949e;
-        --line: #484f58;
-      }
-    }
-    
-    .box-bg { fill: var(--bg-box); stroke: var(--border-box); stroke-width: 1.5px; }
-    .text-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: var(--text-main); text-anchor: middle; }
-    .text-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 11px; fill: var(--text-sub); text-anchor: middle; }
-    .text-phase { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 10px; font-weight: 700; fill: var(--text-sub); letter-spacing: 1px; }
-    .conn-line { fill: none; stroke: var(--line); stroke-width: 2px; }
-    .accent-gradient-1 { fill: url(#grad1); stroke: #334155; stroke-width: 1px; }
-    .accent-gradient-2 { fill: url(#grad2); stroke: #334155; stroke-width: 1px; }
-  </style>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--line)"/>
-    </marker>
-  </defs>
-  <!-- Left: Config Struct Source -->
-  <g transform="translate(30, 40)">
-    <rect class="box-bg" width="160" height="285" rx="8"/>
-    <text class="text-title" x="80" y="130">Config Struct</text>
-    <text class="text-desc" x="80" y="148">Parsed TOML</text>
-    <text class="text-desc" x="80" y="162">Settings</text>
-  </g>
-  <!-- Center: Generator Pure Functions -->
-  <g transform="translate(230, 40)">
-    <rect class="accent-gradient-1" width="380" height="45" rx="6"/>
-    <text class="text-title" x="190" y="26" fill="#ffffff">codegen::containerfile::generate()</text>
-  </g>
-  <g transform="translate(230, 100)">
-    <rect class="accent-gradient-1" width="380" height="45" rx="6"/>
-    <text class="text-title" x="190" y="26" fill="#ffffff">codegen::quadlet::generate_build()</text>
-  </g>
-  <g transform="translate(230, 160)">
-    <rect class="accent-gradient-1" width="380" height="45" rx="6"/>
-    <text class="text-title" x="190" y="26" fill="#ffffff">codegen::quadlet::generate_socket()</text>
-  </g>
-  <g transform="translate(230, 220)">
-    <rect class="accent-gradient-1" width="380" height="45" rx="6"/>
-    <text class="text-title" x="190" y="26" fill="#ffffff">codegen::quadlet::generate_container()</text>
-  </g>
-  <g transform="translate(230, 280)">
-    <rect class="accent-gradient-1" width="380" height="45" rx="6"/>
-    <text class="text-title" x="190" y="26" fill="#ffffff">lock::write()</text>
-  </g>
-  <!-- Right: Generated Output Buffers -->
-  <g transform="translate(650, 40)">
-    <rect class="box-bg" width="140" height="45" rx="6"/>
-    <text class="text-title" x="70" y="26">Containerfile</text>
-  </g>
-  <g transform="translate(650, 100)">
-    <rect class="box-bg" width="140" height="45" rx="6"/>
-    <text class="text-title" x="70" y="26">.build Unit</text>
-  </g>
-  <g transform="translate(650, 160)">
-    <rect class="box-bg" width="140" height="45" rx="6"/>
-    <text class="text-title" x="70" y="26">.socket Unit</text>
-  </g>
-  <g transform="translate(650, 220)">
-    <rect class="box-bg" width="140" height="45" rx="6"/>
-    <text class="text-title" x="70" y="26">.container Unit</text>
-  </g>
-  <g transform="translate(650, 280)">
-    <rect class="box-bg" width="140" height="45" rx="6"/>
-    <text class="text-title" x="70" y="26">LockFile Struct</text>
-  </g>
-  <!-- Phase Separator Line -->
-  <line x1="30" y1="355" x2="790" y2="355" stroke="var(--border-box)" stroke-width="1.5" stroke-dasharray="6,6"/>
-  <text class="text-phase" x="30" y="348" text-anchor="start">PURE FUNCTION STAGE (NO DISK I/O)</text>
-  <text class="text-phase" x="30" y="373" text-anchor="start">ORCHESTRATION &amp; STORAGE STAGE (DISK I/O &amp; BUILDS)</text>
-  <!-- Bottom: Disk I/O & Orchestration Blocks -->
-  <g transform="translate(30, 390)">
-    <rect class="box-bg" width="165" height="60" rx="8"/>
-    <text class="text-title" x="82.5" y="28">1. Write Context</text>
-    <text class="text-desc" x="82.5" y="44">Writes to Context Dir</text>
-  </g>
-  <g transform="translate(225, 390)">
-    <rect class="box-bg" width="165" height="60" rx="8"/>
-    <text class="text-title" x="82.5" y="28">2. Inject Guest</text>
-    <text class="text-desc" x="82.5" y="44">Copies static binary</text>
-  </g>
-  <g transform="translate(420, 390)">
-    <rect class="box-bg" width="165" height="60" rx="8"/>
-    <text class="text-title" x="82.5" y="28">3. podman build</text>
-    <text class="text-desc" x="82.5" y="44">Compiles OCI layers</text>
-  </g>
-  <g transform="translate(615, 390)">
-    <rect class="box-bg" width="175" height="60" rx="8"/>
-    <text class="text-title" x="87.5" y="28">4. Write Lockfile</text>
-    <text class="text-desc" x="87.5" y="44">Registers checksum</text>
-  </g>
-  <!-- Input to Generators -->
-  <path class="conn-line" d="M 190 62 L 222 62" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 190 122 L 222 122" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 190 182 L 222 182" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 190 242 L 222 242" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 190 302 L 222 302" marker-end="url(#arrow)"/>
-  <!-- Generators to Outputs -->
-  <path class="conn-line" d="M 610 62 L 642 62" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 610 122 L 642 122" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 610 182 L 642 182" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 610 242 L 642 242" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 610 302 L 642 302" marker-end="url(#arrow)"/>
-  <!-- I/O Steps -->
-  <path class="conn-line" d="M 195 420 L 217 420" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 390 420 L 412 420" marker-end="url(#arrow)"/>
-  <path class="conn-line" d="M 585 420 L 607 420" marker-end="url(#arrow)"/>
+<svg xmlns="http://www.w3.org/2000/svg" class="pbx" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="pbx-cg-title pbx-cg-desc">
+<title id="pbx-cg-title">podbox build: codegen pipeline</title>
+<desc id="pbx-cg-desc">A parsed and validated Config feeds pure generator functions, each returning one file as a string. Orchestration then writes the build context, copies the guest binary, runs podman build and installs the units.</desc>
+<style>
+.pbx{--k-surface:#e6e9ef;--k-base:#eff1f5;--k-border:#acb0be;--k-faint:#ccd0da;--k-text:#4c4f69;--k-sub:#5c5f77;--k-muted:#8c8fa1;--k-mauve:#8839ef;--k-blue:#1e66f5;--k-green:#40a02b;--k-peach:#fe640b}
+@media (prefers-color-scheme:dark){.pbx{--k-surface:#181825;--k-base:#1e1e2e;--k-border:#585b70;--k-faint:#313244;--k-text:#cdd6f4;--k-sub:#a6adc8;--k-muted:#7f849c;--k-mauve:#cba6f7;--k-blue:#89b4fa;--k-green:#a6e3a1;--k-peach:#fab387}}
+.pbx{--c-surface:var(--bg-mantle,var(--k-surface));--c-base:var(--bg-base,var(--k-base));--c-border:var(--border-focus,var(--k-border));--c-faint:var(--border,var(--k-faint));--c-text:var(--text-primary,var(--k-text));--c-sub:var(--text-subtext,var(--k-sub));--c-muted:var(--text-muted,var(--k-muted));--c-mauve:var(--accent-mauve,var(--k-mauve));--c-blue:var(--accent-blue,var(--k-blue));--c-green:var(--accent-green,var(--k-green));--c-peach:var(--accent-peach,var(--k-peach))}
+.pbx text{font-family:Geist,Inter,-apple-system,'Segoe UI',Roboto,Ubuntu,sans-serif;fill:var(--c-text)}
+.pbx .mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-ligatures:none}
+.pbx .t{font-size:13px;font-weight:600}
+.pbx .s{font-size:10.5px;fill:var(--c-sub)}
+.pbx .m{font-size:10.5px;fill:var(--c-muted)}
+.pbx .lbl{font-size:11px;fill:var(--c-muted);letter-spacing:.02em}
+.pbx .num{font-size:11px;font-weight:600;fill:var(--c-base)}
+.pbx .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1}
+.pbx .opt{stroke-dasharray:4 3}
+.pbx .acc-mauve{fill:color-mix(in srgb,var(--c-mauve) 13%,var(--c-surface));stroke:var(--c-mauve)}
+.pbx .acc-blue{fill:color-mix(in srgb,var(--c-blue) 13%,var(--c-surface));stroke:var(--c-blue)}
+.pbx .acc-peach{fill:color-mix(in srgb,var(--c-peach) 13%,var(--c-surface));stroke:var(--c-peach)}
+.pbx .acc-green{fill:color-mix(in srgb,var(--c-green) 13%,var(--c-surface));stroke:var(--c-green)}
+.pbx .region{fill:color-mix(in srgb,var(--c-faint) 22%,transparent);stroke:var(--c-faint);stroke-width:1}
+.pbx .wire{fill:none;stroke:var(--c-muted);stroke-width:1.4}
+.pbx .wire.dash{stroke-dasharray:5 4}
+.pbx .wire.acc{stroke:var(--c-mauve)}
+.pbx .head{fill:var(--c-muted)}
+.pbx .head.acc{fill:var(--c-mauve)}
+.pbx .boundary{stroke:var(--c-border);stroke-width:1;stroke-dasharray:6 5}
+.pbx .life{stroke:var(--c-faint);stroke-width:1.2;stroke-dasharray:3 4}
+.pbx .dot{fill:var(--c-mauve)}
+</style>
+<defs><marker id="pbx-cg-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head"/></marker><marker id="pbx-cg-ha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L10 5 L0 9 z" class="head acc"/></marker></defs>
+<rect x="20" y="24" width="920" height="364" rx="10" class="region"/>
+<text x="34" y="44" class="lbl mono" text-anchor="start">pure functions · data in, string out, no I/O</text>
+<rect x="40" y="155.0" width="160" height="120" rx="7" class="box"/>
+<text x="120.0" y="196.5" class="t" text-anchor="middle">Config</text>
+<text x="120.0" y="213.5" class="s" text-anchor="middle">parsed</text>
+<text x="120.0" y="228.5" class="s" text-anchor="middle">profiles merged</text>
+<text x="120.0" y="243.5" class="s" text-anchor="middle">validated</text>
+<line x1="226" y1="83" x2="226" y2="347" class="wire"/>
+<path d="M 200 215.0 L 226 215.0" class="wire"/>
+<path d="M 226 83 L 250 83" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="66" width="360" height="34" rx="7" class="box acc-mauve"/>
+<text x="430.0" y="87.5" class="t mono" text-anchor="middle">containerfile::generate()</text>
+<path d="M 610 83 L 650 83" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="66" width="270" height="34" rx="7" class="box"/>
+<text x="785.0" y="87.5" class="t mono" text-anchor="middle">Containerfile</text>
+<path d="M 226 127 L 250 127" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="110" width="360" height="34" rx="7" class="box acc-mauve"/>
+<text x="430.0" y="131.5" class="t mono" text-anchor="middle">quadlet::generate_container()</text>
+<path d="M 610 127 L 650 127" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="110" width="270" height="34" rx="7" class="box"/>
+<text x="785.0" y="131.5" class="t mono" text-anchor="middle">&lt;name&gt;.container</text>
+<path d="M 226 171 L 250 171" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="154" width="360" height="34" rx="7" class="box acc-mauve"/>
+<text x="430.0" y="175.5" class="t mono" text-anchor="middle">quadlet::generate_build()</text>
+<path d="M 610 171 L 650 171" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="154" width="270" height="34" rx="7" class="box"/>
+<text x="785.0" y="175.5" class="t mono" text-anchor="middle">&lt;name&gt;.build</text>
+<path d="M 226 215 L 250 215" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="198" width="360" height="34" rx="7" class="box acc-mauve"/>
+<text x="430.0" y="219.5" class="t mono" text-anchor="middle">quadlet::generate_socket()</text>
+<path d="M 610 215 L 650 215" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="198" width="270" height="34" rx="7" class="box"/>
+<text x="785.0" y="219.5" class="t mono" text-anchor="middle">&lt;name&gt;.socket</text>
+<path d="M 226 259 L 250 259" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="242" width="360" height="34" rx="7" class="box acc-mauve"/>
+<text x="430.0" y="263.5" class="t mono" text-anchor="middle">quadlet::generate_host_service()</text>
+<path d="M 610 259 L 650 259" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="242" width="270" height="34" rx="7" class="box"/>
+<text x="785.0" y="263.5" class="t mono" text-anchor="middle">&lt;name&gt;-host.service</text>
+<path d="M 226 303 L 250 303" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="286" width="360" height="34" rx="7" class="box acc-mauve opt"/>
+<text x="430.0" y="307.5" class="t mono" text-anchor="middle">quadlet::generate_compositor_service()</text>
+<path d="M 610 303 L 650 303" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="286" width="270" height="34" rx="7" class="box opt"/>
+<text x="785.0" y="307.5" class="t mono" text-anchor="middle">&lt;name&gt;-compositor.service</text>
+<path d="M 226 347 L 250 347" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="250" y="330" width="360" height="34" rx="7" class="box acc-mauve opt"/>
+<text x="430.0" y="351.5" class="t mono" text-anchor="middle">quadlet::generate_dbus_proxy_service()</text>
+<path d="M 610 347 L 650 347" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="650" y="330" width="270" height="34" rx="7" class="box opt"/>
+<text x="785.0" y="351.5" class="t mono" text-anchor="middle">&lt;name&gt;-proxy.service</text>
+<rect x="20" y="418" width="920" height="140" rx="10" class="region"/>
+<text x="34" y="438" class="lbl mono" text-anchor="start">orchestration · writes files, calls podman and systemctl</text>
+<rect x="40" y="462" width="200" height="64" rx="7" class="box"/>
+<text x="140.0" y="490.5" class="t" text-anchor="middle">Build context</text>
+<text x="140.0" y="507.5" class="s mono" text-anchor="middle">~/.local/share/podbox/&lt;name&gt;</text>
+<circle cx="42" cy="462" r="10" class="dot"/>
+<text x="42" y="466" class="num" text-anchor="middle">1</text>
+<rect x="265" y="462" width="200" height="64" rx="7" class="box"/>
+<text x="365.0" y="490.5" class="t" text-anchor="middle">Copy guest</text>
+<text x="365.0" y="507.5" class="s" text-anchor="middle">static musl binary</text>
+<circle cx="267" cy="462" r="10" class="dot"/>
+<text x="267" y="466" class="num" text-anchor="middle">2</text>
+<path d="M 240 494 L 265 494" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="490" y="462" width="200" height="64" rx="7" class="box"/>
+<text x="590.0" y="490.5" class="t" text-anchor="middle">podman build</text>
+<text x="590.0" y="507.5" class="s" text-anchor="middle">skipped when unchanged</text>
+<circle cx="492" cy="462" r="10" class="dot"/>
+<text x="492" y="466" class="num" text-anchor="middle">3</text>
+<path d="M 465 494 L 490 494" class="wire" marker-end="url(#pbx-cg-h)"/>
+<rect x="715" y="462" width="200" height="64" rx="7" class="box"/>
+<text x="815.0" y="490.5" class="t" text-anchor="middle">Install units</text>
+<text x="815.0" y="507.5" class="s" text-anchor="middle">and write the lock file</text>
+<circle cx="717" cy="462" r="10" class="dot"/>
+<text x="717" y="466" class="num" text-anchor="middle">4</text>
+<path d="M 690 494 L 715 494" class="wire" marker-end="url(#pbx-cg-h)"/>
+<text x="20" y="586" class="m" text-anchor="start">Dashed rows only run when the config enables the Wayland filter or the D-Bus proxy.</text>
 </svg>
