@@ -152,6 +152,9 @@ export function StudioPage(_props: StudioPageProps) {
   const [focusLine, setFocusLine] = useState<number | null>(null);
   const [hoverLine, setHoverLine] = useState<number | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Phones and tablets get one pane at a time instead of a form followed by
+  // a long preview; lg+ always shows both side by side.
+  const [mobilePane, setMobilePane] = useState<'edit' | 'preview'>('edit');
   // Orphans own the banner: anything with a field or line already renders
   // inline (tab badge, input message, code squiggle).
   const orphanErrors = errors.filter((issue) => {
@@ -179,7 +182,12 @@ export function StudioPage(_props: StudioPageProps) {
       st.setActiveView('toml');
       setFocusLine(line);
     }
-    if (!field) return;
+    if (!field) {
+      if (line != null) setMobilePane('preview');
+      return;
+    }
+    // On small screens the field lives in the other pane.
+    setMobilePane('edit');
     // `[[provision]]` steps live in the dotfiles panel; their engine fields
     // look like `provision[0].name` and their inputs are id'd per step.
     const provisionMatch = field.match(/^provision\[(\d+)\]\.(.+)$/);
@@ -207,7 +215,7 @@ export function StudioPage(_props: StudioPageProps) {
   className={`w-full font-sans text-[var(--text-primary)] transition-all ${
     st.isFullscreen
       ? 'fixed inset-0 z-50 bg-[var(--bg-base)] flex flex-col p-1 sm:p-1.5 h-screen max-h-screen overflow-hidden'
-      : 'max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:h-[calc(100vh-4.5rem)] lg:flex lg:flex-col lg:overflow-hidden'
+      : 'max-w-[1600px] mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:h-[calc(100vh-3.5rem)] lg:flex lg:flex-col lg:overflow-hidden'
   }`}
 >
   {/* -------------------------------------------------------------------- */}
@@ -257,16 +265,41 @@ export function StudioPage(_props: StudioPageProps) {
   </div>
 )}
 
+{/* Edit / Preview switch (below lg only). */}
+{!isFullscreen && (
+  <div role="tablist" aria-label="Studio view" className="lg:hidden mb-3 grid grid-cols-2 gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-mantle)] p-1 text-[13px]">
+    {(['edit', 'preview'] as const).map((pane) => (
+      <button
+        key={pane}
+        type="button"
+        role="tab"
+        aria-selected={mobilePane === pane}
+        onClick={() => setMobilePane(pane)}
+        className={`rounded px-3 py-1.5 font-medium transition-colors ${
+          mobilePane === pane
+            ? 'bg-[var(--bg-surface0)] text-[var(--text-primary)]'
+            : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+        }`}
+      >
+        {pane === 'edit' ? 'Edit settings' : 'Preview files'}
+        {pane === 'preview' && errors.length > 0 && (
+          <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent-red)] align-middle" aria-label="has errors" />
+        )}
+      </button>
+    ))}
+  </div>
+)}
+
 {/* 2. MAIN WORKSPACE (SETTINGS + LIVE PREVIEW)                           */}
 {/* -------------------------------------------------------------------- */}
 <div className={`grid grid-cols-1 lg:grid-cols-12 lg:items-stretch ${st.isFullscreen ? 'gap-1 sm:gap-1.5 flex-1 min-h-0 overflow-hidden' : 'gap-4 lg:flex-1 lg:min-h-0 lg:overflow-hidden'}`}>
   {/* LEFT COLUMN: Categories & Settings Form (7 cols) */}
-  <div className="lg:col-span-7 flex flex-col min-h-0 h-full overflow-hidden rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)]/40 shadow-sm">
+  <div className={`lg:col-span-7 ${mobilePane === 'preview' && !isFullscreen ? 'hidden lg:flex' : 'flex'} flex-col xl:flex-row min-h-0 h-full overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-mantle)]`}>
           <CategoryTabs st={st} errorMap={errorMap} advisoryMap={validation?.advisoryMap ?? {}} />
 
 {/* Form Content Body - Scrollable */}
 <div
-  className={`flex-1 min-h-0 overflow-y-auto space-y-6 scrollbar-slim bg-[var(--bg-base)] ${isFullscreen ? 'p-3' : 'p-4 sm:p-5'}`}
+  className={`flex-1 min-w-0 min-h-0 overflow-y-auto space-y-6 scrollbar-slim bg-[var(--bg-base)] ${isFullscreen ? 'p-3' : 'p-4 sm:p-6'}`}
   onMouseOver={onFormHover}
   onMouseOut={(e) => {
     if (!(e.relatedTarget as HTMLElement)?.closest?.('[id^="studio-input-"]')) setHoverLine(null);
@@ -312,6 +345,7 @@ export function StudioPage(_props: StudioPageProps) {
               baselineToml={baselineToml}
               baselineLabel={baselineLabel}
               onDraftValidate={(draft) => validate(draft)?.errors[0]?.message ?? null}
+              mobileHidden={mobilePane === 'edit' && !isFullscreen}
               onApplyToml={(draft) => {
                 const parsed = parseToml(draft);
                 if (!parsed || typeof parsed !== 'object') return false;

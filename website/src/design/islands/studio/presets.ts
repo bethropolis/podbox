@@ -4,6 +4,7 @@
 import { STUDIO_DEFAULTS, UI_ONLY_KEYS } from './schema';
 import type { StudioValues } from './useStudioState';
 import { archGuiPreset } from './presets/arch-gui';
+import { flutterPreset } from './presets/flutter';
 import { fullstackPreset } from './presets/fullstack';
 import { gamingPreset } from './presets/gaming';
 import { minimalPreset } from './presets/minimal';
@@ -12,7 +13,7 @@ import type { PresetDef, PresetId } from './presets/shared';
 
 export type { PresetDef, PresetId };
 
-export const PRESETS: readonly PresetDef[] = [rustPreset, archGuiPreset, fullstackPreset, gamingPreset, minimalPreset];
+export const PRESETS: readonly PresetDef[] = [rustPreset, flutterPreset, archGuiPreset, fullstackPreset, gamingPreset, minimalPreset];
 
 /**
  * Reset to a blank slate.

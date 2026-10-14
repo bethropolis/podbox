@@ -40,9 +40,9 @@ export function SettingsPalette({ onPick, onCategory, onClose }: SettingsPalette
     }));
     const tabs: Entry[] = CATEGORIES.map((c) => ({
       id: c.id,
-      label: `${c.label} — ${c.blurb}`,
+      label: `${c.name} — ${c.blurb}`,
       kind: 'tab',
-      keywords: `${c.id} ${c.label} ${c.blurb}`,
+      keywords: `${c.id} ${c.name} ${c.label} ${c.blurb}`,
     }));
     return [...tabs, ...fields];
   }, []);

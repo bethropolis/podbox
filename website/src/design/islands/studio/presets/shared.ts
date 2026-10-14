@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { StudioValues } from '../useStudioState';
 
-export type PresetId = 'rust' | 'arch-gui' | 'fullstack' | 'gaming' | 'minimal';
+export type PresetId = 'rust' | 'flutter' | 'arch-gui' | 'fullstack' | 'gaming' | 'minimal';
 
 export interface PresetDef {
   id: PresetId;

@@ -207,20 +207,23 @@ export const CACHE_DESCRIPTIONS: Record<string, string> = {
 
 export interface CategoryDef {
   id: string;
+  /** TOML section(s) the panel writes, shown as a small code tag. */
   label: string;
+  /** Human name for the tab. */
+  name: string;
   blurb: string;
 }
 
 export const CATEGORIES: CategoryDef[] = [
-  { id: 'image', label: '[image]', blurb: 'Distro & Packages' },
-  { id: 'container', label: '[container]', blurb: 'Resources & Shell' },
-  { id: 'dotfiles', label: '[dotfiles]', blurb: 'Repo & Install' },
-  { id: 'storage', label: '[storage]', blurb: 'Caches & Mounts' },
-  { id: 'security', label: '[security]', blurb: 'UserNS & Caps' },
-  { id: 'network', label: '[network]', blurb: 'Pasta & Ports' },
-  { id: 'integration', label: '[integration]', blurb: 'Wayland & GPU' },
-  { id: 'lifecycle', label: '[lifecycle]', blurb: 'Quadlet & Boot' },
-  { id: 'proxies', label: '[proxies]', blurb: 'D-Bus & Wayland filters' },
+  { id: 'image', label: '[image]', name: 'Image', blurb: 'Distro & packages' },
+  { id: 'container', label: '[container]', name: 'Container', blurb: 'Resources & services' },
+  { id: 'dotfiles', label: '[dotfiles]', name: 'Dotfiles', blurb: 'Repo & setup steps' },
+  { id: 'storage', label: '[storage]', name: 'Storage', blurb: 'Caches & mounts' },
+  { id: 'security', label: '[security]', name: 'Security', blurb: 'User namespace & caps' },
+  { id: 'network', label: '[network]', name: 'Network', blurb: 'Mode & ports' },
+  { id: 'integration', label: '[integration]', name: 'Desktop', blurb: 'Display, audio & GPU' },
+  { id: 'lifecycle', label: '[lifecycle]', name: 'Lifecycle', blurb: 'Quadlet & autostart' },
+  { id: 'proxies', label: '[dbus] [wayland]', name: 'Filters', blurb: 'D-Bus & Wayland' },
 ];
 
 // ── defaults (mirrors the useState initializers in useStudioState.ts) ──────

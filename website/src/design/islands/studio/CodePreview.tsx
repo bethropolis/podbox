@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
-import { highlightDocument, type PreviewLang } from './highlight';
+import { highlightDocument, type PreviewLang } from '../../highlight';
 import { diffLines } from './tomlLines';
 import { useHorizontalWheel } from './useHorizontalWheel';
 
@@ -42,22 +42,24 @@ interface CodePreviewProps {
   onDraftValidate?: (draft: string) => string | null;
   /** Parse the draft into Studio state. `true` when it was applied. */
   onApplyToml?: (draft: string) => boolean;
+  /** Below lg the page shows either the form or the preview; true hides this one. */
+  mobileHidden?: boolean;
 }
 
-export function CodePreview({ st, toml, quadlet, containerfile, hostService, proxyService, compositorService, engine, errorLines, lineFields, hoverLine, focusLine, onFocusLineConsumed, onLineClick, baselineToml, baselineLabel, onDraftValidate, onApplyToml }: CodePreviewProps) {
+export function CodePreview({ st, toml, quadlet, containerfile, hostService, proxyService, compositorService, engine, errorLines, lineFields, hoverLine, focusLine, onFocusLineConsumed, onLineClick, baselineToml, baselineLabel, onDraftValidate, onApplyToml, mobileHidden = false }: CodePreviewProps) {
   const { activeView, setActiveView, containerName, copied, isFullscreen } = st;
   // The engine always renders a Containerfile: prebuilt images get the short
   // overlay, custom bases the full recipe whose guest layer carries an inline
   // comment. That comment is the only signal — no tab badge, since it would
   // flag every config rather than anything actionable.
   const showContainerfile = containerfile != null && containerfile.length > 0;
-  const units: { view: UnitView; label: string; title: string; code: string | null; accent: string }[] = [
-    { view: 'toml', label: `${containerName || 'podbox'}.toml`, title: `${containerName || 'podbox'}.toml`, code: toml, accent: 'bg-[var(--accent-peach)]' },
-    { view: 'quadlet', label: `${containerName || 'podbox'}.container`, title: `${containerName || 'podbox'}.container`, code: quadlet, accent: 'bg-[var(--accent-mauve)]' },
-    { view: 'host', label: `${containerName || 'podbox'}-host.service`, title: 'host socket server', code: hostService, accent: 'bg-[var(--accent-blue)]' },
-    { view: 'proxy', label: 'proxy.service', title: 'D-Bus proxy', code: proxyService, accent: 'bg-[var(--accent-teal)]' },
-    { view: 'compositor', label: 'compositor.service', title: 'Wayland firewall', code: compositorService, accent: 'bg-[var(--accent-green)]' },
-    { view: 'containerfile', label: 'Containerfile', title: 'Containerfile', code: showContainerfile ? (containerfile ?? '') : null, accent: 'bg-[var(--accent-yellow)]' },
+  const units: { view: UnitView; label: string; title: string; code: string | null }[] = [
+    { view: 'toml', label: `${containerName || 'podbox'}.toml`, title: `${containerName || 'podbox'}.toml`, code: toml },
+    { view: 'quadlet', label: `${containerName || 'podbox'}.container`, title: `${containerName || 'podbox'}.container`, code: quadlet },
+    { view: 'host', label: `${containerName || 'podbox'}-host.service`, title: 'host socket server', code: hostService },
+    { view: 'proxy', label: 'proxy.service', title: 'D-Bus proxy', code: proxyService },
+    { view: 'compositor', label: 'compositor.service', title: 'Wayland firewall', code: compositorService },
+    { view: 'containerfile', label: 'Containerfile', title: 'Containerfile', code: showContainerfile ? (containerfile ?? '') : null },
   ];
   const visible = units.filter((u) => u.code != null);
   const view: UnitView = visible.some((u) => u.view === (activeView as UnitView)) ? (activeView as UnitView) : 'toml';
@@ -123,10 +125,10 @@ export function CodePreview({ st, toml, quadlet, containerfile, hostService, pro
   );
 
   return (
-<div className="lg:col-span-5 flex flex-col min-h-0 h-full overflow-hidden rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)] shadow-sm">
+<div className={`lg:col-span-5 ${mobileHidden ? 'hidden lg:flex' : 'flex'} flex-col min-h-[60vh] lg:min-h-0 h-full overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-mantle)]`}>
   {/* Header tabs for Output */}
   <div className={`shrink-0 flex items-center justify-between gap-2 bg-[var(--bg-crust)] border-b border-[var(--border)] ${pad}`}>
-    <div ref={stripRef} className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
+    <div ref={stripRef} className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]">
       {visible.map((u, i) => (
         <button
           key={u.view}
@@ -136,14 +138,14 @@ export function CodePreview({ st, toml, quadlet, containerfile, hostService, pro
             setActiveView(u.view);
           }}
           title={u.title}
-          className={`px-2 py-1 rounded-[2px] text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1.5 min-w-0 max-w-[160px] shrink-0 ${
+          className={`px-2 py-1 rounded text-xs font-mono transition-colors cursor-pointer flex items-center gap-1.5 min-w-0 max-w-[160px] shrink-0 ${
             // The TOML tab pins to the left while unit tabs scroll under it.
             // Opaque cover only when inactive: the active accent fill is
             // already opaque, and a competing bg class kills it.
             i === 0 ? 'sticky left-0 z-10' : ''
           } ${
             view === u.view
-              ? `${u.accent} text-[var(--bg-crust)] font-bold shadow-xs`
+              ? 'bg-[var(--bg-surface0)] text-[var(--text-primary)]'
               : 'bg-[var(--bg-crust)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface0)]'
           }`}
         >

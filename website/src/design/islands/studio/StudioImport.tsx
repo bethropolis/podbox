@@ -92,7 +92,7 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
           className="w-full rounded-[2px] bg-[var(--bg-crust)] border border-[var(--border)] p-3 font-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-mauve)] resize-y"
         />
         {error && (
-          <p className="text-xs text-[var(--accent-red)] font-mono whitespace-pre-line">{error}</p>
+          <p className="text-xs text-[var(--accent-red)] whitespace-pre-line">{error}</p>
         )}
         <input
           ref={fileRef}
