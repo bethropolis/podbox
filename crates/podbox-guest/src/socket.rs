@@ -78,6 +78,13 @@ pub fn handshake(
             host_exec_shims,
             ..
         } => Ok((accepted, idle_timeout_secs, host_exec_shims)),
+        // The host answers with `Shutdown` when the protocol versions do
+        // not match (see the host's hello handler). Retrying that
+        // handshake is pointless, so it gets its own error: the caller
+        // must not reconnect.
+        HostMessage::Shutdown => Err(GuestError::VersionMismatch(
+            "host uses an incompatible protocol version".into(),
+        )),
         _ => Err(GuestError::HandshakeFailed(
             "unexpected response from host".into(),
         )),
@@ -133,5 +140,29 @@ pub fn read_host_message(stream: &mut UnixStream) -> Result<Option<HostMessage>,
             Ok(Some(msg))
         }
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `Shutdown` reply to `Hello` means the protocol versions do not
+    /// match. It must surface as a fatal error (no reconnect), not as a
+    /// retryable handshake failure.
+    #[test]
+    fn shutdown_reply_is_a_version_mismatch_not_a_retryable_error() {
+        let (mut guest, mut mock) = UnixStream::pair().unwrap();
+        std::thread::spawn(move || {
+            let bytes = read_frame(&mut mock).unwrap().expect("hello frame");
+            let hello: GuestMessage = serde_json::from_slice(&bytes).unwrap();
+            assert!(matches!(hello, GuestMessage::Hello { .. }));
+            write_frame(&mut mock, &HostMessage::Shutdown).unwrap();
+        });
+        let err = handshake(&mut guest, "dev", &["notify".to_string()]).unwrap_err();
+        assert!(
+            matches!(err, GuestError::VersionMismatch(_)),
+            "expected VersionMismatch, got {err:?}"
+        );
     }
 }
