@@ -168,6 +168,33 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
 /// Remove Quadlet and systemd files for a container.
 pub fn uninstall(name: &str) -> Result<()> {
+    // Disable first: `enable --now` leaves enabled symlinks behind, and
+    // deleting the unit files without disabling orphans them — the socket
+    // stays enabled across daemon-reloads. Best-effort: the units may never
+    // have been enabled, and file cleanup must proceed regardless.
+    if systemd::is_available() {
+        let unit_names = [
+            format!("{name}.socket"),
+            format!("{name}.service"),
+            format!("{name}-host.service"),
+            format!("{name}-proxy.service"),
+            format!("{name}-compositor.service"),
+        ];
+        let mut args: Vec<std::ffi::OsString> = vec!["--user".into(), "disable".into()];
+        args.extend(unit_names.iter().map(std::ffi::OsString::from));
+        match crate::process::run_piped("systemctl", &args) {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!(
+                    "Warning: systemctl disable for '{name}' failed: {}",
+                    stderr.trim()
+                );
+            }
+            Err(e) => eprintln!("Warning: systemctl disable for '{name}' failed: {e:#}"),
+        }
+    }
+
     let ver = podman_version().unwrap_or(PodmanVersion {
         major: 5,
         minor: 5,
