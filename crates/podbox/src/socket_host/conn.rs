@@ -293,7 +293,11 @@ pub(crate) fn has_cap(negotiated: &Option<HashSet<String>>, cap: &str) -> bool {
 /// Compares `SO_PEERCRED`'s pid against `/proc/self/ns/user`. The host CLI
 /// runs in the host userns; anything inside the container runs in the
 /// container's private userns (rootless podman), so the inode differs.
-fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
+///
+/// Note the TOCTOU caveat: the pid is read from the socket, then
+/// `/proc/<pid>/ns/user` is read in a separate step, so a recycled pid
+/// could point at the wrong process. A pidfd-based check would close this.
+pub(crate) fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
     let creds = match getsockopt(stream, sockopt::PeerCredentials) {
         Ok(c) => c,
         Err(_) => return false,
