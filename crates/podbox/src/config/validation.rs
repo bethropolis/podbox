@@ -326,6 +326,56 @@ impl Config {
             }
         }
 
+        // systemd-credential secrets become LoadCredential= names and
+        // /run/secrets/<name> file names: reject path separators and
+        // parent references, require the host-side path, and require a
+        // valid variable name when the target becomes Environment=KEY=….
+        for (i, entry) in self.security.secrets.iter().enumerate() {
+            let (name, secret_type, target, source, path) = match entry {
+                crate::config::SecretEntry::Simple(name) => (
+                    name,
+                    &crate::config::SecretType::Env,
+                    None,
+                    &crate::config::SecretSource::Podman,
+                    None,
+                ),
+                crate::config::SecretEntry::Detailed {
+                    name,
+                    secret_type,
+                    target,
+                    source,
+                    path,
+                    ..
+                } => (name, secret_type, target.as_ref(), source, path.as_ref()),
+            };
+            let prefix = format!("security.secrets[{i}]");
+            if name.is_empty()
+                || name.contains('/')
+                || name.contains('\\')
+                || name.split('/').any(|part| part == "..")
+            {
+                errors.push(format!(
+                    "{prefix}.name: '{name}' is not a safe credential filename (no '/', '\\\\' or '..')"
+                ));
+            }
+            if *source == crate::config::SecretSource::Systemd {
+                match path {
+                    Some(p) if !p.trim().is_empty() => {}
+                    _ => errors.push(format!(
+                        "{prefix}.path: required with source = \"systemd\" (host-side credential file)"
+                    )),
+                }
+                if *secret_type == crate::config::SecretType::Env
+                    && let Some(t) = target
+                    && (t.is_empty() || !t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+                {
+                    errors.push(format!(
+                        "{prefix}.target: '{t}' must be a valid environment variable name"
+                    ));
+                }
+            }
+        }
+
         if self.integration.host_exec.enabled {
             let has_allowlist = self
                 .integration

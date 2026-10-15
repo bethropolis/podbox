@@ -124,6 +124,7 @@ pub(crate) fn print_exposure_summary(config: &Config) {
                     target,
                     mode,
                     source,
+                    ..
                 } => {
                     let src = match source {
                         podbox::config::SecretSource::Podman => "podman",

@@ -144,8 +144,16 @@ mode = "0400"
 [[security.secrets]]
 name = "gh_token"
 source = "systemd"                    # podman (default) or systemd
-target = "GH_TOKEN"                   # Environment=GH_TOKEN=%d/gh_token
+target = "GH_TOKEN"                   # Environment=GH_TOKEN=/run/secrets/gh_token
+path = "/etc/credstore/gh_token"      # host-side credential file (required for systemd)
+# encrypted = true                    # read path with LoadCredentialEncrypted=
 ```
+
+A `systemd` secret emits `LoadCredential=<name>:<path>` under `[Service]`
+(so `%d`/`$CREDENTIALS_DIRECTORY` is populated), mounts
+`Volume=%d/<name>:/run/secrets/<name>:ro,z`, and — for `type = "env"` —
+sets the target variable to the container path. `mount` secrets expose only
+the file. The credential name must be a safe filename (no `/` or `..`).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -154,6 +162,8 @@ target = "GH_TOKEN"                   # Environment=GH_TOKEN=%d/gh_token
 | `target` | string | secret name | Destination name inside the container |
 | `mode` | string | — | File mode for `mount` secrets |
 | `source` | string | `"podman"` | `podman` reads `podman secret`; `systemd` reads a systemd credential |
+| `path` | string | — | Host-side credential file. Required with `source = "systemd"` |
+| `encrypted` | bool | `false` | Read `path` with `LoadCredentialEncrypted=` instead of `LoadCredential=`. Only meaningful with `source = "systemd"` |
 
 Don't mix forms: all bare strings, or all tables. `podbox doctor` checks
 the named secrets exist.

@@ -95,6 +95,12 @@ pub fn emit_hardware_devices(
     }
 }
 
+/// Container-side path of a systemd credential: always
+/// `/run/secrets/<name>`, matching the `Volume=` line in [`emit_secrets`].
+fn secret_container_path(name: &str) -> String {
+    format!("/run/secrets/{name}")
+}
+
 pub fn emit_secrets(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec<String>) {
     use crate::config::{SecretEntry, SecretSource, SecretType};
 
@@ -116,6 +122,8 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec
                 target,
                 mode,
                 source,
+                path: _,
+                encrypted: _,
             } => match source {
                 SecretSource::Podman => {
                     let mut opts = vec![name.clone()];
@@ -141,12 +149,26 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec
                     value::push_raw(lines, warnings, "Secret", &opts.join(","));
                 }
                 SecretSource::Systemd => {
-                    let var = target.as_deref().unwrap_or(name);
-                    match (value::raw(var), value::raw(name)) {
-                        (Ok(var_escaped), Ok(name_escaped)) => value::push_composed(
-                            lines,
-                            format!("Environment={var_escaped}=%d/{name_escaped}"),
-                        ),
+                    // systemd credentials live in the service's
+                    // $CREDENTIALS_DIRECTORY (%d); the matching
+                    // LoadCredential= line is emitted under [Service].
+                    // Mount the credential file into the container at a
+                    // fixed path and point env vars at the container path.
+                    match (value::raw(name), value::raw(&secret_container_path(name))) {
+                        (Ok(name_escaped), Ok(container_path)) => {
+                            value::push_composed(
+                                lines,
+                                format!("Volume=%d/{name_escaped}:{container_path}:ro,z"),
+                            );
+                            if *secret_type == SecretType::Env {
+                                value::push_env(
+                                    lines,
+                                    warnings,
+                                    target.as_deref().unwrap_or(name),
+                                    &container_path,
+                                );
+                            }
+                        }
                         _ => {
                             warnings.push(format!("skipping systemd secret '{name}': invalid name"))
                         }

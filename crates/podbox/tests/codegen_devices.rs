@@ -122,3 +122,114 @@ fn quadlet_gpu_nvidia_without_uvm() {
     assert!(q.contains("AddDevice=-/dev/nvidia0"));
     assert!(!q.contains("nvidia-uvm"));
 }
+
+const SECRET_BASE: &str = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+
+fn config_with_secret(secret_toml: &str) -> podbox::config::Config {
+    podbox::config::Config::parse(&format!("{SECRET_BASE}\n{secret_toml}")).unwrap()
+}
+
+#[test]
+fn quadlet_systemd_secret_loads_mounts_and_exports() {
+    let config = config_with_secret(
+        r#"
+[[security.secrets]]
+name = "gh_token"
+source = "systemd"
+target = "GH_TOKEN"
+path = "/etc/credstore/gh_token"
+"#,
+    );
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(
+        q.contains("LoadCredential=gh_token:/etc/credstore/gh_token"),
+        "service must load the credential:\n{q}"
+    );
+    assert!(
+        q.contains("Volume=%d/gh_token:/run/secrets/gh_token:ro,z"),
+        "credential directory must be mounted in:\n{q}"
+    );
+    assert!(
+        q.contains("Environment=GH_TOKEN=/run/secrets/gh_token"),
+        "env var must point at the container path:\n{q}"
+    );
+    assert!(
+        !q.contains("%d/gh_token\""),
+        "no stale host-path env value:\n{q}"
+    );
+}
+
+#[test]
+fn quadlet_systemd_mount_secret_has_no_env_line() {
+    let config = config_with_secret(
+        r#"
+[[security.secrets]]
+name = "aws_creds"
+type = "mount"
+source = "systemd"
+path = "/etc/credstore/aws"
+"#,
+    );
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(
+        q.contains("LoadCredential=aws_creds:/etc/credstore/aws"),
+        "{q}"
+    );
+    assert!(
+        q.contains("Volume=%d/aws_creds:/run/secrets/aws_creds:ro,z"),
+        "{q}"
+    );
+    assert!(
+        !q.lines().any(|l| l.starts_with("Environment=aws_creds=")),
+        "mount secrets expose a file, not a variable:\n{q}"
+    );
+}
+
+#[test]
+fn quadlet_systemd_secret_name_must_be_a_safe_filename() {
+    let err = podbox::config::Config::parse(&format!(
+        "{SECRET_BASE}\n[[security.secrets]]\nname = \"../evil\"\nsource = \"systemd\"\npath = \"/etc/credstore/x\"\n"
+    ))
+    .expect_err("path traversal in secret name must fail");
+    assert!(
+        err.to_string().contains("security.secrets[0].name"),
+        "{err}"
+    );
+}
+
+#[test]
+fn quadlet_systemd_secret_requires_a_host_path() {
+    let err = podbox::config::Config::parse(&format!(
+        "{SECRET_BASE}\n[[security.secrets]]\nname = \"gh_token\"\nsource = \"systemd\"\n"
+    ))
+    .expect_err("missing credential path must fail");
+    assert!(
+        err.to_string().contains("security.secrets[0].path"),
+        "{err}"
+    );
+}
+
+#[test]
+fn quadlet_encrypted_systemd_secret_uses_encrypted_variant() {
+    let config = config_with_secret(
+        r#"
+[[security.secrets]]
+name = "db_key"
+source = "systemd"
+encrypted = true
+path = "/etc/credstore/db_key.encrypted"
+"#,
+    );
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(
+        q.contains("LoadCredentialEncrypted=db_key:/etc/credstore/db_key.encrypted"),
+        "{q}"
+    );
+}
