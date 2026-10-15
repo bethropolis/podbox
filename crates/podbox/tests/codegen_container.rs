@@ -491,3 +491,52 @@ cargo = true
         "a preview must never drop caches: {warnings:?}"
     );
 }
+
+#[test]
+fn quadlet_full_container_snapshot() {
+    // First insta snapshot of a whole `.container` file. Possible only now
+    // that map iteration is deterministic; run the binary twice (different
+    // hash seeds per process) to confirm stability.
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    insta::assert_snapshot!("full_container", q);
+}
+
+#[test]
+fn quadlet_env_lines_are_sorted_by_key() {
+    // Twenty vars inserted in reverse order: HashMap iteration would come
+    // out in hash order, BTreeMap in key order.
+    let mut config = load_config("minimal.toml");
+    for i in (0..20).rev() {
+        config
+            .container
+            .env
+            .values
+            .insert(format!("ZVAR{i:02}"), format!("v{i}"));
+    }
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    let keys: Vec<&str> = q
+        .lines()
+        .filter_map(|l| l.strip_prefix("Environment=ZVAR"))
+        .map(|rest| rest.split('=').next().unwrap_or(""))
+        .collect();
+    assert_eq!(keys.len(), 20, "all vars must be emitted:\n{q}");
+    let mut sorted = keys.clone();
+    sorted.sort_unstable();
+    assert_eq!(keys, sorted, "env lines must be sorted by key:\n{q}");
+}
+
+#[test]
+fn quadlet_same_env_in_different_file_order_gives_same_output() {
+    let first = podbox::config::Config::parse(
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n[container.env]\nALPHA = \"1\"\nBETA = \"2\"\nGAMMA = \"3\"\n",
+    )
+    .unwrap();
+    let second = podbox::config::Config::parse(
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n[container.env]\nGAMMA = \"3\"\nALPHA = \"1\"\nBETA = \"2\"\n",
+    )
+    .unwrap();
+    let a = quadlet::generate_container(&first, &default_env(), &default_xdg());
+    let b = quadlet::generate_container(&second, &default_env(), &default_xdg());
+    assert_eq!(a, b, "output must not depend on file order");
+}

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -153,7 +153,7 @@ fn default_service_restart() -> String {
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct ContainerEnvConfig {
     #[serde(flatten)]
-    pub values: HashMap<String, String>,
+    pub values: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forward: Vec<String>,
 }
@@ -183,7 +183,7 @@ impl ContainerConfig {
     /// new "config already says it" variables emerge):
     /// - `SHELL` from `container.shell`, so terminals, `enter`, and GUI
     ///   apps agree without repeating the path in every TOML.
-    pub fn effective_env(&self) -> HashMap<String, String> {
+    pub fn effective_env(&self) -> BTreeMap<String, String> {
         let mut out = self.env.values.clone();
         if !out.contains_key("SHELL") {
             if let Some(path) = shell_binary(&self.shell) {
@@ -201,7 +201,7 @@ impl ContainerEnvConfig {
 }
 
 impl std::ops::Deref for ContainerEnvConfig {
-    type Target = HashMap<String, String>;
+    type Target = BTreeMap<String, String>;
     fn deref(&self) -> &Self::Target {
         &self.values
     }
@@ -277,7 +277,7 @@ pub struct HostExecConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allowlist: Option<std::collections::HashMap<String, HostExecEntry>>,
+    pub allowlist: Option<BTreeMap<String, HostExecEntry>>,
 }
 
 impl HostExecConfig {
