@@ -4,13 +4,10 @@
 //! points.
 
 use super::caches;
+use super::value;
 use crate::config::Config;
 use crate::env::HostEnv;
 use crate::xdg::ResolvedXdgDirs;
-
-fn escape_systemd_specifiers(value: &str) -> String {
-    value.replace('%', "%%")
-}
 
 pub(super) fn emit_quadlet(lines: &mut Vec<String>) {
     lines.push("[Quadlet]".into());
@@ -18,24 +15,44 @@ pub(super) fn emit_quadlet(lines: &mut Vec<String>) {
     lines.push(String::new());
 }
 
-pub(super) fn emit_unit(lines: &mut Vec<String>, config: &Config, name: &str) {
+pub(super) fn emit_unit(
+    lines: &mut Vec<String>,
+    config: &Config,
+    name: &str,
+    warnings: &mut Vec<String>,
+) {
     lines.push("[Unit]".into());
-    lines.push(format!("Description=podbox -- {name}"));
-    lines.push(format!("Requires={name}.socket"));
-    lines.push(format!("After={name}.socket"));
+    value::push_raw(lines, warnings, "Description", &format!("podbox -- {name}"));
+    value::push_raw(lines, warnings, "Requires", &format!("{name}.socket"));
+    value::push_raw(lines, warnings, "After", &format!("{name}.socket"));
     for dep in &config.systemd.requires {
-        lines.push(format!("Requires={dep}"));
+        value::push_raw(lines, warnings, "Requires", dep);
     }
     for dep in &config.systemd.after {
-        lines.push(format!("After={dep}"));
+        value::push_raw(lines, warnings, "After", dep);
     }
     if config.use_dbus_proxy() {
-        lines.push(format!("Requires={name}-proxy.service"));
-        lines.push(format!("After={name}-proxy.service"));
+        value::push_raw(
+            lines,
+            warnings,
+            "Requires",
+            &format!("{name}-proxy.service"),
+        );
+        value::push_raw(lines, warnings, "After", &format!("{name}-proxy.service"));
     }
     if config.use_wayland_proxy() {
-        lines.push(format!("Requires={name}-compositor.service"));
-        lines.push(format!("After={name}-compositor.service"));
+        value::push_raw(
+            lines,
+            warnings,
+            "Requires",
+            &format!("{name}-compositor.service"),
+        );
+        value::push_raw(
+            lines,
+            warnings,
+            "After",
+            &format!("{name}-compositor.service"),
+        );
     }
     lines.push("StartLimitBurst=5".into());
     lines.push("StartLimitIntervalSec=30s".into());
@@ -48,6 +65,7 @@ pub(super) fn emit_container_image(
     name: &str,
     home_in_container: &str,
     env: &HostEnv,
+    warnings: &mut Vec<String>,
 ) {
     lines.push("[Container]".into());
     if config.image.source().is_prebuilt() && config.image.packages.install.is_empty() {
@@ -55,15 +73,25 @@ pub(super) fn emit_container_image(
             crate::config::ImageSource::Prebuilt { ref_str } => ref_str,
             _ => config.image.base.clone(),
         };
-        lines.push(format!("Image={ref_str}"));
-        lines.push(format!("Retry={}", config.image.pull_retry));
-        lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
+        value::push_raw(lines, warnings, "Image", &ref_str);
+        value::push_raw(
+            lines,
+            warnings,
+            "Retry",
+            &config.image.pull_retry.to_string(),
+        );
+        value::push_raw(
+            lines,
+            warnings,
+            "RetryDelay",
+            &config.image.pull_retry_delay,
+        );
     } else {
-        lines.push(format!("Image={}", config.local_image_tag()));
+        value::push_raw(lines, warnings, "Image", &config.local_image_tag());
     }
-    lines.push(format!("ContainerName={name}"));
+    value::push_raw(lines, warnings, "ContainerName", name);
     if let Some(ref mode) = config.security.userns {
-        lines.push(format!("UserNS={mode}"));
+        value::push_raw(lines, warnings, "UserNS", mode);
     } else {
         lines.push("UserNS=keep-id".into());
     }
@@ -72,13 +100,13 @@ pub(super) fn emit_container_image(
         lines.push("SecurityLabelDisable=true".into());
     }
     if let Some(ref seccomp) = config.security.seccomp {
-        lines.push(format!("SeccompProfile={seccomp}"));
+        value::push_raw(lines, warnings, "SeccompProfile", seccomp);
     }
     if config.security.no_new_privileges {
         lines.push("NoNewPrivileges=true".into());
     }
     if let Some(ref mem) = config.container.memory {
-        lines.push(format!("Memory={mem}"));
+        value::push_raw(lines, warnings, "Memory", mem);
     }
     if let Some(ref cpus) = config.container.cpus {
         // Quadlet has no `CpuQuota` key: the quadlet-generator rejects the
@@ -86,7 +114,7 @@ pub(super) fn emit_container_image(
         // starts. CPU limits go through `--cpus`, which also takes fractions
         // (`0.5`) that a period-based quota cannot express.
         if let Ok(v) = cpus.parse::<f64>() {
-            lines.push(format!("PodmanArgs=--cpus={v}"));
+            value::push_raw(lines, warnings, "PodmanArgs", &format!("--cpus={v}"));
         }
     }
     if config.security.read_only_rootfs {
@@ -97,32 +125,27 @@ pub(super) fn emit_container_image(
         // image never starts. Ordinary tools need /tmp and /var/tmp too.
         // tmpfs keeps the image layers immutable while the running container
         // still has somewhere to work.
-        for target in ["/run", "/tmp", "/var/tmp"] {
-            lines.push(format!(
-                "Mount=type=tmpfs,destination={target},tmpfs-mode=1777"
-            ));
-        }
+        lines.push("Mount=type=tmpfs,destination=/run,tmpfs-mode=1777".into());
+        lines.push("Mount=type=tmpfs,destination=/tmp,tmpfs-mode=1777".into());
+        lines.push("Mount=type=tmpfs,destination=/var/tmp,tmpfs-mode=1777".into());
     }
     if let Some(ref profile) = config.security.apparmor {
-        lines.push(format!("AppArmor={profile}"));
+        value::push_raw(lines, warnings, "AppArmor", profile);
     }
-    lines.push(format!("Environment=HOME={home_in_container}"));
-    lines.push(format!(
-        "Environment=HOST_USER={}",
-        escape_systemd_specifiers(&env.username)
-    ));
+    value::push_composed(lines, format!("Environment=HOME={home_in_container}"));
+    value::push_env(lines, warnings, "HOST_USER", &env.username);
     lines.push("Environment=HOST_UID=%U".into());
     lines.push("Environment=HOST_GID=%G".into());
     lines.push("Environment=PATH=/run/podbox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
     lines.push(String::new());
 }
 
-pub(super) fn emit_network(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_network(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec<String>) {
     let mode = config.network.effective_mode();
-    lines.push(format!("Network={mode}"));
+    value::push_raw(lines, warnings, "Network", mode);
     if mode != "host" && mode != "none" {
         for port in &config.network.ports {
-            lines.push(format!("PublishPort={port}"));
+            value::push_raw(lines, warnings, "PublishPort", port);
         }
     }
     lines.push(String::new());
@@ -139,17 +162,46 @@ pub(super) fn emit_volumes(
 ) {
     // Isolated custom home
     let host_home = config.container.home.to_string_lossy().to_string();
-    lines.push(format!("Volume={host_home}:{home_in_container}:Z",));
+    match value::raw(&host_home) {
+        Ok(escaped) => {
+            value::push_composed(lines, format!("Volume={escaped}:{home_in_container}:Z"))
+        }
+        Err(e) => warnings.push(format!("skipping home Volume= line: {e}")),
+    }
     lines.push(String::new());
 
     // Selective XDG dirs
-    emit_xdg_dir(lines, "Documents", &xdg.documents, home_in_container);
-    emit_xdg_dir(lines, "Downloads", &xdg.downloads, home_in_container);
-    emit_xdg_dir(lines, "Pictures", &xdg.pictures, home_in_container);
-    emit_xdg_dir(lines, "Music", &xdg.music, home_in_container);
-    emit_xdg_dir(lines, "Videos", &xdg.videos, home_in_container);
-    emit_xdg_dir(lines, "Desktop", &xdg.desktop, home_in_container);
-    emit_xdg_dir(lines, "Projects", &xdg.projects, home_in_container);
+    emit_xdg_dir(
+        lines,
+        warnings,
+        "Documents",
+        &xdg.documents,
+        home_in_container,
+    );
+    emit_xdg_dir(
+        lines,
+        warnings,
+        "Downloads",
+        &xdg.downloads,
+        home_in_container,
+    );
+    emit_xdg_dir(
+        lines,
+        warnings,
+        "Pictures",
+        &xdg.pictures,
+        home_in_container,
+    );
+    emit_xdg_dir(lines, warnings, "Music", &xdg.music, home_in_container);
+    emit_xdg_dir(lines, warnings, "Videos", &xdg.videos, home_in_container);
+    emit_xdg_dir(lines, warnings, "Desktop", &xdg.desktop, home_in_container);
+    emit_xdg_dir(
+        lines,
+        warnings,
+        "Projects",
+        &xdg.projects,
+        home_in_container,
+    );
 
     if xdg.documents.is_some()
         || xdg.downloads.is_some()
@@ -168,32 +220,44 @@ pub(super) fn emit_volumes(
     // function of (config, env, xdg).
     if config.integration.sync_themes {
         if env.host_has_themes {
-            lines.push(format!("Volume=%h/.themes:{home_in_container}/.themes:ro"));
+            value::push_composed(
+                lines,
+                format!("Volume=%h/.themes:{home_in_container}/.themes:ro"),
+            );
         }
         if env.host_has_local_share_themes {
-            lines.push(format!(
-                "Volume=%h/.local/share/themes:{home_in_container}/.local/share/themes:ro"
-            ));
+            value::push_composed(
+                lines,
+                format!("Volume=%h/.local/share/themes:{home_in_container}/.local/share/themes:ro"),
+            );
         }
     }
     if config.integration.sync_icons {
         if env.host_has_icons {
-            lines.push(format!("Volume=%h/.icons:{home_in_container}/.icons:ro"));
+            value::push_composed(
+                lines,
+                format!("Volume=%h/.icons:{home_in_container}/.icons:ro"),
+            );
         }
         if env.host_has_local_share_icons {
-            lines.push(format!(
-                "Volume=%h/.local/share/icons:{home_in_container}/.local/share/icons:ro"
-            ));
+            value::push_composed(
+                lines,
+                format!("Volume=%h/.local/share/icons:{home_in_container}/.local/share/icons:ro"),
+            );
         }
     }
     if config.integration.sync_fonts {
         if env.host_has_fonts {
-            lines.push(format!("Volume=%h/.fonts:{home_in_container}/.fonts:ro"));
+            value::push_composed(
+                lines,
+                format!("Volume=%h/.fonts:{home_in_container}/.fonts:ro"),
+            );
         }
         if env.host_has_local_share_fonts {
-            lines.push(format!(
-                "Volume=%h/.local/share/fonts:{home_in_container}/.local/share/fonts:ro"
-            ));
+            value::push_composed(
+                lines,
+                format!("Volume=%h/.local/share/fonts:{home_in_container}/.local/share/fonts:ro"),
+            );
         }
     }
     if config.integration.sync_themes
@@ -221,17 +285,20 @@ pub(super) fn emit_volumes(
     // Wayland
     if config.integration.wayland {
         if let Some(ref display) = env.wayland_display {
-            lines.push(format!(
-                "Environment=WAYLAND_DISPLAY={}",
-                escape_systemd_specifiers(display)
-            ));
+            value::push_env(lines, warnings, "WAYLAND_DISPLAY", display);
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
-            if config.wayland.firewall {
-                lines.push(format!(
-                    "Volume=%t/podbox/{name}-wayland.sock:%t/{display}:ro"
-                ));
-            } else {
-                lines.push(format!("Volume=%t/{display}:%t/{display}:ro"));
+            match value::raw(display) {
+                Ok(escaped) => {
+                    if config.wayland.firewall {
+                        value::push_composed(
+                            lines,
+                            format!("Volume=%t/podbox/{name}-wayland.sock:%t/{escaped}:ro"),
+                        );
+                    } else {
+                        value::push_composed(lines, format!("Volume=%t/{escaped}:%t/{escaped}:ro"));
+                    }
+                }
+                Err(e) => warnings.push(format!("skipping Wayland Volume= line: {e}")),
             }
             lines.push(String::new());
         }
@@ -255,10 +322,13 @@ pub(super) fn emit_volumes(
     // SSH agent
     if config.integration.ssh_agent {
         if let Some(ref sock) = env.ssh_agent_socket {
-            lines.push(format!(
-                "Volume={}:/run/podbox/ssh-agent.sock",
-                sock.display()
-            ));
+            match value::raw(&sock.display().to_string()) {
+                Ok(escaped) => value::push_composed(
+                    lines,
+                    format!("Volume={escaped}:/run/podbox/ssh-agent.sock"),
+                ),
+                Err(e) => warnings.push(format!("skipping SSH agent Volume= line: {e}")),
+            }
             lines.push("Environment=SSH_AUTH_SOCK=/run/podbox/ssh-agent.sock".into());
         } else {
             warnings.push(
@@ -271,10 +341,13 @@ pub(super) fn emit_volumes(
     // GPG agent
     if config.integration.gpg_agent {
         if let Some(ref sock) = env.gpg_agent_socket {
-            lines.push(format!(
-                "Volume={}:/run/podbox/gnupg/S.gpg-agent:ro",
-                sock.display()
-            ));
+            match value::raw(&sock.display().to_string()) {
+                Ok(escaped) => value::push_composed(
+                    lines,
+                    format!("Volume={escaped}:/run/podbox/gnupg/S.gpg-agent:ro"),
+                ),
+                Err(e) => warnings.push(format!("skipping GPG agent Volume= line: {e}")),
+            }
             lines.push("Environment=GPG_TTY=/dev/pts/0".into());
             lines.push("Environment=GNUPGHOME=/run/podbox/gnupg".into());
         } else {
@@ -288,18 +361,21 @@ pub(super) fn emit_volumes(
 
     // Sandbox environment detection marker (read-only host-side kernel mount)
     let flatpak_info_path = crate::env::build_context_dir(name).join(".flatpak-info");
-    lines.push(format!(
-        "Volume={}:/.flatpak-info:ro",
-        flatpak_info_path.display()
-    ));
+    match value::raw(&flatpak_info_path.display().to_string()) {
+        Ok(escaped) => {
+            value::push_composed(lines, format!("Volume={escaped}:/.flatpak-info:ro"));
+        }
+        Err(e) => warnings.push(format!("skipping .flatpak-info Volume= line: {e}")),
+    }
     lines.push(String::new());
 
     // D-Bus
     if config.integration.dbus && env.dbus_socket.is_some() {
         if config.use_dbus_proxy() {
-            lines.push(format!(
-                "Volume=%t/podbox/{name}-dbus.sock:/run/podbox/dbus.sock:ro"
-            ));
+            value::push_composed(
+                lines,
+                format!("Volume=%t/podbox/{name}-dbus.sock:/run/podbox/dbus.sock:ro"),
+            );
             lines.push(
                 "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podbox/dbus.sock".into(),
             );
@@ -311,20 +387,26 @@ pub(super) fn emit_volumes(
     }
 
     // Host-guest socket
-    lines.push(format!(
-        "Volume=%t/podbox/{name}.sock:%t/podbox/{name}.sock"
-    ));
+    value::push_composed(
+        lines,
+        format!("Volume=%t/podbox/{name}.sock:%t/podbox/{name}.sock"),
+    );
     lines.push(String::new());
 
     // Extra mounts
     for mount in &config.container.mounts.extra {
-        lines.push(format!("Volume={mount}"));
+        value::push_word(lines, warnings, "Volume", mount);
     }
     if !config.container.mounts.extra.is_empty() {
         lines.push(String::new());
     }
 
-    caches::emit_shared_caches(lines, &config.storage.shared_caches, home_in_container);
+    caches::emit_shared_caches(
+        lines,
+        &config.storage.shared_caches,
+        home_in_container,
+        warnings,
+    );
     caches::emit_host_caches(
         lines,
         &config.storage.host_caches,
@@ -346,10 +428,9 @@ pub(super) fn emit_env(
 ) {
     // Locale environment
     if let Some(ref locale) = _env.host_locale {
-        let locale = escape_systemd_specifiers(locale);
-        lines.push(format!("Environment=LANG={locale}"));
-        lines.push(format!("Environment=LC_ALL={locale}"));
-        lines.push(format!("Environment=LC_CTYPE={locale}"));
+        value::push_env(lines, warnings, "LANG", locale);
+        value::push_env(lines, warnings, "LC_ALL", locale);
+        value::push_env(lines, warnings, "LC_CTYPE", locale);
         lines.push(String::new());
     }
 
@@ -357,19 +438,7 @@ pub(super) fn emit_env(
     // friends — see ContainerConfig::effective_env). Explicit wins.
     for (key, value) in &config.container.effective_env() {
         if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            // systemd expands % specifiers in Environment= values. Double
-            // user-supplied percent signs so they arrive literally in the
-            // container (e.g. `date +%s` must not become `%s` expansion).
-            let clean = escape_systemd_specifiers(value)
-                .replace('\n', " ")
-                .replace('\r', "");
-            let escaped = clean.replace('\\', "\\\\").replace('"', "\\\"");
-            let env_val = if escaped.contains(' ') || escaped.is_empty() {
-                format!("\"{escaped}\"")
-            } else {
-                escaped
-            };
-            lines.push(format!("Environment={key}={env_val}"));
+            value::push_env(lines, warnings, key, value);
         } else {
             warnings.push(format!("ignoring invalid environment variable key '{key}'"));
         }
@@ -377,15 +446,14 @@ pub(super) fn emit_env(
     if !config.container.services.is_empty() {
         let payload =
             serde_json::to_string(&config.container.services).unwrap_or_else(|_| "{}".into());
-        let escaped = escape_systemd_specifiers(&payload)
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"");
-        lines.push(format!("Environment=PODBOX_SERVICES_JSON=\"{escaped}\""));
+        match value::word(&payload) {
+            Ok(escaped) => {
+                value::push_composed(lines, format!("Environment=PODBOX_SERVICES_JSON={escaped}"))
+            }
+            Err(e) => warnings.push(format!("skipping PODBOX_SERVICES_JSON line: {e}")),
+        }
     }
-    lines.push(format!(
-        "Environment=PODBOX_CONTAINER={}",
-        escape_systemd_specifiers(name)
-    ));
+    value::push_env(lines, warnings, "PODBOX_CONTAINER", name);
     lines.push(String::new());
 }
 
@@ -400,30 +468,43 @@ pub(super) fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {
     }
 }
 
-pub(super) fn emit_podman_args(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_podman_args(
+    lines: &mut Vec<String>,
+    config: &Config,
+    warnings: &mut Vec<String>,
+) {
     lines.push("PodmanArgs=--init".into());
     lines.push("PodmanArgs=--workdir=/home/%u".into());
     let cap_preset = config.security.cap_preset;
     let has_any_cap = !cap_preset.caps().is_empty() || !config.security.cap_add.is_empty();
     for cap in cap_preset.caps() {
-        lines.push(format!("PodmanArgs=--cap-add={cap}"));
+        value::push_raw(lines, warnings, "PodmanArgs", &format!("--cap-add={cap}"));
     }
     for cap in &config.security.cap_add {
-        lines.push(format!("PodmanArgs=--cap-add={cap}"));
+        value::push_raw(lines, warnings, "PodmanArgs", &format!("--cap-add={cap}"));
     }
     if has_any_cap {
         lines.push(String::new());
     }
     if let Some(ref cmd) = config.container.reload_cmd {
-        lines.push(format!("ReloadCmd={cmd}"));
+        value::push_raw(lines, warnings, "ReloadCmd", cmd);
         lines.push(String::new());
     }
 }
 
-pub(super) fn emit_service_section(lines: &mut Vec<String>, config: &Config) {
+pub(super) fn emit_service_section(
+    lines: &mut Vec<String>,
+    config: &Config,
+    warnings: &mut Vec<String>,
+) {
     lines.push("[Service]".into());
-    lines.push(format!("Slice={}", config.container.slice));
-    lines.push(format!("CPUWeight={}", config.container.cpu_weight));
+    value::push_raw(lines, warnings, "Slice", &config.container.slice);
+    value::push_raw(
+        lines,
+        warnings,
+        "CPUWeight",
+        &config.container.cpu_weight.to_string(),
+    );
     lines.push("Restart=on-failure".into());
     lines.push("RestartSec=2s".into());
     if config.lifecycle.on_stop == crate::config::OnStop::Remove {
@@ -441,15 +522,19 @@ pub(super) fn emit_install_section(lines: &mut Vec<String>, config: &Config) {
 
 pub(super) fn emit_xdg_dir(
     lines: &mut Vec<String>,
+    warnings: &mut Vec<String>,
     dir_name: &str,
     xdg_dir: &Option<crate::xdg::ResolvedXdgDir>,
     container_home: &str,
 ) {
     if let Some(resolved) = xdg_dir {
         let mode = if resolved.read_write { "z" } else { "ro,z" };
-        lines.push(format!(
-            "Volume={}:{container_home}/{dir_name}:{mode}",
-            resolved.path.display()
-        ));
+        match value::raw(&resolved.path.display().to_string()) {
+            Ok(escaped) => value::push_composed(
+                lines,
+                format!("Volume={escaped}:{container_home}/{dir_name}:{mode}"),
+            ),
+            Err(e) => warnings.push(format!("skipping XDG {dir_name} Volume= line: {e}")),
+        }
     }
 }

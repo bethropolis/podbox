@@ -3,10 +3,16 @@
 //! Extracted verbatim from `quadlet.rs`; see `super` for the unit entry
 //! points.
 
+use super::value;
 use crate::config::{Config, GpuMode};
 use crate::env::HostEnv;
 
-pub(super) fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) {
+pub(super) fn emit_gpu(
+    lines: &mut Vec<String>,
+    config: &Config,
+    env: &HostEnv,
+    _warnings: &mut Vec<String>,
+) {
     match config.integration.gpu {
         GpuMode::Enabled => {
             lines.push("AddDevice=/dev/dri".into());
@@ -40,7 +46,11 @@ pub(super) fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) 
     }
 }
 
-pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
+pub fn emit_hardware_devices(
+    lines: &mut Vec<String>,
+    config: &Config,
+    _warnings: &mut Vec<String>,
+) {
     let hw = &config.integration.hardware;
 
     let mut emitted = false;
@@ -58,16 +68,16 @@ pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
 
     if hw.webcam {
         for i in 0..16 {
-            lines.push(format!("AddDevice=-/dev/video{i}"));
-            lines.push(format!("AddDevice=-/dev/media{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/video{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/media{i}"));
         }
         emitted = true;
     }
 
     if hw.serial {
         for i in 0..8 {
-            lines.push(format!("AddDevice=-/dev/ttyUSB{i}"));
-            lines.push(format!("AddDevice=-/dev/ttyACM{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/ttyUSB{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/ttyACM{i}"));
         }
         emitted = true;
     }
@@ -75,7 +85,7 @@ pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
     if hw.yubikey {
         lines.push("Volume=-%t/pcscd/pcscd.comm:/run/pcscd/pcscd.comm:ro".into());
         for i in 0..16 {
-            lines.push(format!("AddDevice=-/dev/hidraw{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/hidraw{i}"));
         }
         emitted = true;
     }
@@ -85,7 +95,7 @@ pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
     }
 }
 
-pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
+pub fn emit_secrets(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec<String>) {
     use crate::config::{SecretEntry, SecretSource, SecretType};
 
     let mut emitted = false;
@@ -93,7 +103,12 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
         emitted = true;
         match secret {
             SecretEntry::Simple(name) => {
-                lines.push(format!("Secret={name},type=env,target={name}"));
+                value::push_raw(
+                    lines,
+                    warnings,
+                    "Secret",
+                    &format!("{name},type=env,target={name}"),
+                );
             }
             SecretEntry::Detailed {
                 name,
@@ -123,14 +138,19 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
                             opts.push("gid=%G".into());
                         }
                     }
-                    lines.push(format!("Secret={}", opts.join(",")));
+                    value::push_raw(lines, warnings, "Secret", &opts.join(","));
                 }
                 SecretSource::Systemd => {
-                    lines.push(format!(
-                        "Environment={}=%d/{}",
-                        target.as_deref().unwrap_or(name),
-                        name
-                    ));
+                    let var = target.as_deref().unwrap_or(name);
+                    match (value::raw(var), value::raw(name)) {
+                        (Ok(var_escaped), Ok(name_escaped)) => value::push_composed(
+                            lines,
+                            format!("Environment={var_escaped}=%d/{name_escaped}"),
+                        ),
+                        _ => {
+                            warnings.push(format!("skipping systemd secret '{name}': invalid name"))
+                        }
+                    }
                 }
             },
         }
