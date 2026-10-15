@@ -66,11 +66,19 @@ pub(crate) fn run_prebuilt(
 
     if dry_run {
         println!("Would pull: {image_ref}");
-        if has_packages {
-            println!(
-                "Would install packages on top: {}",
-                config.image.packages.install.join(", ")
-            );
+        if crate::codegen::containerfile::prebuilt_overlay_needed(config) {
+            if has_packages {
+                println!(
+                    "Would install packages on top: {}",
+                    config.image.packages.install.join(", ")
+                );
+            }
+            if !config.image.run.commands.is_empty() {
+                println!(
+                    "Would run {} command(s) on top",
+                    config.image.run.commands.len()
+                );
+            }
             if crate::guest::PODBOX_GUEST.is_some() {
                 println!("Would layer host guest binary on top (version match)");
             }
@@ -115,28 +123,25 @@ pub(crate) fn run_prebuilt(
         .into());
     }
 
-    if has_packages {
-        // Layer the config's packages on top of the prebuilt image, plus the
-        // host's embedded guest binary so `/run/podbox/guest-version` matches
-        // the host. The COPY is content-hashed, so it only busts podman cache
-        // when the guest actually changes; the heavy registry base layers stay
-        // cached. Builds without an embedded guest (published-crate installs)
-        // skip the layer and keep the registry-baked guest.
-        let distro = resolve_prebuilt_distro(config);
-        let install_cmd = distro.install_cmd();
-        let clean_cmd = distro.clean_cmd();
-
-        let packages = config.image.packages.install.join(" ");
-        let run_line = if clean_cmd.is_empty() {
-            format!("RUN {install_cmd} {packages}")
-        } else {
-            format!("RUN {install_cmd} {packages} && {clean_cmd}")
-        };
-
+    if let Some(overlay) = crate::codegen::containerfile::generate_prebuilt_overlay(
+        config,
+        &image_ref,
+        crate::guest::PODBOX_GUEST.is_some(),
+    ) {
+        // Layer the config's packages and RUN steps on top of the prebuilt
+        // image, plus the host's embedded guest binary so
+        // `/run/podbox/guest-version` matches the host. The COPY is
+        // content-hashed, so it only busts podman cache when the guest
+        // actually changes; the heavy registry base layers stay cached.
+        // Builds without an embedded guest (published-crate installs) skip
+        // the layer and keep the registry-baked guest.
         std::fs::create_dir_all(&context_dir)
             .with_context(|| format!("failed to create context dir '{}'", context_dir.display()))?;
 
-        let mut containerfile = format!("FROM {image_ref}\n{run_line}\n");
+        let mut containerfile = overlay;
+        if !containerfile.ends_with('\n') {
+            containerfile.push('\n');
+        }
         if let Some(guest_bin) = crate::guest::PODBOX_GUEST {
             std::fs::write(context_dir.join("podbox-guest"), guest_bin).with_context(|| {
                 format!(
@@ -144,9 +149,6 @@ pub(crate) fn run_prebuilt(
                     context_dir.join("podbox-guest").display()
                 )
             })?;
-            containerfile.push_str(
-                "COPY podbox-guest /usr/local/bin/podbox-guest\nRUN chmod +x /usr/local/bin/podbox-guest\n",
-            );
         }
 
         let containerfile_path = context_dir.join("Containerfile");

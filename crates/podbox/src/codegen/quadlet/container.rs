@@ -68,7 +68,9 @@ pub(super) fn emit_container_image(
     warnings: &mut Vec<String>,
 ) {
     lines.push("[Container]".into());
-    if config.image.source().is_prebuilt() && config.image.packages.install.is_empty() {
+    if config.image.source().is_prebuilt()
+        && !crate::codegen::containerfile::prebuilt_overlay_needed(config)
+    {
         let ref_str = match config.image.source() {
             crate::config::ImageSource::Prebuilt { ref_str } => ref_str,
             _ => config.image.base.clone(),

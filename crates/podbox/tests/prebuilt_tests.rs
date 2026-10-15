@@ -60,23 +60,91 @@ fn source_build_has_no_image_ref() {
 // ---- Containerfile prebuilt generation ----
 
 #[test]
-fn containerfile_prebuilt_generates_minimal() {
+fn containerfile_prebuilt_with_nothing_extra_has_no_overlay() {
     let config = load_config("prebuilt.toml");
+    // No packages, no RUN commands: nothing to layer, so no overlay, and
+    // the unit points straight at the registry ref.
+    assert!(!podbox::codegen::containerfile::prebuilt_overlay_needed(
+        &config
+    ));
+    let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
+        &config,
+        "ghcr.io/bethropolis/podbox:cachy-latest",
+        true,
+    );
+    assert!(overlay.is_none());
     let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest").unwrap();
-    assert!(cf.starts_with("FROM cachy-latest\n"));
-    // Prebuilt Containerfile does NOT COPY the guest binary
-    // (the image already has it embedded)
-    assert!(!cf.contains("COPY podbox-guest"));
-    assert!(cf.contains(r#"ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]"#));
-    assert!(cf.contains(r#"CMD ["/usr/bin/fish"]"#));
-    assert!(cf.contains("ENV PODBOX_CONTAINER=prebuilt"));
-    // Prebuilt should NOT include packages or RUN commands — except the
-    // CachyOS pacman sandbox relaxation, which needs no package install.
-    assert!(!cf.contains("dnf install"));
+    assert!(cf.starts_with("FROM ghcr.io/bethropolis/podbox:cachy-latest\n"));
+}
+
+#[test]
+fn containerfile_prebuilt_overlay_has_packages_run_and_guest_in_order() {
+    let mut config = load_config("prebuilt.toml");
+    config.image.packages.install = vec!["htop".into(), "ripgrep".into()];
+    config.image.run.commands = vec!["echo hello".into()];
+    let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
+        &config,
+        "ghcr.io/bethropolis/podbox:cachy-latest",
+        true,
+    )
+    .expect("packages + run commands need an overlay");
+    let from = overlay
+        .find("FROM ghcr.io/bethropolis/podbox:cachy-latest")
+        .unwrap();
+    let install = overlay.find("htop ripgrep").unwrap();
+    let run = overlay.find("RUN echo hello").unwrap();
+    let guest = overlay.find("COPY podbox-guest").unwrap();
     assert!(
-        !cf.lines()
-            .any(|l| l.starts_with("RUN ") && !l.contains("DisableSandboxNetwork")),
-        "unexpected RUN layer:\n{cf}"
+        from < install && install < run && run < guest,
+        "overlay must order FROM, install, RUN, guest:\n{overlay}"
+    );
+}
+
+#[test]
+fn containerfile_prebuilt_overlay_keeps_cachy_sandbox_relaxation() {
+    // The old prebuilt path built its own install string without the
+    // CachyOS relaxation; the shared installer must carry it.
+    let mut config = load_config("prebuilt.toml");
+    config.image.packages.install = vec!["htop".into()];
+    let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
+        &config,
+        "ghcr.io/bethropolis/podbox:cachy-latest",
+        false,
+    )
+    .expect("packages need an overlay");
+    assert!(overlay.contains("DisableSandboxNetwork"), "{overlay}");
+    assert!(!overlay.contains("COPY podbox-guest"), "{overlay}");
+}
+
+#[test]
+fn containerfile_prebuilt_preview_matches_cli_overlay() {
+    // The Studio preview renders through generate_preview; it must equal the
+    // CLI overlay built without an embedded guest.
+    let mut config = load_config("prebuilt.toml");
+    config.image.packages.install = vec!["htop".into()];
+    config.image.run.commands = vec!["echo hello".into()];
+    // The preview delegates to the same function with the ambient guest
+    // flag, so this holds both on the CLI and in the wasm Studio build.
+    let preview = podbox::codegen::containerfile::generate_preview(&config, "podbox-guest");
+    let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
+        &config,
+        "ghcr.io/bethropolis/podbox:cachy-latest",
+        podbox::guest::PODBOX_GUEST.is_some(),
+    )
+    .unwrap();
+    assert_eq!(preview, overlay);
+}
+
+#[test]
+fn quadlet_prebuilt_with_run_commands_points_at_local_overlay() {
+    use common::{default_env, default_xdg};
+    use podbox::codegen::quadlet;
+    let mut config = load_config("prebuilt.toml");
+    config.image.run.commands = vec!["echo hello".into()];
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(
+        q.contains("Image=localhost/podbox-prebuilt:latest"),
+        "run commands need a local overlay image:\n{q}"
     );
 }
 
