@@ -376,6 +376,19 @@ impl Config {
             }
         }
 
+        // Packages need a package manager: an undetectable image family
+        // with install entries would otherwise silently emit the wrong
+        // install command (dnf on Arch). Fail with the fix attached.
+        if !self.image.packages.install.is_empty()
+            && crate::codegen::distros::family_for_config(self)
+                == crate::codegen::distros::DistroFamily::Unknown
+        {
+            let image = self.image.image_ref.as_deref().unwrap_or(&self.image.base);
+            errors.push(format!(
+                "image.packages: cannot determine package manager for '{image}'; set image.packages.manager explicitly (\"apt\", \"dnf\", \"pacman\", \"apk\" or \"zypper\")"
+            ));
+        }
+
         if self.integration.host_exec.enabled {
             let has_allowlist = self
                 .integration

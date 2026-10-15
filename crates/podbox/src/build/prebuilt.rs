@@ -237,22 +237,7 @@ pub(crate) fn run_prebuilt(
 /// image reference (falling back to the base name), so prebuilt images from
 /// any distro family build without pinning a manager.
 pub(crate) fn resolve_prebuilt_distro(config: &Config) -> DistroFamily {
-    use crate::config::PackageManager;
-    if let Some(manager) = config.image.packages.manager {
-        return match manager {
-            PackageManager::Apt => DistroFamily::DebianLike,
-            PackageManager::Dnf => DistroFamily::FedoraLike,
-            PackageManager::Pacman => DistroFamily::ArchLike,
-            PackageManager::Apk => DistroFamily::AlpineLike,
-            PackageManager::Zypper => DistroFamily::SuseLike,
-        };
-    }
-    let probe = config
-        .image
-        .image_ref
-        .as_deref()
-        .unwrap_or(&config.image.base);
-    DistroFamily::from_base_image(probe)
+    crate::codegen::distros::family_for_config(config)
 }
 
 #[cfg(test)]

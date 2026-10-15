@@ -1,4 +1,6 @@
-use crate::codegen::distros::{DistroFamily, detect_host_locale, detect_host_shell};
+use crate::codegen::distros::{
+    DistroFamily, detect_host_locale, detect_host_shell, family_for_config,
+};
 use crate::config::Config;
 use crate::error::PodboxError;
 
@@ -64,12 +66,13 @@ fn generate_prebuilt(config: &Config) -> String {
 /// `guest_available` decides whether the guest `COPY`/`chmod` pair is
 /// emitted or replaced by [`GUEST_PLACEHOLDER`].
 fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool) -> String {
-    let distro = DistroFamily::from_base_image(&config.image.base);
+    let distro = family_for_config(config);
     let host_shell = detect_host_shell();
     let host_locale = detect_host_locale();
 
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
     builder
+        .set_distro(distro)
         .add_base_packages(distro, host_shell.as_deref(), host_locale.as_deref())
         // The image must contain the shell the container actually runs. Only
         // the host's shell was installed above, so a config asking for a
@@ -86,6 +89,7 @@ fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool
 struct ContainerfileBuilder {
     base_image: String,
     container_name: String,
+    distro: Option<DistroFamily>,
     packages: Vec<String>,
     run_commands: Vec<String>,
     guest_name: String,
@@ -99,6 +103,7 @@ impl ContainerfileBuilder {
         Self {
             base_image: base_image.to_string(),
             container_name: container_name.to_string(),
+            distro: None,
             packages: Vec::new(),
             run_commands: Vec::new(),
             guest_name: "podbox-guest".to_string(),
@@ -106,6 +111,13 @@ impl ContainerfileBuilder {
             env_vars: Vec::new(),
             forced_shell: None,
         }
+    }
+
+    /// Pin the distro family (explicit manager wins). Without it, `build`
+    /// falls back to detecting from the base image name.
+    fn set_distro(mut self, distro: DistroFamily) -> Self {
+        self.distro = Some(distro);
+        self
     }
 
     fn add_base_packages(
@@ -165,7 +177,9 @@ impl ContainerfileBuilder {
     }
 
     fn build(self) -> String {
-        let distro = DistroFamily::from_base_image(&self.base_image);
+        let distro = self
+            .distro
+            .unwrap_or_else(|| DistroFamily::from_base_image(&self.base_image));
         let mut lines = Vec::new();
 
         lines.push(format!("FROM {}", self.base_image));
