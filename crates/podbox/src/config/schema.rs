@@ -61,6 +61,11 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provision: Vec<ProvisionStep>,
+    /// Dotted leaf paths present in the definition file (after `extends`
+    /// merging, so profile values count as user values). Image labels only
+    /// fill fields the user never set; see `labels::apply_defaults`.
+    #[serde(skip)]
+    pub explicit_keys: std::collections::HashSet<String>,
 }
 
 impl Config {
@@ -160,6 +165,9 @@ impl Config {
     pub fn parse_with_warnings(content: &str) -> Result<(Config, Vec<String>)> {
         let mut config: Config = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
+        config.explicit_keys = explicit_leaf_paths(
+            &toml::from_str(content).unwrap_or(toml::Value::Table(toml::map::Map::new())),
+        );
         config.run_migrations();
         config.apply_defaults();
         let (warnings, result) = config.validate_with_warnings();
@@ -174,8 +182,10 @@ impl Config {
     pub fn parse_with_source(path: &std::path::Path, content: &str) -> Result<Config> {
         let merged = crate::config::extends::resolve_extends_chain(path, content)?;
         let mut config: Config = merged
+            .clone()
             .try_into()
             .with_context(|| "failed to parse merged definition file".to_string())?;
+        config.explicit_keys = explicit_leaf_paths(&merged);
         config.run_migrations();
         config.apply_defaults();
         config.validate()?;
@@ -219,6 +229,39 @@ impl Config {
             self.dbus.preset = DbusPreset::Portal;
         }
     }
+}
+
+/// Dotted leaf paths present in a TOML document (`integration.audio`,
+/// `integration.xdg_dirs.downloads`, `image.packages.install[0]`).
+/// Used to tell user-set fields apart from defaults so image labels can
+/// only fill in what the user never set.
+fn explicit_leaf_paths(value: &toml::Value) -> std::collections::HashSet<String> {
+    fn walk(prefix: String, value: &toml::Value, out: &mut std::collections::HashSet<String>) {
+        match value {
+            toml::Value::Table(table) => {
+                for (key, child) in table {
+                    let child_prefix = if prefix.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{prefix}.{key}")
+                    };
+                    walk(child_prefix, child, out);
+                }
+            }
+            toml::Value::Array(items) => {
+                out.insert(prefix.clone());
+                for (i, child) in items.iter().enumerate() {
+                    walk(format!("{prefix}[{i}]"), child, out);
+                }
+            }
+            _ => {
+                out.insert(prefix);
+            }
+        }
+    }
+    let mut out = std::collections::HashSet::new();
+    walk(String::new(), value, &mut out);
+    out
 }
 
 /// Placeholder migration — no changes from v1 to v2 yet.

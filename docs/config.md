@@ -283,6 +283,12 @@ way inside.
 
 Controls which host resources are shared with the container.
 
+Prebuilt images may ship OCI labels (`podbox.integration.audio=true`, …)
+suggesting integration defaults. Precedence is: an explicitly set definition
+value (including values from `extends` profiles) beats an image label, which
+beats the built-in default. Setting `integration.audio = false` therefore
+stays off even when the image label says `true`.
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `wayland` | bool | `false` | Share Wayland socket for GUI apps |
