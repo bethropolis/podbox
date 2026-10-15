@@ -40,7 +40,7 @@ pub(crate) fn rewrite_memory_raw(path: &Path, suggested: &str) -> Result<()> {
         anyhow::bail!("container table not found in {}", path.display());
     }
     let out = toml::to_string_pretty(&value)?;
-    std::fs::write(path, out)?;
+    podbox::fsutil::write_atomic(path, out.as_bytes())?;
     Ok(())
 }
 

@@ -196,7 +196,7 @@ pub fn stage_import(
         return Ok(effective);
     }
     std::fs::create_dir_all(config::profiles_dir())?;
-    std::fs::write(&target, &out)?;
+    podbox::fsutil::write_atomic(&target, out.as_bytes())?;
     println!("Imported {} -> {}", src.display(), target.display());
     Ok(effective)
 }
@@ -363,7 +363,7 @@ pub fn run_create(
         } else {
             let config_toml = toml::to_string_pretty(&cfg)?;
             std::fs::create_dir_all(&config_dir)?;
-            std::fs::write(&config_path, &config_toml)?;
+            podbox::fsutil::write_atomic(&config_path, config_toml.as_bytes())?;
             println!("Created config: {}", config_path.display());
         }
 
@@ -492,7 +492,7 @@ pub fn run_create(
         } else {
             std::fs::create_dir_all(&config_dir)?;
             let toml_str = toml::to_string_pretty(&cfg)?;
-            std::fs::write(&config_path, &toml_str)?;
+            podbox::fsutil::write_atomic(&config_path, toml_str.as_bytes())?;
             println!("Created config: {}", config_path.display());
         }
 

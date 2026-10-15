@@ -65,7 +65,7 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
     std::fs::create_dir_all(&apps_dir)?;
 
     let host_path = apps_dir.join(format!("podbox-{container_name}-{app}.desktop"));
-    std::fs::write(&host_path, rewritten)?;
+    crate::fsutil::write_atomic(&host_path, rewritten.as_bytes())?;
 
     // 4. Try to extract icon
     if let Some(icon_name) = extract_icon_name(&desktop_content) {
@@ -129,7 +129,7 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
     );
 
     let shim_path = bin_dir.join(bin);
-    std::fs::write(&shim_path, shim)?;
+    crate::fsutil::write_atomic(&shim_path, shim.as_bytes())?;
     #[allow(clippy::print_literal)]
     {
         let _ = std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755));

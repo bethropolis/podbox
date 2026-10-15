@@ -39,13 +39,13 @@ fn write_custom_units(
 ) -> Result<()> {
     let files = custom_unit_filenames(name);
     std::fs::create_dir_all(sdir)?;
-    std::fs::write(sdir.join(&files[0]), socket_content)?;
-    std::fs::write(sdir.join(&files[1]), host_service_content)?;
+    crate::fsutil::write_atomic(&sdir.join(&files[0]), socket_content.as_bytes())?;
+    crate::fsutil::write_atomic(&sdir.join(&files[1]), host_service_content.as_bytes())?;
     if let Some(proxy) = dbus_proxy_content {
-        std::fs::write(sdir.join(&files[2]), proxy)?;
+        crate::fsutil::write_atomic(&sdir.join(&files[2]), proxy.as_bytes())?;
     }
     if let Some(comp) = compositor_service_content {
-        std::fs::write(sdir.join(&files[3]), comp)?;
+        crate::fsutil::write_atomic(&sdir.join(&files[3]), comp.as_bytes())?;
     }
     write_clean_stop_dropin(name, sdir)?;
     Ok(())
@@ -60,9 +60,9 @@ fn write_custom_units(
 fn write_clean_stop_dropin(name: &str, sdir: &Path) -> Result<()> {
     let dir = sdir.join(format!("{name}.service.d"));
     std::fs::create_dir_all(&dir)?;
-    std::fs::write(
-        dir.join("99-podbox-clean-stop.conf"),
-        "[Service]\nSuccessExitStatus=0 143 SIGTERM SIGINT\n",
+    crate::fsutil::write_atomic(
+        &dir.join("99-podbox-clean-stop.conf"),
+        b"[Service]\nSuccessExitStatus=0 143 SIGTERM SIGINT\n",
     )?;
     Ok(())
 }

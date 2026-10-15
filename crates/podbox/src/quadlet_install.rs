@@ -86,10 +86,10 @@ fn restore_prior_units(prior: &[PriorFile]) -> usize {
                     if std::fs::create_dir_all(parent).is_err() {
                         Err(())
                     } else {
-                        std::fs::write(&file.path, bytes).map_err(|_| ())
+                        crate::fsutil::write_atomic(&file.path, bytes).map_err(|_| ())
                     }
                 } else {
-                    std::fs::write(&file.path, bytes).map_err(|_| ())
+                    crate::fsutil::write_atomic(&file.path, bytes).map_err(|_| ())
                 }
             }
             None => {
@@ -189,9 +189,9 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
     // Ensure .flatpak-info is written to the host build directory
     let _ = std::fs::create_dir_all(&context_dir);
-    std::fs::write(
-        context_dir.join(".flatpak-info"),
-        "[Application]\nname=podbox\n",
+    crate::fsutil::write_atomic(
+        &context_dir.join(".flatpak-info"),
+        b"[Application]\nname=podbox\n",
     )?;
 
     // Pre-flight validation
@@ -228,9 +228,12 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             // 5.5 fallback: copy files manually
             std::fs::create_dir_all(&qdir)?;
             if let Some(ref bc) = build_content {
-                std::fs::write(qdir.join(format!("{name}.build")), bc)?;
+                crate::fsutil::write_atomic(&qdir.join(format!("{name}.build")), bc.as_bytes())?;
             }
-            std::fs::write(qdir.join(format!("{name}.container")), container_content)?;
+            crate::fsutil::write_atomic(
+                &qdir.join(format!("{name}.container")),
+                container_content.as_bytes(),
+            )?;
             println!("Quadlet files installed to {}", qdir.display());
         }
 

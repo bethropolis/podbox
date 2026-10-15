@@ -51,7 +51,7 @@ pub fn run_snapshot(config: &Config, name: &str, tag: Option<&str>, dry_run: boo
     let meta_path = dir.join(format!("{tag}.toml"));
     let now_rfc = date_now_rfc3339();
     let meta = format!("tag = \"{tag}\"\ncreated = \"{now_rfc}\"\nimage = \"{image_tag}\"\n");
-    std::fs::write(&meta_path, &meta)?;
+    podbox::fsutil::write_atomic(&meta_path, meta.as_bytes())?;
 
     println!("✓ Snapshot '{image_tag}' saved (tag: {tag})");
     Ok(())

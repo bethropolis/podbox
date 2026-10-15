@@ -284,7 +284,7 @@ fn write_git_bridge_stamp(name: &str, stamp: &GitBridgeStamp) {
         return;
     }
     if let Ok(json) = serde_json::to_string(stamp) {
-        let _ = std::fs::write(&path, json);
+        let _ = podbox::fsutil::write_atomic(&path, json.as_bytes());
     }
 }
 

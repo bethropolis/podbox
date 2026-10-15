@@ -201,7 +201,7 @@ pub(crate) fn copy_icon_from_container(
         let output = crate::process::run_piped("podman", &args)?;
         if output.status.success() {
             let dest = icons_dir.join(format!("{icon_name}.{ext}"));
-            std::fs::write(dest, &output.stdout)?;
+            crate::fsutil::write_atomic(&dest, &output.stdout)?;
             break;
         }
     }

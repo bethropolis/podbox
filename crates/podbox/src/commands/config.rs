@@ -127,7 +127,7 @@ pub fn run_set(
         podbox::ui::would(&format!("set {key} = {raw_value} in {}", path.display()));
         return Ok(());
     }
-    std::fs::write(path, &new_text)?;
+    podbox::fsutil::write_atomic(path, new_text.as_bytes())?;
     let rebuild_required = segments[0] == "image";
     match output {
         OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("config set")),

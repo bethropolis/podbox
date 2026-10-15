@@ -46,7 +46,7 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     if let Some(parent) = dst_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&dst_path, &new_content)?;
+    podbox::fsutil::write_atomic(&dst_path, new_content.as_bytes())?;
     println!("Created config: {}", dst_path.display());
 
     if copy_home {

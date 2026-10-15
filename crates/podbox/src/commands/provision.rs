@@ -336,7 +336,7 @@ fn write_stamp(config: &Config, step: &ProvisionStep, dry_run: bool) -> Result<(
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create provision dir '{}'", dir.display()))?;
     let content = format!("{STAMP_VERSION} {} {}\n", step_hash(step), now_secs());
-    std::fs::write(stamp_path(config, &step.name), &content)
+    podbox::fsutil::write_atomic(&stamp_path(config, &step.name), content.as_bytes())
         .with_context(|| format!("failed to write stamp for step '{}'", step.name))?;
     Ok(())
 }
