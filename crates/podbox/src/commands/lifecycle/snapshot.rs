@@ -195,9 +195,27 @@ fn days_to_date(days: i64) -> (i64, u32, u32) {
 }
 
 /// Restore a container from a snapshot image.
+///
+/// A retag alone changes nothing about the existing container: podman keeps
+/// running (or restarting) the filesystem the container was created with, so
+/// merely tagging the snapshot as `:latest` and calling `podman start` leaves
+/// the old state in place. Restore therefore removes the container and lets
+/// the Quadlet unit recreate it from the retagged image.
 pub fn run_restore(config: &Config, name: &str, tag: &str, dry_run: bool) -> Result<()> {
     let snapshot_img = snapshot_tag(tag, &config.image_repo());
     let latest_img = config.local_image_tag();
+
+    // The recreated container comes from the Quadlet unit, so a box that was
+    // never enabled (or a host without systemd) has nothing to recreate it.
+    // Check before destroying anything — but not under dry-run, which only
+    // prints the plan (same shape as `run_rollback`).
+    if !dry_run
+        && (!podbox::quadlet_install::is_installed(name) || !podbox::systemd::is_available())
+    {
+        anyhow::bail!(
+            "restore requires an installed, systemd-managed Quadlet container for '{name}'"
+        );
+    }
 
     // Verify snapshot exists (a read, so it is safe under dry-run)
     let exists = podbox::podman::image_exists(&snapshot_img).unwrap_or(false);
@@ -207,7 +225,7 @@ pub fn run_restore(config: &Config, name: &str, tag: &str, dry_run: bool) -> Res
 
     if dry_run {
         podbox::ui::would(&format!(
-            "stop '{name}', tag '{snapshot_img}' as '{latest_img}', start '{name}'"
+            "stop and remove '{name}', tag '{snapshot_img}' as '{latest_img}', restart '{name}'"
         ));
         return Ok(());
     }
@@ -219,6 +237,13 @@ pub fn run_restore(config: &Config, name: &str, tag: &str, dry_run: bool) -> Res
         eprintln!("Warning: failed to stop container '{name}': {e:#}");
     }
 
+    // Remove the container so the unit recreates it from the restored image.
+    // A failed remove is an error: recreating on top would either fail or
+    // keep the unrestored container.
+    eprintln!("Removing container '{name}'...");
+    podbox::process::run_checked("podman", &podbox::process::args(&["rm", "-f", name]))
+        .with_context(|| format!("failed to remove '{name}' before restore"))?;
+
     // Re-tag snapshot as the main image
     eprintln!("Restoring from snapshot '{snapshot_img}'...");
     podbox::process::run_checked(
@@ -227,10 +252,11 @@ pub fn run_restore(config: &Config, name: &str, tag: &str, dry_run: bool) -> Res
     )
     .context("failed to tag snapshot image")?;
 
-    // Start the container. A failed start is an error, not a warning, because
-    // the restore has not produced a running box.
+    // Recreate via the Quadlet unit. A failed start is an error, not a
+    // warning, because the restore has not produced a running box.
     eprintln!("Starting container...");
-    podbox::process::run_checked("podman", &podbox::process::args(&["start", name]))
+    podbox::systemd::reset_failed(name)?;
+    podbox::systemd::restart_unit(name)
         .with_context(|| format!("failed to start '{name}' after restore"))?;
 
     println!("✓ Restored '{name}' from snapshot '{tag}'");
