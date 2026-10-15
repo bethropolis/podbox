@@ -67,6 +67,21 @@ fn read_user_path(name: &str) -> Option<String> {
     }
 }
 
+/// Insert `--env=PATH=<container path>` before the container-name slot.
+///
+/// Read after the box is running: the guest daemon only writes
+/// `/run/podbox/path` once it is up, so reading before `ensure_running`
+/// misses it on every cold start and the session falls back to the Quadlet
+/// default PATH. Returns the (possibly shifted) name slot.
+fn insert_user_path(name: &str, args: &mut Vec<OsString>, name_index: usize) -> usize {
+    let Some(path) = read_user_path(name) else {
+        return name_index;
+    };
+    let index = name_index.min(args.len());
+    args.splice(index..index, [OsString::from(format!("--env=PATH={path}"))]);
+    name_index + 1
+}
+
 fn append_env_args(args: &mut Vec<OsString>, env: &[String]) -> Result<()> {
     for entry in env {
         let (key, value) = entry.split_once('=').ok_or_else(|| {
@@ -560,9 +575,6 @@ pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
         "-w".into(),
         workdir.clone().into(),
     ];
-    if let Some(ref path) = read_user_path(name) {
-        exec_args.push(format!("--env=PATH={path}").into());
-    }
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
     let name_index = exec_args.len();
@@ -573,7 +585,10 @@ pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running.
+    let name_index = insert_user_path(name, &mut exec_args, name_index);
     prepare_git_bridge(
         ctx,
         &env.username,
@@ -603,9 +618,6 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
     if !root {
         exec_args.push("-u".into());
         exec_args.push(env.username.as_str().into());
-        if let Some(ref path) = read_user_path(name) {
-            exec_args.push(format!("--env=PATH={path}").into());
-        }
     }
     if here {
         exec_args.push("-w".into());
@@ -623,7 +635,7 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     let here_path = if here {
         exec_args
             .windows(2)
@@ -632,6 +644,13 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
             .map(str::to_string)
     } else {
         None
+    };
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running. Root sessions keep the image PATH.
+    let name_index = if root {
+        name_index
+    } else {
+        insert_user_path(name, &mut exec_args, name_index)
     };
     prepare_git_bridge(
         ctx,
@@ -662,9 +681,6 @@ pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()
         "-u".into(),
         env.username.as_str().into(),
     ];
-    if let Some(ref path) = read_user_path(name) {
-        exec_args.push(format!("--env=PATH={path}").into());
-    }
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
     let name_index = exec_args.len();
@@ -678,7 +694,10 @@ pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running.
+    let name_index = insert_user_path(name, &mut exec_args, name_index);
     prepare_git_bridge(ctx, &env.username, None, name_index, &mut exec_args);
     register_session(name, &env.xdg_runtime_dir);
     podbox::process::spawn_interactive_checked("podman", &exec_args)
