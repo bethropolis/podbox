@@ -43,24 +43,34 @@ pub(crate) fn run_prebuilt(
         None
     };
 
-    // Checksum covers both the image ref and the install list so that
-    // changing either triggers a rebuild. Provision steps are excluded
-    // (see definition_checksum): they touch only the home volume.
-    let config_checksum = super::definition_checksum(config)?;
+    // The image key covers the rendered overlay recipe (or the bare FROM
+    // ref), the guest binary and the podbox version — everything that ends
+    // up in the image. Quadlet-only toggles like `integration.audio` leave
+    // it alone; a podbox upgrade busts it.
+    let recipe = crate::codegen::containerfile::generate_prebuilt_overlay(
+        config,
+        &image_ref,
+        crate::guest::PODBOX_GUEST.is_some(),
+    )
+    .unwrap_or_else(|| format!("FROM {image_ref}\n"));
+    let image_key = super::image_cache_key(&recipe, crate::guest::PODBOX_GUEST, crate::VERSION);
 
     if !rebuild {
-        if let Some(lock) = crate::lock::read(&lock_path)? {
-            if lock.config_checksum == config_checksum && crate::podman::image_exists(&local_tag)? {
-                if events {
-                    crate::contract::emit_event(serde_json::json!({
-                        "event": "done", "ok": true, "cached": true,
-                    }));
-                } else {
-                    println!("Prebuilt image already present as {local_tag}. Skipping pull.");
-                    println!("Use --rebuild to re-pull.");
-                }
-                return Ok(());
+        let lock = crate::lock::read(&lock_path)?;
+        if super::cache_hit(
+            lock.as_ref(),
+            &image_key,
+            crate::podman::image_exists(&local_tag)?,
+        ) {
+            if events {
+                crate::contract::emit_event(serde_json::json!({
+                    "event": "done", "ok": true, "cached": true,
+                }));
+            } else {
+                println!("Prebuilt image already present as {local_tag}. Skipping pull.");
+                println!("Use --rebuild to re-pull.");
             }
+            return Ok(());
         }
     }
 
@@ -220,7 +230,7 @@ pub(crate) fn run_prebuilt(
     })?;
     let digest = crate::podman::image_digest(&local_tag)?;
     let lock = crate::lock::LockFile {
-        config_checksum,
+        config_checksum: image_key,
         image_digest: digest,
     };
     crate::lock::write(&lock_path, &lock)?;
