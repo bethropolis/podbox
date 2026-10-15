@@ -159,8 +159,19 @@ fn command_output_format(cmd: &Command) -> Option<podbox::cli::OutputFormat> {
 
 /// `--edit` on build, start and enter: open the config in the editor, or only
 /// say so under `--dry-run` (an editor session is not a dry-run action).
+///
+/// Edits the file the command actually runs against: the explicit `--config`
+/// path when given, otherwise the config for the positional name (which wins
+/// over `-C`, mirroring resolution) or `-C` itself.
 fn edit_config_for_command(cli: &Cli) -> Result<()> {
-    let config_path = resolve_config_path(cli.container.as_deref())?;
+    let config_path = match &cli.config {
+        Some(path) => path.clone(),
+        None => {
+            let positional = extract_positional_name(&cli.command);
+            let name = positional.as_deref().or(cli.container.as_deref());
+            resolve_config_path(name)?
+        }
+    };
     if cli.dry_run {
         ui::would(&format!("open '{}' in $EDITOR", config_path.display()));
         return Ok(());
