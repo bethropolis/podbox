@@ -19,7 +19,7 @@ mod desktop;
 
 pub(crate) use desktop::{
     copy_icon_from_container, extract_icon_name, find_desktop_file, is_valid_app_name,
-    rewrite_desktop_file,
+    rewrite_desktop_file, rewrite_host_icon,
 };
 
 /// Host executable to embed in exported launchers and shims.
@@ -67,10 +67,21 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
     let host_path = apps_dir.join(format!("podbox-{container_name}-{app}.desktop"));
     crate::fsutil::write_atomic(&host_path, rewritten.as_bytes())?;
 
-    // 4. Try to extract icon
+    // 4. Try to extract the icon, and point the launcher at the copy.
+    // The copy lands outside the theme search path, so the container-side
+    // Icon name/path would otherwise show nothing.
     if let Some(icon_name) = extract_icon_name(&desktop_content) {
-        if let Err(e) = copy_icon_from_container(container_name, &icon_name, container_name) {
-            eprintln!("Warning: failed to copy icon '{icon_name}': {e}");
+        match copy_icon_from_container(container_name, &icon_name, container_name) {
+            Ok(Some(dest)) => {
+                if let Err(e) = rewrite_host_icon(&host_path, &dest) {
+                    eprintln!(
+                        "Warning: failed to point Icon at '{}': {e:#}",
+                        dest.display()
+                    );
+                }
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("Warning: failed to copy icon '{icon_name}': {e:#}"),
         }
     }
 
@@ -202,11 +213,13 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
         .join("applications");
-    let prefix = format!("podbox-{container_name}");
+    let prefix = format!("podbox-{container_name}-");
 
     if let Ok(entries) = std::fs::read_dir(&apps_dir) {
         for entry in entries.flatten() {
             let name = entry.file_name();
+            // Trailing dash: without it, cleaning `box` would also delete
+            // `box2`'s launchers.
             if name.to_string_lossy().starts_with(&prefix) {
                 let _ = std::fs::remove_file(entry.path());
             }
