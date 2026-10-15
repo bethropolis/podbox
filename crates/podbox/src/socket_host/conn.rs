@@ -251,7 +251,11 @@ pub(crate) fn handle_connection(
                     continue;
                 }
                 failures = 0;
-                handlers::handle_host_exec(stream, &config.integration, cmd, args)?
+                // Streaming needs no extra gate beyond the granted
+                // capability: a guest that never asked for it gets buffered
+                // frames, which it already understands.
+                let streaming = has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC_STREAM);
+                handlers::handle_host_exec(stream, &config.integration, cmd, args, streaming)?
             }
             GuestMessage::Info {
                 guest_version,

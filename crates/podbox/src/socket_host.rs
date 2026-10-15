@@ -639,4 +639,82 @@ mod tests {
             other => panic!("expected HelloAck, got {other:?}"),
         }
     }
+
+    // ── streaming host-exec helper tests ──
+
+    #[test]
+    fn signal_death_maps_to_the_shell_convention() {
+        use super::handlers::exit_code_and_signal;
+        let killed = std::process::Command::new("sh")
+            .args(["-c", "kill -TERM $$"])
+            .status()
+            .unwrap();
+        assert_eq!(exit_code_and_signal(&killed), (143, Some(15)));
+        let clean = std::process::Command::new("sh")
+            .args(["-c", "exit 42"])
+            .status()
+            .unwrap();
+        assert_eq!(exit_code_and_signal(&clean), (42, None));
+    }
+
+    /// A child that never stops writing is killed once its total output
+    /// passes the cap, and the guest gets a truncation note plus a failure
+    /// status instead of unbounded frames.
+    #[test]
+    fn output_cap_kills_a_chatty_child_and_reports_truncation() {
+        use super::handlers::stream_child_output;
+        let (mut server, mut client) = socket_pair();
+        client
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .unwrap();
+        let child = std::process::Command::new("yes")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        stream_child_output(
+            &mut server,
+            child,
+            std::time::Duration::from_secs(30),
+            20_000,
+        )
+        .unwrap();
+        drop(server);
+
+        // Zero or more chunks under the cap, then the truncation note,
+        // then done-with-failure. Chunk sizes depend on pipe timing, so
+        // only the shape and the totals are asserted.
+        let mut forwarded = 0usize;
+        let mut frames = 0;
+        loop {
+            frames += 1;
+            assert!(frames < 100, "cap never fired");
+            let bytes = crate::protocol::read_frame(&mut client)
+                .unwrap()
+                .expect("truncation report");
+            let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+            match msg {
+                crate::protocol::HostMessage::HostExecOutput { data, .. } => {
+                    forwarded += data.len();
+                    assert!(forwarded <= 20_000, "cap exceeded: {forwarded}");
+                }
+                crate::protocol::HostMessage::HostExecStderr { data } => {
+                    assert!(data.contains("truncated"), "{data:?}");
+                    break;
+                }
+                other => panic!("expected output or truncation, got {other:?}"),
+            }
+        }
+        let bytes = crate::protocol::read_frame(&mut client)
+            .unwrap()
+            .expect("done frame");
+        let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+        assert!(
+            matches!(
+                msg,
+                crate::protocol::HostMessage::HostExecDone { exit_code: 1, .. }
+            ),
+            "expected failure status, got {msg:?}"
+        );
+    }
 }

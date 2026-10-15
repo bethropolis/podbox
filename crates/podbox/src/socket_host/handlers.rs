@@ -5,9 +5,25 @@
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
+use nix::sys::signal::{Signal, kill};
+use nix::unistd::Pid;
+
 use super::actions::HostActions;
 use crate::config::IntegrationConfig;
-use crate::protocol::{HostMessage, write_frame};
+use crate::protocol::{ExecStream, HostMessage, write_frame};
+
+/// How long a host-exec child may run before it is killed. Per-allowlist-entry
+/// timeouts would need a config key; until then one default covers every entry.
+const HOST_EXEC_TIMEOUT: Duration = Duration::from_mins(1);
+
+/// Total output (stdout + stderr) a streaming host-exec child may produce
+/// before it is killed. Bounds host memory and keeps every frame far under
+/// the frame cap. Per-entry configuration would need a config key.
+const MAX_HOST_EXEC_OUTPUT: u64 = 64 * 1024 * 1024;
+
+/// One read from a streaming child's pipe. Small enough that the JSON
+/// encoding of a chunk stays far under the frame cap.
+const EXEC_CHUNK_LEN: usize = 16 * 1024;
 
 /// Outcome of a `Hello` handshake.
 pub(super) enum HelloOutcome {
@@ -54,6 +70,9 @@ pub(super) fn handle_hello(
             crate::protocol::CAP_XDG_OPEN => config.xdg_open,
             crate::protocol::CAP_CLIPBOARD => config.clipboard,
             crate::protocol::CAP_HOST_EXEC => config.host_exec.enabled,
+            // Streaming output still runs allowlisted commands only, so it
+            // rides on the same switch as plain host-exec.
+            crate::protocol::CAP_HOST_EXEC_STREAM => config.host_exec.enabled,
             _ => false,
         };
         if enabled {
@@ -233,21 +252,21 @@ pub(super) fn handle_clipboard_get(
 }
 
 /// Handle a `HostExec` message from the guest.
+///
+/// When the guest negotiated `host_exec_stream`, the child's pipes are
+/// forwarded in raw-byte chunks as the command runs, so output larger
+/// than a frame (or not valid UTF-8) survives. Otherwise the whole output
+/// is buffered and sent as one frame per pipe, exactly as before, for
+/// guests that predate streaming.
 pub(super) fn handle_host_exec(
     stream: &mut UnixStream,
     config: &IntegrationConfig,
     cmd: String,
     args: Vec<String>,
+    streaming: bool,
 ) -> anyhow::Result<()> {
     if !config.host_exec.enabled {
-        write_frame(
-            stream,
-            &HostMessage::HostExecStderr {
-                data: "host-exec is disabled".into(),
-            },
-        )?;
-        write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-        return Ok(());
+        return host_exec_failed(stream, "host-exec is disabled");
     }
 
     let entry = match config.host_exec.resolve(&cmd) {
@@ -259,16 +278,12 @@ pub(super) fn handle_host_exec(
                 .as_ref()
                 .map(|m| m.keys().cloned().collect::<Vec<_>>().join(", "))
                 .unwrap_or_default();
-            write_frame(
+            return host_exec_failed(
                 stream,
-                &HostMessage::HostExecStderr {
-                    data: format!(
-                        "Permission denied: '{cmd}' is not in the host-exec allowlist\nAllowed commands: {allowed}"
-                    ),
-                },
-            )?;
-            write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-            return Ok(());
+                &format!(
+                    "Permission denied: '{cmd}' is not in the host-exec allowlist\nAllowed commands: {allowed}"
+                ),
+            );
         }
     };
 
@@ -276,14 +291,7 @@ pub(super) fn handle_host_exec(
     // bypassed for this command (execution still uses execve, not a shell).
     if entry.filter_enabled() {
         if let Err(msg) = validate_host_exec_args(&args) {
-            write_frame(
-                stream,
-                &HostMessage::HostExecStderr {
-                    data: format!("Security violation: {msg}"),
-                },
-            )?;
-            write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-            return Ok(());
+            return host_exec_failed(stream, &format!("Security violation: {msg}"));
         }
     } else {
         tracing::debug!(
@@ -300,25 +308,17 @@ pub(super) fn handle_host_exec(
         Ok(p) => p,
         Err(e) => {
             tracing::error!("host-exec: failed to canonicalize '{}': {e}", resolved);
-            write_frame(
+            return host_exec_failed(
                 stream,
-                &HostMessage::HostExecStderr {
-                    data: format!("Failed to resolve executable path '{resolved}': {e}"),
-                },
-            )?;
-            write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-            return Ok(());
+                &format!("Failed to resolve executable path '{resolved}': {e}"),
+            );
         }
     };
     if !canonical_path.is_file() {
-        write_frame(
+        return host_exec_failed(
             stream,
-            &HostMessage::HostExecStderr {
-                data: format!("'{}' is not a regular file", canonical_path.display()),
-            },
-        )?;
-        write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
-        return Ok(());
+            &format!("'{}' is not a regular file", canonical_path.display()),
+        );
     }
     tracing::info!(
         "host-exec: resolved '{}' -> {}",
@@ -333,25 +333,11 @@ pub(super) fn handle_host_exec(
         .spawn()
     {
         Ok(child) => {
-            let output = crate::process::wait_child_timeout(child, Duration::from_mins(1))?;
-            if !output.stdout.is_empty() {
-                write_frame(
-                    stream,
-                    &HostMessage::HostExecStdout {
-                        data: String::from_utf8_lossy(&output.stdout).to_string(),
-                    },
-                )?;
+            if streaming {
+                stream_child_output(stream, child, HOST_EXEC_TIMEOUT, MAX_HOST_EXEC_OUTPUT)
+            } else {
+                buffered_child_output(stream, child)
             }
-            if !output.stderr.is_empty() {
-                write_frame(
-                    stream,
-                    &HostMessage::HostExecStderr {
-                        data: String::from_utf8_lossy(&output.stderr).to_string(),
-                    },
-                )?;
-            }
-            let code = output.status.code().unwrap_or(1);
-            write_frame(stream, &HostMessage::HostExecDone { exit_code: code })?;
         }
         Err(e) => {
             let msg = if e.kind() == std::io::ErrorKind::NotFound {
@@ -359,11 +345,189 @@ pub(super) fn handle_host_exec(
             } else {
                 format!("host-exec: failed to execute '{cmd}': {e}")
             };
-            write_frame(stream, &HostMessage::HostExecStderr { data: msg })?;
-            write_frame(stream, &HostMessage::HostExecDone { exit_code: 1 })?;
+            host_exec_failed(stream, &msg)
         }
     }
+}
+
+/// Reply to a rejected host-exec request: the reason on stderr, then done
+/// with a failure status. Every rejection funnels through here so the
+/// guest always sees a complete stderr/done pair.
+fn host_exec_failed(stream: &mut UnixStream, msg: &str) -> anyhow::Result<()> {
+    write_frame(
+        stream,
+        &HostMessage::HostExecStderr {
+            data: msg.to_string(),
+        },
+    )?;
+    write_frame(
+        stream,
+        &HostMessage::HostExecDone {
+            exit_code: 1,
+            signal: None,
+        },
+    )?;
     Ok(())
+}
+
+/// Wait for the child, then send its whole stdout and stderr as one frame
+/// each. Preserves the historical framing for guests that did not
+/// negotiate `host_exec_stream`.
+fn buffered_child_output(
+    stream: &mut UnixStream,
+    child: std::process::Child,
+) -> anyhow::Result<()> {
+    let output = crate::process::wait_child_timeout(child, HOST_EXEC_TIMEOUT)?;
+    if !output.stdout.is_empty() {
+        write_frame(
+            stream,
+            &HostMessage::HostExecStdout {
+                data: String::from_utf8_lossy(&output.stdout).to_string(),
+            },
+        )?;
+    }
+    if !output.stderr.is_empty() {
+        write_frame(
+            stream,
+            &HostMessage::HostExecStderr {
+                data: String::from_utf8_lossy(&output.stderr).to_string(),
+            },
+        )?;
+    }
+    let (exit_code, signal) = exit_code_and_signal(&output.status);
+    write_frame(stream, &HostMessage::HostExecDone { exit_code, signal })?;
+    Ok(())
+}
+
+/// Exit status split into a shell-convention code and the killing signal,
+/// if any: a normal exit reports its code with no signal, a signal death
+/// reports `128 + signal` alongside the signal number.
+pub(super) fn exit_code_and_signal(status: &std::process::ExitStatus) -> (i32, Option<i32>) {
+    use std::os::unix::process::ExitStatusExt as _;
+    match (status.code(), status.signal()) {
+        (Some(code), _) => (code, None),
+        (None, signal) => (signal.map(|s| 128 + s).unwrap_or(1), signal),
+    }
+}
+
+/// One item moving from a streaming child's pipe readers to the sender.
+enum ExecChunk {
+    Out(Vec<u8>),
+    Err(Vec<u8>),
+    OutEof,
+    ErrEof,
+}
+
+/// Forward a streaming child's pipes as raw-byte chunks until both hit
+/// EOF, then report the exit. Kills the child when `timeout` elapses or
+/// `max_bytes` of total output is exceeded.
+pub(super) fn stream_child_output(
+    stream: &mut UnixStream,
+    mut child: std::process::Child,
+    timeout: Duration,
+    max_bytes: u64,
+) -> anyhow::Result<()> {
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let (tx, rx) = std::sync::mpsc::channel::<ExecChunk>();
+    if let Some(pipe) = stdout {
+        pump_pipe(pipe, tx.clone(), ExecChunk::Out, ExecChunk::OutEof);
+    }
+    if let Some(pipe) = stderr {
+        pump_pipe(pipe, tx.clone(), ExecChunk::Err, ExecChunk::ErrEof);
+    }
+    drop(tx);
+
+    // Same killer as the buffered path: SIGKILL past the timeout. The done
+    // signal disarms it once the child has been reaped.
+    let pid = Pid::from_raw(child.id().cast_signed());
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if done_rx.recv_timeout(timeout).is_err() {
+            let _ = kill(pid, Signal::SIGKILL);
+        }
+    });
+
+    let mut eofs = 0;
+    let mut total: u64 = 0;
+    while eofs < 2 {
+        let (payload, wire_stream) = match rx.recv() {
+            Ok(ExecChunk::Out(data)) => (data, ExecStream::Stdout),
+            Ok(ExecChunk::Err(data)) => (data, ExecStream::Stderr),
+            Ok(ExecChunk::OutEof | ExecChunk::ErrEof) => {
+                eofs += 1;
+                continue;
+            }
+            // Readers only exit after sending their EOF; a dead channel
+            // here means both are gone.
+            Err(_) => break,
+        };
+        total = total.saturating_add(payload.len() as u64);
+        if total > max_bytes {
+            tracing::warn!("host-exec: output exceeded {max_bytes} bytes, killing child");
+            let _ = kill(Pid::from_raw(child.id().cast_signed()), Signal::SIGKILL);
+            write_frame(
+                stream,
+                &HostMessage::HostExecStderr {
+                    data: format!("host-exec: output exceeded {max_bytes} bytes, truncated"),
+                },
+            )?;
+            // Reap the killed child; unread pipe data dies with the
+            // readers, which exit on EOF by themselves.
+            let _ = child.wait()?;
+            write_frame(
+                stream,
+                &HostMessage::HostExecDone {
+                    exit_code: 1,
+                    signal: None,
+                },
+            )?;
+            let _ = done_tx.send(());
+            return Ok(());
+        }
+        write_frame(
+            stream,
+            &HostMessage::HostExecOutput {
+                stream: wire_stream,
+                data: payload,
+            },
+        )?;
+    }
+    let status = child.wait()?;
+    let _ = done_tx.send(());
+    let (exit_code, signal) = exit_code_and_signal(&status);
+    write_frame(stream, &HostMessage::HostExecDone { exit_code, signal })?;
+    Ok(())
+}
+
+/// Copy one child pipe into the channel in 16 KiB chunks until EOF, then
+/// report EOF. A broken pipe (child killed) ends the stream like an EOF.
+fn pump_pipe<R: std::io::Read + Send + 'static>(
+    mut pipe: R,
+    tx: std::sync::mpsc::Sender<ExecChunk>,
+    wrap: fn(Vec<u8>) -> ExecChunk,
+    eof: ExecChunk,
+) {
+    std::thread::spawn(move || {
+        let mut buf = [0u8; EXEC_CHUNK_LEN];
+        loop {
+            match pipe.read(&mut buf) {
+                Ok(0) => {
+                    let _ = tx.send(eof);
+                    return;
+                }
+                Ok(n) => {
+                    if tx.send(wrap(buf[..n].to_vec())).is_err() {
+                        return;
+                    }
+                }
+                Err(_) => {
+                    let _ = tx.send(eof);
+                    return;
+                }
+            }
+        }
+    });
 }
 
 /// Validate arguments for host-exec, rejecting shell metacharacters and

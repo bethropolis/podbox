@@ -114,15 +114,31 @@ pub fn negotiate_at(
     container: &str,
     caps: &[&str],
 ) -> Result<UnixStream, GuestError> {
+    negotiate_at_with_optional(socket_path, container, caps, &[]).map(|(stream, _)| stream)
+}
+
+/// [`negotiate_at`] with optional capabilities: `required` must all be
+/// granted (else [`GuestError::CapabilityRefused`]), while `optional` ones
+/// are taken when granted and ignored when refused. Returns the stream and
+/// the full accepted list so the caller can adapt to what the host
+/// supports — e.g. streaming host-exec output when the host grants
+/// `host_exec_stream`, buffered frames otherwise.
+pub fn negotiate_at_with_optional(
+    socket_path: &Path,
+    container: &str,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(UnixStream, Vec<String>), GuestError> {
     let mut stream = UnixStream::connect(socket_path)?;
-    let requested: Vec<String> = caps.iter().map(|c| (*c).to_string()).collect();
+    let mut requested: Vec<String> = required.iter().map(|c| (*c).to_string()).collect();
+    requested.extend(optional.iter().map(|c| (*c).to_string()));
     let (accepted, _idle_timeout, _shims) = handshake(&mut stream, container, &requested)?;
-    for cap in caps {
+    for cap in required {
         if !accepted.iter().any(|a| a == cap) {
             return Err(GuestError::CapabilityRefused((*cap).to_string()));
         }
     }
-    Ok(stream)
+    Ok((stream, accepted))
 }
 
 /// Negotiate `cap`, send one message on the same connection, and close.

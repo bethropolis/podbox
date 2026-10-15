@@ -14,9 +14,20 @@ pub const CAP_NOTIFY: &str = "notify";
 pub const CAP_XDG_OPEN: &str = "xdg_open";
 pub const CAP_CLIPBOARD: &str = "clipboard";
 pub const CAP_HOST_EXEC: &str = "host_exec";
+/// Streaming host-exec output (`HostExecOutput` byte chunks instead of one
+/// buffered `HostExecStdout`/`HostExecStderr` frame). Requested alongside
+/// `host_exec`; old hosts leave it in the rejected list and the guest falls
+/// back to buffered frames.
+pub const CAP_HOST_EXEC_STREAM: &str = "host_exec_stream";
 
 /// All known capabilities in negotiation order.
-pub const ALL_CAPABILITIES: &[&str] = &[CAP_NOTIFY, CAP_XDG_OPEN, CAP_CLIPBOARD, CAP_HOST_EXEC];
+pub const ALL_CAPABILITIES: &[&str] = &[
+    CAP_NOTIFY,
+    CAP_XDG_OPEN,
+    CAP_CLIPBOARD,
+    CAP_HOST_EXEC,
+    CAP_HOST_EXEC_STREAM,
+];
 
 /// Messages sent from guest to host.
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,6 +79,14 @@ pub struct NotifyAction {
     pub label: String,
 }
 
+/// Which pipe of a streaming host-exec child a chunk came from.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecStream {
+    Stdout,
+    Stderr,
+}
+
 /// Messages sent from host to guest.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -90,8 +109,22 @@ pub enum HostMessage {
     HostExecStderr {
         data: String,
     },
+    /// One chunk of a streaming command's output, sent as the child
+    /// produces it. `data` is raw bytes (up to 16 KiB per chunk) so binary
+    /// output survives intact. Only sent when the guest negotiated
+    /// `host_exec_stream`; older guests keep receiving the buffered
+    /// `HostExecStdout`/`HostExecStderr` frames.
+    HostExecOutput {
+        stream: ExecStream,
+        data: Vec<u8>,
+    },
     HostExecDone {
         exit_code: i32,
+        /// Signal that killed the child, if any. `exit_code` already
+        /// follows the shell convention (`128 + signal`); this names the
+        /// cause. Old guests ignore the unknown field.
+        #[serde(default)]
+        signal: Option<i32>,
     },
     NotifyActionResult {
         notification_id: u32,
@@ -430,5 +463,61 @@ mod tests {
         let mut r = Scripted([Step::Bytes(bytes[..6].to_vec())].into());
         let err = FrameReader::new().read(&mut r).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn host_exec_output_chunk_round_trips_raw_bytes() {
+        // Invalid UTF-8 must survive the frame exactly: chunks carry bytes,
+        // not lossy strings.
+        let msg = HostMessage::HostExecOutput {
+            stream: ExecStream::Stdout,
+            data: vec![0xff, 0xfe, b'A'],
+        };
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &msg).unwrap();
+        let payload = read_frame(&mut &buf[..]).unwrap().unwrap();
+        let decoded: HostMessage = serde_json::from_slice(&payload).unwrap();
+        match decoded {
+            HostMessage::HostExecOutput { stream, data } => {
+                assert_eq!(stream, ExecStream::Stdout);
+                assert_eq!(data, vec![0xff, 0xfe, b'A']);
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    #[test]
+    fn host_exec_done_carries_an_optional_signal() {
+        let msg = HostMessage::HostExecDone {
+            exit_code: 143,
+            signal: Some(15),
+        };
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &msg).unwrap();
+        let payload = read_frame(&mut &buf[..]).unwrap().unwrap();
+        let decoded: HostMessage = serde_json::from_slice(&payload).unwrap();
+        match decoded {
+            HostMessage::HostExecDone { exit_code, signal } => {
+                assert_eq!(exit_code, 143);
+                assert_eq!(signal, Some(15));
+            }
+            _ => panic!("wrong message type"),
+        }
+    }
+
+    /// Wire compatibility: a guest built before `signal` existed must
+    /// still parse the new `HostExecDone`. Serde ignores the unknown
+    /// field, so old guests keep working with no version bump.
+    #[test]
+    fn host_exec_done_with_signal_parses_under_the_old_schema() {
+        #[derive(Debug, Deserialize, PartialEq, Eq)]
+        #[serde(tag = "type", rename_all = "snake_case")]
+        enum OldHostMessage {
+            HostExecDone { exit_code: i32 },
+        }
+
+        let json = r#"{"type":"host_exec_done","exit_code":143,"signal":15}"#;
+        let msg: OldHostMessage = serde_json::from_slice(json.as_bytes()).unwrap();
+        assert_eq!(msg, OldHostMessage::HostExecDone { exit_code: 143 });
     }
 }

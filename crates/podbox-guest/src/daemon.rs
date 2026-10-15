@@ -652,6 +652,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
                     | HostMessage::ClipboardData { .. }
                     | HostMessage::HostExecStdout { .. }
                     | HostMessage::HostExecStderr { .. }
+                    | HostMessage::HostExecOutput { .. }
                     | HostMessage::HostExecDone { .. }
                     | HostMessage::NotifyActionResult { .. }
                     | HostMessage::Error { .. },

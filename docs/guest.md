@@ -66,7 +66,7 @@ binaries via `PATH` (`/etc/profile.d/podbox.sh`, `/etc/fish/conf.d/podbox.fish`)
 | `notify-send` | `notify` | Forwards args; `--action`/`-A` buttons wait for the host's reply |
 | `xdg-open` | `xdg_open` | Sends the URI to the host |
 | `podbox-clipboard` | `clipboard` | `set` reads stdin; `get` writes the host clipboard to stdout |
-| `host-exec` | `host_exec` | Runs the command on the host, relays output, exits with its code |
+| `host-exec` | `host_exec` | Runs the command on the host, relays output as it arrives, exits with its code |
 
 Each opens its own short-lived socket connection, sends one message, waits
 for the reply, exits. `xdg-open` is the one that waits for the host to close
