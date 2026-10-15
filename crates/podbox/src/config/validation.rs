@@ -389,6 +389,17 @@ impl Config {
             ));
         }
 
+        // `lifecycle.on_stop` is deprecated: Quadlet runs containers with
+        // `--rm --replace`, so every box is ephemeral and there is nothing to
+        // keep. Warn when set explicitly, but keep parsing it.
+        if self.explicit_keys.contains("lifecycle.on_stop") {
+            warnings.push(
+                "warning: lifecycle.on_stop is deprecated and has no effect: Quadlet containers \
+                 are always ephemeral; state lives in the home volume and snapshots."
+                    .into(),
+            );
+        }
+
         if self.integration.host_exec.enabled {
             let has_allowlist = self
                 .integration

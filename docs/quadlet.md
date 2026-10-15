@@ -137,7 +137,10 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 |-----|-------|-------|
 | `Restart` | `on-failure` | Auto-restart on crash |
 | `RestartSec` | `2s` | Delay between restarts |
-| `AutoRemove` | `true` | Only when `lifecycle.on_stop = "remove"` |
+
+Quadlet runs containers with `--rm --replace`, so every box is ephemeral:
+stopping one removes it, and persistent state lives in the home volume and
+snapshots. (`lifecycle.on_stop` is deprecated and emits nothing.)
 
 ### `[Install]`
 

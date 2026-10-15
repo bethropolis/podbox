@@ -540,3 +540,19 @@ fn quadlet_same_env_in_different_file_order_gives_same_output() {
     let b = quadlet::generate_container(&second, &default_env(), &default_xdg());
     assert_eq!(a, b, "output must not depend on file order");
 }
+
+#[test]
+fn quadlet_on_stop_remove_emits_no_autoremove_and_warns() {
+    // `AutoRemove` is not a systemd or Quadlet key; Quadlet containers are
+    // always ephemeral, so the setting only produces a warning now.
+    let (config, warnings) = podbox::config::Config::parse_with_warnings(
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n[lifecycle]\non_stop = \"remove\"\n",
+    )
+    .unwrap();
+    assert!(
+        warnings.iter().any(|w| w.contains("lifecycle.on_stop")),
+        "deprecation warning expected: {warnings:?}"
+    );
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("AutoRemove"), "no such unit key:\n{q}");
+}

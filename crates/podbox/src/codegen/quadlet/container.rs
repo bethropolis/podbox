@@ -510,9 +510,6 @@ pub(super) fn emit_service_section(
     lines.push("Restart=on-failure".into());
     lines.push("RestartSec=2s".into());
     emit_service_credentials(lines, config, warnings);
-    if config.lifecycle.on_stop == crate::config::OnStop::Remove {
-        lines.push("AutoRemove=true".into());
-    }
     lines.push(String::new());
 }
 

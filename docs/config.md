@@ -421,7 +421,7 @@ bins = ["rg", "gcc"]
 |-----|------|---------|-------------|
 | `quadlet` | bool | `false` | Generate Quadlet systemd files on `podbox enable` |
 | `autostart` | bool | `false` | Start container on user login (`WantedBy=default.target`) |
-| `on_stop` | string | `"keep"` | Container behavior on stop (`"keep"` or `"remove"`) |
+| `on_stop` | string | `"keep"` | Deprecated, no effect: Quadlet containers are always ephemeral (`podman run --rm --replace`); state lives in the home volume and snapshots. Setting it prints a deprecation warning |
 | `auto_update` | bool | `false` | Add `Label=io.containers.autoupdate=registry` for auto-updates |
 | `auto_checkpoint` | bool | `false` | Tag the current image as `checkpoint-prev` before update or `build --rebuild`; `podbox rollback` restores that image |
 | `idle_timeout` | string | `"off"` | Idle timeout before guest daemon exits (`"off"`, `"30s"`, `"5m"`, `"1h") |
@@ -430,7 +430,6 @@ bins = ["rg", "gcc"]
 [lifecycle]
 quadlet      = true
 autostart    = true
-on_stop      = "keep"
 auto_update  = true
 idle_timeout = "off"
 ```
@@ -643,7 +642,6 @@ bins = ["rg", "gcc"]            # Create bin shims for these commands
 [lifecycle]
 quadlet      = false            # Generate systemd Quadlet files on enable
 autostart    = false            # Start container on user login
-on_stop      = "keep"           # Container behavior on stop: "keep" or "remove"
 auto_update  = false            # Label for auto-updates (registry/local)
 idle_timeout = "off"            # Guest daemon idle timeout: "off", "30s", "5m", "1h"
 
