@@ -11,6 +11,66 @@ use anyhow::{Context, Result};
 /// Counter that makes temp file names unique within this process.
 static TEMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// A private scratch directory, removed when dropped.
+///
+/// Created with mode 0700 under the per-user runtime dir when available
+/// (falling back to the shared temp dir with a unique name), so no other
+/// user can predict, pre-create, or swap its contents. Prefer this over a
+/// fixed `$TMPDIR/<name>` path, which collides across users and leaves a
+/// symlink-race window between removing a stale dir and recreating it.
+pub struct PrivateTempDir {
+    path: std::path::PathBuf,
+}
+
+impl PrivateTempDir {
+    /// Path of the scratch directory.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for PrivateTempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Create a [`PrivateTempDir`] named `<prefix}-<pid>-<unique>`.
+pub fn create_private_temp_dir(prefix: &str) -> Result<PrivateTempDir> {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let pid = std::process::id();
+    for _ in 0..100 {
+        let count = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Nanos make collisions across processes unlikely; `create_dir`
+        // (not `create_dir_all`) makes a winner-takes-all claim, so a
+        // leftover or hostile path is never reused.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let path = base.join(format!("{prefix}-{pid}-{nanos}-{count}"));
+        match std::fs::create_dir(&path) {
+            Ok(()) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+                        .with_context(|| format!("failed to secure '{}'", path.display()))?;
+                }
+                return Ok(PrivateTempDir { path });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("failed to create temp dir in '{}'", base.display()));
+            }
+        }
+    }
+    anyhow::bail!("could not claim a unique temp dir in '{}'", base.display());
+}
+
 /// Write `contents` to `path` atomically.
 ///
 /// The data goes to a temp file in the same directory first, then a rename
@@ -163,5 +223,28 @@ mod tests {
             std::process::id()
         ));
         assert!(write_atomic(&target, b"x").is_err());
+    }
+
+    #[test]
+    fn private_temp_dirs_are_unique_and_cleaned_up() {
+        let a = create_private_temp_dir("podbox-probe").unwrap();
+        let b = create_private_temp_dir("podbox-probe").unwrap();
+        assert_ne!(a.path(), b.path());
+        assert!(a.path().is_dir() && b.path().is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for dir in [a.path(), b.path()] {
+                assert_eq!(
+                    std::fs::metadata(dir).unwrap().permissions().mode() & 0o777,
+                    0o700,
+                    "temp dir must be private"
+                );
+            }
+        }
+        let saved = b.path().to_path_buf();
+        drop(b);
+        assert!(!saved.exists(), "temp dir must be removed on drop");
+        let _ = std::fs::remove_dir_all(a.path());
     }
 }

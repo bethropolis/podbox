@@ -106,9 +106,8 @@ pub(crate) fn podman_quadlet_install_files(
     container_content: &str,
     build_content: Option<&str>,
 ) -> Result<()> {
-    let tmp = std::env::temp_dir().join(format!("podbox-install-{name}"));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp)?;
+    let tmp_dir = crate::fsutil::create_private_temp_dir(&format!("podbox-install-{name}"))?;
+    let tmp = tmp_dir.path();
 
     let container_path = tmp.join(format!("{name}.container"));
     std::fs::write(&container_path, container_content)?;
@@ -127,7 +126,6 @@ pub(crate) fn podman_quadlet_install_files(
     }
 
     let output = crate::process::run_piped("podman", &args)?;
-    let _ = std::fs::remove_dir_all(&tmp);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("podman quadlet install failed: {stderr}");
@@ -146,9 +144,8 @@ pub(crate) fn podman_quadlet_install_application(
     container_content: &str,
     build_content: Option<&str>,
 ) -> Result<()> {
-    let tmp = std::env::temp_dir().join(format!("podbox-install-{name}"));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp)?;
+    let tmp_dir = crate::fsutil::create_private_temp_dir(&format!("podbox-install-{name}"))?;
+    let tmp = tmp_dir.path();
 
     std::fs::write(tmp.join(format!("{name}.container")), container_content)?;
     if let Some(bc) = build_content {
@@ -161,11 +158,10 @@ pub(crate) fn podman_quadlet_install_application(
         "--replace".into(),
         "--application".into(),
         name.into(),
-        tmp.clone().into(),
+        tmp.into(),
     ];
 
     let output = crate::process::run_piped("podman", &args)?;
-    let _ = std::fs::remove_dir_all(&tmp);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("podman quadlet install --application failed: {stderr}");
