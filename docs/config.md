@@ -440,7 +440,7 @@ D-Bus access control via `xdg-dbus-proxy`. Requires `integration.dbus = true`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `preset` | string | `""` | Preset filling `talk` for you: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. Portal names are never granted via `talk` — they come through interface-scoped rules for `notify` / `xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
+| `preset` | string | `"none"` | Preset filling `talk` for you: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"` (adds `org.freedesktop.Notifications` talk). Any preset other than `"none"` implies the proxy — unknown values are a parse error. Portal names are never granted via `talk` — they come through interface-scoped rules for `notify` / `xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
 | `talk` | string[] | `[]` | D-Bus services the container can call (two-way). Adding a portal-family name re-grants the full portal surface — a warning is printed |
 | `own` | string[] | `[]` | D-Bus services the container can register on the host bus |
 
@@ -638,7 +638,7 @@ after    = ["network-online.target"]
 
 # ── D-Bus ──────────────────────────────────────────────
 [dbus]
-preset = "portal"               # Named preset: flatpak, gnome, kde, portal ("" = none)
+preset = "portal"               # Named preset: flatpak, gnome, kde, portal, none (default when dbus is on: portal)
 talk = ["org.freedesktop.Notifications"]
 own  = ["org.mpris.MediaPlayer2.podbox_app"]
 

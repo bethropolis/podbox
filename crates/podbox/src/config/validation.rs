@@ -360,7 +360,7 @@ impl Config {
         if !self.integration.dbus
             && (!self.dbus.talk.is_empty()
                 || !self.dbus.own.is_empty()
-                || (!self.dbus.preset.is_empty() && self.dbus.preset != "none"))
+                || self.dbus.preset != crate::config::DbusPreset::None)
         {
             errors.push(
                 "dbus: talk/own/preset rules are set but 'integration.dbus' is false, \

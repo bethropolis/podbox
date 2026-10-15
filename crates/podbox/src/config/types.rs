@@ -487,10 +487,22 @@ impl Default for WaylandConfig {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DbusPreset {
+    Flatpak,
+    Gnome,
+    Kde,
+    Portal,
+    /// No preset contribution. Explicit opt-out; anything else implies the proxy.
+    #[default]
+    None,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct DbusConfig {
     #[serde(default)]
-    pub preset: String,
+    pub preset: DbusPreset,
     #[serde(default)]
     pub talk: Vec<String>,
     #[serde(default)]
@@ -500,29 +512,35 @@ pub struct DbusConfig {
 impl DbusConfig {
     pub fn effective_talk(&self) -> Vec<String> {
         let mut result = self.talk.clone();
-        if !self.preset.is_empty() && self.preset != "none" {
-            for svc in dbus_preset_talk(&self.preset) {
-                if !result.contains(&svc.to_string()) {
-                    result.push(svc.to_string());
-                }
+        for svc in dbus_preset_talk(self.preset) {
+            if !result.contains(&svc.to_string()) {
+                result.push(svc.to_string());
             }
         }
         result
     }
 }
 
-pub fn dbus_preset_talk(preset: &str) -> &[&str] {
+/// Talk entries contributed by a D-Bus preset.
+///
+/// Portal names are deliberately absent: `org.freedesktop.portal.*` is never
+/// granted wholesale (a dedicated validation warning fires if it appears in
+/// `talk`). Portal access comes through the interface-scoped `--call=` rules
+/// derived from the enabled capabilities, plus `Notifications` talk here so
+/// that an explicitly set preset always implies the proxy.
+pub fn dbus_preset_talk(preset: DbusPreset) -> &'static [&'static str] {
     match preset {
-        "flatpak" => &["org.freedesktop.Flatpak", "org.freedesktop.Flatpak.*"],
-        "gnome" => &[
+        DbusPreset::Flatpak => &["org.freedesktop.Flatpak", "org.freedesktop.Flatpak.*"],
+        DbusPreset::Gnome => &[
             "org.gnome.Shell",
             "org.gnome.Shell.*",
             "org.gnome.ScreenSaver",
             "org.gnome.Mutter.*",
             "org.gnome.keyring.*",
         ],
-        "kde" => &["org.kde.*"],
-        _ => &[],
+        DbusPreset::Kde => &["org.kde.*"],
+        DbusPreset::Portal => &["org.freedesktop.Notifications"],
+        DbusPreset::None => &[],
     }
 }
 

@@ -28,8 +28,9 @@ impl SchemaVersion {
 
 use super::defaults::EMBEDDED_DEFAULT;
 use super::types::{
-    ContainerConfig, DbusConfig, DotfilesConfig, ImageConfig, IntegrationConfig, LifecycleConfig,
-    NetworkConfig, ProvisionStep, SecurityConfig, StorageConfig, SystemdConfig, WaylandConfig,
+    ContainerConfig, DbusConfig, DbusPreset, DotfilesConfig, ImageConfig, IntegrationConfig,
+    LifecycleConfig, NetworkConfig, ProvisionStep, SecurityConfig, StorageConfig, SystemdConfig,
+    WaylandConfig,
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -138,7 +139,8 @@ impl Config {
 
     pub fn use_dbus_proxy(&self) -> bool {
         self.integration.dbus
-            && (!self.dbus_effective_talk().is_empty()
+            && (self.dbus.preset != DbusPreset::None
+                || !self.dbus_effective_talk().is_empty()
                 || !self.dbus_portal_calls().is_empty()
                 || !self.dbus.own.is_empty())
     }
@@ -210,11 +212,11 @@ impl Config {
 
     fn apply_defaults(&mut self) {
         if self.integration.dbus
-            && self.dbus.preset.is_empty()
+            && self.dbus.preset == DbusPreset::None
             && self.dbus.talk.is_empty()
             && self.dbus.own.is_empty()
         {
-            self.dbus.preset = "portal".into();
+            self.dbus.preset = DbusPreset::Portal;
         }
     }
 }
