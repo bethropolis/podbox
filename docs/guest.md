@@ -17,6 +17,26 @@ The container starts with `podbox-guest --entry [<command>...]`:
    your command (or a login shell).
 3. The daemon idles in the background with a 5-minute timeout.
 
+### User setup and privilege drop
+
+When running as root with `HOST_USER`/`HOST_UID`/`HOST_GID` set, the
+entrypoint creates (or reconciles) the container user before exec:
+
+- An existing name with a different UID/GID is moved onto the host's ids
+  with `usermod`; a UID taken by another name is freed with `userdel -r`
+  (logged). Either mismatch without reconciliation would leave `setuid`
+  on an id with no passwd entry ("I have no name!").
+- The user joins `wheel`/`sudo`, `video`, `audio`, `render` and `input`
+  wherever those groups exist, so GPU and device access granted by group
+  keeps working.
+- Sudo goes to `/etc/sudoers.d/podbox-<user>` (mode 0440), and the
+  password is deleted (`passwd -d`) so `su` works on sudo-less images.
+- The drop itself is fail-closed: `initgroups` → `setgid` → `setuid`,
+  verified against `getuid`/`geteuid`/`getgid`. Any failure aborts the
+  entrypoint instead of running the shell as root.
+- The login shell comes from passwd after reconciliation, falling back
+  to `$SHELL` and then `/bin/bash`.
+
 ## Daemon startup
 
 1. Creates `/run/podbox/bin/` for interceptor symlinks.
