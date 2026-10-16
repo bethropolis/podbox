@@ -38,12 +38,14 @@ impl HostActions for Recorder {
         &self,
         summary: &str,
         _body: &str,
+        urgency: &str,
+        app_name: &str,
         actions: &[NotifyAction],
     ) -> anyhow::Result<String> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push(format!("notify:{summary}:{}", actions.len()));
+        self.calls.lock().unwrap().push(format!(
+            "notify:{summary}:{urgency}:{app_name}:{}",
+            actions.len()
+        ));
         Ok(self.chosen_key.clone())
     }
 
@@ -235,7 +237,30 @@ fn granted_notify_reaches_the_backend_without_a_reply() {
     let _ = recv(&mut c);
     send(&mut c, &notify("hi", vec![]));
     finish(c, h).unwrap();
-    assert_eq!(rec.calls(), vec!["notify:hi:0".to_string()]);
+    assert_eq!(rec.calls(), vec!["notify:hi:normal::0".to_string()]);
+}
+
+#[test]
+fn notify_urgency_and_app_name_reach_the_backend() {
+    let rec = Arc::new(Recorder::default());
+    let (mut c, h) = start(enabled_config(), Arc::clone(&rec));
+    send(&mut c, &hello(&[CAP_NOTIFY]));
+    let _ = recv(&mut c);
+    send(
+        &mut c,
+        &GuestMessage::Notify {
+            summary: "Title".into(),
+            body: "Body".into(),
+            urgency: "critical".into(),
+            actions: vec![],
+            app_name: "Files".into(),
+        },
+    );
+    finish(c, h).unwrap();
+    assert_eq!(
+        rec.calls(),
+        vec!["notify:Title:critical:Files:0".to_string()]
+    );
 }
 
 #[test]
@@ -695,7 +720,7 @@ fn guest_one_shot_requests_succeed_when_capabilities_are_granted() {
     assert_eq!(
         rec.calls(),
         vec![
-            "notify:hi:0".to_string(),
+            "notify:hi:normal::0".to_string(),
             "clipboard_set".to_string(),
             "clipboard_get".to_string(),
             "open:https://example.com".to_string(),

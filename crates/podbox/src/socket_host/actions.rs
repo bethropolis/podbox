@@ -39,8 +39,14 @@ pub trait HostActions: Sync {
     /// Otherwise returns the key of the action the user picked, or an empty
     /// string when none was picked. An error means the notification could
     /// not be shown.
-    fn notify(&self, summary: &str, body: &str, actions: &[NotifyAction])
-    -> anyhow::Result<String>;
+    fn notify(
+        &self,
+        summary: &str,
+        body: &str,
+        urgency: &str,
+        app_name: &str,
+        actions: &[NotifyAction],
+    ) -> anyhow::Result<String>;
 
     /// Open a URI already validated by the caller, with the host's `xdg-open`.
     fn open_uri(&self, uri: &str) -> anyhow::Result<()>;
@@ -64,17 +70,29 @@ impl HostActions for SystemActions {
         &self,
         summary: &str,
         body: &str,
+        urgency: &str,
+        app_name: &str,
         actions: &[NotifyAction],
     ) -> anyhow::Result<String> {
+        let level = match urgency {
+            "low" => notify_rust::Urgency::Low,
+            "critical" => notify_rust::Urgency::Critical,
+            _ => notify_rust::Urgency::Normal,
+        };
         if actions.is_empty() {
-            notify_rust::Notification::new()
-                .summary(summary)
-                .body(body)
-                .show()?;
+            let mut note = notify_rust::Notification::new();
+            note.summary(summary).body(body).urgency(level);
+            if !app_name.is_empty() {
+                note.appname(app_name);
+            }
+            note.show()?;
             return Ok(String::new());
         }
         let mut notif = notify_rust::Notification::new();
-        notif.summary(summary).body(body);
+        notif.summary(summary).body(body).urgency(level);
+        if !app_name.is_empty() {
+            notif.appname(app_name);
+        }
         for action in actions {
             notif.action(&action.key, &action.label);
         }

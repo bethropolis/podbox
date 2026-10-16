@@ -264,15 +264,8 @@ fn install_interceptors(
     let self_path = std::env::current_exe()?;
     let self_path_str = self_path.to_string_lossy();
 
-    let symlinks = vec![
-        (crate::protocol::CAP_NOTIFY, "notify-send"),
-        (crate::protocol::CAP_XDG_OPEN, "xdg-open"),
-        (crate::protocol::CAP_CLIPBOARD, "podbox-clipboard"),
-        (crate::protocol::CAP_HOST_EXEC, "host-exec"),
-    ];
-
-    for (cap, name) in symlinks {
-        if accepted.contains(cap) {
+    for (name, cap) in crate::protocol::INTERCEPTORS {
+        if accepted.contains(*cap) {
             let link = bin_dir.join(name);
             let _ = std::fs::remove_file(&link);
             std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
@@ -292,11 +285,13 @@ fn install_interceptors(
                 tracing::warn!("skipping invalid host-exec shim name: {shim:?}");
                 continue;
             }
-            // Guard against overwriting core interceptors
-            if matches!(
-                shim.as_str(),
-                "notify-send" | "xdg-open" | "podbox-clipboard" | "podmgr-clipboard" | "host-exec"
-            ) {
+            // Guard against overwriting core interceptors (plus the legacy
+            // `podmgr-*` alias for the clipboard shim).
+            let is_core = crate::protocol::INTERCEPTORS
+                .iter()
+                .any(|(name, _)| *name == shim)
+                || shim == "podmgr-clipboard";
+            if is_core {
                 continue;
             }
             let link = bin_dir.join(shim);

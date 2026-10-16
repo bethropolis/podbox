@@ -198,9 +198,9 @@ pub(crate) fn handle_connection(
             GuestMessage::Notify {
                 summary,
                 body,
-                urgency: _,
+                urgency,
                 actions: choices,
-                app_name: _,
+                app_name,
             } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_NOTIFY) {
                     if note_failure(stream, &mut failures, "capability 'notify' not accepted") {
@@ -209,7 +209,7 @@ pub(crate) fn handle_connection(
                     continue;
                 }
                 failures = 0;
-                handlers::handle_notify(stream, actions, summary, body, choices)?
+                handlers::handle_notify(stream, actions, summary, body, urgency, app_name, choices)?
             }
             GuestMessage::XdgOpen { uri } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN) {

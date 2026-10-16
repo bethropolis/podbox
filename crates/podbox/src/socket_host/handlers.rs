@@ -106,16 +106,18 @@ pub(super) fn handle_notify(
     actions: &dyn HostActions,
     summary: String,
     body: String,
+    urgency: String,
+    app_name: String,
     choices: Vec<crate::protocol::NotifyAction>,
 ) -> anyhow::Result<()> {
     if choices.is_empty() {
-        if let Err(e) = actions.notify(&summary, &body, &choices) {
+        if let Err(e) = actions.notify(&summary, &body, &urgency, &app_name, &choices) {
             tracing::debug!("notification not shown: {e:#}");
         }
         return Ok(());
     }
     let action_key = actions
-        .notify(&summary, &body, &choices)
+        .notify(&summary, &body, &urgency, &app_name, &choices)
         .unwrap_or_else(|e| {
             tracing::warn!("notification with actions not shown: {e:#}");
             String::new()

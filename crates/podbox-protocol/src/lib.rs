@@ -29,6 +29,18 @@ pub const ALL_CAPABILITIES: &[&str] = &[
     CAP_HOST_EXEC_STREAM,
 ];
 
+/// Interceptor binaries and the capability each needs: `(binary, capability)`.
+///
+/// Single source of truth for shim installation and the core-interceptor
+/// guard in the guest daemon. (`podmgr-*` names are legacy aliases handled
+/// separately at the use sites.)
+pub const INTERCEPTORS: &[(&str, &str)] = &[
+    ("notify-send", CAP_NOTIFY),
+    ("xdg-open", CAP_XDG_OPEN),
+    ("podbox-clipboard", CAP_CLIPBOARD),
+    ("host-exec", CAP_HOST_EXEC),
+];
+
 /// Messages sent from guest to host.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -294,6 +306,16 @@ mod tests {
         write_frame(&mut buf, &msg).unwrap();
         let len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
         assert_eq!(len, buf[4..].len());
+    }
+
+    #[test]
+    fn interceptors_cover_known_binaries_and_capabilities() {
+        use std::collections::HashSet;
+        let binaries: HashSet<&str> = INTERCEPTORS.iter().map(|(bin, _)| *bin).collect();
+        assert_eq!(binaries.len(), INTERCEPTORS.len(), "duplicate binary");
+        for (_, cap) in INTERCEPTORS {
+            assert!(ALL_CAPABILITIES.contains(cap), "unknown capability {cap}");
+        }
     }
 
     #[test]
