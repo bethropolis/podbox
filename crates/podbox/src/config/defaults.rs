@@ -97,7 +97,7 @@ pub fn is_default_systemd(v: &SystemdConfig) -> bool {
 }
 
 pub fn is_default_dbus(v: &super::types::DbusConfig) -> bool {
-    v.preset.is_empty() && v.talk.is_empty() && v.own.is_empty()
+    v.preset == super::types::DbusPreset::None && v.talk.is_empty() && v.own.is_empty()
 }
 
 pub fn is_default_security(v: &SecurityConfig) -> bool {

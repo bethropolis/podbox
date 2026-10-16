@@ -6,21 +6,47 @@
 
 use std::path::Path;
 
+use super::value;
 use crate::config::Config;
 
 /// Generate the `.build` Quadlet file.
 pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
     let mut lines: Vec<String> = Vec::new();
+    // Validated before codegen in every flow (CLI and Studio parse first),
+    // so these pushes cannot fail in practice. This generator has no
+    // diagnostics channel to report through (it must stay wasm-safe), hence
+    // the local buffer.
+    let mut warnings = Vec::new();
 
     lines.push("[Quadlet]".into());
     lines.push("DefaultDependencies=false".into());
     lines.push(String::new());
 
     lines.push("[Build]".into());
-    lines.push(format!("ImageTag={}", config.local_image_tag()));
-    lines.push(format!("File={}", containerfile_path.to_string_lossy()));
-    lines.push(format!("Retry={}", config.image.pull_retry));
-    lines.push(format!("RetryDelay={}", config.image.pull_retry_delay));
+    value::push_raw(
+        &mut lines,
+        &mut warnings,
+        "ImageTag",
+        &config.local_image_tag(),
+    );
+    value::push_raw(
+        &mut lines,
+        &mut warnings,
+        "File",
+        &containerfile_path.to_string_lossy(),
+    );
+    value::push_raw(
+        &mut lines,
+        &mut warnings,
+        "Retry",
+        &config.image.pull_retry.to_string(),
+    );
+    value::push_raw(
+        &mut lines,
+        &mut warnings,
+        "RetryDelay",
+        &config.image.pull_retry_delay,
+    );
 
     lines.join("\n")
 }
@@ -28,16 +54,28 @@ pub fn generate_build(config: &Config, containerfile_path: &Path) -> String {
 /// Generate the `.socket` Quadlet file.
 pub fn generate_socket(config: &Config) -> String {
     let name = &config.container.name;
-    let host_service = format!("{name}-host.service");
     let mut lines: Vec<String> = Vec::new();
+    // Same no-diagnostics-channel note as `generate_build`: inputs are
+    // validated names, so these pushes cannot fail in practice.
+    let mut warnings = Vec::new();
 
     lines.push("[Unit]".into());
-    lines.push(format!("Description=podbox host-guest socket -- {name}"));
+    value::push_raw(
+        &mut lines,
+        &mut warnings,
+        "Description",
+        &format!("podbox host-guest socket -- {name}"),
+    );
     lines.push(String::new());
 
     lines.push("[Socket]".into());
-    lines.push(format!("ListenStream=%t/podbox/{name}.sock"));
-    lines.push(format!("Service={host_service}"));
+    value::push_composed(&mut lines, format!("ListenStream=%t/podbox/{name}.sock"));
+    value::push_raw(
+        &mut lines,
+        &mut warnings,
+        "Service",
+        &format!("{name}-host.service"),
+    );
     lines.push("SocketMode=0600".into());
     lines.push("DirectoryMode=0700".into());
     lines.push("RuntimeDirectory=podbox".into());
@@ -68,13 +106,19 @@ pub fn generate_dbus_proxy_service(name: &str, config: &Config) -> Option<String
     args.push("--filter".into());
 
     for service in &config.dbus_effective_talk() {
-        args.push(format!("--talk={service}"));
+        if let Ok(escaped) = value::word(service) {
+            args.push(format!("--talk={escaped}"));
+        }
     }
     for rule in config.dbus_portal_calls() {
-        args.push(rule);
+        if let Ok(escaped) = value::word(&rule) {
+            args.push(escaped);
+        }
     }
     for service in &config.dbus.own {
-        args.push(format!("--own={service}"));
+        if let Ok(escaped) = value::word(service) {
+            args.push(format!("--own={escaped}"));
+        }
     }
 
     let exec_start = format!("/usr/bin/xdg-dbus-proxy {}", args.join(" "));
@@ -102,9 +146,7 @@ pub fn generate_compositor_service(name: &str, config: &Config) -> Option<String
     if !config.use_wayland_proxy() {
         return None;
     }
-    let podbox_bin = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "/usr/local/bin/podbox".into());
+    let podbox_bin = host_binary_path();
 
     Some(format!(
         r#"[Unit]
@@ -125,9 +167,7 @@ WantedBy={name}.service
 
 /// Generate the companion host socket server `.service` unit.
 pub fn generate_host_service(name: &str) -> String {
-    let podbox_bin = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "/usr/local/bin/podbox".into());
+    let podbox_bin = host_binary_path();
 
     format!(
         r#"[Unit]
@@ -143,4 +183,15 @@ RestartSec=2s
 WantedBy={name}.socket
 "#,
     )
+}
+
+/// Path of the running host binary for `ExecStart=` lines.
+///
+/// A hostile `current_exe` path cannot inject a second directive: control
+/// characters fall back to the install default instead of being emitted.
+fn host_binary_path() -> String {
+    let path = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "/usr/local/bin/podbox".into());
+    value::raw(&path).unwrap_or_else(|_| "/usr/local/bin/podbox".into())
 }

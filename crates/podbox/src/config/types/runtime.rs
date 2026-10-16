@@ -44,6 +44,14 @@ pub enum SecretEntry {
         mode: Option<String>,
         #[serde(default = "default_secret_source")]
         source: SecretSource,
+        /// Host-side credential file for `source = "systemd"`, as passed to
+        /// `LoadCredential=` / `LoadCredentialEncrypted=`. Required then.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// Read `path` with `LoadCredentialEncrypted=` instead of
+        /// `LoadCredential=`. Only meaningful with `source = "systemd"`.
+        #[serde(default, skip_serializing_if = "is_false")]
+        encrypted: bool,
     },
 }
 

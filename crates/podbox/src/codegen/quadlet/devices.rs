@@ -3,10 +3,36 @@
 //! Extracted verbatim from `quadlet.rs`; see `super` for the unit entry
 //! points.
 
+use super::value;
 use crate::config::{Config, GpuMode};
 use crate::env::HostEnv;
 
-pub(super) fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) {
+/// NVIDIA device nodes passed through when no CDI spec is in use.
+///
+/// Every entry carries the `-` prefix, so a host without that node skips
+/// it instead of failing the unit. This is the pure-codegen approximation
+/// of globbing `/dev/nvidia*`: all GPU indexes, the modeset node and the
+/// UVM nodes. Device nodes alone do not carry the user-space driver
+/// libraries, which must match the host kernel driver exactly — `doctor`
+/// points at `nvidia-ctk cdi generate` for that. Once the CDI fact arrives
+/// via the host environment, the CDI-present path emits
+/// `AddDevice=nvidia.com/gpu=all` instead.
+fn emit_nvidia_fallback(lines: &mut Vec<String>, warnings: &mut Vec<String>) {
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidiactl");
+    for i in 0..8 {
+        value::push_raw(lines, warnings, "AddDevice", &format!("-/dev/nvidia{i}"));
+    }
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidia-modeset");
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidia-uvm");
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidia-uvm-tools");
+}
+
+pub(super) fn emit_gpu(
+    lines: &mut Vec<String>,
+    config: &Config,
+    env: &HostEnv,
+    warnings: &mut Vec<String>,
+) {
     match config.integration.gpu {
         GpuMode::Enabled => {
             lines.push("AddDevice=/dev/dri".into());
@@ -14,11 +40,7 @@ pub(super) fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) 
         }
         GpuMode::Nvidia => {
             lines.push("AddDevice=/dev/dri".into());
-            lines.push("AddDevice=-/dev/nvidiactl".into());
-            lines.push("AddDevice=-/dev/nvidia0".into());
-            if env.gpu_has_nvidia_uvm {
-                lines.push("AddDevice=-/dev/nvidia-uvm".into());
-            }
+            emit_nvidia_fallback(lines, warnings);
             lines.push(String::new());
         }
         GpuMode::Auto => {
@@ -26,11 +48,7 @@ pub(super) fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) 
                 lines.push("AddDevice=/dev/dri".into());
             }
             if env.gpu_has_nvidia {
-                lines.push("AddDevice=-/dev/nvidiactl".into());
-                lines.push("AddDevice=-/dev/nvidia0".into());
-                if env.gpu_has_nvidia_uvm {
-                    lines.push("AddDevice=-/dev/nvidia-uvm".into());
-                }
+                emit_nvidia_fallback(lines, warnings);
             }
             if env.gpu_has_dri || env.gpu_has_nvidia {
                 lines.push(String::new());
@@ -40,7 +58,11 @@ pub(super) fn emit_gpu(lines: &mut Vec<String>, config: &Config, env: &HostEnv) 
     }
 }
 
-pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
+pub fn emit_hardware_devices(
+    lines: &mut Vec<String>,
+    config: &Config,
+    _warnings: &mut Vec<String>,
+) {
     let hw = &config.integration.hardware;
 
     let mut emitted = false;
@@ -58,16 +80,16 @@ pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
 
     if hw.webcam {
         for i in 0..16 {
-            lines.push(format!("AddDevice=-/dev/video{i}"));
-            lines.push(format!("AddDevice=-/dev/media{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/video{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/media{i}"));
         }
         emitted = true;
     }
 
     if hw.serial {
         for i in 0..8 {
-            lines.push(format!("AddDevice=-/dev/ttyUSB{i}"));
-            lines.push(format!("AddDevice=-/dev/ttyACM{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/ttyUSB{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/ttyACM{i}"));
         }
         emitted = true;
     }
@@ -75,7 +97,7 @@ pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
     if hw.yubikey {
         lines.push("Volume=-%t/pcscd/pcscd.comm:/run/pcscd/pcscd.comm:ro".into());
         for i in 0..16 {
-            lines.push(format!("AddDevice=-/dev/hidraw{i}"));
+            value::push_composed(lines, format!("AddDevice=-/dev/hidraw{i}"));
         }
         emitted = true;
     }
@@ -85,7 +107,13 @@ pub fn emit_hardware_devices(lines: &mut Vec<String>, config: &Config) {
     }
 }
 
-pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
+/// Container-side path of a systemd credential: always
+/// `/run/secrets/<name>`, matching the `Volume=` line in [`emit_secrets`].
+fn secret_container_path(name: &str) -> String {
+    format!("/run/secrets/{name}")
+}
+
+pub fn emit_secrets(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec<String>) {
     use crate::config::{SecretEntry, SecretSource, SecretType};
 
     let mut emitted = false;
@@ -93,7 +121,12 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
         emitted = true;
         match secret {
             SecretEntry::Simple(name) => {
-                lines.push(format!("Secret={name},type=env,target={name}"));
+                value::push_raw(
+                    lines,
+                    warnings,
+                    "Secret",
+                    &format!("{name},type=env,target={name}"),
+                );
             }
             SecretEntry::Detailed {
                 name,
@@ -101,6 +134,8 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
                 target,
                 mode,
                 source,
+                path: _,
+                encrypted: _,
             } => match source {
                 SecretSource::Podman => {
                     let mut opts = vec![name.clone()];
@@ -123,14 +158,33 @@ pub fn emit_secrets(lines: &mut Vec<String>, config: &Config) {
                             opts.push("gid=%G".into());
                         }
                     }
-                    lines.push(format!("Secret={}", opts.join(",")));
+                    value::push_raw(lines, warnings, "Secret", &opts.join(","));
                 }
                 SecretSource::Systemd => {
-                    lines.push(format!(
-                        "Environment={}=%d/{}",
-                        target.as_deref().unwrap_or(name),
-                        name
-                    ));
+                    // systemd credentials live in the service's
+                    // $CREDENTIALS_DIRECTORY (%d); the matching
+                    // LoadCredential= line is emitted under [Service].
+                    // Mount the credential file into the container at a
+                    // fixed path and point env vars at the container path.
+                    match (value::raw(name), value::raw(&secret_container_path(name))) {
+                        (Ok(name_escaped), Ok(container_path)) => {
+                            value::push_composed(
+                                lines,
+                                format!("Volume=%d/{name_escaped}:{container_path}:ro,z"),
+                            );
+                            if *secret_type == SecretType::Env {
+                                value::push_env(
+                                    lines,
+                                    warnings,
+                                    target.as_deref().unwrap_or(name),
+                                    &container_path,
+                                );
+                            }
+                        }
+                        _ => {
+                            warnings.push(format!("skipping systemd secret '{name}': invalid name"))
+                        }
+                    }
                 }
             },
         }

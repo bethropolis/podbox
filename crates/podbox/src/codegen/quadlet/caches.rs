@@ -10,45 +10,68 @@
 //! deliberately *not* `:U`: under `keep-id` the host and container UIDs
 //! already agree, and remapping an existing host directory would be wrong.
 
+use super::value;
 use crate::config::{Config, HostCachesConfig, SharedCachesConfig};
 use crate::env::HostEnv;
 
 /// Expand a `~/`-prefixed path against a container home, leaving absolute
-/// paths untouched.
-fn in_container(path: &str, home: &str) -> String {
+/// paths untouched. Only the user-controlled remainder goes through the
+/// writer; the container `home` itself carries systemd's intentional `%u`
+/// specifier and must stay single.
+fn in_container_escaped(path: &str, home: &str) -> Result<String, value::ValueError> {
     match path.strip_prefix("~/") {
-        Some(rest) => format!("{home}/{rest}"),
-        None if path == "~" => home.to_string(),
-        None => path.to_string(),
+        Some(rest) => Ok(format!("{home}/{}", value::raw(rest)?)),
+        None if path == "~" => Ok(home.to_string()),
+        None => value::raw(path),
     }
 }
 
 /// Expand a `~/`-prefixed path against the *host* home, expressed with
 /// systemd's `%h` so the unit stays correct when the host username and the
-/// container username differ.
-fn on_host(path: &str) -> String {
+/// container username differ. The user-controlled remainder is escaped; the
+/// emitted `%h` is the single intentional specifier.
+fn on_host_escaped(path: &str) -> Result<String, value::ValueError> {
     match path.strip_prefix("~/") {
-        Some(rest) => format!("%h/{rest}"),
-        None if path == "~" => "%h".to_string(),
-        None => path.to_string(),
+        Some(rest) => Ok(format!("%h/{}", value::raw(rest)?)),
+        None if path == "~" => Ok("%h".to_string()),
+        None => value::raw(path),
     }
 }
 
 /// Emit `Volume=` lines for podbox-managed shared cache volumes.
-pub(super) fn emit_shared_caches(lines: &mut Vec<String>, caches: &SharedCachesConfig, home: &str) {
+pub(super) fn emit_shared_caches(
+    lines: &mut Vec<String>,
+    caches: &SharedCachesConfig,
+    home: &str,
+    warnings: &mut Vec<String>,
+) {
     for path in caches.enabled_paths() {
-        lines.push(format!(
-            "Volume=podbox-cache-{}:{}:U",
-            path.mount,
-            in_container(path.container_path, home)
-        ));
+        match (
+            value::raw(path.mount),
+            in_container_escaped(path.container_path, home),
+        ) {
+            (Ok(mount), Ok(target)) => {
+                value::push_composed(lines, format!("Volume=podbox-cache-{mount}:{target}:U"));
+            }
+            _ => warnings.push(format!(
+                "skipping shared cache '{}': invalid characters in path",
+                path.mount
+            )),
+        }
     }
     for cache in &caches.custom {
-        lines.push(format!(
-            "Volume=podbox-cache-{}:{}:U",
-            cache.name,
-            in_container(&cache.container_path, home)
-        ));
+        match (
+            value::raw(&cache.name),
+            in_container_escaped(&cache.container_path, home),
+        ) {
+            (Ok(mount), Ok(target)) => {
+                value::push_composed(lines, format!("Volume=podbox-cache-{mount}:{target}:U"));
+            }
+            _ => warnings.push(format!(
+                "skipping shared cache '{}': invalid characters in path",
+                cache.name
+            )),
+        }
     }
 }
 
@@ -80,11 +103,18 @@ pub(super) fn emit_host_caches(
             ));
             continue;
         }
-        lines.push(format!(
-            "Volume={}:{}:rw,z",
-            on_host(path.container_path),
-            in_container(path.container_path, home)
-        ));
+        match (
+            on_host_escaped(path.container_path),
+            in_container_escaped(path.container_path, home),
+        ) {
+            (Ok(source), Ok(target)) => {
+                value::push_composed(lines, format!("Volume={source}:{target}:rw,z"));
+            }
+            _ => warnings.push(format!(
+                "skipping host cache '{}': invalid characters in path",
+                path.cache
+            )),
+        }
     }
     for cache in &caches.custom {
         if let Some(present) = probed
@@ -96,17 +126,27 @@ pub(super) fn emit_host_caches(
             ));
             continue;
         }
-        lines.push(format!(
-            "Volume={}:{}:rw,z",
-            on_host(&cache.host_path),
-            in_container(&cache.container_path, home)
-        ));
+        match (
+            on_host_escaped(&cache.host_path),
+            in_container_escaped(&cache.container_path, home),
+        ) {
+            (Ok(source), Ok(target)) => {
+                value::push_composed(lines, format!("Volume={source}:{target}:rw,z"));
+            }
+            _ => warnings.push(format!(
+                "skipping host cache '{}': invalid characters in path",
+                cache.name
+            )),
+        }
     }
 }
 
 /// Render a container path the way the host knows it, for the warning.
 fn host_display(container_path: &str) -> String {
-    on_host(container_path).replace("%h", "~")
+    match container_path.strip_prefix("~/") {
+        Some(rest) => format!("~/{rest}"),
+        None => container_path.to_string(),
+    }
 }
 
 /// Container-side paths a host cache would occupy, used by validation to

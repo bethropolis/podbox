@@ -173,3 +173,29 @@ fn host_service_structure() {
     assert!(unit.contains("[Install]"));
     assert!(unit.contains("WantedBy=myenv.socket"));
 }
+
+#[test]
+fn quadlet_portal_preset_never_mounts_raw_bus() {
+    // preset = "portal" with no capabilities on: the proxy is generated and
+    // no unfiltered %t/bus volume reaches the unit.
+    let mut config = load_config("minimal.toml");
+    config.integration.dbus = true;
+    config.dbus.preset = podbox::config::DbusPreset::Portal;
+    config.integration.notify = false;
+    config.integration.xdg_open = false;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(
+        !q.contains("Volume=%t/bus:%t/bus"),
+        "raw bus must not leak:\n{q}"
+    );
+    assert!(
+        q.contains("Volume=%t/podbox/minimal-dbus.sock:/run/podbox/dbus.sock:ro"),
+        "proxy socket expected:\n{q}"
+    );
+    let proxy = quadlet::generate_dbus_proxy_service("minimal", &config)
+        .expect("proxy unit must be generated");
+    assert!(
+        proxy.contains("--talk=org.freedesktop.Notifications"),
+        "{proxy}"
+    );
+}

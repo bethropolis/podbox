@@ -10,7 +10,6 @@ use anyhow::{Context, Result};
 use nix::fcntl::{Flock, FlockArg};
 
 use crate::cli::OutputFormat;
-use crate::codegen::distros::DistroFamily;
 use crate::config::Config;
 use crate::env::build_context_dir;
 use crate::error::PodboxError;
@@ -43,34 +42,52 @@ pub(crate) fn run_prebuilt(
         None
     };
 
-    // Checksum covers both the image ref and the install list so that
-    // changing either triggers a rebuild. Provision steps are excluded
-    // (see definition_checksum): they touch only the home volume.
-    let config_checksum = super::definition_checksum(config)?;
+    // The image key covers the rendered overlay recipe (or the bare FROM
+    // ref), the guest binary and the podbox version — everything that ends
+    // up in the image. Quadlet-only toggles like `integration.audio` leave
+    // it alone; a podbox upgrade busts it.
+    let recipe = crate::codegen::containerfile::generate_prebuilt_overlay(
+        config,
+        &image_ref,
+        crate::guest::PODBOX_GUEST.is_some(),
+    )
+    .unwrap_or_else(|| format!("FROM {image_ref}\n"));
+    let image_key = super::image_cache_key(&recipe, crate::guest::PODBOX_GUEST, crate::VERSION);
 
     if !rebuild {
-        if let Some(lock) = crate::lock::read(&lock_path)? {
-            if lock.config_checksum == config_checksum && crate::podman::image_exists(&local_tag)? {
-                if events {
-                    crate::contract::emit_event(serde_json::json!({
-                        "event": "done", "ok": true, "cached": true,
-                    }));
-                } else {
-                    println!("Prebuilt image already present as {local_tag}. Skipping pull.");
-                    println!("Use --rebuild to re-pull.");
-                }
-                return Ok(());
+        let lock = crate::lock::read(&lock_path)?;
+        if super::cache_hit(
+            lock.as_ref(),
+            &image_key,
+            crate::podman::image_exists(&local_tag)?,
+        ) {
+            if events {
+                crate::contract::emit_event(serde_json::json!({
+                    "event": "done", "ok": true, "cached": true,
+                }));
+            } else {
+                println!("Prebuilt image already present as {local_tag}. Skipping pull.");
+                println!("Use --rebuild to re-pull.");
             }
+            return Ok(());
         }
     }
 
     if dry_run {
         println!("Would pull: {image_ref}");
-        if has_packages {
-            println!(
-                "Would install packages on top: {}",
-                config.image.packages.install.join(", ")
-            );
+        if crate::codegen::containerfile::prebuilt_overlay_needed(config) {
+            if has_packages {
+                println!(
+                    "Would install packages on top: {}",
+                    config.image.packages.install.join(", ")
+                );
+            }
+            if !config.image.run.commands.is_empty() {
+                println!(
+                    "Would run {} command(s) on top",
+                    config.image.run.commands.len()
+                );
+            }
             if crate::guest::PODBOX_GUEST.is_some() {
                 println!("Would layer host guest binary on top (version match)");
             }
@@ -115,28 +132,25 @@ pub(crate) fn run_prebuilt(
         .into());
     }
 
-    if has_packages {
-        // Layer the config's packages on top of the prebuilt image, plus the
-        // host's embedded guest binary so `/run/podbox/guest-version` matches
-        // the host. The COPY is content-hashed, so it only busts podman cache
-        // when the guest actually changes; the heavy registry base layers stay
-        // cached. Builds without an embedded guest (published-crate installs)
-        // skip the layer and keep the registry-baked guest.
-        let distro = resolve_prebuilt_distro(config);
-        let install_cmd = distro.install_cmd();
-        let clean_cmd = distro.clean_cmd();
-
-        let packages = config.image.packages.install.join(" ");
-        let run_line = if clean_cmd.is_empty() {
-            format!("RUN {install_cmd} {packages}")
-        } else {
-            format!("RUN {install_cmd} {packages} && {clean_cmd}")
-        };
-
+    if let Some(overlay) = crate::codegen::containerfile::generate_prebuilt_overlay(
+        config,
+        &image_ref,
+        crate::guest::PODBOX_GUEST.is_some(),
+    ) {
+        // Layer the config's packages and RUN steps on top of the prebuilt
+        // image, plus the host's embedded guest binary so
+        // `/run/podbox/guest-version` matches the host. The COPY is
+        // content-hashed, so it only busts podman cache when the guest
+        // actually changes; the heavy registry base layers stay cached.
+        // Builds without an embedded guest (published-crate installs) skip
+        // the layer and keep the registry-baked guest.
         std::fs::create_dir_all(&context_dir)
             .with_context(|| format!("failed to create context dir '{}'", context_dir.display()))?;
 
-        let mut containerfile = format!("FROM {image_ref}\n{run_line}\n");
+        let mut containerfile = overlay;
+        if !containerfile.ends_with('\n') {
+            containerfile.push('\n');
+        }
         if let Some(guest_bin) = crate::guest::PODBOX_GUEST {
             std::fs::write(context_dir.join("podbox-guest"), guest_bin).with_context(|| {
                 format!(
@@ -144,9 +158,6 @@ pub(crate) fn run_prebuilt(
                     context_dir.join("podbox-guest").display()
                 )
             })?;
-            containerfile.push_str(
-                "COPY podbox-guest /usr/local/bin/podbox-guest\nRUN chmod +x /usr/local/bin/podbox-guest\n",
-            );
         }
 
         let containerfile_path = context_dir.join("Containerfile");
@@ -218,7 +229,7 @@ pub(crate) fn run_prebuilt(
     })?;
     let digest = crate::podman::image_digest(&local_tag)?;
     let lock = crate::lock::LockFile {
-        config_checksum,
+        config_checksum: image_key,
         image_digest: digest,
     };
     crate::lock::write(&lock_path, &lock)?;
@@ -231,33 +242,9 @@ pub(crate) fn run_prebuilt(
     Ok(())
 }
 
-/// Resolve the distro family for package installation on a prebuilt image.
-///
-/// An explicit `manager` always wins. An omitted one is detected from the
-/// image reference (falling back to the base name), so prebuilt images from
-/// any distro family build without pinning a manager.
-pub(crate) fn resolve_prebuilt_distro(config: &Config) -> DistroFamily {
-    use crate::config::PackageManager;
-    if let Some(manager) = config.image.packages.manager {
-        return match manager {
-            PackageManager::Apt => DistroFamily::DebianLike,
-            PackageManager::Dnf => DistroFamily::FedoraLike,
-            PackageManager::Pacman => DistroFamily::ArchLike,
-            PackageManager::Apk => DistroFamily::AlpineLike,
-            PackageManager::Zypper => DistroFamily::SuseLike,
-        };
-    }
-    let probe = config
-        .image
-        .image_ref
-        .as_deref()
-        .unwrap_or(&config.image.base);
-    DistroFamily::from_base_image(probe)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::codegen::distros::{DistroFamily, family_for_config};
     use crate::config::Config;
 
     fn config_with(image_base: &str, image_ref: Option<&str>, manager: Option<&str>) -> Config {
@@ -290,17 +277,17 @@ home = "~/env"
             Some("ghcr.io/bethropolis/podbox:ubuntu-latest"),
             None,
         );
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::DebianLike);
+        assert_eq!(family_for_config(&cfg), DistroFamily::DebianLike);
 
         let cfg = config_with("cachyos/cachyos:latest", None, None);
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::ArchLike);
+        assert_eq!(family_for_config(&cfg), DistroFamily::ArchLike);
 
         // Unknown names stay Unknown (whose manager resolves to dnf),
         // rather than guessing a family.
         let cfg = config_with("unknown:latest", None, None);
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::Unknown);
+        assert_eq!(family_for_config(&cfg), DistroFamily::Unknown);
         assert_eq!(
-            resolve_prebuilt_distro(&cfg).manager(),
+            family_for_config(&cfg).manager(),
             crate::config::PackageManager::Dnf
         );
     }
@@ -312,6 +299,6 @@ home = "~/env"
             Some("ghcr.io/bethropolis/podbox:ubuntu-latest"),
             Some("dnf"),
         );
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::FedoraLike);
+        assert_eq!(family_for_config(&cfg), DistroFamily::FedoraLike);
     }
 }

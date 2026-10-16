@@ -1,4 +1,6 @@
-use crate::codegen::distros::{DistroFamily, detect_host_locale, detect_host_shell};
+use crate::codegen::distros::{
+    DistroFamily, detect_host_locale, detect_host_shell, family_for_config,
+};
 use crate::config::Config;
 use crate::error::PodboxError;
 
@@ -51,12 +53,110 @@ pub fn generate_preview(config: &Config, guest_binary_name: &str) -> String {
 }
 
 fn generate_prebuilt(config: &Config) -> String {
-    let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
-    builder
-        .add_user_packages(config.image.packages.install.clone())
-        .add_run_commands(config.image.run.commands.clone())
-        .set_shell(&config.container.shell)
-        .build()
+    let base_ref = config
+        .image
+        .image_ref
+        .as_deref()
+        .unwrap_or(&config.image.base);
+    generate_prebuilt_overlay(config, base_ref, crate::guest::PODBOX_GUEST.is_some())
+        .unwrap_or_else(|| format!("FROM {base_ref}\n"))
+}
+
+/// True when a prebuilt image needs a local overlay: extra packages or RUN
+/// steps to layer. The guest binary rides along with an overlay that exists
+/// for other reasons; it never triggers one on its own (the registry image
+/// already embeds a guest, and version skew is reported at build and checked
+/// at runtime).
+pub fn prebuilt_overlay_needed(config: &Config) -> bool {
+    !config.image.packages.install.is_empty() || !config.image.run.commands.is_empty()
+}
+
+/// Generate the overlay Containerfile layered onto a prebuilt image.
+///
+/// Emits `FROM <resolved ref>`, the package install step via the shared
+/// installer, the configured `RUN` commands, and the guest layer when the
+/// host binary embeds one. Returns `None` when there is truly nothing to
+/// add. The CLI build and the Studio preview share this function so the
+/// preview shows what is actually built.
+pub fn generate_prebuilt_overlay(
+    config: &Config,
+    base_ref: &str,
+    guest_available: bool,
+) -> Option<String> {
+    if !prebuilt_overlay_needed(config) {
+        return None;
+    }
+    let distro = family_for_config(config);
+    let mut lines = vec![format!("FROM {base_ref}"), String::new()];
+    if !config.image.packages.install.is_empty() {
+        let pkgs = config.image.packages.install.join(" ");
+        if let Some(layer) = install_layer(distro, base_ref, &pkgs) {
+            lines.push(layer);
+            lines.push(String::new());
+        }
+    }
+    for cmd in &config.image.run.commands {
+        lines.push(format!("RUN {cmd}"));
+    }
+    if !config.image.run.commands.is_empty() {
+        lines.push(String::new());
+    }
+    if guest_available {
+        lines.push("COPY podbox-guest /usr/local/bin/podbox-guest".into());
+        lines.push("RUN chmod +x /usr/local/bin/podbox-guest".into());
+        lines.push(String::new());
+    }
+    lines.push(format!("ENV PODBOX_CONTAINER={}", config.container.name));
+    lines.push(format!("ENV PODBOX_HOST_VERSION={}", crate::VERSION));
+    lines.push(String::new());
+    lines.push("ENTRYPOINT [\"/usr/local/bin/podbox-guest\", \"--entry\"]".to_string());
+    lines.push(format!("CMD [\"{}\"]", config.container.shell));
+    lines.push(String::new());
+    Some(lines.join("\n"))
+}
+
+/// Shared package-install layer for custom builds and prebuilt overlays
+/// alike: one `RUN` with the family install command, the CachyOS hook-sandbox
+/// relaxation, and the cache clean. `None` when there is nothing to install.
+pub(crate) fn install_layer(distro: DistroFamily, base_image: &str, pkgs: &str) -> Option<String> {
+    if pkgs.trim().is_empty() {
+        return None;
+    }
+    let clean = distro.clean_cmd();
+    if needs_hook_sandbox_relaxation(distro, base_image) {
+        let mut cmd = String::from(
+            "sed 's/^\\[options\\]/[options]\\nDisableSandboxNetwork/' /etc/pacman.conf > /tmp/podbox-pacman.conf",
+        );
+        use std::fmt::Write as _;
+        let _ = write!(
+            cmd,
+            " && {} --config /tmp/podbox-pacman.conf {}",
+            distro.install_cmd(),
+            pkgs
+        );
+        cmd.push_str(" && rm -f /tmp/podbox-pacman.conf");
+        if !clean.is_empty() {
+            let _ = write!(cmd, " && {clean}");
+        }
+        return Some(format!("RUN {cmd}"));
+    }
+    let body = if clean.is_empty() {
+        format!("{} {}", distro.install_cmd(), pkgs)
+    } else {
+        format!("{} {} && {}", distro.install_cmd(), pkgs, clean)
+    };
+    Some(format!("RUN {body}"))
+}
+
+/// True when the base needs CachyOS's hook sandbox lifted for installs.
+///
+/// CachyOS only, not vanilla Arch: its pacman is patched with a
+/// network-isolation hook sandbox that rootless userns cannot grant, so
+/// package installs fail their hooks there. Vanilla Arch's pacman lacks
+/// the toggle entirely (an unrecognized directive only warns), hence the
+/// base-name gate instead of a family gate.
+fn needs_hook_sandbox_relaxation(distro: DistroFamily, base_image: &str) -> bool {
+    distro == DistroFamily::ArchLike && base_image.to_lowercase().contains("cachy")
 }
 
 /// Shared body of the custom-build recipe.
@@ -64,12 +164,13 @@ fn generate_prebuilt(config: &Config) -> String {
 /// `guest_available` decides whether the guest `COPY`/`chmod` pair is
 /// emitted or replaced by [`GUEST_PLACEHOLDER`].
 fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool) -> String {
-    let distro = DistroFamily::from_base_image(&config.image.base);
+    let distro = family_for_config(config);
     let host_shell = detect_host_shell();
     let host_locale = detect_host_locale();
 
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
     builder
+        .set_distro(distro)
         .add_base_packages(distro, host_shell.as_deref(), host_locale.as_deref())
         // The image must contain the shell the container actually runs. Only
         // the host's shell was installed above, so a config asking for a
@@ -86,6 +187,7 @@ fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool
 struct ContainerfileBuilder {
     base_image: String,
     container_name: String,
+    distro: Option<DistroFamily>,
     packages: Vec<String>,
     run_commands: Vec<String>,
     guest_name: String,
@@ -99,6 +201,7 @@ impl ContainerfileBuilder {
         Self {
             base_image: base_image.to_string(),
             container_name: container_name.to_string(),
+            distro: None,
             packages: Vec::new(),
             run_commands: Vec::new(),
             guest_name: "podbox-guest".to_string(),
@@ -106,6 +209,13 @@ impl ContainerfileBuilder {
             env_vars: Vec::new(),
             forced_shell: None,
         }
+    }
+
+    /// Pin the distro family (explicit manager wins). Without it, `build`
+    /// falls back to detecting from the base image name.
+    fn set_distro(mut self, distro: DistroFamily) -> Self {
+        self.distro = Some(distro);
+        self
     }
 
     fn add_base_packages(
@@ -123,9 +233,10 @@ impl ContainerfileBuilder {
         }
         self.packages = pkgs;
         if let Some(locale) = host_locale {
+            // LANG only: forcing LC_ALL would override per-category
+            // settings inside the box and warn when the image lacks the
+            // host locale. Locale data itself comes from locale_packages.
             self.env_vars.push(("LANG".into(), locale.to_string()));
-            self.env_vars.push(("LC_ALL".into(), locale.to_string()));
-            self.env_vars.push(("LC_CTYPE".into(), locale.to_string()));
         }
         self
     }
@@ -165,7 +276,9 @@ impl ContainerfileBuilder {
     }
 
     fn build(self) -> String {
-        let distro = DistroFamily::from_base_image(&self.base_image);
+        let distro = self
+            .distro
+            .unwrap_or_else(|| DistroFamily::from_base_image(&self.base_image));
         let mut lines = Vec::new();
 
         lines.push(format!("FROM {}", self.base_image));
@@ -173,7 +286,7 @@ impl ContainerfileBuilder {
 
         if !self.packages.is_empty() {
             let pkgs = self.packages.join(" ");
-            lines.push(format!("RUN {}", self.install_command(distro, &pkgs)));
+            lines.push(self.install_command(distro, &pkgs));
             lines.push(String::new());
         }
 
@@ -235,47 +348,10 @@ impl ContainerfileBuilder {
         lines.join("\n")
     }
 
-    /// True when the base needs CachyOS's hook sandbox lifted for installs.
-    ///
-    /// CachyOS only, not vanilla Arch: its pacman is patched with a
-    /// network-isolation hook sandbox that rootless userns cannot grant, so
-    /// package installs fail their hooks there. Vanilla Arch's pacman lacks
-    /// the toggle entirely (an unrecognized directive only warns), hence the
-    /// base-name gate instead of a family gate.
-    fn needs_hook_sandbox_relaxation(&self, distro: DistroFamily) -> bool {
-        distro == DistroFamily::ArchLike && self.base_image.to_lowercase().contains("cachy")
-    }
-
-    /// The install layer: one `RUN`, including the cache clean.
-    ///
-    /// On CachyOS the sandbox relaxation is scoped to this single command via
-    /// `pacman --config`: `/etc/pacman.conf` is read, never rewritten, so the
-    /// image ships with the sandbox intact and the weakening lives no longer
-    /// than the install itself.
+    /// The install layer: one `RUN`, including the cache clean. Shared with
+    /// prebuilt overlays through [`install_layer`].
     fn install_command(&self, distro: DistroFamily, pkgs: &str) -> String {
-        let clean = distro.clean_cmd();
-        if self.needs_hook_sandbox_relaxation(distro) {
-            let mut cmd = String::from(
-                "sed 's/^\\[options\\]/[options]\\nDisableSandboxNetwork/' /etc/pacman.conf > /tmp/podbox-pacman.conf",
-            );
-            use std::fmt::Write as _;
-            let _ = write!(
-                cmd,
-                " && {} --config /tmp/podbox-pacman.conf {}",
-                distro.install_cmd(),
-                pkgs
-            );
-            cmd.push_str(" && rm -f /tmp/podbox-pacman.conf");
-            if !clean.is_empty() {
-                let _ = write!(cmd, " && {clean}");
-            }
-            return cmd;
-        }
-        if clean.is_empty() {
-            format!("{} {}", distro.install_cmd(), pkgs)
-        } else {
-            format!("{} {} && {}", distro.install_cmd(), pkgs, clean)
-        }
+        install_layer(distro, &self.base_image, pkgs).unwrap_or_default()
     }
 
     fn default_shell(&self) -> &str {
@@ -313,6 +389,10 @@ mod tests {
         assert!(cf.contains("locales"));
         assert!(cf.contains("ENV LANG=en_US.UTF-8"));
         assert!(cf.contains("localedef -i en_US -f UTF-8 en_US.UTF-8"));
+        assert!(
+            !cf.contains("LC_ALL") && !cf.contains("LC_CTYPE"),
+            "only LANG is forced; LC_* overrides stay with the user:\n{cf}"
+        );
         assert!(cf.contains("ENV PODBOX_CONTAINER=test"));
     }
 

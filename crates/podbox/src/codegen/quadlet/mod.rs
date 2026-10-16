@@ -8,6 +8,7 @@ mod caches;
 mod container;
 mod devices;
 mod services;
+pub(crate) mod value;
 
 pub use devices::{emit_hardware_devices, emit_secrets};
 pub use services::{
@@ -45,9 +46,16 @@ pub fn generate_container_with_warnings(
     let mut warnings: Vec<String> = Vec::new();
 
     container::emit_quadlet(&mut lines);
-    container::emit_unit(&mut lines, config, name);
-    container::emit_container_image(&mut lines, config, name, home_in_container, env);
-    container::emit_network(&mut lines, config);
+    container::emit_unit(&mut lines, config, name, &mut warnings);
+    container::emit_container_image(
+        &mut lines,
+        config,
+        name,
+        home_in_container,
+        env,
+        &mut warnings,
+    );
+    container::emit_network(&mut lines, config, &mut warnings);
     container::emit_volumes(
         &mut lines,
         config,
@@ -58,12 +66,12 @@ pub fn generate_container_with_warnings(
         &mut warnings,
     );
     container::emit_env(&mut lines, config, name, env, &mut warnings);
-    devices::emit_gpu(&mut lines, config, env);
-    devices::emit_hardware_devices(&mut lines, config);
-    devices::emit_secrets(&mut lines, config);
+    devices::emit_gpu(&mut lines, config, env, &mut warnings);
+    devices::emit_hardware_devices(&mut lines, config, &mut warnings);
+    devices::emit_secrets(&mut lines, config, &mut warnings);
     container::emit_auto_update(&mut lines, config);
-    container::emit_podman_args(&mut lines, config);
-    container::emit_service_section(&mut lines, config);
+    container::emit_podman_args(&mut lines, config, &mut warnings);
+    container::emit_service_section(&mut lines, config, &mut warnings);
     container::emit_install_section(&mut lines, config);
 
     (lines.join("\n"), warnings)

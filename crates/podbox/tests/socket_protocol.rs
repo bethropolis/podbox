@@ -4,7 +4,7 @@
 //! `podbox serve` runs per connection) over a `UnixStream::pair()`. Host side
 //! effects go to a recording fake, so nothing touches the real desktop.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -79,7 +79,7 @@ fn enabled_config() -> Config {
     cfg.integration.xdg_open = true;
     cfg.integration.clipboard = true;
     cfg.integration.host_exec.enabled = true;
-    cfg.integration.host_exec.allowlist = Some(HashMap::from([
+    cfg.integration.host_exec.allowlist = Some(BTreeMap::from([
         (
             "echo".to_string(),
             HostExecEntry::Simple("/bin/echo".into()),

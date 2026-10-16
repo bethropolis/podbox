@@ -9,40 +9,79 @@ pub enum DistroFamily {
 }
 
 impl DistroFamily {
+    /// Detect the distro family from an image reference by matching whole
+    /// tokens, not substrings: only the last repository path segment and the
+    /// tag are considered, and a token matches a distro name exactly or as a
+    /// prefix followed by a separator (`-`, `_`, `.`) or version digit.
+    /// Substring matching misfires on names like `monarch-tools` (contains
+    /// `arch`) and misses refs like `podbox:dev-latest` entirely.
     pub fn from_base_image(base: &str) -> Self {
         let base_lower = base.to_lowercase();
-        if base_lower.contains("debian")
-            || base_lower.contains("ubuntu")
-            || base_lower.contains("mint")
-            || base_lower.contains("kali")
-            || base_lower.contains("pop")
-            || base_lower.contains("elementary")
-        {
-            Self::DebianLike
-        } else if base_lower.contains("fedora")
-            || base_lower.contains("rhel")
-            || base_lower.contains("centos")
-            || base_lower.contains("rocky")
-            || base_lower.contains("alma")
-            || base_lower.contains("nobara")
-        {
-            Self::FedoraLike
-        } else if base_lower.contains("arch")
-            || base_lower.contains("cachy")
-            || base_lower.contains("manjaro")
-            || base_lower.contains("endeavouros")
-            || base_lower.contains("garuda")
-        {
-            Self::ArchLike
-        } else if base_lower.contains("alpine") {
-            Self::AlpineLike
-        } else if base_lower.contains("opensuse") || base_lower.contains("suse") {
-            Self::SuseLike
-        } else {
-            Self::Unknown
+        // Split off the tag: the last colon starts one unless a slash
+        // follows it (a `registry:port/` prefix, not a tag).
+        let (repo, tag) = match base_lower.rsplit_once(':') {
+            Some((repo, tag)) if !tag.contains('/') => (repo, tag),
+            _ => (base_lower.as_str(), ""),
+        };
+        let last_segment = repo.rsplit('/').next().unwrap_or("");
+        for token in [last_segment, tag] {
+            if token.is_empty() {
+                continue;
+            }
+            if let Some(family) = match_distro_token(token) {
+                return family;
+            }
         }
+        Self::Unknown
     }
+}
 
+/// Match one token (last path segment or tag) against known distro names:
+/// exact, or a prefix followed by a separator or version digit, so
+/// `ubuntu-22.04` and `mint22` match while `popular` and `monarch` do not.
+fn match_distro_token(token: &str) -> Option<DistroFamily> {
+    const NAMES: &[(&str, DistroFamily)] = &[
+        ("debian", DistroFamily::DebianLike),
+        ("ubuntu", DistroFamily::DebianLike),
+        ("linuxmint", DistroFamily::DebianLike),
+        ("mint", DistroFamily::DebianLike),
+        ("kali", DistroFamily::DebianLike),
+        ("pop", DistroFamily::DebianLike),
+        ("elementary", DistroFamily::DebianLike),
+        ("fedora", DistroFamily::FedoraLike),
+        ("rhel", DistroFamily::FedoraLike),
+        ("centos", DistroFamily::FedoraLike),
+        ("rocky", DistroFamily::FedoraLike),
+        ("alma", DistroFamily::FedoraLike),
+        ("nobara", DistroFamily::FedoraLike),
+        ("arch", DistroFamily::ArchLike),
+        ("archlinux", DistroFamily::ArchLike),
+        ("cachy", DistroFamily::ArchLike),
+        ("cachyos", DistroFamily::ArchLike),
+        ("manjaro", DistroFamily::ArchLike),
+        ("endeavouros", DistroFamily::ArchLike),
+        ("garuda", DistroFamily::ArchLike),
+        ("alpine", DistroFamily::AlpineLike),
+        ("opensuse", DistroFamily::SuseLike),
+        ("suse", DistroFamily::SuseLike),
+        ("tumbleweed", DistroFamily::SuseLike),
+        ("leap", DistroFamily::SuseLike),
+    ];
+    NAMES.iter().find_map(|(name, family)| {
+        if token == *name {
+            return Some(*family);
+        }
+        token
+            .strip_prefix(name)
+            .filter(|rest| {
+                rest.starts_with(['-', '_', '.']) || rest.starts_with(|c: char| c.is_ascii_digit())
+            })
+            .map(|_| *family)
+    })
+}
+
+impl DistroFamily {
+    /// Package manager for the family.
     pub fn manager(&self) -> crate::config::PackageManager {
         match self {
             Self::DebianLike => crate::config::PackageManager::Apt,
@@ -213,6 +252,29 @@ pub fn detect_package_manager(image: &str) -> crate::config::PackageManager {
     DistroFamily::from_base_image(image).manager()
 }
 
+/// Resolve the distro family for package installation: an explicit
+/// `image.packages.manager` always wins over detection from the image
+/// reference (or base name), so bundled profiles state theirs outright and
+/// never depend on ref guessing.
+pub fn family_for_config(config: &crate::config::Config) -> DistroFamily {
+    use crate::config::PackageManager;
+    if let Some(manager) = config.image.packages.manager {
+        return match manager {
+            PackageManager::Apt => DistroFamily::DebianLike,
+            PackageManager::Dnf => DistroFamily::FedoraLike,
+            PackageManager::Pacman => DistroFamily::ArchLike,
+            PackageManager::Apk => DistroFamily::AlpineLike,
+            PackageManager::Zypper => DistroFamily::SuseLike,
+        };
+    }
+    let probe = config
+        .image
+        .image_ref
+        .as_deref()
+        .unwrap_or(&config.image.base);
+    DistroFamily::from_base_image(probe)
+}
+
 /// True when stdin is a TTY. Always false off-host (wasm): there is no
 /// controlling terminal, and the `nix` dependency is `cli`-gated.
 #[cfg(feature = "cli")]
@@ -252,6 +314,10 @@ mod tests {
             DistroFamily::ArchLike
         );
         assert_eq!(
+            DistroFamily::from_base_image("docker.io/library/archlinux:latest"),
+            DistroFamily::ArchLike
+        );
+        assert_eq!(
             DistroFamily::from_base_image("alpine:3.20"),
             DistroFamily::AlpineLike
         );
@@ -260,8 +326,78 @@ mod tests {
             DistroFamily::SuseLike
         );
         assert_eq!(
+            DistroFamily::from_base_image("registry.fedoraproject.org/fedora:44"),
+            DistroFamily::FedoraLike
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("ubuntu:24.04"),
+            DistroFamily::DebianLike
+        );
+        assert_eq!(
             DistroFamily::from_base_image("unknown:latest"),
             DistroFamily::Unknown
+        );
+    }
+
+    #[test]
+    fn test_distro_detection_uses_tokens_not_substrings() {
+        // `arch` inside `monarch` and `pop` inside `popular` must not match;
+        // the bundled dev ref matches nothing and stays Unknown (its profile
+        // pins the manager explicitly instead).
+        assert_eq!(
+            DistroFamily::from_base_image("ghcr.io/x/monarch-tools:1"),
+            DistroFamily::Unknown
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("ghcr.io/x/popular-base:1"),
+            DistroFamily::Unknown
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("ghcr.io/bethropolis/podbox:dev-latest"),
+            DistroFamily::Unknown
+        );
+        // A registry port colon is not a tag separator.
+        assert_eq!(
+            DistroFamily::from_base_image("localhost:5000/mybox:latest"),
+            DistroFamily::Unknown
+        );
+        assert_eq!(
+            DistroFamily::from_base_image("localhost:5000/fedora-box:41"),
+            DistroFamily::FedoraLike
+        );
+    }
+
+    #[test]
+    fn test_explicit_manager_wins_over_detection() {
+        // The bundled dev profile's ref is undetectable, but it pins pacman.
+        let dev = crate::config::Config::parse(include_str!("../profiles/dev.toml")).unwrap();
+        assert_eq!(family_for_config(&dev), DistroFamily::ArchLike);
+        let cachy = crate::config::Config::parse(include_str!("../profiles/cachy.toml")).unwrap();
+        let fedora = crate::config::Config::parse(include_str!("../profiles/fedora.toml")).unwrap();
+        let ubuntu = crate::config::Config::parse(include_str!("../profiles/ubuntu.toml")).unwrap();
+        assert_eq!(family_for_config(&cachy), DistroFamily::ArchLike);
+        assert_eq!(family_for_config(&fedora), DistroFamily::FedoraLike);
+        assert_eq!(family_for_config(&ubuntu), DistroFamily::DebianLike);
+    }
+
+    #[test]
+    fn test_unknown_family_with_packages_is_rejected() {
+        let err = crate::config::Config::parse(
+            r#"
+[image]
+base = "ghcr.io/x/monarch-tools:1"
+name = "env"
+[image.packages]
+install = ["htop"]
+[container]
+name = "env"
+home = "~/env"
+"#,
+        )
+        .expect_err("unknown family with packages must fail validation");
+        assert!(
+            err.to_string().contains("cannot determine package manager"),
+            "{err}"
         );
     }
 

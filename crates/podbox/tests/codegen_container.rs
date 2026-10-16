@@ -170,7 +170,18 @@ fn quadlet_container_has_security_label_disable() {
 fn quadlet_container_has_init() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("PodmanArgs=--init"));
+    assert!(q.contains("RunInit=true"));
+    assert!(!q.contains("PodmanArgs=--init"));
+}
+#[test]
+fn quadlet_container_uses_native_cap_and_workdir_keys() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("WorkingDir=/home/%u"));
+    assert!(q.contains("AddCapability=DAC_READ_SEARCH"));
+    assert!(q.contains("AddCapability=PERFMON"));
+    assert!(!q.contains("--cap-add="));
+    assert!(!q.contains("--workdir="));
 }
 #[test]
 fn quadlet_container_has_network_host() {
@@ -490,4 +501,69 @@ cargo = true
         !warnings.iter().any(|w| w.contains("host_caches")),
         "a preview must never drop caches: {warnings:?}"
     );
+}
+
+#[test]
+fn quadlet_full_container_snapshot() {
+    // First insta snapshot of a whole `.container` file. Possible only now
+    // that map iteration is deterministic; run the binary twice (different
+    // hash seeds per process) to confirm stability.
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    insta::assert_snapshot!("full_container", q);
+}
+
+#[test]
+fn quadlet_env_lines_are_sorted_by_key() {
+    // Twenty vars inserted in reverse order: HashMap iteration would come
+    // out in hash order, BTreeMap in key order.
+    let mut config = load_config("minimal.toml");
+    for i in (0..20).rev() {
+        config
+            .container
+            .env
+            .values
+            .insert(format!("ZVAR{i:02}"), format!("v{i}"));
+    }
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    let keys: Vec<&str> = q
+        .lines()
+        .filter_map(|l| l.strip_prefix("Environment=ZVAR"))
+        .map(|rest| rest.split('=').next().unwrap_or(""))
+        .collect();
+    assert_eq!(keys.len(), 20, "all vars must be emitted:\n{q}");
+    let mut sorted = keys.clone();
+    sorted.sort_unstable();
+    assert_eq!(keys, sorted, "env lines must be sorted by key:\n{q}");
+}
+
+#[test]
+fn quadlet_same_env_in_different_file_order_gives_same_output() {
+    let first = podbox::config::Config::parse(
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n[container.env]\nALPHA = \"1\"\nBETA = \"2\"\nGAMMA = \"3\"\n",
+    )
+    .unwrap();
+    let second = podbox::config::Config::parse(
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n[container.env]\nGAMMA = \"3\"\nALPHA = \"1\"\nBETA = \"2\"\n",
+    )
+    .unwrap();
+    let a = quadlet::generate_container(&first, &default_env(), &default_xdg());
+    let b = quadlet::generate_container(&second, &default_env(), &default_xdg());
+    assert_eq!(a, b, "output must not depend on file order");
+}
+
+#[test]
+fn quadlet_on_stop_remove_emits_no_autoremove_and_warns() {
+    // `AutoRemove` is not a systemd or Quadlet key; Quadlet containers are
+    // always ephemeral, so the setting only produces a warning now.
+    let (config, warnings) = podbox::config::Config::parse_with_warnings(
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n[lifecycle]\non_stop = \"remove\"\n",
+    )
+    .unwrap();
+    assert!(
+        warnings.iter().any(|w| w.contains("lifecycle.on_stop")),
+        "deprecation warning expected: {warnings:?}"
+    );
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("AutoRemove"), "no such unit key:\n{q}");
 }

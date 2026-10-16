@@ -135,6 +135,80 @@ impl Config {
                 errors.push(format!("container.env: value for {key:?} contains newline"));
             }
         }
+        // Every other string field that reaches a unit line or a Containerfile
+        // RUN layer must not carry NUL/CR/LF: a newline would inject an extra
+        // directive (or a bogus build instruction), and codegen refuses to
+        // emit such values. Each violation names its field path.
+        {
+            let mut fields: Vec<(String, &str)> = Vec::new();
+            for (i, dep) in self.systemd.requires.iter().enumerate() {
+                fields.push((format!("systemd.requires[{i}]"), dep));
+            }
+            for (i, dep) in self.systemd.after.iter().enumerate() {
+                fields.push((format!("systemd.after[{i}]"), dep));
+            }
+            if let Some(ref cmd) = self.container.reload_cmd {
+                fields.push(("container.reload_cmd".into(), cmd));
+            }
+            for (i, cap) in self.security.cap_add.iter().enumerate() {
+                fields.push((format!("security.cap_add[{i}]"), cap));
+            }
+            if let Some(ref profile) = self.security.seccomp {
+                fields.push(("security.seccomp".into(), profile));
+            }
+            if let Some(ref profile) = self.security.apparmor {
+                fields.push(("security.apparmor".into(), profile));
+            }
+            for (i, mount) in self.container.mounts.extra.iter().enumerate() {
+                fields.push((format!("container.mounts.extra[{i}]"), mount));
+            }
+            for (i, cmd) in self.image.run.commands.iter().enumerate() {
+                fields.push((format!("image.run.commands[{i}]"), cmd));
+            }
+            for (i, pkg) in self.image.packages.install.iter().enumerate() {
+                fields.push((format!("image.packages.install[{i}]"), pkg));
+            }
+            for (i, entry) in self.security.secrets.iter().enumerate() {
+                let (name, target, mode) = match entry {
+                    crate::config::SecretEntry::Simple(name) => (name, None, None),
+                    crate::config::SecretEntry::Detailed {
+                        name, target, mode, ..
+                    } => (name, target.as_ref(), mode.as_ref()),
+                };
+                fields.push((format!("security.secrets[{i}].name"), name));
+                if let Some(t) = target {
+                    fields.push((format!("security.secrets[{i}].target"), t));
+                }
+                if let Some(m) = mode {
+                    fields.push((format!("security.secrets[{i}].mode"), m));
+                }
+            }
+            for (i, svc) in self.dbus.talk.iter().enumerate() {
+                fields.push((format!("dbus.talk[{i}]"), svc));
+            }
+            for (i, svc) in self.dbus.own.iter().enumerate() {
+                fields.push((format!("dbus.own[{i}]"), svc));
+            }
+            for (i, port) in self.network.ports.iter().enumerate() {
+                fields.push((format!("network.ports[{i}]"), port));
+            }
+            fields.push(("image.base".into(), &self.image.base));
+            if let Some(ref image_ref) = self.image.image_ref {
+                fields.push(("image.image".into(), image_ref));
+            }
+            fields.push((
+                "image.pull_retry_delay".into(),
+                &self.image.pull_retry_delay,
+            ));
+            fields.push(("container.shell".into(), &self.container.shell));
+            for (path, value) in &fields {
+                if value.chars().any(|c| matches!(c, '\0' | '\n' | '\r')) {
+                    errors.push(format!(
+                        "{path}: must not contain NUL, carriage return, or newline"
+                    ));
+                }
+            }
+        }
         errors.extend(validate_provision(&self.provision));
         errors.extend(caches::validate_caches(self));
         for (i, pattern) in self.container.env.forward.iter().enumerate() {
@@ -252,6 +326,80 @@ impl Config {
             }
         }
 
+        // systemd-credential secrets become LoadCredential= names and
+        // /run/secrets/<name> file names: reject path separators and
+        // parent references, require the host-side path, and require a
+        // valid variable name when the target becomes Environment=KEY=….
+        for (i, entry) in self.security.secrets.iter().enumerate() {
+            let (name, secret_type, target, source, path) = match entry {
+                crate::config::SecretEntry::Simple(name) => (
+                    name,
+                    &crate::config::SecretType::Env,
+                    None,
+                    &crate::config::SecretSource::Podman,
+                    None,
+                ),
+                crate::config::SecretEntry::Detailed {
+                    name,
+                    secret_type,
+                    target,
+                    source,
+                    path,
+                    ..
+                } => (name, secret_type, target.as_ref(), source, path.as_ref()),
+            };
+            let prefix = format!("security.secrets[{i}]");
+            if name.is_empty()
+                || name.contains('/')
+                || name.contains('\\')
+                || name.split('/').any(|part| part == "..")
+            {
+                errors.push(format!(
+                    "{prefix}.name: '{name}' is not a safe credential filename (no '/', '\\\\' or '..')"
+                ));
+            }
+            if *source == crate::config::SecretSource::Systemd {
+                match path {
+                    Some(p) if !p.trim().is_empty() => {}
+                    _ => errors.push(format!(
+                        "{prefix}.path: required with source = \"systemd\" (host-side credential file)"
+                    )),
+                }
+                if *secret_type == crate::config::SecretType::Env
+                    && let Some(t) = target
+                    && (t.is_empty() || !t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+                {
+                    errors.push(format!(
+                        "{prefix}.target: '{t}' must be a valid environment variable name"
+                    ));
+                }
+            }
+        }
+
+        // Packages need a package manager: an undetectable image family
+        // with install entries would otherwise silently emit the wrong
+        // install command (dnf on Arch). Fail with the fix attached.
+        if !self.image.packages.install.is_empty()
+            && crate::codegen::distros::family_for_config(self)
+                == crate::codegen::distros::DistroFamily::Unknown
+        {
+            let image = self.image.image_ref.as_deref().unwrap_or(&self.image.base);
+            errors.push(format!(
+                "image.packages: cannot determine package manager for '{image}'; set image.packages.manager explicitly (\"apt\", \"dnf\", \"pacman\", \"apk\" or \"zypper\")"
+            ));
+        }
+
+        // `lifecycle.on_stop` is deprecated: Quadlet runs containers with
+        // `--rm --replace`, so every box is ephemeral and there is nothing to
+        // keep. Warn when set explicitly, but keep parsing it.
+        if self.explicit_keys.contains("lifecycle.on_stop") {
+            warnings.push(
+                "warning: lifecycle.on_stop is deprecated and has no effect: Quadlet containers \
+                 are always ephemeral; state lives in the home volume and snapshots."
+                    .into(),
+            );
+        }
+
         if self.integration.host_exec.enabled {
             let has_allowlist = self
                 .integration
@@ -286,7 +434,7 @@ impl Config {
         if !self.integration.dbus
             && (!self.dbus.talk.is_empty()
                 || !self.dbus.own.is_empty()
-                || (!self.dbus.preset.is_empty() && self.dbus.preset != "none"))
+                || self.dbus.preset != crate::config::DbusPreset::None)
         {
             errors.push(
                 "dbus: talk/own/preset rules are set but 'integration.dbus' is false, \

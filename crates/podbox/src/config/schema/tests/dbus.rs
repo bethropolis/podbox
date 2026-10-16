@@ -1,6 +1,7 @@
 //! D-Bus talk list and portal rule derivation
 
 use super::super::*;
+use crate::config::DbusPreset;
 
 #[test]
 fn test_dbus_config_defaults_empty() {
@@ -8,13 +9,16 @@ fn test_dbus_config_defaults_empty() {
     // preset is applied and no proxy units or portal rules are generated.
     let cfg = Config::embedded();
     assert!(!cfg.integration.dbus);
-    assert!(cfg.dbus.preset.is_empty());
+    assert_eq!(cfg.dbus.preset, DbusPreset::None);
     assert!(cfg.dbus_effective_talk().is_empty());
     assert!(cfg.dbus_portal_calls().is_empty());
     assert!(!cfg.use_dbus_proxy());
 }
 #[test]
-fn test_dbus_portal_dropped_when_caps_disabled() {
+fn test_dbus_portal_preset_implies_proxy_without_capabilities() {
+    // A set preset never fails open to the raw bus: even with notify and
+    // xdg_open off, the portal preset contributes Notifications talk, so the
+    // proxy is generated.
     let toml = r#"
 [image]
 base = "fedora:41"
@@ -31,9 +35,32 @@ xdg_open = false
 clipboard = false
 "#;
     let cfg = Config::parse(toml).unwrap();
-    assert!(cfg.dbus_effective_talk().is_empty());
+    assert_eq!(
+        cfg.dbus_effective_talk(),
+        vec!["org.freedesktop.Notifications"]
+    );
     assert!(cfg.dbus_portal_calls().is_empty());
-    assert!(!cfg.use_dbus_proxy());
+    assert!(cfg.use_dbus_proxy());
+}
+#[test]
+fn test_dbus_unknown_preset_is_a_parse_error() {
+    let toml = r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+[dbus]
+preset = "gnoem"
+[integration]
+dbus = true
+"#;
+    let err = Config::parse(toml).expect_err("typo preset must fail to parse");
+    let msg = format!("{err:#}");
+    for valid in ["flatpak", "gnome", "kde", "portal", "none"] {
+        assert!(msg.contains(valid), "error must name valid values: {msg}");
+    }
 }
 #[test]
 fn test_dbus_portal_kept_when_notify_enabled() {
@@ -53,7 +80,10 @@ xdg_open = false
 clipboard = false
 "#;
     let cfg = Config::parse(toml).unwrap();
-    assert!(cfg.dbus_effective_talk().is_empty());
+    assert_eq!(
+        cfg.dbus_effective_talk(),
+        vec!["org.freedesktop.Notifications"]
+    );
     assert!(cfg.use_dbus_proxy());
     let calls = cfg.dbus_portal_calls();
     assert_eq!(calls.len(), 5);

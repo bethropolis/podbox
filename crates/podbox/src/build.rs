@@ -27,19 +27,38 @@ pub fn checksum(content: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Checksum of the definition for build-cache purposes.
+/// Image cache key: `sha256(rendered recipe ‖ guest binary hash ‖ version)`.
 ///
-/// `[[provision]]` steps run inside the home volume, never touch the image,
-/// so they are excluded: editing a step must not trigger a rebuild.
-pub(crate) fn definition_checksum(config: &Config) -> Result<String> {
-    let mut value =
-        toml::Value::try_from(config).with_context(|| "failed to serialize definition config")?;
-    if let Some(tbl) = value.as_table_mut() {
-        tbl.remove("provision");
+/// Everything that affects the image is in the rendered recipe (Containerfile
+/// or prebuilt overlay, which already folds in host shell/locale), so
+/// toggling a Quadlet-only setting like `integration.audio` leaves the key
+/// alone, while a podbox upgrade (new guest bytes or version) busts it.
+/// Pure and unit-tested; both build paths share it.
+pub(crate) fn image_cache_key(rendered: &str, guest: Option<&[u8]>, version: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(rendered.as_bytes());
+    hasher.update([0]);
+    match guest {
+        Some(bytes) => {
+            let mut inner = Sha256::new();
+            inner.update(bytes);
+            hasher.update(hex::encode(inner.finalize()).as_bytes());
+        }
+        None => hasher.update(b"no-guest"),
     }
-    let definition_toml =
-        toml::to_string(&value).with_context(|| "failed to serialize definition config")?;
-    Ok(checksum(&definition_toml))
+    hasher.update([0]);
+    hasher.update(version.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Skip a build only when the cached key matches *and* the image still
+/// exists. A user-run `podman rmi` must rebuild even with a matching key.
+pub(crate) fn cache_hit(
+    lock: Option<&crate::lock::LockFile>,
+    key: &str,
+    image_exists: bool,
+) -> bool {
+    lock.is_some_and(|l| l.config_checksum == key) && image_exists
 }
 
 /// Full build log for a container: ~/.local/state/podbox/<name>/build.log
@@ -168,25 +187,8 @@ fn run_build(
     // Guarded by `run()` for custom builds; prebuilt builds never reach here.
     let guest_bin = crate::guest::PODBOX_GUEST.expect("custom build without embedded guest");
 
-    let config_checksum = definition_checksum(config)?;
-
-    if !rebuild {
-        if let Some(lock) = crate::lock::read(&lock_path)? {
-            if lock.config_checksum == config_checksum {
-                if events {
-                    crate::contract::emit_event(serde_json::json!({
-                        "event": "done", "ok": true, "cached": true,
-                    }));
-                } else {
-                    println!("Definition unchanged and image already built. Skipping.");
-                    println!("Use --rebuild to force.");
-                }
-                return Ok(());
-            }
-        }
-    }
-
     let containerfile = containerfile::generate(config, "podbox-guest")?;
+    let image_key = image_cache_key(&containerfile, Some(guest_bin), crate::VERSION);
 
     if dry_run {
         println!("=== Build context: {} ===", context_dir.display());
@@ -201,6 +203,25 @@ fn run_build(
             context_dir.display()
         );
         return Ok(());
+    }
+
+    if !rebuild {
+        let lock = crate::lock::read(&lock_path)?;
+        if cache_hit(
+            lock.as_ref(),
+            &image_key,
+            crate::podman::image_exists(&config.local_image_tag())?,
+        ) {
+            if events {
+                crate::contract::emit_event(serde_json::json!({
+                    "event": "done", "ok": true, "cached": true,
+                }));
+            } else {
+                println!("Definition unchanged and image already built. Skipping.");
+                println!("Use --rebuild to force.");
+            }
+            return Ok(());
+        }
     }
 
     if events {
@@ -273,7 +294,7 @@ fn run_build(
         }
         let digest = crate::podman::image_digest(&tag)?;
         let lock = crate::lock::LockFile {
-            config_checksum,
+            config_checksum: image_key,
             image_digest: digest,
         };
         crate::lock::write(&lock_path, &lock)?;
@@ -306,8 +327,16 @@ mod tests {
         assert!(p.ends_with("podbox/myenv/build.log"));
     }
 
+    /// Image key for a custom config: rendered Containerfile plus the
+    /// ambient guest binary and version.
+    fn custom_key(config: &Config) -> String {
+        let recipe = crate::codegen::containerfile::generate(config, "podbox-guest").unwrap();
+        image_cache_key(&recipe, crate::guest::PODBOX_GUEST, crate::VERSION)
+    }
+
     #[test]
-    fn provision_steps_are_excluded_from_the_build_checksum() {
+    fn quadlet_only_toggles_leave_the_image_key_alone() {
+        // `integration.audio` affects the unit, never the image.
         let base = r#"
 [image]
 base = "fedora:44"
@@ -325,23 +354,32 @@ name = "env"
 [container]
 name = "env"
 home = "~/env"
-
-[[provision]]
-name = "toolchain"
-run = "mise use -g rust@stable"
+[integration]
+audio = true
 "#,
         )
         .unwrap();
+        assert_eq!(custom_key(&without), custom_key(&with));
+    }
+
+    #[test]
+    fn provision_steps_leave_the_image_key_alone() {
         // Editing a step must never trigger an image rebuild.
-        assert_eq!(
-            definition_checksum(&without).unwrap(),
-            definition_checksum(&with).unwrap()
-        );
-        // An image-affecting change still moves the checksum.
-        let changed_image = Config::parse(
+        let without = Config::parse(
             r#"
 [image]
-base = "fedora:45"
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#,
+        )
+        .unwrap();
+        let with = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
 name = "env"
 [container]
 name = "env"
@@ -353,9 +391,51 @@ run = "mise use -g rust@stable"
 "#,
         )
         .unwrap();
+        assert_eq!(custom_key(&without), custom_key(&with));
+    }
+
+    #[test]
+    fn image_affecting_changes_move_the_image_key() {
+        let base_toml = r#"
+[image]
+base = "fedora:44"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#;
+        let base = Config::parse(base_toml).unwrap();
+        // A different base image changes the rendered recipe.
+        let changed_image = Config::parse(&base_toml.replace("fedora:44", "fedora:45")).unwrap();
+        assert_ne!(custom_key(&base), custom_key(&changed_image));
+        // So does an added package.
+        let with_package = Config::parse(&format!(
+            "{base_toml}\n[image.packages]\ninstall = [\"htop\"]\n"
+        ))
+        .unwrap();
+        assert_ne!(custom_key(&base), custom_key(&with_package));
+        // So does a different guest binary or host version.
+        let recipe = crate::codegen::containerfile::generate(&base, "podbox-guest").unwrap();
+        let key = image_cache_key(&recipe, crate::guest::PODBOX_GUEST, crate::VERSION);
         assert_ne!(
-            definition_checksum(&with).unwrap(),
-            definition_checksum(&changed_image).unwrap()
+            key,
+            image_cache_key(&recipe, Some(b"other-guest"), crate::VERSION)
         );
+        assert_ne!(
+            key,
+            image_cache_key(&recipe, crate::guest::PODBOX_GUEST, "v9.9.9")
+        );
+    }
+
+    #[test]
+    fn missing_image_is_not_a_cache_hit() {
+        let lock = crate::lock::LockFile {
+            config_checksum: "abc123".into(),
+            image_digest: "sha256:deadbeef".into(),
+        };
+        assert!(cache_hit(Some(&lock), "abc123", true));
+        assert!(!cache_hit(Some(&lock), "abc123", false));
+        assert!(!cache_hit(Some(&lock), "other", true));
+        assert!(!cache_hit(None, "abc123", true));
     }
 }

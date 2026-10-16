@@ -56,5 +56,4 @@ userns = "nomap"
 [lifecycle]
 quadlet     = true
 autostart   = true
-on_stop     = "keep"
 auto_update = false

@@ -22,11 +22,12 @@ pub use fs::{
 pub use schema::{Config, IMAGE_REPO_PREFIX, SchemaVersion};
 pub use types::{
     BuiltinCachePath, BuiltinCaches, ContainerConfig, ContainerEnvConfig, CustomCacheConfig,
-    DbusConfig, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig, HostCacheConfig,
-    HostCachesConfig, HostExecConfig, HostExecEntry, ImageConfig, IntegrationConfig,
-    LifecycleConfig, MountConfig, NetworkConfig, PackageConfig, ProvisionOnFailure, ProvisionStep,
-    RunConfig, SecretEntry, SecretSource, SecretType, SecurityConfig, ServiceConfig,
-    ServiceDetailConfig, SharedCachesConfig, StorageConfig, SystemdConfig, WaylandConfig,
-    XdgDirConfig, all_builtin_cache_paths, builtin_cache_mount_names, builtin_cache_names,
+    DbusConfig, DbusPreset, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig,
+    HostCacheConfig, HostCachesConfig, HostExecConfig, HostExecEntry, ImageConfig,
+    IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig,
+    ProvisionOnFailure, ProvisionStep, RunConfig, SecretEntry, SecretSource, SecretType,
+    SecurityConfig, ServiceConfig, ServiceDetailConfig, SharedCachesConfig, StorageConfig,
+    SystemdConfig, WaylandConfig, XdgDirConfig, all_builtin_cache_paths, builtin_cache_mount_names,
+    builtin_cache_names,
 };
 pub use validation::validate_container_name;
