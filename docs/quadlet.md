@@ -67,7 +67,10 @@ These unit files are generated per container:
 | `Memory` | From `container.memory` | Memory limit (conditional, e.g. `"4G"`) |
 | `PodmanArgs=--cpus=` | From `container.cpus` | CPU limit (conditional, e.g. `"0.5"` → `--cpus=0.5`; Quadlet has no `CpuQuota` key) |
 | `ReadOnly` | `true` | Read-only rootfs (conditional on `security.read_only_rootfs`) |
-| `AppArmorProfile` | From `security.apparmor` | AppArmor profile (conditional, e.g. `"unconfined"`) |
+| `RunInit` | `true` | Always (catatonit as PID 1 for zombie reaping) |
+| `WorkingDir` | `/home/%u` | Always (default working directory) |
+| `AddCapability` | From `security.cap_preset` + `security.cap_add` | Capabilities (conditional; Quadlet has no `CpuQuota` key, so `--cpus` still goes through `PodmanArgs`) |
+| `AppArmor` | From `security.apparmor` | AppArmor profile (conditional, e.g. `"unconfined"`) |
 | `AddDevice` | `/dev/dri` | GPU (conditional on `gpu=true` or `gpu="auto"` with DRI present) |
 | `AddDevice` | `-/dev/nvidiactl`, `-/dev/nvidia0` | NVIDIA GPU (conditional on `gpu="nvidia"` or `gpu="auto"` with NVIDIA present) |
 | `AddDevice` | `-/dev/nvidia-uvm` | NVIDIA UVM (conditional, when available) |
@@ -75,7 +78,6 @@ These unit files are generated per container:
 | `PublishPort` | From `network.ports` | Port mapping (conditional, ignored in `host` mode) |
 | `AutoUpdate` | `registry` or `local` | Auto-update (conditional on `lifecycle.auto_update`; `registry` for prebuilt, `local` for custom) |
 | `ReloadCmd` | From `container.reload_cmd` | Reload command (conditional) |
-| `SshAgent` | `default` | SSH agent passthrough (conditional on `ssh_agent`, requires Podman ≥ 5.6) |
 
 ### `Environment=` entries
 
@@ -119,17 +121,18 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | `%t/pipewire-0` | `%t/pipewire-0` | (none) | `audio = true` + PipeWire present |
 | `%t/pulse` | `%t/pulse` | (none) | `audio = true` + PulseAudio present |
 | D-Bus socket | D-Bus socket | (none) | `dbus = true` |
+| SSH agent socket | `/run/podbox/ssh-agent.sock` | (none) | `ssh_agent = true` + `SSH_AUTH_SOCK` present on host (plus `Environment=SSH_AUTH_SOCK`) |
 | GPG agent socket | `/run/podbox/gnupg/S.gpg-agent` | `ro` | `gpg_agent = true` |
 | `%t/podbox/<name>.sock` | `%t/podbox/<name>.sock` | (none) | Always (host-guest socket) |
 | Extra mounts | Per config | Per config | From `[container.mounts].extra` |
 
 ### `PodmanArgs=`
 
+Only settings with no native Quadlet key go through `PodmanArgs=`:
+
 | Arg | Notes |
 |-----|-------|
-| `--init` | catatonit as PID 1 (zombie reaping) |
-| `--workdir=/home/%u` | Default working directory |
-| `--cap-add=<cap>` | Per `security.cap_preset` + `security.cap_add` (conditional) |
+| `--cpus=<n>` | From `container.cpus` (conditional; Quadlet has no `CpuQuota` key, and `--cpus` also takes fractions like `0.5`) |
 
 ### `[Service]`
 
@@ -184,7 +187,7 @@ Podbox targets Podman 5.5+ with feature gating at 5.6 and 6.0.
 
 | Feature | Podman 5.5.x | Podman ≥ 5.6, < 6.0 | Podman ≥ 6.0 |
 |---------|-------------|----------------------|--------------|
-| `ssh_agent` | Warns and skips | `SshAgent=default` + `Environment=` | `SshAgent=default` + `Environment=` |
+| `ssh_agent` | `Volume=` + `Environment=SSH_AUTH_SOCK` on all versions | `Volume=` + `Environment=SSH_AUTH_SOCK` on all versions | `Volume=` + `Environment=SSH_AUTH_SOCK` on all versions |
 | Quadlet install | Manual copy into `~/.config/containers/systemd/` | `podman quadlet install --replace` with **file** args (flat layout) | `podman quadlet install --replace --application <name> <dir>` (app-subdir layout) |
 | Quadlet uninstall | Manual file remove + `systemctl daemon-reload` | `podman quadlet rm <name>.container` (flat) | `podman quadlet rm --recursive <name>` (app-subdir) + flat fallback |
 | Container list | `podman ps --filter label=podbox.*` | `podman quadlet list` | `podman quadlet list` |

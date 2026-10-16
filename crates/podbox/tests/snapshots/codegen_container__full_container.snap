@@ -65,10 +65,10 @@ Environment=SHELL=/usr/bin/fish
 Environment=TERM=xterm-256color
 Environment=PODBOX_CONTAINER=myenv
 
-PodmanArgs=--init
-PodmanArgs=--workdir=/home/%u
-PodmanArgs=--cap-add=DAC_READ_SEARCH
-PodmanArgs=--cap-add=PERFMON
+RunInit=true
+WorkingDir=/home/%u
+AddCapability=DAC_READ_SEARCH
+AddCapability=PERFMON
 
 [Service]
 Slice=podbox.slice

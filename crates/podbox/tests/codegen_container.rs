@@ -170,7 +170,18 @@ fn quadlet_container_has_security_label_disable() {
 fn quadlet_container_has_init() {
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("PodmanArgs=--init"));
+    assert!(q.contains("RunInit=true"));
+    assert!(!q.contains("PodmanArgs=--init"));
+}
+#[test]
+fn quadlet_container_uses_native_cap_and_workdir_keys() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("WorkingDir=/home/%u"));
+    assert!(q.contains("AddCapability=DAC_READ_SEARCH"));
+    assert!(q.contains("AddCapability=PERFMON"));
+    assert!(!q.contains("--cap-add="));
+    assert!(!q.contains("--workdir="));
 }
 #[test]
 fn quadlet_container_has_network_host() {

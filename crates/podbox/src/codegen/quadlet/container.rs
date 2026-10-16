@@ -475,15 +475,18 @@ pub(super) fn emit_podman_args(
     config: &Config,
     warnings: &mut Vec<String>,
 ) {
-    lines.push("PodmanArgs=--init".into());
-    lines.push("PodmanArgs=--workdir=/home/%u".into());
+    // Native Quadlet keys where they exist (all predate the Podman 5.5
+    // floor, so no version fallback is needed): only --cpus still goes
+    // through PodmanArgs, because Quadlet has no CpuQuota key.
+    lines.push("RunInit=true".into());
+    value::push_composed(lines, "WorkingDir=/home/%u".to_string());
     let cap_preset = config.security.cap_preset;
     let has_any_cap = !cap_preset.caps().is_empty() || !config.security.cap_add.is_empty();
     for cap in cap_preset.caps() {
-        value::push_raw(lines, warnings, "PodmanArgs", &format!("--cap-add={cap}"));
+        value::push_raw(lines, warnings, "AddCapability", cap);
     }
     for cap in &config.security.cap_add {
-        value::push_raw(lines, warnings, "PodmanArgs", &format!("--cap-add={cap}"));
+        value::push_raw(lines, warnings, "AddCapability", cap);
     }
     if has_any_cap {
         lines.push(String::new());
