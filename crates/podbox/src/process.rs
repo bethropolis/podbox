@@ -1,15 +1,15 @@
 use std::ffi::OsString;
 use std::io::{self, BufRead, IoSlice, IoSliceMut, Write};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitStatus, Output};
 use std::time::Duration;
 
+use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 use nix::sys::signal::{Signal, kill};
 use nix::sys::socket::{ControlMessage, ControlMessageOwned, MsgFlags, recvmsg, sendmsg};
 use nix::unistd::Pid;
-
 /// Build a `Vec<OsString>` from a slice of `&str`/`&String` literals.
 pub fn args<S: AsRef<str>>(items: &[S]) -> Vec<OsString> {
     items.iter().map(|s| OsString::from(s.as_ref())).collect()
@@ -272,6 +272,18 @@ pub fn send_fd(stream: &UnixStream, fd: RawFd) -> io::Result<()> {
     }
 }
 
+/// Mark a descriptor close-on-exec so children spawned later (host-exec
+/// commands, `xdg-open`, `wl-copy`) never inherit it.
+///
+/// Use this right after adopting a descriptor from outside the process,
+/// such as systemd's socket-activation fd 3: without the flag a
+/// long-running child would hold the listening socket open.
+pub fn set_cloexec(fd: BorrowedFd) -> io::Result<()> {
+    fcntl(fd, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC))
+        .map(|_| ())
+        .map_err(io::Error::from)
+}
+
 /// Adopt a raw descriptor received via `SCM_RIGHTS` into an owned handle.
 ///
 /// The kernel duplicates ancillary-data descriptors into the receiving
@@ -289,17 +301,27 @@ pub fn adopt_scm_fd(raw: RawFd) -> OwnedFd {
     }
 }
 
-/// Receive a raw file descriptor from a connected Unix stream via `SCM_RIGHTS`.
+/// Receive a file descriptor from a connected Unix stream via `SCM_RIGHTS`.
 ///
-/// Returns `None` when the sender has closed the connection (EOF).
-/// Retries on `EINTR` to prevent spurious session drops.
-pub fn recv_fd(stream: &UnixStream) -> io::Result<Option<RawFd>> {
+/// Returns `None` when the sender has closed the connection (EOF), or when
+/// the message carries no descriptor. Every descriptor the kernel delivers
+/// is adopted into an `OwnedFd` straight away: the first is returned and
+/// any extras are dropped on the spot, so a peer that sends more than
+/// asked-for cannot leak descriptors into this process. Delivery requests
+/// `MSG_CMSG_CLOEXEC`, so the adopted descriptors also stay out of spawned
+/// children. Retries on `EINTR` to prevent spurious session drops.
+pub fn recv_fd(stream: &UnixStream) -> io::Result<Option<OwnedFd>> {
     let raw_fd = stream.as_raw_fd();
     let mut buf = [0u8; 1];
     let mut iov = [IoSliceMut::new(&mut buf)];
     let mut cmsg_buf = vec![0u8; 256];
     let msg = loop {
-        match recvmsg::<()>(raw_fd, &mut iov, Some(&mut cmsg_buf), MsgFlags::empty()) {
+        match recvmsg::<()>(
+            raw_fd,
+            &mut iov,
+            Some(&mut cmsg_buf),
+            MsgFlags::MSG_CMSG_CLOEXEC,
+        ) {
             Ok(m) => break m,
             Err(nix::errno::Errno::EINTR) => {}
             Err(e) => return Err(io::Error::from(e)),
@@ -310,21 +332,22 @@ pub fn recv_fd(stream: &UnixStream) -> io::Result<Option<RawFd>> {
         return Ok(None);
     }
 
+    let mut owned: Vec<OwnedFd> = Vec::new();
     if let Ok(cmsgs) = msg.cmsgs() {
         for cmsg in cmsgs {
             if let ControlMessageOwned::ScmRights(fds) = cmsg {
-                if let Some(&fd) = fds.first() {
-                    return Ok(Some(fd));
-                }
+                owned.extend(fds.into_iter().map(adopt_scm_fd));
             }
         }
     }
-    Ok(None)
+    let mut owned = owned.into_iter();
+    Ok(owned.next())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsFd;
 
     #[test]
     fn args_builds_osstring_vec() {
@@ -383,5 +406,57 @@ mod tests {
         let s = String::from("hello");
         let v = args(&["a", &s, "c"]);
         assert_eq!(v[1], "hello");
+    }
+
+    fn fd_targets() -> Vec<std::path::PathBuf> {
+        std::fs::read_dir("/proc/self/fd")
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| std::fs::read_link(e.path()).ok())
+            .collect()
+    }
+
+    fn has_cloexec(fd: BorrowedFd) -> bool {
+        let flags = fcntl(fd, FcntlArg::F_GETFD).unwrap();
+        FdFlag::from_bits_retain(flags).contains(FdFlag::FD_CLOEXEC)
+    }
+
+    #[test]
+    fn set_cloexec_marks_the_descriptor_close_on_exec() {
+        let (a, _b) = UnixStream::pair().unwrap();
+        fcntl(a.as_fd(), FcntlArg::F_SETFD(FdFlag::empty())).unwrap();
+        assert!(!has_cloexec(a.as_fd()));
+        set_cloexec(a.as_fd()).unwrap();
+        assert!(has_cloexec(a.as_fd()));
+    }
+
+    #[test]
+    fn recv_fd_returns_one_and_closes_the_extras() {
+        // Spares live in a unique temp file, so counting descriptors that
+        // point at it is unaffected by whatever other tests have open.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let spares: Vec<std::fs::File> = (0..3).map(|_| tmp.reopen().unwrap()).collect();
+        let raws: Vec<RawFd> = spares.iter().map(|f| f.as_raw_fd()).collect();
+        let target = tmp.path().to_path_buf();
+        let count_for = |p: &std::path::Path| fd_targets().iter().filter(|t| *t == p).count();
+        // The temp handle plus its three reopens.
+        assert_eq!(count_for(&target), 4);
+
+        let (tx, rx) = UnixStream::pair().unwrap();
+        sendmsg::<()>(
+            tx.as_raw_fd(),
+            &[IoSlice::new(&[0u8])],
+            &[ControlMessage::ScmRights(&raws)],
+            MsgFlags::empty(),
+            None,
+        )
+        .unwrap();
+        let got = recv_fd(&rx).unwrap().expect("expected a descriptor");
+        // Delivered close-on-exec, so children never inherit it.
+        assert!(has_cloexec(got.as_fd()));
+        // Three sent, one returned: the two extras are already closed.
+        assert_eq!(count_for(&target), 5);
+        drop(got);
+        assert_eq!(count_for(&target), 4);
     }
 }

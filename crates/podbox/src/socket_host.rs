@@ -1,4 +1,4 @@
-use std::os::fd::FromRawFd;
+use std::os::fd::{AsFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Arc;
@@ -182,10 +182,12 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
             // protocol: the user manager hands over ownership of a valid
             // listening socket fd, which this process must adopt exactly
             // once. No safe wrapper exists for externally-sourced fds.
+            // `set_cloexec` runs before any child is spawned, so host-exec
+            // commands, `xdg-open` and `wl-copy` never inherit the listener.
             #[allow(unsafe_code)]
-            unsafe {
-                UnixListener::from_raw_fd(fd)
-            }
+            let listener = unsafe { UnixListener::from_raw_fd(fd) };
+            crate::process::set_cloexec(listener.as_fd())?;
+            listener
         }
         None => {
             let _ = std::fs::remove_file(&path);

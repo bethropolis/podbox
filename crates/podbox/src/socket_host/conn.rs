@@ -155,12 +155,11 @@ pub(crate) fn handle_connection(
                     return Ok(());
                 }
                 // Receive the pidfd via SCM_RIGHTS
-                let raw_fd = match process::recv_fd(stream) {
+                let fd = match process::recv_fd(stream) {
                     Ok(Some(fd)) => fd,
                     Ok(None) => return Ok(()),
                     Err(_) => return Ok(()),
                 };
-                let fd = process::adopt_scm_fd(raw_fd);
                 state.session_count.fetch_add(1, Ordering::SeqCst);
                 let s = Arc::clone(state);
                 std::thread::spawn(move || monitor_pidfd(fd, s));
