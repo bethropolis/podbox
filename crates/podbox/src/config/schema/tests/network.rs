@@ -1,6 +1,7 @@
 //! Network mode and published port validation
 
 use super::super::*;
+use crate::config::NetworkMode;
 
 #[test]
 fn test_network_defaults_to_pasta() {
@@ -13,7 +14,7 @@ name = "env"
 home = "~/env"
 "#;
     let cfg = Config::parse(toml).unwrap();
-    assert_eq!(cfg.network.mode, "pasta");
+    assert_eq!(cfg.network.mode, NetworkMode::Pasta);
     assert!(!cfg.network.offline);
     assert!(cfg.network.ports.is_empty());
 }
@@ -34,9 +35,9 @@ offline = true
 "#,
     )
     .unwrap();
-    assert_eq!(cfg.network.mode, "pasta");
+    assert_eq!(cfg.network.mode, NetworkMode::Pasta);
     assert!(cfg.network.offline);
-    assert_eq!(cfg.network.effective_mode(), "none");
+    assert_eq!(cfg.network.effective_mode(), NetworkMode::None);
     let serialized = toml::to_string(&cfg).unwrap();
     assert!(serialized.contains("offline = true"));
 }
@@ -54,7 +55,7 @@ mode = "pasta"
 ports = ["8080:80", "443:443"]
 "#;
     let cfg = Config::parse(toml).unwrap();
-    assert_eq!(cfg.network.mode, "pasta");
+    assert_eq!(cfg.network.mode, NetworkMode::Pasta);
     assert_eq!(cfg.network.ports, vec!["8080:80", "443:443"]);
 }
 #[test]

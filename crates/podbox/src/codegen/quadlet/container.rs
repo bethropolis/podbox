@@ -93,7 +93,7 @@ pub(super) fn emit_container_image(
     }
     value::push_raw(lines, warnings, "ContainerName", name);
     if let Some(ref mode) = config.security.userns {
-        value::push_raw(lines, warnings, "UserNS", mode);
+        value::push_raw(lines, warnings, "UserNS", mode.as_str());
     } else {
         lines.push("UserNS=keep-id".into());
     }
@@ -144,8 +144,8 @@ pub(super) fn emit_container_image(
 
 pub(super) fn emit_network(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec<String>) {
     let mode = config.network.effective_mode();
-    value::push_raw(lines, warnings, "Network", mode);
-    if mode != "host" && mode != "none" {
+    value::push_raw(lines, warnings, "Network", mode.as_str());
+    if mode != crate::config::NetworkMode::Host && mode != crate::config::NetworkMode::None {
         for port in &config.network.ports {
             value::push_raw(lines, warnings, "PublishPort", port);
         }

@@ -181,7 +181,7 @@ pub(crate) fn print_exposure_summary(config: &Config) {
     );
     line(
         "Network",
-        if config.network.mode == "host" {
+        if config.network.mode == podbox::config::NetworkMode::Host {
             "host mode - container shares the host's network stack".to_string()
         } else {
             format!(

@@ -240,10 +240,10 @@ impl Config {
             if !valid_name {
                 errors.push(format!("container.services: invalid service name '{name}'"));
             }
-            let (command, env, restart) = match service {
-                crate::config::ServiceConfig::Short(command) => (command, None, "on-failure"),
+            let (command, env) = match service {
+                crate::config::ServiceConfig::Short(command) => (command, None),
                 crate::config::ServiceConfig::Detailed(detail) => {
-                    (&detail.command, Some(&detail.env), detail.restart.as_str())
+                    (&detail.command, Some(&detail.env))
                 }
             };
             if command.trim().is_empty() {
@@ -251,11 +251,9 @@ impl Config {
                     "container.services.{name}.command: must not be empty"
                 ));
             }
-            if !["never", "on-failure", "always"].contains(&restart) {
-                errors.push(format!(
-                    "container.services.{name}.restart: expected never, on-failure, or always"
-                ));
-            }
+            // `restart` is a `ServiceRestart` enum: unknown spellings fail
+            // at parse time with the valid list, so there is nothing to
+            // re-check here.
             if let Some(values) = env {
                 for (key, value) in values {
                     if !is_valid_env_key(key)
@@ -269,27 +267,15 @@ impl Config {
             }
         }
 
-        if let Some(ref userns) = self.security.userns {
-            let valid_userns = ["keep-id", "nomap", "private"];
-            if !valid_userns.contains(&userns.as_str()) {
-                errors.push(format!(
-                    "security.userns: '{}' is invalid (expected one of: {})",
-                    userns,
-                    valid_userns.join(", ")
-                ));
-            }
-        }
+        // `security.userns` is a `UsernsMode` enum: unknown spellings fail
+        // at parse time with the valid list, so there is nothing to
+        // re-check here.
 
-        // Network validation
-        let valid_modes = ["host", "bridge", "none", "pasta", "slirp4netns", "private"];
-        if !valid_modes.contains(&self.network.mode.as_str()) {
-            errors.push(format!(
-                "network.mode: '{}' is invalid (expected one of: {})",
-                self.network.mode,
-                valid_modes.join(", ")
-            ));
-        }
-        if self.network.effective_mode() == "none" && !self.network.ports.is_empty() {
+        // Network validation. `network.mode` is a `NetworkMode` enum:
+        // unknown spellings fail at parse time with the valid list.
+        if self.network.effective_mode() == crate::config::NetworkMode::None
+            && !self.network.ports.is_empty()
+        {
             errors.push(
                 "network.ports: cannot publish ports when network mode is none/offline".into(),
             );

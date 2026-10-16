@@ -73,6 +73,94 @@ impl FromStr for PackageManager {
     }
 }
 
+/// Container network mode. The TOML spellings are unchanged (`rename_all`
+/// keeps them lowercase), so existing files parse as before; typos now
+/// fail at parse time with the valid list instead of reaching validation
+/// or podman.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NetworkMode {
+    Host,
+    Bridge,
+    None,
+    #[default]
+    Pasta,
+    Slirp4netns,
+    Private,
+}
+
+impl NetworkMode {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::Bridge => "bridge",
+            Self::None => "none",
+            Self::Pasta => "pasta",
+            Self::Slirp4netns => "slirp4netns",
+            Self::Private => "private",
+        }
+    }
+}
+
+impl std::fmt::Display for NetworkMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// User-namespace mode for the container.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UsernsMode {
+    KeepId,
+    Nomap,
+    Private,
+}
+
+impl UsernsMode {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::KeepId => "keep-id",
+            Self::Nomap => "nomap",
+            Self::Private => "private",
+        }
+    }
+}
+
+impl std::fmt::Display for UsernsMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Restart policy for a `container.services` entry. Serializes to the
+/// same strings as before, so the services JSON the guest reads is
+/// unchanged.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ServiceRestart {
+    Never,
+    #[default]
+    OnFailure,
+    Always,
+}
+
+impl ServiceRestart {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::OnFailure => "on-failure",
+            Self::Always => "always",
+        }
+    }
+}
+
+impl std::fmt::Display for ServiceRestart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum GpuMode {
     #[default]
@@ -336,6 +424,105 @@ home = "~/env"
             );
             let cfg: Config = toml::from_str(&full).unwrap();
             assert_eq!(cfg.integration.gpu, *expected);
+        }
+    }
+
+    fn config_with(tail: &str) -> String {
+        format!(
+            "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
+             [container]\nname = \"env\"\nhome = \"~/env\"\n{tail}\n"
+        )
+    }
+
+    #[test]
+    fn test_network_mode_values_parse() {
+        for (value, expected) in [
+            ("host", NetworkMode::Host),
+            ("bridge", NetworkMode::Bridge),
+            ("none", NetworkMode::None),
+            ("pasta", NetworkMode::Pasta),
+            ("slirp4netns", NetworkMode::Slirp4netns),
+            ("private", NetworkMode::Private),
+        ] {
+            let cfg: Config =
+                toml::from_str(&config_with(&format!("[network]\nmode = \"{value}\"\n"))).unwrap();
+            assert_eq!(cfg.network.mode, expected);
+        }
+    }
+
+    #[test]
+    fn test_network_mode_typo_lists_valid_values() {
+        let err = toml::from_str::<Config>(&config_with("[network]\nmode = \"macvlan\"\n"))
+            .expect_err("typoed mode must fail");
+        let msg = err.to_string();
+        for valid in ["host", "bridge", "none", "pasta", "slirp4netns", "private"] {
+            assert!(msg.contains(valid), "error should list {valid}: {msg}");
+        }
+    }
+
+    #[test]
+    fn test_userns_values_parse() {
+        for (value, expected) in [
+            ("keep-id", UsernsMode::KeepId),
+            ("nomap", UsernsMode::Nomap),
+            ("private", UsernsMode::Private),
+        ] {
+            let cfg: Config =
+                toml::from_str(&config_with(&format!("[security]\nuserns = \"{value}\"\n")))
+                    .unwrap();
+            assert_eq!(cfg.security.userns, Some(expected));
+        }
+    }
+
+    #[test]
+    fn test_userns_typo_lists_valid_values() {
+        let err = toml::from_str::<Config>(&config_with("[security]\nuserns = \"keepid\"\n"))
+            .expect_err("typoed userns must fail");
+        let msg = err.to_string();
+        for valid in ["keep-id", "nomap", "private"] {
+            assert!(msg.contains(valid), "error should list {valid}: {msg}");
+        }
+    }
+
+    #[test]
+    fn test_service_restart_values_parse() {
+        for (value, expected) in [
+            ("never", ServiceRestart::Never),
+            ("on-failure", ServiceRestart::OnFailure),
+            ("always", ServiceRestart::Always),
+        ] {
+            let cfg: Config = toml::from_str(&config_with(&format!(
+                "[container.services.web]\ncommand = \"x\"\nrestart = \"{value}\"\n"
+            )))
+            .unwrap();
+            match &cfg.container.services["web"] {
+                crate::config::ServiceConfig::Detailed(detail) => {
+                    assert_eq!(detail.restart, expected);
+                }
+                other => panic!("expected detailed service, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_service_restart_typo_lists_valid_values() {
+        let err = toml::from_str::<Config>(&config_with(
+            "[container.services.web]\ncommand = \"x\"\nrestart = \"sometimes\"\n",
+        ))
+        .expect_err("typoed restart must fail");
+        let msg = err.to_string();
+        for valid in ["never", "on-failure", "always"] {
+            assert!(msg.contains(valid), "error should list {valid}: {msg}");
+        }
+    }
+
+    #[test]
+    fn test_dbus_preset_typo_lists_valid_values() {
+        let err = toml::from_str::<Config>(&config_with("[dbus]\npreset = \"flatpack\"\n"))
+            .expect_err("typoed preset must fail");
+        let msg = err.to_string();
+        for valid in ["flatpak", "gnome", "kde", "portal", "none"] {
+            assert!(msg.contains(valid), "error should list {valid}: {msg}");
         }
     }
 }
