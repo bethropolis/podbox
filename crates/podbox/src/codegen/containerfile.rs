@@ -75,7 +75,9 @@ fn generate_prebuilt(config: &Config) -> String {
 /// already embeds a guest, and version skew is reported at build and checked
 /// at runtime).
 pub fn prebuilt_overlay_needed(config: &Config) -> bool {
-    !config.image.packages.install.is_empty() || !config.image.run.commands.is_empty()
+    !config.image.packages.install.is_empty()
+        || !config.image.packages.remove.is_empty()
+        || !config.image.run.commands.is_empty()
 }
 
 /// Generate the overlay Containerfile layered onto a prebuilt image.
@@ -101,6 +103,15 @@ pub fn generate_prebuilt_overlay(
             lines.push(layer);
             lines.push(String::new());
         }
+    }
+    // Removal runs after installation: a base image (or the step above)
+    // may ship the package, and the user asked for it gone.
+    if !config.image.packages.remove.is_empty() {
+        lines.push(format!(
+            "RUN {}",
+            distro.remove_cmd(&config.image.packages.remove)
+        ));
+        lines.push(String::new());
     }
     for cmd in &config.image.run.commands {
         lines.push(format!("RUN {cmd}"));
@@ -190,6 +201,7 @@ fn generate_custom_with(
         // installed, and the container failed to start a shell.
         .add_shell_packages(distro, &config.container.shell)
         .add_user_packages(config.image.packages.install.clone())
+        .add_remove_packages(config.image.packages.remove.clone())
         .add_run_commands(config.image.run.commands.clone())
         .set_guest(guest_name, guest_available)
         .set_shell(&config.container.shell)
@@ -201,6 +213,7 @@ struct ContainerfileBuilder {
     container_name: String,
     distro: Option<DistroFamily>,
     packages: Vec<String>,
+    remove_packages: Vec<String>,
     run_commands: Vec<String>,
     guest_name: String,
     has_guest_binary: bool,
@@ -215,6 +228,7 @@ impl ContainerfileBuilder {
             container_name: container_name.to_string(),
             distro: None,
             packages: Vec::new(),
+            remove_packages: Vec::new(),
             run_commands: Vec::new(),
             guest_name: "podbox-guest".to_string(),
             has_guest_binary: false,
@@ -271,6 +285,11 @@ impl ContainerfileBuilder {
         self
     }
 
+    fn add_remove_packages(mut self, pkgs: Vec<String>) -> Self {
+        self.remove_packages = pkgs;
+        self
+    }
+
     fn add_run_commands(mut self, cmds: Vec<String>) -> Self {
         self.run_commands = cmds;
         self
@@ -299,6 +318,14 @@ impl ContainerfileBuilder {
         if !self.packages.is_empty() {
             let pkgs = self.packages.join(" ");
             lines.push(self.install_command(distro, &pkgs));
+            lines.push(String::new());
+        }
+
+        // Removal runs after installation: the base image or the step
+        // above may ship the package, and the user asked for it gone.
+        // `remove_cmd` already appends the family cache clean.
+        if !self.remove_packages.is_empty() {
+            lines.push(format!("RUN {}", distro.remove_cmd(&self.remove_packages)));
             lines.push(String::new());
         }
 

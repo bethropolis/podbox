@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "astro dev",
+    "predev": "bun scripts/sync-content.ts",
     "prebuild": "bun scripts/sync-content.ts",
     "build": "astro build",
     "preview": "astro preview",

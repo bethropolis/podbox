@@ -31,8 +31,12 @@ bins = ["rg", "gcc"]
 
 ### How it works
 
-1. Reads `/usr/share/applications/<name>.desktop` from the running container.
-2. Rewrites `Exec=` to route through podbox (everything else preserved):
+1. Reads `<name>.desktop` from the running container: the system
+   application dirs first, then the container user's
+   `~/.local/share/applications`, then `/opt/*/share/applications`.
+2. Rewrites `Exec=` to route through podbox (everything else preserved).
+   `TryExec=` is dropped (it points inside the container and would hide
+   the launcher) and `Icon=` is pointed at the copied host icon below:
 
     ```ini
     Exec=gedit %F

@@ -386,6 +386,46 @@ fn profile_dev_parses() {
 }
 
 #[test]
+fn containerfile_prebuilt_overlay_removes_packages_after_install() {
+    let mut config = load_config("prebuilt.toml");
+    config.image.packages.install = vec!["htop".into()];
+    config.image.packages.remove = vec!["nano".into()];
+    let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
+        &config,
+        "ghcr.io/bethropolis/podbox:cachy-latest",
+        false,
+    )
+    .expect("remove needs an overlay");
+    let install = overlay.find("htop").expect("install step present");
+    let remove = overlay.find("RUN pacman -Rns --noconfirm nano && pacman -Scc --noconfirm");
+    assert!(remove.is_some(), "remove step present:\n{overlay}");
+    assert!(
+        install < remove.unwrap(),
+        "remove must follow install:\n{overlay}"
+    );
+}
+
+#[test]
+fn containerfile_prebuilt_overlay_needed_for_remove_only() {
+    let mut config = load_config("prebuilt.toml");
+    config.image.packages.remove = vec!["nano".into()];
+    assert!(
+        podbox::codegen::containerfile::prebuilt_overlay_needed(&config),
+        "a remove-only config still needs an overlay"
+    );
+    let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
+        &config,
+        "ghcr.io/bethropolis/podbox:cachy-latest",
+        false,
+    )
+    .expect("remove-only config renders an overlay");
+    assert!(
+        overlay.contains("pacman -Rns --noconfirm nano"),
+        "{overlay}"
+    );
+}
+
+#[test]
 fn profile_ubuntu_parses() {
     with_sandbox_home(|_| {
         let profile = podbox::profiles::find("ubuntu").expect("ubuntu profile exists");

@@ -144,8 +144,16 @@ mode = "0400"
 [[security.secrets]]
 name = "gh_token"
 source = "systemd"                    # podman (default) or systemd
-target = "GH_TOKEN"                   # Environment=GH_TOKEN=%d/gh_token
+target = "GH_TOKEN"                   # Environment=GH_TOKEN=/run/secrets/gh_token
+path = "/etc/credstore/gh_token"      # host-side credential file (required for systemd)
+# encrypted = true                    # read path with LoadCredentialEncrypted=
 ```
+
+A `systemd` secret emits `LoadCredential=<name>:<path>` under `[Service]`
+(so `%d`/`$CREDENTIALS_DIRECTORY` is populated), mounts
+`Volume=%d/<name>:/run/secrets/<name>:ro,z`, and — for `type = "env"` —
+sets the target variable to the container path. `mount` secrets expose only
+the file. The credential name must be a safe filename (no `/` or `..`).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -154,6 +162,8 @@ target = "GH_TOKEN"                   # Environment=GH_TOKEN=%d/gh_token
 | `target` | string | secret name | Destination name inside the container |
 | `mode` | string | — | File mode for `mount` secrets |
 | `source` | string | `"podman"` | `podman` reads `podman secret`; `systemd` reads a systemd credential |
+| `path` | string | — | Host-side credential file. Required with `source = "systemd"` |
+| `encrypted` | bool | `false` | Read `path` with `LoadCredentialEncrypted=` instead of `LoadCredential=`. Only meaningful with `source = "systemd"` |
 
 Don't mix forms: all bare strings, or all tables. `podbox doctor` checks
 the named secrets exist.
@@ -283,6 +293,12 @@ way inside.
 
 Controls which host resources are shared with the container.
 
+Prebuilt images may ship OCI labels (`podbox.integration.audio=true`, …)
+suggesting integration defaults. Precedence is: an explicitly set definition
+value (including values from `extends` profiles) beats an image label, which
+beats the built-in default. Setting `integration.audio = false` therefore
+stays off even when the image label says `true`.
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `wayland` | bool | `false` | Share Wayland socket for GUI apps |
@@ -307,7 +323,7 @@ Controls which host resources are shared with the container.
 | `"auto"` (default) | Detect available GPU devices at runtime |
 | `true` | Enable `/dev/dri` (Intel/AMD) |
 | `false` | Disable all GPU passthrough |
-| `"nvidia"` | Enable `/dev/dri` + NVIDIA device nodes |
+| `"nvidia"` | Enable `/dev/dri` + all `/dev/nvidia*` nodes (optional each; `doctor` suggests `nvidia-ctk cdi generate` when no CDI spec exists) |
 
 ### `[integration.hardware]`
 
@@ -405,7 +421,7 @@ bins = ["rg", "gcc"]
 |-----|------|---------|-------------|
 | `quadlet` | bool | `false` | Generate Quadlet systemd files on `podbox enable` |
 | `autostart` | bool | `false` | Start container on user login (`WantedBy=default.target`) |
-| `on_stop` | string | `"keep"` | Container behavior on stop (`"keep"` or `"remove"`) |
+| `on_stop` | string | `"keep"` | Deprecated, no effect: Quadlet containers are always ephemeral (`podman run --rm --replace`); state lives in the home volume and snapshots. Setting it prints a deprecation warning |
 | `auto_update` | bool | `false` | Add `Label=io.containers.autoupdate=registry` for auto-updates |
 | `auto_checkpoint` | bool | `false` | Tag the current image as `checkpoint-prev` before update or `build --rebuild`; `podbox rollback` restores that image |
 | `idle_timeout` | string | `"off"` | Idle timeout before guest daemon exits (`"off"`, `"30s"`, `"5m"`, `"1h") |
@@ -414,7 +430,6 @@ bins = ["rg", "gcc"]
 [lifecycle]
 quadlet      = true
 autostart    = true
-on_stop      = "keep"
 auto_update  = true
 idle_timeout = "off"
 ```
@@ -440,7 +455,7 @@ D-Bus access control via `xdg-dbus-proxy`. Requires `integration.dbus = true`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `preset` | string | `""` | Preset filling `talk` for you: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"`. Portal names are never granted via `talk` — they come through interface-scoped rules for `notify` / `xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
+| `preset` | string | `"none"` | Preset filling `talk` for you: `"flatpak"`, `"gnome"`, `"kde"`, `"portal"` (adds `org.freedesktop.Notifications` talk). Any preset other than `"none"` implies the proxy — unknown values are a parse error. Portal names are never granted via `talk` — they come through interface-scoped rules for `notify` / `xdg_open` (see [dbus-proxy.md](dbus-proxy.md)) |
 | `talk` | string[] | `[]` | D-Bus services the container can call (two-way). Adding a portal-family name re-grants the full portal surface — a warning is printed |
 | `own` | string[] | `[]` | D-Bus services the container can register on the host bus |
 
@@ -627,7 +642,6 @@ bins = ["rg", "gcc"]            # Create bin shims for these commands
 [lifecycle]
 quadlet      = false            # Generate systemd Quadlet files on enable
 autostart    = false            # Start container on user login
-on_stop      = "keep"           # Container behavior on stop: "keep" or "remove"
 auto_update  = false            # Label for auto-updates (registry/local)
 idle_timeout = "off"            # Guest daemon idle timeout: "off", "30s", "5m", "1h"
 
@@ -638,7 +652,7 @@ after    = ["network-online.target"]
 
 # ── D-Bus ──────────────────────────────────────────────
 [dbus]
-preset = "portal"               # Named preset: flatpak, gnome, kde, portal ("" = none)
+preset = "portal"               # Named preset: flatpak, gnome, kde, portal, none (default when dbus is on: portal)
 talk = ["org.freedesktop.Notifications"]
 own  = ["org.mpris.MediaPlayer2.podbox_app"]
 
