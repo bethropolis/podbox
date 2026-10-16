@@ -93,7 +93,7 @@ pub(super) fn emit_container_image(
     }
     value::push_raw(lines, warnings, "ContainerName", name);
     if let Some(ref mode) = config.security.userns {
-        value::push_raw(lines, warnings, "UserNS", mode);
+        value::push_raw(lines, warnings, "UserNS", mode.as_str());
     } else {
         lines.push("UserNS=keep-id".into());
     }
@@ -144,8 +144,8 @@ pub(super) fn emit_container_image(
 
 pub(super) fn emit_network(lines: &mut Vec<String>, config: &Config, warnings: &mut Vec<String>) {
     let mode = config.network.effective_mode();
-    value::push_raw(lines, warnings, "Network", mode);
-    if mode != "host" && mode != "none" {
+    value::push_raw(lines, warnings, "Network", mode.as_str());
+    if mode != crate::config::NetworkMode::Host && mode != crate::config::NetworkMode::None {
         for port in &config.network.ports {
             value::push_raw(lines, warnings, "PublishPort", port);
         }
@@ -442,12 +442,10 @@ pub(super) fn emit_env(
 
     // Extra user env, layered over engine-derived defaults (SHELL and
     // friends — see ContainerConfig::effective_env). Explicit wins.
+    // Names are validated up front (`config::is_valid_env_key`), so every
+    // key here is emitted; nothing is warned-and-skipped at this layer.
     for (key, value) in &config.container.effective_env() {
-        if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            value::push_env(lines, warnings, key, value);
-        } else {
-            warnings.push(format!("ignoring invalid environment variable key '{key}'"));
-        }
+        value::push_env(lines, warnings, key, value);
     }
     if !config.container.services.is_empty() {
         let payload =

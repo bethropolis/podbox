@@ -163,7 +163,7 @@ pub fn run(
 
 fn run_build(
     config: &Config,
-    _env: &HostEnv,
+    env: &HostEnv,
     _xdg: &ResolvedXdgDirs,
     dry_run: bool,
     rebuild: bool,
@@ -187,7 +187,7 @@ fn run_build(
     // Guarded by `run()` for custom builds; prebuilt builds never reach here.
     let guest_bin = crate::guest::PODBOX_GUEST.expect("custom build without embedded guest");
 
-    let containerfile = containerfile::generate(config, "podbox-guest")?;
+    let containerfile = containerfile::generate(config, "podbox-guest", env)?;
     let image_key = image_cache_key(&containerfile, Some(guest_bin), crate::VERSION);
 
     if dry_run {
@@ -330,7 +330,8 @@ mod tests {
     /// Image key for a custom config: rendered Containerfile plus the
     /// ambient guest binary and version.
     fn custom_key(config: &Config) -> String {
-        let recipe = crate::codegen::containerfile::generate(config, "podbox-guest").unwrap();
+        let env = crate::env::HostEnv::mock_preview();
+        let recipe = crate::codegen::containerfile::generate(config, "podbox-guest", &env).unwrap();
         image_cache_key(&recipe, crate::guest::PODBOX_GUEST, crate::VERSION)
     }
 
@@ -415,7 +416,8 @@ home = "~/env"
         .unwrap();
         assert_ne!(custom_key(&base), custom_key(&with_package));
         // So does a different guest binary or host version.
-        let recipe = crate::codegen::containerfile::generate(&base, "podbox-guest").unwrap();
+        let env = crate::env::HostEnv::mock_preview();
+        let recipe = crate::codegen::containerfile::generate(&base, "podbox-guest", &env).unwrap();
         let key = image_cache_key(&recipe, crate::guest::PODBOX_GUEST, crate::VERSION);
         assert_ne!(
             key,

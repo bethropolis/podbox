@@ -1,6 +1,7 @@
 //! `extends` inheritance resolution — chain building + cycle detection.
 //!
 //! Resolves `extends = "<target>"` where target is:
+//! - `builtin:<name>` → bundled profile TOML, ignoring user overrides
 //! - `profile:<name>` → bundled or user-defined profile TOML
 //! - `./` / `../` / absolute path → filesystem TOML relative to current file
 //! - bare name (`fedora`) → `~/.config/podbox/profiles/<name>.toml` (canonical)
@@ -83,6 +84,22 @@ fn resolve_extends_target(
     target: &str,
     current_dir: &Path,
 ) -> Result<(ConfigSource, String, PathBuf)> {
+    // 0. builtin:<name> — always the shipped template, even when a user
+    // profile shadows it. Without this, `~/.config/podbox/profiles/dev.toml`
+    // with `extends = "profile:dev"` resolves back to itself (user profiles
+    // win in `profiles::find`) and fails with a circular-dependency error.
+    if let Some(name) = target.strip_prefix("builtin:") {
+        let name = name.trim().to_lowercase();
+        if name.is_empty() {
+            anyhow::bail!("extends 'builtin:' requires a profile name");
+        }
+        let profile = crate::profiles::find_builtin(&name)
+            .ok_or_else(|| anyhow::anyhow!("unknown bundled profile '{name}'"))?;
+        let source = ConfigSource::Profile(format!("builtin:{name}"));
+        let next_dir = current_dir.to_path_buf();
+        return Ok((source, profile.toml, next_dir));
+    }
+
     // 1. profile:<name>
     if let Some(name) = target.strip_prefix("profile:") {
         let name = name.trim();
@@ -274,6 +291,56 @@ home = "~/b"
                 .as_str()
                 .unwrap(),
             "mydev"
+        );
+    }
+
+    #[test]
+    fn builtin_extends_resolves_to_the_shipped_template() {
+        // A user file shadowing a bundled profile can still inherit from
+        // the template it replaces: `builtin:dev` never resolves back to
+        // the shadowing file itself, so no circular error is reported.
+        let tmp = tempfile::tempdir().unwrap();
+        let child_path = tmp.path().join("dev.toml");
+        let child_toml = r#"
+            extends = "builtin:dev"
+            [container]
+            name = "mydev"
+            home = "~/containers/mydev"
+            "#;
+        fs::write(&child_path, child_toml).unwrap();
+        let merged = resolve_extends_chain(&child_path, child_toml).unwrap();
+        let image = merged.get("image").expect("bundled dev has [image]");
+        assert_eq!(image.get("base").unwrap().as_str().unwrap(), "dev-latest");
+        assert_eq!(
+            merged
+                .get("container")
+                .unwrap()
+                .get("name")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "mydev"
+        );
+        // The merged document parses as a full config.
+        let config: crate::config::Config = merged.try_into().unwrap();
+        assert_eq!(config.container.name, "mydev");
+    }
+
+    #[test]
+    fn builtin_extends_unknown_name_is_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let child_path = tmp.path().join("child.toml");
+        let child_toml = r#"
+            extends = "builtin:nope"
+            [container]
+            name = "x"
+            home = "~/x"
+            "#;
+        fs::write(&child_path, child_toml).unwrap();
+        let err = resolve_extends_chain(&child_path, child_toml).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("unknown bundled profile"),
+            "{err:#}"
         );
     }
 }

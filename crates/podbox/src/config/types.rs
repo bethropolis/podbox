@@ -8,7 +8,9 @@ use crate::config::defaults::{
     is_default_host_exec, is_default_mounts, is_default_packages, is_default_pull_retry,
     is_default_pull_retry_delay, is_default_run, is_default_shell, is_false, is_true,
 };
-use crate::config::enums::{GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
+use crate::config::enums::{
+    GpuMode, ImageSource, OnStop, PackageManager, ServiceRestart, XdgDirValue,
+};
 use crate::config::expand_tilde;
 
 mod cache;
@@ -130,11 +132,34 @@ pub struct ContainerConfig {
     pub services: BTreeMap<String, ServiceConfig>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(untagged)]
+#[derive(Debug, Serialize, Clone)]
 pub enum ServiceConfig {
     Short(String),
     Detailed(ServiceDetailConfig),
+}
+
+// Custom deserialization so a typo inside the detailed table (for
+// example `restart = "sometimes"`) surfaces the table error — which
+// lists the valid values — instead of the opaque "data did not match
+// any variant of untagged enum" that `#[serde(untagged)]` produces.
+impl<'de> Deserialize<'de> for ServiceConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = toml::Value::deserialize(deserializer)?;
+        match value {
+            toml::Value::String(command) => Ok(Self::Short(command)),
+            toml::Value::Table(_) => value
+                .try_into::<ServiceDetailConfig>()
+                .map(Self::Detailed)
+                .map_err(serde::de::Error::custom),
+            other => Err(serde::de::Error::custom(format!(
+                "expected a command string or a service table, got {}",
+                other.type_str()
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -142,12 +167,8 @@ pub struct ServiceDetailConfig {
     pub command: String,
     #[serde(default)]
     pub env: BTreeMap<String, String>,
-    #[serde(default = "default_service_restart")]
-    pub restart: String,
-}
-
-fn default_service_restart() -> String {
-    "on-failure".into()
+    #[serde(default)]
+    pub restart: ServiceRestart,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -556,4 +577,6 @@ pub struct HardwareConfig {
     pub serial: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub kvm: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub usb: bool,
 }

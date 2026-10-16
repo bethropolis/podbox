@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::defaults::{default_network_mode, is_false};
-use crate::config::enums::CapPreset;
+use crate::config::enums::{CapPreset, NetworkMode, UsernsMode};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NetworkConfig {
     #[serde(default = "default_network_mode")]
-    pub mode: String,
+    pub mode: NetworkMode,
     #[serde(default, skip_serializing_if = "is_false")]
     pub offline: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -24,8 +24,12 @@ impl Default for NetworkConfig {
 }
 
 impl NetworkConfig {
-    pub fn effective_mode(&self) -> &str {
-        if self.offline { "none" } else { &self.mode }
+    pub fn effective_mode(&self) -> NetworkMode {
+        if self.offline {
+            NetworkMode::None
+        } else {
+            self.mode
+        }
     }
 }
 
@@ -97,7 +101,7 @@ pub struct SecurityConfig {
     #[serde(default, skip_serializing_if = "is_false")]
     pub read_only_rootfs: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub userns: Option<String>,
+    pub userns: Option<UsernsMode>,
     #[serde(default, skip_serializing_if = "is_default_cap_preset")]
     pub cap_preset: CapPreset,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

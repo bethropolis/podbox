@@ -80,6 +80,23 @@ fn match_distro_token(token: &str) -> Option<DistroFamily> {
     })
 }
 
+/// The single `PackageManager` → `DistroFamily` mapping. Both the prebuilt
+/// overlay path and the drift diff go through this, so hand-written
+/// copies can no longer disagree (zypper used to map to `SuseLike` in one
+/// and `FedoraLike` in the other).
+impl From<crate::config::PackageManager> for DistroFamily {
+    fn from(manager: crate::config::PackageManager) -> Self {
+        use crate::config::PackageManager as PM;
+        match manager {
+            PM::Apt => Self::DebianLike,
+            PM::Dnf => Self::FedoraLike,
+            PM::Pacman => Self::ArchLike,
+            PM::Apk => Self::AlpineLike,
+            PM::Zypper => Self::SuseLike,
+        }
+    }
+}
+
 impl DistroFamily {
     /// Package manager for the family.
     pub fn manager(&self) -> crate::config::PackageManager {
@@ -236,18 +253,6 @@ impl DistroFamily {
     }
 }
 
-pub fn detect_host_shell() -> Option<String> {
-    std::env::var("SHELL").ok().filter(|s| !s.is_empty())
-}
-
-pub fn detect_host_locale() -> Option<String> {
-    std::env::var("LANG")
-        .ok()
-        .or_else(|| std::env::var("LC_ALL").ok())
-        .or_else(|| std::env::var("LC_CTYPE").ok())
-        .filter(|s| !s.is_empty())
-}
-
 pub fn detect_package_manager(image: &str) -> crate::config::PackageManager {
     DistroFamily::from_base_image(image).manager()
 }
@@ -257,15 +262,8 @@ pub fn detect_package_manager(image: &str) -> crate::config::PackageManager {
 /// reference (or base name), so bundled profiles state theirs outright and
 /// never depend on ref guessing.
 pub fn family_for_config(config: &crate::config::Config) -> DistroFamily {
-    use crate::config::PackageManager;
     if let Some(manager) = config.image.packages.manager {
-        return match manager {
-            PackageManager::Apt => DistroFamily::DebianLike,
-            PackageManager::Dnf => DistroFamily::FedoraLike,
-            PackageManager::Pacman => DistroFamily::ArchLike,
-            PackageManager::Apk => DistroFamily::AlpineLike,
-            PackageManager::Zypper => DistroFamily::SuseLike,
-        };
+        return DistroFamily::from(manager);
     }
     let probe = config
         .image
@@ -365,6 +363,42 @@ mod tests {
             DistroFamily::from_base_image("localhost:5000/fedora-box:41"),
             DistroFamily::FedoraLike
         );
+    }
+
+    #[test]
+    fn test_package_manager_maps_to_one_family() {
+        // The single shared mapping: zypper is SuseLike everywhere
+        // (the drift diff used to say FedoraLike).
+        use crate::config::PackageManager as PM;
+        for (manager, family) in [
+            (PM::Apt, DistroFamily::DebianLike),
+            (PM::Dnf, DistroFamily::FedoraLike),
+            (PM::Pacman, DistroFamily::ArchLike),
+            (PM::Apk, DistroFamily::AlpineLike),
+            (PM::Zypper, DistroFamily::SuseLike),
+        ] {
+            assert_eq!(DistroFamily::from(manager), family);
+        }
+    }
+
+    #[test]
+    fn test_explicit_zypper_manager_resolves_suse() {
+        // The prebuilt overlay path: an explicit zypper manager means
+        // SuseLike, even for an undetectable ref.
+        let cfg = crate::config::Config::parse(
+            r#"
+[image]
+base = "ghcr.io/x/custom:1"
+name = "env"
+[image.packages]
+manager = "zypper"
+[container]
+name = "env"
+home = "~/env"
+"#,
+        )
+        .unwrap();
+        assert_eq!(family_for_config(&cfg), DistroFamily::SuseLike);
     }
 
     #[test]

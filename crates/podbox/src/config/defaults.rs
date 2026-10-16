@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::enums::{GpuMode, OnStop};
+use crate::config::enums::{GpuMode, NetworkMode, OnStop};
 use crate::config::types::{
     HostExecConfig, LifecycleConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
     SystemdConfig,
@@ -109,10 +109,10 @@ pub fn is_default_security(v: &SecurityConfig) -> bool {
         && v.userns.is_none()
 }
 
-pub fn default_network_mode() -> String {
-    "pasta".into()
+pub fn default_network_mode() -> NetworkMode {
+    NetworkMode::Pasta
 }
 
 pub fn is_default_network(v: &NetworkConfig) -> bool {
-    v.mode == "pasta" && v.ports.is_empty()
+    v.mode == NetworkMode::Pasta && v.ports.is_empty()
 }

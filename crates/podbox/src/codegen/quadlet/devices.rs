@@ -33,6 +33,16 @@ pub(super) fn emit_gpu(
     env: &HostEnv,
     warnings: &mut Vec<String>,
 ) {
+    // With a CDI spec on the host, pass the GPU through by device ID:
+    // unlike plain device nodes this also carries the matching
+    // user-space driver libraries.
+    let mut nvidia = |lines: &mut Vec<String>| {
+        if env.nvidia_cdi_present {
+            value::push_raw(lines, warnings, "AddDevice", "nvidia.com/gpu=all");
+        } else {
+            emit_nvidia_fallback(lines, warnings);
+        }
+    };
     match config.integration.gpu {
         GpuMode::Enabled => {
             lines.push("AddDevice=/dev/dri".into());
@@ -40,7 +50,7 @@ pub(super) fn emit_gpu(
         }
         GpuMode::Nvidia => {
             lines.push("AddDevice=/dev/dri".into());
-            emit_nvidia_fallback(lines, warnings);
+            nvidia(lines);
             lines.push(String::new());
         }
         GpuMode::Auto => {
@@ -48,7 +58,7 @@ pub(super) fn emit_gpu(
                 lines.push("AddDevice=/dev/dri".into());
             }
             if env.gpu_has_nvidia {
-                emit_nvidia_fallback(lines, warnings);
+                nvidia(lines);
             }
             if env.gpu_has_dri || env.gpu_has_nvidia {
                 lines.push(String::new());
@@ -99,6 +109,18 @@ pub fn emit_hardware_devices(
         for i in 0..16 {
             value::push_composed(lines, format!("AddDevice=-/dev/hidraw{i}"));
         }
+        emitted = true;
+    }
+
+    if hw.usb {
+        // Raw USB devices (adb, fastboot, flashers, SDR): a bind mount,
+        // not AddDevice. Nodes appear per plug and re-enumeration, so
+        // start-time enumeration would miss later devices; the bind mount
+        // is hotplug-aware the way the host is (rootless podman applies
+        // no device-cgroup filter). The `-` prefix skips the mount on a
+        // host with no USB bus instead of failing to start. Never `:z`
+        // or `:Z`: relabeling would retag the host's device nodes.
+        lines.push("Volume=-/dev/bus/usb:/dev/bus/usb".into());
         emitted = true;
     }
 

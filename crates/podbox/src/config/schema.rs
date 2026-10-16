@@ -34,6 +34,7 @@ use super::types::{
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
     pub schema_version: SchemaVersion,
@@ -163,11 +164,16 @@ impl Config {
     /// The wasm/Studio path uses this so warnings render in the UI instead
     /// of going to stderr (which panics on wasm targets).
     pub fn parse_with_warnings(content: &str) -> Result<(Config, Vec<String>)> {
-        let mut config: Config = toml::from_str(content)
+        let value: toml::Value = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
-        config.explicit_keys = explicit_leaf_paths(
-            &toml::from_str(content).unwrap_or(toml::Value::Table(toml::map::Map::new())),
-        );
+        // A newer schema may add keys this version denies: report the
+        // upgrade hint, not a confusing "unknown field" error.
+        check_schema_version(&value)?;
+        let explicit_keys = explicit_leaf_paths(&value);
+        let mut config: Config = value
+            .try_into()
+            .with_context(|| "failed to parse definition file".to_string())?;
+        config.explicit_keys = explicit_keys;
         config.run_migrations();
         config.apply_defaults();
         let (warnings, result) = config.validate_with_warnings();
@@ -181,11 +187,12 @@ impl Config {
     /// behaviour for tests/embedded.
     pub fn parse_with_source(path: &std::path::Path, content: &str) -> Result<Config> {
         let merged = crate::config::extends::resolve_extends_chain(path, content)?;
+        check_schema_version(&merged)?;
+        let explicit_keys = explicit_leaf_paths(&merged);
         let mut config: Config = merged
-            .clone()
             .try_into()
             .with_context(|| "failed to parse merged definition file".to_string())?;
-        config.explicit_keys = explicit_leaf_paths(&merged);
+        config.explicit_keys = explicit_keys;
         config.run_migrations();
         config.apply_defaults();
         config.validate()?;
@@ -229,6 +236,22 @@ impl Config {
             self.dbus.preset = DbusPreset::Portal;
         }
     }
+}
+
+/// Reject configs written by a newer podbox: fields this version does
+/// not know may be ignored silently, producing a box that differs from
+/// what the file describes. Older versions still run the migration chain.
+fn check_schema_version(value: &toml::Value) -> Result<()> {
+    if let Some(seen) = value
+        .get("schema_version")
+        .and_then(toml::Value::as_integer)
+        && seen > i64::from(CURRENT_SCHEMA_VERSION)
+    {
+        anyhow::bail!(
+            "config requires podbox schema {seen}; this podbox supports schema {CURRENT_SCHEMA_VERSION} — upgrade podbox"
+        );
+    }
+    Ok(())
 }
 
 /// Dotted leaf paths present in a TOML document (`integration.audio`,

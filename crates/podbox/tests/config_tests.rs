@@ -286,3 +286,58 @@ fn host_exec_filter_false_allows_shell_metacharacters_conceptually() {
     // validate_host_exec_args is skipped. Verify the entry API correctly
     // distinguishes the two modes.
 }
+
+/// Every shipped fixture and every bundled profile must still parse:
+/// schema changes (new enums, tighter validation) must not break them.
+#[test]
+fn all_fixtures_and_bundled_profiles_still_parse() {
+    let fixtures = fixtures_dir();
+    let mut checked = 0;
+    let mut entries: Vec<_> = std::fs::read_dir(&fixtures)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+    assert!(
+        !entries.is_empty(),
+        "expected fixture TOMLs in {fixtures:?}"
+    );
+    for entry in entries {
+        let content = std::fs::read_to_string(entry.path()).unwrap();
+        Config::parse(&content)
+            .unwrap_or_else(|e| panic!("fixture {} must parse: {e:#}", entry.path().display()));
+        checked += 1;
+    }
+    for name in ["cachy", "dev", "fedora", "ubuntu"] {
+        // Read the bundled TOMLs directly: `profiles::find` prefers user
+        // profiles, so it would not test the shipped files on a host that
+        // overrides them.
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("profiles")
+            .join(format!("{name}.toml"));
+        let toml = std::fs::read_to_string(&path).unwrap();
+        Config::parse(&toml)
+            .unwrap_or_else(|e| panic!("bundled profile '{name}' must parse: {e:#}"));
+        checked += 1;
+    }
+    assert!(
+        checked >= 8,
+        "expected fixtures + profiles, checked {checked}"
+    );
+}
+
+/// The USB hardware switch round-trips: omitted when false so written
+/// TOML stays minimal, parsed when true.
+#[test]
+fn hardware_usb_round_trip() {
+    let base = "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n";
+    let off = Config::parse(base).unwrap();
+    assert!(!off.integration.hardware.usb);
+    let written = toml::to_string(&off).unwrap();
+    assert!(!written.contains("usb"), "{written}");
+
+    let on = Config::parse(&(base.to_owned() + "[integration.hardware]\nusb = true\n")).unwrap();
+    assert!(on.integration.hardware.usb);
+}

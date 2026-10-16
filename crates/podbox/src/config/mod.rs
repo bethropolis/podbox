@@ -13,7 +13,10 @@ pub mod types;
 pub mod validation;
 
 pub use defaults::EMBEDDED_DEFAULT;
-pub use enums::{CapPreset, GpuMode, ImageSource, OnStop, PackageManager, XdgDirValue};
+pub use enums::{
+    CapPreset, GpuMode, ImageSource, NetworkMode, OnStop, PackageManager, ServiceRestart,
+    UsernsMode, XdgDirValue,
+};
 pub use fs::{
     active_context_path, clear_active_context, config_dir, expand_tilde, find_by_runtime_name,
     find_config_path, find_definition, find_legacy_root_configs, list_configs, profiles_dir,
@@ -30,4 +33,4 @@ pub use types::{
     SystemdConfig, WaylandConfig, XdgDirConfig, all_builtin_cache_paths, builtin_cache_mount_names,
     builtin_cache_names,
 };
-pub use validation::validate_container_name;
+pub use validation::{is_valid_env_key, validate_container_name};

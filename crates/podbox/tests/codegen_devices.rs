@@ -132,6 +132,41 @@ fn quadlet_gpu_nvidia_lists_all_nodes_even_without_uvm_on_host() {
     assert!(q.contains("AddDevice=-/dev/nvidia0"));
     assert!(q.contains("AddDevice=-/dev/nvidia-uvm"));
 }
+#[test]
+fn quadlet_gpu_nvidia_cdi_present_uses_device_id() {
+    // With a CDI spec on the host, the unit passes the GPU by device ID
+    // (which also carries the matching driver libraries) instead of
+    // enumerating device nodes.
+    let config = load_config("full.toml");
+    let mut config = config.clone();
+    config.integration.gpu = GpuMode::Nvidia;
+    let mut env = default_env();
+    env.gpu_has_nvidia = true;
+    env.nvidia_cdi_present = true;
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(q.contains("AddDevice=nvidia.com/gpu=all"));
+    assert!(!q.contains("/dev/nvidiactl"));
+}
+#[test]
+fn quadlet_hardware_usb_is_a_hotplug_aware_bind_mount() {
+    // usb = true mounts the whole bus (devices plugged in later appear),
+    // never relabels host nodes, and is optional so a USB-less host
+    // still starts.
+    let config = load_config("full.toml");
+    let mut config = config.clone();
+    config.integration.hardware.usb = true;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Volume=-/dev/bus/usb:/dev/bus/usb"));
+    assert!(!q.contains("/dev/bus/usb:z"));
+    assert!(!q.contains("AddDevice=/dev/bus/usb"));
+}
+#[test]
+fn quadlet_hardware_usb_absent_by_default() {
+    let config = load_config("full.toml");
+    assert!(!config.integration.hardware.usb);
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("/dev/bus/usb"));
+}
 
 const SECRET_BASE: &str = r#"
 [image]

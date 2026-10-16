@@ -160,12 +160,7 @@ fn compute_unexpected(
     config_set: &BTreeSet<String>,
     manager: PackageManager,
 ) -> Vec<String> {
-    let distro = match manager {
-        PackageManager::Apt => DistroFamily::DebianLike,
-        PackageManager::Pacman => DistroFamily::ArchLike,
-        PackageManager::Apk => DistroFamily::AlpineLike,
-        PackageManager::Dnf | PackageManager::Zypper => DistroFamily::FedoraLike,
-    };
+    let distro = DistroFamily::from(manager);
     let base_set: BTreeSet<String> = distro.base_packages(None).into_iter().collect();
 
     container_set
@@ -285,6 +280,16 @@ mod tests {
     }
 
     // ---- compute_unexpected ----
+
+    #[test]
+    fn zypper_unexpected_uses_suse_family() {
+        // The drift diff shares the single manager→family mapping:
+        // zypper resolves to SuseLike, not FedoraLike.
+        assert_eq!(
+            DistroFamily::from(PackageManager::Zypper),
+            DistroFamily::SuseLike
+        );
+    }
 
     #[test]
     fn unexpected_excludes_base_packages() {
