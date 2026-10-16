@@ -363,6 +363,76 @@ fn clipboard_is_refused_without_its_capability() {
 }
 
 #[test]
+fn clipboard_round_trip_preserves_whitespace_exactly() {
+    let rec = Arc::new(Recorder::default());
+    let (mut c, h) = start(enabled_config(), Arc::clone(&rec));
+    send(&mut c, &hello(&[CAP_CLIPBOARD]));
+    let _ = recv(&mut c);
+    send(
+        &mut c,
+        &GuestMessage::ClipboardSet {
+            text: "  indented\n\n".into(),
+        },
+    );
+    send(&mut c, &GuestMessage::ClipboardGet);
+    match recv(&mut c) {
+        HostMessage::ClipboardData { text } => assert_eq!(text, "  indented\n\n"),
+        other => panic!("expected ClipboardData, got {other:?}"),
+    }
+    finish(c, h).unwrap();
+}
+
+#[test]
+fn oversized_clipboard_get_is_an_error_and_leaves_the_session_usable() {
+    use podbox::protocol::MAX_CLIPBOARD_BYTES;
+    let rec = Arc::new(Recorder::default());
+    *rec.clipboard.lock().unwrap() = "x".repeat(MAX_CLIPBOARD_BYTES + 1);
+    let (mut c, h) = start(enabled_config(), Arc::clone(&rec));
+    send(&mut c, &hello(&[CAP_CLIPBOARD]));
+    let _ = recv(&mut c);
+    send(&mut c, &GuestMessage::ClipboardGet);
+    expect_error(recv(&mut c), "exceeds");
+    // The session survives: smaller content flows afterwards.
+    *rec.clipboard.lock().unwrap() = "small".to_string();
+    send(&mut c, &GuestMessage::ClipboardGet);
+    match recv(&mut c) {
+        HostMessage::ClipboardData { text } => assert_eq!(text, "small"),
+        other => panic!("expected ClipboardData, got {other:?}"),
+    }
+    finish(c, h).unwrap();
+}
+
+#[test]
+fn oversized_clipboard_set_is_an_error_and_leaves_the_session_usable() {
+    use podbox::protocol::MAX_CLIPBOARD_BYTES;
+    let rec = Arc::new(Recorder::default());
+    let (mut c, h) = start(enabled_config(), Arc::clone(&rec));
+    send(&mut c, &hello(&[CAP_CLIPBOARD]));
+    let _ = recv(&mut c);
+    send(
+        &mut c,
+        &GuestMessage::ClipboardSet {
+            text: "x".repeat(MAX_CLIPBOARD_BYTES + 1),
+        },
+    );
+    expect_error(recv(&mut c), "exceeds");
+    assert!(rec.calls().is_empty(), "oversized set reached the backend");
+    // The session survives: a normal round trip works afterwards.
+    send(
+        &mut c,
+        &GuestMessage::ClipboardSet {
+            text: "fine".into(),
+        },
+    );
+    send(&mut c, &GuestMessage::ClipboardGet);
+    match recv(&mut c) {
+        HostMessage::ClipboardData { text } => assert_eq!(text, "fine"),
+        other => panic!("expected ClipboardData, got {other:?}"),
+    }
+    finish(c, h).unwrap();
+}
+
+#[test]
 fn host_exec_runs_an_allowlisted_command_and_reports_its_exit() {
     let (mut c, h) = start(enabled_config(), Arc::default());
     send(&mut c, &hello(&[CAP_HOST_EXEC]));

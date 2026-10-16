@@ -231,7 +231,7 @@ pub(crate) fn handle_connection(
                     continue;
                 }
                 failures = 0;
-                handlers::handle_clipboard_set(actions, text)?
+                handlers::handle_clipboard_set(stream, actions, text)?
             }
             GuestMessage::ClipboardGet => {
                 if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {

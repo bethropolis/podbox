@@ -61,8 +61,8 @@ accepted ones.
 | `hello` | `protocol_version`, `guest_version`, `container`, `capabilities` |
 | `notify` | `summary`, `body`, `urgency`, `actions` (optional), `app_name` (optional) |
 | `xdg_open` | `uri` |
-| `clipboard_set` | `text` |
-| `clipboard_get` | — |
+| `clipboard_set` | `text` (at most 8 MiB; larger content gets an `error` reply and leaves the session open) |
+| `clipboard_get` | — (the host answers `error` when the selection exceeds 8 MiB) |
 | `host_exec` | `cmd`, `args` |
 | `register_session` | — (pidfd via `SCM_RIGHTS`) |
 | `busy` | — |

@@ -159,6 +159,13 @@ pub fn write_frame<W: Write>(w: &mut W, msg: &impl Serialize) -> io::Result<()> 
 /// Maximum frame size: 16 MiB.
 const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
+/// Largest clipboard payload either side will send or accept (8 MiB).
+/// Beyond this the host answers with an `Error` frame and the guest
+/// refuses locally with a clear message, instead of failing the frame.
+/// A fixed constant (not a config key): raising it needs the matching
+/// host/guest rollout, and the frame cap bounds it anyway.
+pub const MAX_CLIPBOARD_BYTES: usize = 8 * 1024 * 1024;
+
 /// Read a length-prefixed JSON frame.
 pub fn read_frame<R: Read>(r: &mut R) -> io::Result<Option<Vec<u8>>> {
     let mut len_buf = [0u8; 4];

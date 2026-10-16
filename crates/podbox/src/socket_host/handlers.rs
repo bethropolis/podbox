@@ -234,19 +234,51 @@ pub(super) fn handle_xdg_open(
 }
 
 /// Handle a `ClipboardSet` message from the guest.
-pub(super) fn handle_clipboard_set(actions: &dyn HostActions, text: String) -> anyhow::Result<()> {
+///
+/// Oversized content gets an `Error` reply and the connection stays open:
+/// dropping it would punish a client that can simply send less.
+pub(super) fn handle_clipboard_set(
+    stream: &mut UnixStream,
+    actions: &dyn HostActions,
+    text: String,
+) -> anyhow::Result<()> {
+    if text.len() > crate::protocol::MAX_CLIPBOARD_BYTES {
+        write_frame(
+            stream,
+            &HostMessage::Error {
+                reason: format!(
+                    "clipboard content exceeds the {} MiB limit",
+                    crate::protocol::MAX_CLIPBOARD_BYTES / (1024 * 1024)
+                ),
+            },
+        )?;
+        return Ok(());
+    }
     actions.clipboard_set(&text)
 }
 
 /// Handle a `ClipboardGet` message from the guest.
+///
+/// The bytes pass through exactly as the backend returned them: no
+/// trimming, so trailing newlines and indentation survive the round trip.
 pub(super) fn handle_clipboard_get(
     stream: &mut UnixStream,
     actions: &dyn HostActions,
 ) -> anyhow::Result<()> {
     let text = actions.clipboard_get()?;
-    let response = HostMessage::ClipboardData {
-        text: text.trim().to_string(),
-    };
+    if text.len() > crate::protocol::MAX_CLIPBOARD_BYTES {
+        write_frame(
+            stream,
+            &HostMessage::Error {
+                reason: format!(
+                    "clipboard content exceeds the {} MiB limit",
+                    crate::protocol::MAX_CLIPBOARD_BYTES / (1024 * 1024)
+                ),
+            },
+        )?;
+        return Ok(());
+    }
+    let response = HostMessage::ClipboardData { text };
     write_frame(stream, &response)?;
     Ok(())
 }
