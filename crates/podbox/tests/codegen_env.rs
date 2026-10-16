@@ -100,12 +100,22 @@ fn quadlet_visual_mounts_absent_by_default() {
     assert!(!q.contains("/home/%u/.fonts"));
 }
 #[test]
-fn quadlet_timezone_mount_present_when_localtime_exists() {
+fn quadlet_timezone_uses_native_key_instead_of_localtime_mount() {
     let config = load_config("full.toml");
     let mut env = default_env();
     env.host_has_localtime = true;
     let q = quadlet::generate_container(&config, &env, &default_xdg());
-    assert!(q.contains("Volume=/etc/localtime:/etc/localtime:ro"));
+    assert!(q.contains("Timezone=local"));
+    assert!(!q.contains("/etc/localtime"));
+}
+#[test]
+fn quadlet_timezone_native_key_snapshot() {
+    // `Timezone=local` must render as a native key with no localtime mount.
+    let config = load_config("full.toml");
+    let mut env = default_env();
+    env.host_has_localtime = true;
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    insta::assert_snapshot!("timezone_native_key", q);
 }
 #[test]
 fn quadlet_timezone_file_mount_present_when_exists() {
@@ -120,6 +130,7 @@ fn quadlet_timezone_mounts_absent_when_unavailable() {
     let config = load_config("full.toml");
     let env = default_env();
     let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(!q.contains("Timezone="));
     assert!(!q.contains("/etc/localtime"));
     assert!(!q.contains("/etc/timezone"));
 }

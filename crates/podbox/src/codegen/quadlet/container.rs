@@ -269,9 +269,12 @@ pub(super) fn emit_volumes(
         lines.push(String::new());
     }
 
-    // Timezone sync
+    // Timezone sync: `Timezone=local` (podman's `--tz=local`) sets up
+    // /etc/localtime as a proper symlink, so zone-name lookups via
+    // readlink keep working and host changes propagate. A bind-mounted
+    // host file would pin the inode until the container restarts.
     if env.host_has_localtime {
-        lines.push("Volume=/etc/localtime:/etc/localtime:ro".into());
+        lines.push("Timezone=local".into());
     }
     if env.host_has_timezone_file {
         lines.push("Volume=/etc/timezone:/etc/timezone:ro".into());

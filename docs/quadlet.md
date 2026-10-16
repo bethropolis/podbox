@@ -78,6 +78,7 @@ These unit files are generated per container:
 | `PublishPort` | From `network.ports` | Port mapping (conditional, ignored in `host` mode) |
 | `AutoUpdate` | `registry` or `local` | Auto-update (conditional on `lifecycle.auto_update`; `registry` for prebuilt, `local` for custom) |
 | `ReloadCmd` | From `container.reload_cmd` | Reload command (conditional) |
+| `Timezone` | `local` | Timezone sync (conditional on host `/etc/localtime`; replaces the old bind-mount so zone-name lookups keep working) |
 
 ### `Environment=` entries
 
@@ -115,8 +116,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | `%h/.local/share/icons` | `/home/%u/.local/share/icons` | `ro` | `sync_icons` + path exists |
 | `%h/.fonts` | `/home/%u/.fonts` | `ro` | `sync_fonts` + path exists |
 | `%h/.local/share/fonts` | `/home/%u/.local/share/fonts` | `ro` | `sync_fonts` + path exists |
-| `/etc/localtime` | `/etc/localtime` | `ro` | File exists on host |
-| `/etc/timezone` | `/etc/timezone` | `ro` | File exists on host |
+| `/etc/timezone` | `/etc/timezone` | `ro` | File exists on host (Debian convention; `/etc/localtime` itself is set up via `Timezone=local`, not a bind-mount) |
 | Wayland socket | Wayland socket | `ro` | `wayland = true` |
 | `%t/pipewire-0` | `%t/pipewire-0` | (none) | `audio = true` + PipeWire present |
 | `%t/pulse` | `%t/pulse` | (none) | `audio = true` + PulseAudio present |
