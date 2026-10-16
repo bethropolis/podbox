@@ -111,11 +111,15 @@ fn quadlet_timezone_uses_native_key_instead_of_localtime_mount() {
 #[test]
 fn quadlet_timezone_native_key_snapshot() {
     // `Timezone=local` must render as a native key with no localtime mount.
-    let config = load_config("full.toml");
-    let mut env = default_env();
-    env.host_has_localtime = true;
-    let q = quadlet::generate_container(&config, &env, &default_xdg());
-    insta::assert_snapshot!("timezone_native_key", q);
+    // Pinned home: `full.toml` expands `~` from ambient HOME, which varies
+    // by machine and is swapped by sandbox tests running in parallel.
+    with_fixed_home("/home/testuser", || {
+        let config = load_config("full.toml");
+        let mut env = default_env();
+        env.host_has_localtime = true;
+        let q = quadlet::generate_container(&config, &env, &default_xdg());
+        insta::assert_snapshot!("timezone_native_key", q);
+    });
 }
 #[test]
 fn quadlet_timezone_file_mount_present_when_exists() {

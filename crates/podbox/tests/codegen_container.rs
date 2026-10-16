@@ -193,7 +193,7 @@ fn quadlet_container_has_network_host() {
 }
 #[test]
 fn quadlet_no_host_home_mount() {
-    let _guard = HOME_LOCK.lock().unwrap();
+    let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let config = load_config("full.toml");
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     let home = dirs::home_dir().unwrap();
@@ -507,10 +507,14 @@ cargo = true
 fn quadlet_full_container_snapshot() {
     // First insta snapshot of a whole `.container` file. Possible only now
     // that map iteration is deterministic; run the binary twice (different
-    // hash seeds per process) to confirm stability.
-    let config = load_config("full.toml");
-    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    insta::assert_snapshot!("full_container", q);
+    // hash seeds per process) to confirm stability. Home is pinned: the
+    // fixture expands `~` from ambient HOME, which varies by machine and is
+    // swapped by sandbox tests running in parallel.
+    with_fixed_home("/home/testuser", || {
+        let config = load_config("full.toml");
+        let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+        insta::assert_snapshot!("full_container", q);
+    });
 }
 
 #[test]

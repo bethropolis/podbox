@@ -15,13 +15,51 @@ use podbox::xdg::ResolvedXdgDir;
 use podbox::xdg::ResolvedXdgDirs;
 
 /// Serializes tests that need to set `HOME` — `set_var` is process-global,
-/// so parallel modification would corrupt results.
+/// so parallel modification would corrupt results. Poisoning is tolerated:
+/// a snapshot failure panics while holding the lock, and that must not
+/// cascade into unrelated tests.
 pub static HOME_LOCK: Mutex<()> = Mutex::new(());
+
+/// Pin `HOME` (and the XDG base dirs) to fixed values while `f` runs.
+///
+/// Snapshot tests need deterministic `dirs` output: the real `HOME` varies
+/// by machine and sibling tests swap it for a temp dir in parallel. Unlike
+/// [`with_sandbox_home`], no directory is created — codegen only builds
+/// paths, never touches the filesystem — so the fixed path need not exist.
+/// `XDG_DATA_HOME` is pinned as well because `dirs` prefers it over `HOME`.
+pub fn with_fixed_home(home: &str, f: impl FnOnce()) {
+    let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let vars = ["HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"];
+    let old: Vec<(String, Option<std::ffi::OsString>)> = vars
+        .iter()
+        .map(|v| (v.to_string(), std::env::var_os(v)))
+        .collect();
+    // SAFETY: serialized behind HOME_LOCK like `with_sandbox_home`.
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::set_var("HOME", home);
+        std::env::set_var("XDG_DATA_HOME", format!("{home}/.local/share"));
+        std::env::set_var("XDG_CACHE_HOME", format!("{home}/.cache"));
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+    f();
+    // SAFETY: Same serialization as above.
+    #[allow(unsafe_code)]
+    unsafe {
+        for (k, v) in old {
+            if let Some(val) = v {
+                std::env::set_var(k, val);
+            } else {
+                std::env::remove_var(k);
+            }
+        }
+    }
+}
 
 /// Create a sandboxed home directory and run `f` with `HOME` pointing at it.
 /// The temp dir is cleaned up on drop after restoring `HOME`.
 pub fn with_sandbox_home(f: impl FnOnce(&std::path::Path)) {
-    let _guard = HOME_LOCK.lock().unwrap();
+    let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let old_home = std::env::var_os("HOME");
     // SAFETY: `set_var` is edition-2024 unsafe against multi-threaded env

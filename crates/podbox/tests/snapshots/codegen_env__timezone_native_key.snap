@@ -1,5 +1,6 @@
 ---
 source: crates/podbox/tests/codegen_env.rs
+assertion_line: 121
 expression: q
 ---
 [Quadlet]
@@ -36,7 +37,7 @@ Environment=PATH=/run/podbox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/b
 
 Network=host
 
-Volume=/home/bet/containers/myenv:/home/%u:Z
+Volume=/home/testuser/containers/myenv:/home/%u:Z
 
 Volume=/home/user/Documents:/home/%u/Documents:ro,z
 Volume=/home/user/Downloads:/home/%u/Downloads:ro,z
@@ -53,7 +54,7 @@ Environment=PIPEWIRE_RUNTIME_DIR=%t
 Volume=%t/pulse:%t/pulse
 Environment=PULSE_SERVER=unix:%t/pulse/native
 
-Volume=/home/bet/.local/share/podbox/myenv/.flatpak-info:/.flatpak-info:ro
+Volume=/home/testuser/.local/share/podbox/myenv/.flatpak-info:/.flatpak-info:ro
 
 Volume=%t/podbox/myenv-dbus.sock:/run/podbox/dbus.sock:ro
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/podbox/dbus.sock
