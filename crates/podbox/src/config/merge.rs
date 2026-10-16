@@ -1,20 +1,36 @@
 //! AST-level TOML deep-merge for `extends` inheritance.
 //!
-//! Merge strategy (from REVIEW §1.2):
+//! Merge strategy:
 //! - Table × Table → key-wise recurse (skipping `extends`)
-//! - Array × Array → union with deduplication (preserve base order)
+//! - Array × Array → union with deduplication (preserve base order),
+//!   except `image.run.commands`, which appends (order and repetition
+//!   matter there). A `!name` entry in the child removes the parent
+//!   entry instead of adding one.
+//! - Arrays of `{ name = ... }` tables (`[[provision]]`) merge by name:
+//!   same name replaces in the parent's position, new names append.
 //! - else        → child overwrites base
 
 /// Deep-merge `child` into `base` in place.
 pub fn merge_toml_values(base: &mut toml::Value, child: toml::Value) {
+    merge_at_path(base, child, String::new());
+}
+
+/// Recursive worker tracking the dotted path (`image.run.commands`) so
+/// ordered recipe steps can merge differently from set-like lists.
+fn merge_at_path(base: &mut toml::Value, child: toml::Value, path: String) {
     match (base, child) {
         (toml::Value::Table(base_map), toml::Value::Table(child_map)) => {
             for (k, child_v) in child_map {
                 if k == "extends" {
                     continue;
                 }
+                let child_path = if path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{path}.{k}")
+                };
                 match base_map.get_mut(&k) {
-                    Some(base_v) => merge_toml_values(base_v, child_v),
+                    Some(base_v) => merge_at_path(base_v, child_v, child_path),
                     None => {
                         base_map.insert(k, child_v);
                     }
@@ -24,9 +40,24 @@ pub fn merge_toml_values(base: &mut toml::Value, child: toml::Value) {
         (toml::Value::Array(base_arr), toml::Value::Array(child_arr)) => {
             if arrays_are_named_tables(base_arr, &child_arr) {
                 merge_named_tables(base_arr, child_arr);
+            } else if path == "image.run.commands" {
+                // Recipe steps, not a set: repetition is meaningful
+                // (re-running a command twice can be intentional), so
+                // append verbatim instead of unioning.
+                base_arr.extend(child_arr);
             } else {
+                // Set-like lists union with dedup, and a `!name` entry
+                // removes the parent's entry (the `!` entry itself is
+                // never added). Lets a child drop a parent's package,
+                // port, or blocked interface.
+                for item in &child_arr {
+                    if let Some(removed) = item.as_str().and_then(|s| s.strip_prefix('!')) {
+                        base_arr.retain(|b| b.as_str() != Some(removed));
+                    }
+                }
                 for item in child_arr {
-                    if !base_arr.contains(&item) {
+                    let is_removal = item.as_str().is_some_and(|s| s.starts_with('!'));
+                    if !is_removal && !base_arr.contains(&item) {
                         base_arr.push(item);
                     }
                 }
@@ -233,5 +264,57 @@ mod tests {
         merge_toml_values(&mut base, child);
         let arr = base.get("install").unwrap().as_array().unwrap();
         assert_eq!(arr.len(), 1);
+    }
+
+    #[test]
+    fn removal_syntax_drops_parent_entries() {
+        // The parent has `nano`, the child has `!nano` → result without
+        // `nano`; `vim` unions in as usual and `!nano` itself is dropped.
+        let mut base = parse(r#"install = ["git", "nano"]"#);
+        let child = parse(r#"install = ["!nano", "vim"]"#);
+        merge_toml_values(&mut base, child);
+        let arr = base.get("install").unwrap().as_array().unwrap();
+        let strs: Vec<_> = arr.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(strs, vec!["git", "vim"]);
+    }
+
+    #[test]
+    fn removal_of_absent_entry_is_a_no_op() {
+        let mut base = parse(r#"install = ["git"]"#);
+        let child = parse(r#"install = ["!nano"]"#);
+        merge_toml_values(&mut base, child);
+        let arr = base.get("install").unwrap().as_array().unwrap();
+        let strs: Vec<_> = arr.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(strs, vec!["git"]);
+    }
+
+    #[test]
+    fn run_commands_append_without_dedup() {
+        // Order and repetition matter for RUN steps: `[a, b]` + `[a]`
+        // gives `[a, b, a]`, not the union `[a, b]`.
+        let mut base = parse(
+            r#"
+            [image.run]
+            commands = ["a", "b"]
+            "#,
+        );
+        let child = parse(
+            r#"
+            [image.run]
+            commands = ["a"]
+            "#,
+        );
+        merge_toml_values(&mut base, child);
+        let commands = base
+            .get("image")
+            .unwrap()
+            .get("run")
+            .unwrap()
+            .get("commands")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let strs: Vec<_> = commands.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(strs, vec!["a", "b", "a"]);
     }
 }

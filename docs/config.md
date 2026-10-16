@@ -11,6 +11,23 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 3. `~/.config/podbox/*.toml` (first file, sorted by name)
 4. Embedded default (`fedora:44`, name `podbox`)
 
+## Inheritance (`extends`)
+
+A definition may start from another file with `extends`: a path
+(`./base.toml`), a profile (`profile:dev`, or `builtin:dev` for the
+shipped template even when you shadow it), or a sibling name. The parent
+merges first, then the child overrides. Tables merge key by key;
+scalars are overwritten by the child. Arrays merge by kind:
+
+- Set-like lists (packages, ports, mounts, blocked interfaces, …)
+  **union** with deduplication, parent order first.
+- Prefix an entry with `!` to **remove** a parent entry instead:
+  `install = ["!nano", "vim"]` drops the parent's `nano` and adds `vim`.
+- `[image.run].commands` **appends** verbatim — order and repetition
+  matter for `RUN` steps, so nothing is deduplicated there.
+- `[[provision]]` steps merge **by name**: a child step with the same
+  name replaces the parent's step in place; new names append.
+
 ## `[image]`
 
 | Key | Type | Default | Description |
