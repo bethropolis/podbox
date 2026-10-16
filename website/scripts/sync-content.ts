@@ -5,7 +5,7 @@
 // 4. Regenerates src/design/searchIndex.ts (headings + full-text entries),
 //    using the SAME slug algorithm as MarkdownRenderer so palette anchors
 //    always match rendered heading ids.
-import { readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { marked } from 'marked';
 
@@ -33,9 +33,23 @@ function parseFrontmatter(raw: string): Record<string, string> {
   if (end === -1) return out;
   for (const line of raw.slice(4, end).split('\n')) {
     const m = line.match(/^(\w+):\s*(.*)$/);
-    if (m) out[m[1]] = m[2].trim();
+    if (m) out[m[1]] = unquote(m[2].trim());
   }
   return out;
+}
+
+// Frontmatter values are often YAML-quoted (`description: "..."`). This is
+// a line parser, not a YAML parser, so strip one pair of matching quotes;
+// otherwise the quotes leak into the search index verbatim.
+function unquote(value: string): string {
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
 }
 
 interface Heading { id: string; text: string; level: number }
@@ -87,9 +101,11 @@ function tokenText(t: any): string {
 
 const search: SearchEntry[] = [];
 const entries: DocEntry[] = [];
+const syncedDocs = new Set<string>();
 for (const file of readdirSync(DOCS_SRC).filter((f) => f.endsWith('.md')).sort()) {
   const id = file.replace(/\.md$/, '');
   copyFileSync(join(DOCS_SRC, file), join(CONTENT_DIR, file));
+  syncedDocs.add(file);
 
   const raw = readFileSync(join(DOCS_SRC, file), 'utf8');
   const fm = parseFrontmatter(raw);
@@ -177,9 +193,19 @@ for (const file of readdirSync(DOCS_SRC).filter((f) => f.endsWith('.md')).sort()
   }
 }
 
-// Assets + installer
+// Assets + installer. Mirror the source: pages or assets deleted upstream
+// must not linger as stale copies (deploys re-sync, but `bun run dev`
+// serves these files directly, via the predev hook below).
+for (const f of readdirSync(CONTENT_DIR).filter((f) => f.endsWith('.md'))) {
+  if (!syncedDocs.has(f)) rmSync(join(CONTENT_DIR, f));
+}
+const syncedAssets = new Set<string>();
 for (const f of readdirSync(join(DOCS_SRC, 'assets'))) {
   copyFileSync(join(DOCS_SRC, 'assets', f), join(ASSETS_DST, f));
+  syncedAssets.add(f);
+}
+for (const f of readdirSync(ASSETS_DST)) {
+  if (!syncedAssets.has(f)) rmSync(join(ASSETS_DST, f), { recursive: true });
 }
 copyFileSync(join(ROOT, '..', 'scripts', 'install-online.sh'), join(ROOT, 'public', 'install.sh'));
 

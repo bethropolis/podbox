@@ -61,8 +61,8 @@ accepted ones.
 | `hello` | `protocol_version`, `guest_version`, `container`, `capabilities` |
 | `notify` | `summary`, `body`, `urgency`, `actions` (optional), `app_name` (optional) |
 | `xdg_open` | `uri` |
-| `clipboard_set` | `text` |
-| `clipboard_get` | — |
+| `clipboard_set` | `text` (at most 8 MiB; larger content gets an `error` reply and leaves the session open) |
+| `clipboard_get` | — (the host answers `error` when the selection exceeds 8 MiB) |
 | `host_exec` | `cmd`, `args` |
 | `register_session` | — (pidfd via `SCM_RIGHTS`) |
 | `busy` | — |
@@ -76,7 +76,8 @@ accepted ones.
 | `clipboard_data` | `text` |
 | `host_exec_stdout` | `data` |
 | `host_exec_stderr` | `data` |
-| `host_exec_done` | `exit_code` |
+| `host_exec_output` | `stream` (`stdout`/`stderr`), `data` (raw bytes) — chunked streaming output, only when the guest negotiated `host_exec_stream` |
+| `host_exec_done` | `exit_code`, `signal` (optional; the killing signal when the child died of one — `exit_code` is then `128 + signal`) |
 | `notify_action_result` | `notification_id`, `action_key` |
 | `ping` | — |
 | `check_idle` | — |
@@ -113,3 +114,9 @@ no symlink, no retries.
 | `xdg_open` | `xdg-open` | URI opening via host |
 | `clipboard` | `podbox-clipboard` | Clipboard sharing |
 | `host_exec` | `host-exec` | Execute commands on host |
+| `host_exec_stream` | — (requested by `host-exec` alongside `host_exec`) | Chunked raw-byte output streaming; without it the host buffers one frame per pipe |
+
+A guest that predates `host_exec_stream` never requests it and keeps
+receiving buffered `host_exec_stdout`/`host_exec_stderr` frames, and it
+parses the newer `host_exec_done` fine (the extra `signal` field is
+ignored). No protocol version bump was needed.

@@ -86,9 +86,9 @@ else. A disabled capability contributes no rules.
 | `integration.dbus` | `[dbus]` config | What the container gets |
 |--------------------|-----------------|------------------------|
 | `false` | any | No D-Bus access |
-| `true` | default (empty), no capabilities on | Unfiltered `Volume=%t/bus:%t/bus` |
-| `true` | `notify`/`xdg_open` on, or preset / talk / own set | Proxied via `xdg-dbus-proxy` with those rules plus interface-scoped portal rules for the enabled capabilities |
-| `true` | `preset = ""`, empty talk + own | Unfiltered `Volume=%t/bus:%t/bus` |
+| `true` | default (empty) | `preset = "portal"` is applied: proxied via `xdg-dbus-proxy` |
+| `true` | any preset set (`flatpak`, `gnome`, `kde`, `portal`) | Proxied via `xdg-dbus-proxy` with the preset's talk names plus interface-scoped portal rules for the enabled capabilities |
+| `true` | `preset = "none"`, empty talk + own, no capabilities on | Unfiltered `Volume=%t/bus:%t/bus` (explicit opt-out of filtering) |
 
 ## Generated proxy unit
 

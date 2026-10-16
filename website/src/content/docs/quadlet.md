@@ -67,15 +67,17 @@ These unit files are generated per container:
 | `Memory` | From `container.memory` | Memory limit (conditional, e.g. `"4G"`) |
 | `PodmanArgs=--cpus=` | From `container.cpus` | CPU limit (conditional, e.g. `"0.5"` → `--cpus=0.5`; Quadlet has no `CpuQuota` key) |
 | `ReadOnly` | `true` | Read-only rootfs (conditional on `security.read_only_rootfs`) |
-| `AppArmorProfile` | From `security.apparmor` | AppArmor profile (conditional, e.g. `"unconfined"`) |
+| `RunInit` | `true` | Always (catatonit as PID 1 for zombie reaping) |
+| `WorkingDir` | `/home/%u` | Always (default working directory) |
+| `AddCapability` | From `security.cap_preset` + `security.cap_add` | Capabilities (conditional; Quadlet has no `CpuQuota` key, so `--cpus` still goes through `PodmanArgs`) |
+| `AppArmor` | From `security.apparmor` | AppArmor profile (conditional, e.g. `"unconfined"`) |
 | `AddDevice` | `/dev/dri` | GPU (conditional on `gpu=true` or `gpu="auto"` with DRI present) |
-| `AddDevice` | `-/dev/nvidiactl`, `-/dev/nvidia0` | NVIDIA GPU (conditional on `gpu="nvidia"` or `gpu="auto"` with NVIDIA present) |
-| `AddDevice` | `-/dev/nvidia-uvm` | NVIDIA UVM (conditional, when available) |
+| `AddDevice` | `-/dev/nvidiactl`, `-/dev/nvidia0`…`-/dev/nvidia7`, `-/dev/nvidia-modeset`, `-/dev/nvidia-uvm`, `-/dev/nvidia-uvm-tools` | NVIDIA GPU fallback when no CDI spec exists (conditional on `gpu="nvidia"` or `gpu="auto"` with NVIDIA present; `-` marks each node optional, and `doctor` suggests `nvidia-ctk cdi generate` for full driver passthrough) |
 | `Network` | From `network.mode` | Network mode (default `host`) |
 | `PublishPort` | From `network.ports` | Port mapping (conditional, ignored in `host` mode) |
 | `AutoUpdate` | `registry` or `local` | Auto-update (conditional on `lifecycle.auto_update`; `registry` for prebuilt, `local` for custom) |
 | `ReloadCmd` | From `container.reload_cmd` | Reload command (conditional) |
-| `SshAgent` | `default` | SSH agent passthrough (conditional on `ssh_agent`, requires Podman ≥ 5.6) |
+| `Timezone` | `local` | Timezone sync (conditional on host `/etc/localtime`; replaces the old bind-mount so zone-name lookups keep working) |
 
 ### `Environment=` entries
 
@@ -95,7 +97,7 @@ These unit files are generated per container:
 | `SSH_AUTH_SOCK` | `/run/podbox/ssh-agent.sock` | SSH agent (conditional, Podman ≥ 5.6) |
 | `GPG_TTY` | `/dev/pts/0` | GPG TTY (conditional) |
 | `GNUPGHOME` | `/run/podbox/gnupg` | GPG home (conditional) |
-| `LANG`, `LC_ALL`, `LC_CTYPE` | From host locale | Locale (conditional) |
+| `LANG` | From host locale | Locale (conditional; `LC_*` overrides stay with the user) |
 | `PODBOX_CONTAINER` | `<name>` | Always set; identifies the container |
 
 Custom `[container.env]` entries are also passed as `Environment=`.
@@ -113,23 +115,23 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | `%h/.local/share/icons` | `/home/%u/.local/share/icons` | `ro` | `sync_icons` + path exists |
 | `%h/.fonts` | `/home/%u/.fonts` | `ro` | `sync_fonts` + path exists |
 | `%h/.local/share/fonts` | `/home/%u/.local/share/fonts` | `ro` | `sync_fonts` + path exists |
-| `/etc/localtime` | `/etc/localtime` | `ro` | File exists on host |
-| `/etc/timezone` | `/etc/timezone` | `ro` | File exists on host |
+| `/etc/timezone` | `/etc/timezone` | `ro` | File exists on host (Debian convention; `/etc/localtime` itself is set up via `Timezone=local`, not a bind-mount) |
 | Wayland socket | Wayland socket | `ro` | `wayland = true` |
 | `%t/pipewire-0` | `%t/pipewire-0` | (none) | `audio = true` + PipeWire present |
 | `%t/pulse` | `%t/pulse` | (none) | `audio = true` + PulseAudio present |
 | D-Bus socket | D-Bus socket | (none) | `dbus = true` |
+| SSH agent socket | `/run/podbox/ssh-agent.sock` | (none) | `ssh_agent = true` + `SSH_AUTH_SOCK` present on host (plus `Environment=SSH_AUTH_SOCK`) |
 | GPG agent socket | `/run/podbox/gnupg/S.gpg-agent` | `ro` | `gpg_agent = true` |
 | `%t/podbox/<name>.sock` | `%t/podbox/<name>.sock` | (none) | Always (host-guest socket) |
 | Extra mounts | Per config | Per config | From `[container.mounts].extra` |
 
 ### `PodmanArgs=`
 
+Only settings with no native Quadlet key go through `PodmanArgs=`:
+
 | Arg | Notes |
 |-----|-------|
-| `--init` | catatonit as PID 1 (zombie reaping) |
-| `--workdir=/home/%u` | Default working directory |
-| `--cap-add=<cap>` | Per `security.cap_preset` + `security.cap_add` (conditional) |
+| `--cpus=<n>` | From `container.cpus` (conditional; Quadlet has no `CpuQuota` key, and `--cpus` also takes fractions like `0.5`) |
 
 ### `[Service]`
 
@@ -137,7 +139,10 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 |-----|-------|-------|
 | `Restart` | `on-failure` | Auto-restart on crash |
 | `RestartSec` | `2s` | Delay between restarts |
-| `AutoRemove` | `true` | Only when `lifecycle.on_stop = "remove"` |
+
+Quadlet runs containers with `--rm --replace`, so every box is ephemeral:
+stopping one removes it, and persistent state lives in the home volume and
+snapshots. (`lifecycle.on_stop` is deprecated and emits nothing.)
 
 ### `[Install]`
 
@@ -181,7 +186,7 @@ Podbox targets Podman 5.5+ with feature gating at 5.6 and 6.0.
 
 | Feature | Podman 5.5.x | Podman ≥ 5.6, < 6.0 | Podman ≥ 6.0 |
 |---------|-------------|----------------------|--------------|
-| `ssh_agent` | Warns and skips | `SshAgent=default` + `Environment=` | `SshAgent=default` + `Environment=` |
+| `ssh_agent` | `Volume=` + `Environment=SSH_AUTH_SOCK` on all versions | `Volume=` + `Environment=SSH_AUTH_SOCK` on all versions | `Volume=` + `Environment=SSH_AUTH_SOCK` on all versions |
 | Quadlet install | Manual copy into `~/.config/containers/systemd/` | `podman quadlet install --replace` with **file** args (flat layout) | `podman quadlet install --replace --application <name> <dir>` (app-subdir layout) |
 | Quadlet uninstall | Manual file remove + `systemctl daemon-reload` | `podman quadlet rm <name>.container` (flat) | `podman quadlet rm --recursive <name>` (app-subdir) + flat fallback |
 | Container list | `podman ps --filter label=podbox.*` | `podman quadlet list` | `podman quadlet list` |
