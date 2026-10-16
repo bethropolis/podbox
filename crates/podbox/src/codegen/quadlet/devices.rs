@@ -17,21 +17,21 @@ use crate::env::HostEnv;
 /// points at `nvidia-ctk cdi generate` for that. Once the CDI fact arrives
 /// via the host environment, the CDI-present path emits
 /// `AddDevice=nvidia.com/gpu=all` instead.
-fn emit_nvidia_fallback(lines: &mut Vec<String>) {
-    lines.push("AddDevice=-/dev/nvidiactl".into());
+fn emit_nvidia_fallback(lines: &mut Vec<String>, warnings: &mut Vec<String>) {
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidiactl");
     for i in 0..8 {
-        lines.push(format!("AddDevice=-/dev/nvidia{i}"));
+        value::push_raw(lines, warnings, "AddDevice", &format!("-/dev/nvidia{i}"));
     }
-    lines.push("AddDevice=-/dev/nvidia-modeset".into());
-    lines.push("AddDevice=-/dev/nvidia-uvm".into());
-    lines.push("AddDevice=-/dev/nvidia-uvm-tools".into());
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidia-modeset");
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidia-uvm");
+    value::push_raw(lines, warnings, "AddDevice", "-/dev/nvidia-uvm-tools");
 }
 
 pub(super) fn emit_gpu(
     lines: &mut Vec<String>,
     config: &Config,
     env: &HostEnv,
-    _warnings: &mut Vec<String>,
+    warnings: &mut Vec<String>,
 ) {
     match config.integration.gpu {
         GpuMode::Enabled => {
@@ -40,7 +40,7 @@ pub(super) fn emit_gpu(
         }
         GpuMode::Nvidia => {
             lines.push("AddDevice=/dev/dri".into());
-            emit_nvidia_fallback(lines);
+            emit_nvidia_fallback(lines, warnings);
             lines.push(String::new());
         }
         GpuMode::Auto => {
@@ -48,7 +48,7 @@ pub(super) fn emit_gpu(
                 lines.push("AddDevice=/dev/dri".into());
             }
             if env.gpu_has_nvidia {
-                emit_nvidia_fallback(lines);
+                emit_nvidia_fallback(lines, warnings);
             }
             if env.gpu_has_dri || env.gpu_has_nvidia {
                 lines.push(String::new());
