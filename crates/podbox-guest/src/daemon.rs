@@ -191,27 +191,69 @@ pub fn run() -> Result<(), GuestError> {
     // 7. Resolve and export the user's full PATH for host-side consumption
     resolve_user_path();
 
-    // 8. Handle connections and self-heal on host disconnects/restarts
+    // 8. Handle connections and self-heal on host disconnects/restarts.
+    // Only a dropped connection reconnects: a shutdown (signal or host
+    // message) exits the process, and a version mismatch is fatal.
+    let mut backoff_failures = 0u32;
     loop {
-        if let Err(e) = event_loop(&mut host_stream, idle_timeout_secs, &shutdown) {
-            tracing::error!("guest: connection error: {e}. Reconnecting...");
-        } else {
-            tracing::warn!("guest: host disconnected. Retrying connection...");
-        }
-
-        std::thread::sleep(std::time::Duration::from_secs(3));
-        if let Ok(stream) = socket::connect_to_host(&host_socket_path) {
-            host_stream = stream;
-            if let Ok((caps, _, shims)) =
-                socket::handshake(&mut host_stream, &container_name, &all_caps)
-            {
-                tracing::info!("guest: re-established connection and handshook successfully.");
-                let caps_set: HashSet<String> = caps.iter().cloned().collect();
-                let _ = install_interceptors(&caps_set, &bin_dir, &shims);
-                let _ = write_path_injection(&bin_dir);
+        match event_loop(&mut host_stream, idle_timeout_secs, &shutdown) {
+            Exit::Shutdown => {
+                tracing::info!("guest: shutdown requested, exiting.");
+                return Ok(());
+            }
+            Exit::Disconnected => {
+                if shutdown.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                tracing::warn!("guest: host disconnected. Retrying connection...");
+                backoff_failures = backoff_failures.saturating_add(1);
+                std::thread::sleep(backoff_delay(backoff_failures));
+                let stream = match socket::connect_to_host(&host_socket_path) {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        tracing::error!("guest: reconnect failed: {e}");
+                        continue;
+                    }
+                };
+                host_stream = stream;
+                match socket::handshake(&mut host_stream, &container_name, &all_caps) {
+                    Ok((caps, _, shims)) => {
+                        tracing::info!(
+                            "guest: re-established connection and handshook successfully."
+                        );
+                        backoff_failures = 0;
+                        let caps_set: HashSet<String> = caps.iter().cloned().collect();
+                        let _ = install_interceptors(&caps_set, &bin_dir, &shims);
+                        let _ = write_path_injection(&bin_dir);
+                    }
+                    Err(GuestError::VersionMismatch(reason)) => {
+                        tracing::error!("guest: {reason}; not reconnecting.");
+                        return Err(GuestError::VersionMismatch(reason));
+                    }
+                    Err(e) => {
+                        tracing::error!("guest: re-handshake failed: {e}");
+                    }
+                }
             }
         }
     }
+}
+
+/// How the daemon's connection to the host ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Exit {
+    /// SIGTERM/SIGINT arrived, or the host sent `Shutdown`: exit the
+    /// process instead of reconnecting.
+    Shutdown,
+    /// The connection dropped (EOF, hangup, I/O error): reconnect.
+    Disconnected,
+}
+
+/// Reconnect wait after `failures` consecutive failed sessions: 1 s
+/// doubling up to a 60 s cap. Reset to zero after a successful session.
+fn backoff_delay(failures: u32) -> std::time::Duration {
+    let secs = 1u64 << failures.saturating_sub(1).min(6);
+    std::time::Duration::from_secs(secs.min(60))
 }
 
 fn install_interceptors(
@@ -222,15 +264,8 @@ fn install_interceptors(
     let self_path = std::env::current_exe()?;
     let self_path_str = self_path.to_string_lossy();
 
-    let symlinks = vec![
-        (crate::protocol::CAP_NOTIFY, "notify-send"),
-        (crate::protocol::CAP_XDG_OPEN, "xdg-open"),
-        (crate::protocol::CAP_CLIPBOARD, "podbox-clipboard"),
-        (crate::protocol::CAP_HOST_EXEC, "host-exec"),
-    ];
-
-    for (cap, name) in symlinks {
-        if accepted.contains(cap) {
+    for (name, cap) in crate::protocol::INTERCEPTORS {
+        if accepted.contains(*cap) {
             let link = bin_dir.join(name);
             let _ = std::fs::remove_file(&link);
             std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
@@ -250,11 +285,13 @@ fn install_interceptors(
                 tracing::warn!("skipping invalid host-exec shim name: {shim:?}");
                 continue;
             }
-            // Guard against overwriting core interceptors
-            if matches!(
-                shim.as_str(),
-                "notify-send" | "xdg-open" | "podbox-clipboard" | "podmgr-clipboard" | "host-exec"
-            ) {
+            // Guard against overwriting core interceptors (plus the legacy
+            // `podmgr-*` alias for the clipboard shim).
+            let is_core = crate::protocol::INTERCEPTORS
+                .iter()
+                .any(|(name, _)| *name == shim)
+                || shim == "podmgr-clipboard";
+            if is_core {
                 continue;
             }
             let link = bin_dir.join(shim);
@@ -519,11 +556,7 @@ const MAX_POLL_MS: i64 = 60_000;
 const IDLE_CONFIRM_MS: u64 = 1_000;
 
 #[allow(clippy::too_many_lines)]
-fn event_loop(
-    host_stream: &mut UnixStream,
-    idle_timeout_secs: u64,
-    shutdown: &AtomicBool,
-) -> Result<(), GuestError> {
+fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &AtomicBool) -> Exit {
     let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
     let mut tracked: Vec<TrackedProcess> = Vec::new();
     let mut remaining_ms = idle_limit_ms;
@@ -531,7 +564,7 @@ fn event_loop(
     loop {
         if shutdown.load(Ordering::Relaxed) {
             tracing::info!("guest: received shutdown signal, exiting.");
-            return Ok(());
+            return Exit::Shutdown;
         }
 
         let host_revents: PollFlags;
@@ -568,7 +601,10 @@ fn event_loop(
                             }
                             if active.is_empty() {
                                 let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
-                                return Ok(());
+                                // Our own idle timer fired: the host will
+                                // stop the unit. Exit instead of
+                                // reconnecting to a container going down.
+                                return Exit::Shutdown;
                             }
                             tracked = track_processes(&active);
                             remaining_ms = idle_limit_ms;
@@ -587,25 +623,23 @@ fn event_loop(
                 Err(nix::errno::Errno::EINTR) => {
                     if shutdown.load(Ordering::Relaxed) {
                         tracing::info!("guest: received shutdown signal, exiting.");
-                        return Ok(());
+                        return Exit::Shutdown;
                     }
                     continue;
                 }
-                Err(e) => return Err(GuestError::Io(e.into())),
+                Err(_) => return Exit::Disconnected,
             }
         }
 
         // ── Host socket events ──
-        if host_revents.contains(PollFlags::POLLHUP) || host_revents.contains(PollFlags::POLLERR) {
-            tracing::warn!("guest: host socket hung up.");
-            return Ok(());
-        }
-
+        // POLLIN first: a peer that writes and then closes delivers its
+        // last message alongside POLLHUP. That message (e.g. `Shutdown`)
+        // must be processed, not discarded as a hangup.
         if host_revents.contains(PollFlags::POLLIN) {
             match socket::read_host_message(host_stream) {
                 Ok(Some(HostMessage::Shutdown)) => {
                     tracing::info!("guest: received shutdown, exiting.");
-                    return Ok(());
+                    return Exit::Shutdown;
                 }
                 Ok(Some(
                     HostMessage::Ping
@@ -613,6 +647,7 @@ fn event_loop(
                     | HostMessage::ClipboardData { .. }
                     | HostMessage::HostExecStdout { .. }
                     | HostMessage::HostExecStderr { .. }
+                    | HostMessage::HostExecOutput { .. }
                     | HostMessage::HostExecDone { .. }
                     | HostMessage::NotifyActionResult { .. }
                     | HostMessage::Error { .. },
@@ -642,14 +677,19 @@ fn event_loop(
                 }
                 Ok(None) => {
                     tracing::warn!("guest: host disconnected.");
-                    return Ok(());
+                    return Exit::Disconnected;
                 }
-                Err(e) => {
-                    if !e.to_string().contains("WouldBlock") {
-                        return Err(e);
-                    }
+                Err(GuestError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Spurious poll wakeup: POLLIN was reported but there is
+                    // nothing to read yet. Fall through to the hangup check.
                 }
+                Err(_) => return Exit::Disconnected,
             }
+        }
+
+        if host_revents.contains(PollFlags::POLLHUP) || host_revents.contains(PollFlags::POLLERR) {
+            tracing::warn!("guest: host socket hung up.");
+            return Exit::Disconnected;
         }
 
         // ── pidfd events (tracked process exits) ──
@@ -790,5 +830,55 @@ mod tests {
                 "daemon named {comm} must be excluded by ancestry"
             );
         }
+    }
+
+    // ── shutdown / reconnect behavior ──
+
+    /// Drive `event_loop` on one end of a socket pair. The result comes
+    /// back over a channel with a deadline, so a loop that never returns
+    /// fails the test instead of hanging the suite.
+    fn run_event_loop_once(
+        server: std::os::unix::net::UnixStream,
+        idle_timeout_secs: u64,
+        preset_shutdown: bool,
+    ) -> Exit {
+        let shutdown = AtomicBool::new(preset_shutdown);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut stream = server;
+            let _ = tx.send(event_loop(&mut stream, idle_timeout_secs, &shutdown));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("event loop did not return")
+    }
+
+    #[test]
+    fn backoff_delay_doubles_up_to_a_cap() {
+        let secs: Vec<u64> = (0..=8).map(|f| backoff_delay(f).as_secs()).collect();
+        assert_eq!(secs, vec![1, 1, 2, 4, 8, 16, 32, 60, 60]);
+        assert_eq!(backoff_delay(u32::MAX).as_secs(), 60);
+    }
+
+    #[test]
+    fn shutdown_message_makes_the_event_loop_exit() {
+        let (server, mut mock) = std::os::unix::net::UnixStream::pair().unwrap();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            let _ = write_frame(&mut mock, &HostMessage::Shutdown);
+        });
+        assert_eq!(run_event_loop_once(server, 0, false), Exit::Shutdown);
+    }
+
+    #[test]
+    fn closed_host_connection_is_a_disconnect_not_a_shutdown() {
+        let (server, mock) = std::os::unix::net::UnixStream::pair().unwrap();
+        drop(mock);
+        assert_eq!(run_event_loop_once(server, 0, false), Exit::Disconnected);
+    }
+
+    #[test]
+    fn preset_shutdown_flag_exits_without_reading() {
+        let (server, _mock) = std::os::unix::net::UnixStream::pair().unwrap();
+        assert_eq!(run_event_loop_once(server, 0, true), Exit::Shutdown);
     }
 }

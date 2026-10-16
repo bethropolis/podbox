@@ -1,4 +1,4 @@
-use std::os::fd::FromRawFd;
+use std::os::fd::{AsFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Arc;
@@ -17,6 +17,7 @@ mod monitor;
 pub use actions::{HostActions, SystemActions};
 
 use conn::handle_connection;
+use conn::peer_is_in_host_userns;
 use monitor::{listen_fd, setup_signal_handler};
 
 /// Maximum consecutive failed negotiations (bad hello, unauthenticated
@@ -25,6 +26,14 @@ const MAX_NEGOTIATION_FAILURES: u32 = 5;
 
 /// Max number of concurrent host threads handling guest connections.
 const MAX_CONCURRENT: usize = 4;
+
+/// Extra slots beyond [`MAX_CONCURRENT`] reserved for host-side peers: the
+/// host CLI's `RegisterSession` and doctor probes, which all pass
+/// `peer_is_in_host_userns`. A pool full of guest connections (silent
+/// squatters are bounded by `HELLO_DEADLINE`, but a valid Hello holds a
+/// slot for as long as its handler runs) must not starve host control
+/// traffic.
+const HOST_OVERFLOW: usize = 2;
 
 /// Max number of tracked terminal sessions (pidfd monitors).
 const MAX_SESSIONS: u32 = 64;
@@ -72,44 +81,33 @@ pub fn serve_connection(
     handle_connection(stream, config, &state, actions)
 }
 
-/// Run the host socket server for a container.
-pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
-    let shutdown = Arc::new(AtomicBool::new(false));
-    setup_signal_handler(&shutdown)?;
+/// Whether a new connection may be accepted with `active` connections
+/// already in flight. Guest peers are capped at `max`; host-side peers
+/// may additionally use `overflow` reserved slots.
+fn connection_allowed(active: usize, max: usize, overflow: usize, peer_is_host: bool) -> bool {
+    active < max || (peer_is_host && active < max + overflow)
+}
 
-    let config = config.clone();
-    let path = socket_path.to_path_buf();
-    let idle_timeout_secs = parse_idle_timeout_secs(&config.lifecycle.idle_timeout);
-
-    let activation_fd = listen_fd();
-    let was_socket_activated = activation_fd.is_some();
-    let listener = match activation_fd {
-        Some(fd) => {
-            // SAFETY: `fd` comes from systemd's `LISTEN_FDS` activation
-            // protocol: the user manager hands over ownership of a valid
-            // listening socket fd, which this process must adopt exactly
-            // once. No safe wrapper exists for externally-sourced fds.
-            #[allow(unsafe_code)]
-            unsafe {
-                UnixListener::from_raw_fd(fd)
-            }
-        }
-        None => {
-            let _ = std::fs::remove_file(&path);
-            UnixListener::bind(&path)?
-        }
-    };
+/// The accept loop behind [`run`]: accept, enforce the connection cap with
+/// reserved host slots, and hand each connection to a thread running the
+/// real message loop.
+///
+/// `classify_host_peer` decides whether a fresh connection is host-side
+/// (production: [`peer_is_in_host_userns`]); it is a parameter so tests can
+/// script the peer mix without joining new user namespaces.
+fn accept_loop(
+    listener: UnixListener,
+    config: &Config,
+    state: &Arc<SharedState>,
+    shutdown: &AtomicBool,
+    classify_host_peer: &dyn Fn(&UnixStream) -> bool,
+    max: usize,
+    overflow: usize,
+) -> anyhow::Result<()> {
     // Non-blocking + periodic tick so SIGTERM/SIGINT ends the accept loop
     // promptly instead of blocking in accept(2) until systemd's
     // TimeoutStopSec SIGKILL.
     listener.set_nonblocking(true)?;
-
-    let state = Arc::new(SharedState {
-        session_count: AtomicU32::new(0),
-        container_name: container_name.to_string(),
-        idle_timeout_secs,
-        was_socket_activated,
-    });
 
     let mut handles: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
@@ -128,7 +126,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 stream.set_nonblocking(false)?;
                 handles.retain_mut(|h| !h.is_finished());
 
-                if handles.len() >= MAX_CONCURRENT {
+                if !connection_allowed(handles.len(), max, overflow, classify_host_peer(&stream)) {
                     // Say so, rather than dropping the peer silently. The guest
                     // retries on its own; a silent drop looks like a dead host.
                     tracing::warn!(
@@ -145,7 +143,7 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
                 }
 
                 let cfg = config.clone();
-                let state = Arc::clone(&state);
+                let state = Arc::clone(state);
                 let handle = std::thread::spawn(move || {
                     if let Err(e) = handle_connection(&mut stream, &cfg, &state, &SystemActions) {
                         tracing::error!("error handling connection: {}", e);
@@ -167,11 +165,61 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
     Ok(())
 }
 
+/// Run the host socket server for a container.
+pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    setup_signal_handler(&shutdown)?;
+
+    let config = config.clone();
+    let path = socket_path.to_path_buf();
+    let idle_timeout_secs = parse_idle_timeout_secs(&config.lifecycle.idle_timeout);
+
+    let activation_fd = listen_fd();
+    let was_socket_activated = activation_fd.is_some();
+    let listener = match activation_fd {
+        Some(fd) => {
+            // SAFETY: `fd` comes from systemd's `LISTEN_FDS` activation
+            // protocol: the user manager hands over ownership of a valid
+            // listening socket fd, which this process must adopt exactly
+            // once. No safe wrapper exists for externally-sourced fds.
+            // `set_cloexec` runs before any child is spawned, so host-exec
+            // commands, `xdg-open` and `wl-copy` never inherit the listener.
+            #[allow(unsafe_code)]
+            let listener = unsafe { UnixListener::from_raw_fd(fd) };
+            crate::process::set_cloexec(listener.as_fd())?;
+            listener
+        }
+        None => {
+            let _ = std::fs::remove_file(&path);
+            UnixListener::bind(&path)?
+        }
+    };
+
+    let state = Arc::new(SharedState {
+        session_count: AtomicU32::new(0),
+        container_name: container_name.to_string(),
+        idle_timeout_secs,
+        was_socket_activated,
+    });
+
+    accept_loop(
+        listener,
+        &config,
+        &state,
+        &shutdown,
+        &peer_is_in_host_userns,
+        MAX_CONCURRENT,
+        HOST_OVERFLOW,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::conn::{has_cap, note_failure};
     use super::handlers::{MAX_URI_LEN, UriError, validate_host_exec_args, validate_uri};
     use std::collections::HashSet;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
     // ── validate_uri tests ──
 
@@ -396,6 +444,136 @@ mod tests {
         }
     }
 
+    // ── connection admission tests ──
+
+    #[test]
+    fn guest_pool_is_capped_and_host_peers_use_reserved_slots() {
+        // max = 4 shared slots, 2 reserved for host-side peers.
+        assert!(super::connection_allowed(0, 4, 2, false));
+        assert!(super::connection_allowed(3, 4, 2, false));
+        assert!(!super::connection_allowed(4, 4, 2, false));
+        assert!(!super::connection_allowed(9, 4, 2, false));
+        assert!(super::connection_allowed(4, 4, 2, true));
+        assert!(super::connection_allowed(5, 4, 2, true));
+        assert!(!super::connection_allowed(6, 4, 2, true));
+    }
+
+    /// Drive the real accept loop with a scripted guest/host peer mix: with
+    /// one shared slot, the first guest is accepted, the second is told the
+    /// pool is busy, a host-side peer still gets a reserved slot, and a
+    /// freed slot admits guests again.
+    #[test]
+    fn host_peer_is_accepted_when_the_guest_pool_is_full() {
+        use std::os::unix::net::{UnixListener, UnixStream};
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("serve.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let config = crate::config::Config::embedded();
+        let state = Arc::new(super::SharedState {
+            session_count: AtomicU32::new(0),
+            container_name: "dev".into(),
+            idle_timeout_secs: 0,
+            was_socket_activated: false,
+        });
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let next = AtomicUsize::new(0);
+        // Peer class per accepted connection, in order.
+        let classes = [false, false, true, false];
+        let classify = move |_: &UnixStream| {
+            let i = next.fetch_add(1, Ordering::SeqCst);
+            classes[i.min(classes.len() - 1)]
+        };
+
+        let shutdown_loop = Arc::clone(&shutdown);
+        let worker = std::thread::spawn(move || {
+            super::accept_loop(listener, &config, &state, &shutdown_loop, &classify, 1, 1)
+        });
+
+        fn connect(path: &std::path::Path) -> UnixStream {
+            let stream = UnixStream::connect(path).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            stream
+        }
+
+        fn hello(stream: &mut UnixStream) {
+            crate::protocol::write_frame(
+                stream,
+                &crate::protocol::GuestMessage::Hello {
+                    protocol_version: crate::protocol::PROTOCOL_VERSION,
+                    guest_version: "test".into(),
+                    container: "dev".into(),
+                    capabilities: vec![],
+                },
+            )
+            .unwrap();
+        }
+
+        fn reply_kind(stream: &mut UnixStream) -> String {
+            let bytes = crate::protocol::read_frame(stream)
+                .unwrap()
+                .expect("server closed the connection");
+            let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+            match msg {
+                crate::protocol::HostMessage::HelloAck { .. } => "ack".into(),
+                crate::protocol::HostMessage::Error { reason } => format!("error:{reason}"),
+                other => panic!("unexpected reply: {other:?}"),
+            }
+        }
+
+        // One shared slot: the first guest holds it.
+        let mut guest = connect(&path);
+        hello(&mut guest);
+        assert_eq!(reply_kind(&mut guest), "ack");
+
+        // The pool is full: the next guest is refused with a busy reason.
+        let mut refused = connect(&path);
+        hello(&mut refused);
+        let reply = reply_kind(&mut refused);
+        assert!(
+            reply.contains("busy"),
+            "expected a busy refusal, got {reply:?}"
+        );
+        drop(refused);
+
+        // A host-side peer still gets a reserved slot.
+        let mut host_peer = connect(&path);
+        hello(&mut host_peer);
+        assert_eq!(reply_kind(&mut host_peer), "ack");
+
+        // Both slots in use: another guest is refused.
+        let mut refused2 = connect(&path);
+        hello(&mut refused2);
+        assert!(reply_kind(&mut refused2).contains("busy"));
+        drop(refused2);
+
+        // Free both slots; a guest is admitted again once the server-side
+        // threads observe the EOF (poll — thread teardown is asynchronous).
+        drop(guest);
+        drop(host_peer);
+        let began = std::time::Instant::now();
+        loop {
+            let mut retry = connect(&path);
+            hello(&mut retry);
+            if reply_kind(&mut retry) == "ack" {
+                drop(retry);
+                break;
+            }
+            assert!(
+                began.elapsed() < Duration::from_secs(10),
+                "freed slot was never reused"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        shutdown.store(true, Ordering::Relaxed);
+        worker.join().expect("accept loop panicked").unwrap();
+    }
+
     // ── handle_hello tests ──
 
     #[test]
@@ -462,5 +640,83 @@ mod tests {
             }
             other => panic!("expected HelloAck, got {other:?}"),
         }
+    }
+
+    // ── streaming host-exec helper tests ──
+
+    #[test]
+    fn signal_death_maps_to_the_shell_convention() {
+        use super::handlers::exit_code_and_signal;
+        let killed = std::process::Command::new("sh")
+            .args(["-c", "kill -TERM $$"])
+            .status()
+            .unwrap();
+        assert_eq!(exit_code_and_signal(&killed), (143, Some(15)));
+        let clean = std::process::Command::new("sh")
+            .args(["-c", "exit 42"])
+            .status()
+            .unwrap();
+        assert_eq!(exit_code_and_signal(&clean), (42, None));
+    }
+
+    /// A child that never stops writing is killed once its total output
+    /// passes the cap, and the guest gets a truncation note plus a failure
+    /// status instead of unbounded frames.
+    #[test]
+    fn output_cap_kills_a_chatty_child_and_reports_truncation() {
+        use super::handlers::stream_child_output;
+        let (mut server, mut client) = socket_pair();
+        client
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .unwrap();
+        let child = std::process::Command::new("yes")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        stream_child_output(
+            &mut server,
+            child,
+            std::time::Duration::from_secs(30),
+            20_000,
+        )
+        .unwrap();
+        drop(server);
+
+        // Zero or more chunks under the cap, then the truncation note,
+        // then done-with-failure. Chunk sizes depend on pipe timing, so
+        // only the shape and the totals are asserted.
+        let mut forwarded = 0usize;
+        let mut frames = 0;
+        loop {
+            frames += 1;
+            assert!(frames < 100, "cap never fired");
+            let bytes = crate::protocol::read_frame(&mut client)
+                .unwrap()
+                .expect("truncation report");
+            let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+            match msg {
+                crate::protocol::HostMessage::HostExecOutput { data, .. } => {
+                    forwarded += data.len();
+                    assert!(forwarded <= 20_000, "cap exceeded: {forwarded}");
+                }
+                crate::protocol::HostMessage::HostExecStderr { data } => {
+                    assert!(data.contains("truncated"), "{data:?}");
+                    break;
+                }
+                other => panic!("expected output or truncation, got {other:?}"),
+            }
+        }
+        let bytes = crate::protocol::read_frame(&mut client)
+            .unwrap()
+            .expect("done frame");
+        let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
+        assert!(
+            matches!(
+                msg,
+                crate::protocol::HostMessage::HostExecDone { exit_code: 1, .. }
+            ),
+            "expected failure status, got {msg:?}"
+        );
     }
 }

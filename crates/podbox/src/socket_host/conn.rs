@@ -155,12 +155,11 @@ pub(crate) fn handle_connection(
                     return Ok(());
                 }
                 // Receive the pidfd via SCM_RIGHTS
-                let raw_fd = match process::recv_fd(stream) {
+                let fd = match process::recv_fd(stream) {
                     Ok(Some(fd)) => fd,
                     Ok(None) => return Ok(()),
                     Err(_) => return Ok(()),
                 };
-                let fd = process::adopt_scm_fd(raw_fd);
                 state.session_count.fetch_add(1, Ordering::SeqCst);
                 let s = Arc::clone(state);
                 std::thread::spawn(move || monitor_pidfd(fd, s));
@@ -199,9 +198,9 @@ pub(crate) fn handle_connection(
             GuestMessage::Notify {
                 summary,
                 body,
-                urgency: _,
+                urgency,
                 actions: choices,
-                app_name: _,
+                app_name,
             } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_NOTIFY) {
                     if note_failure(stream, &mut failures, "capability 'notify' not accepted") {
@@ -210,7 +209,7 @@ pub(crate) fn handle_connection(
                     continue;
                 }
                 failures = 0;
-                handlers::handle_notify(stream, actions, summary, body, choices)?
+                handlers::handle_notify(stream, actions, summary, body, urgency, app_name, choices)?
             }
             GuestMessage::XdgOpen { uri } => {
                 if !has_cap(&negotiated, crate::protocol::CAP_XDG_OPEN) {
@@ -231,7 +230,7 @@ pub(crate) fn handle_connection(
                     continue;
                 }
                 failures = 0;
-                handlers::handle_clipboard_set(actions, text)?
+                handlers::handle_clipboard_set(stream, actions, text)?
             }
             GuestMessage::ClipboardGet => {
                 if !has_cap(&negotiated, crate::protocol::CAP_CLIPBOARD) {
@@ -251,7 +250,11 @@ pub(crate) fn handle_connection(
                     continue;
                 }
                 failures = 0;
-                handlers::handle_host_exec(stream, &config.integration, cmd, args)?
+                // Streaming needs no extra gate beyond the granted
+                // capability: a guest that never asked for it gets buffered
+                // frames, which it already understands.
+                let streaming = has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC_STREAM);
+                handlers::handle_host_exec(stream, &config.integration, cmd, args, streaming)?
             }
             GuestMessage::Info {
                 guest_version,
@@ -293,7 +296,11 @@ pub(crate) fn has_cap(negotiated: &Option<HashSet<String>>, cap: &str) -> bool {
 /// Compares `SO_PEERCRED`'s pid against `/proc/self/ns/user`. The host CLI
 /// runs in the host userns; anything inside the container runs in the
 /// container's private userns (rootless podman), so the inode differs.
-fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
+///
+/// Note the TOCTOU caveat: the pid is read from the socket, then
+/// `/proc/<pid>/ns/user` is read in a separate step, so a recycled pid
+/// could point at the wrong process. A pidfd-based check would close this.
+pub(crate) fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
     let creds = match getsockopt(stream, sockopt::PeerCredentials) {
         Ok(c) => c,
         Err(_) => return false,

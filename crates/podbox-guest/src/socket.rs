@@ -78,6 +78,13 @@ pub fn handshake(
             host_exec_shims,
             ..
         } => Ok((accepted, idle_timeout_secs, host_exec_shims)),
+        // The host answers with `Shutdown` when the protocol versions do
+        // not match (see the host's hello handler). Retrying that
+        // handshake is pointless, so it gets its own error: the caller
+        // must not reconnect.
+        HostMessage::Shutdown => Err(GuestError::VersionMismatch(
+            "host uses an incompatible protocol version".into(),
+        )),
         _ => Err(GuestError::HandshakeFailed(
             "unexpected response from host".into(),
         )),
@@ -107,15 +114,31 @@ pub fn negotiate_at(
     container: &str,
     caps: &[&str],
 ) -> Result<UnixStream, GuestError> {
+    negotiate_at_with_optional(socket_path, container, caps, &[]).map(|(stream, _)| stream)
+}
+
+/// [`negotiate_at`] with optional capabilities: `required` must all be
+/// granted (else [`GuestError::CapabilityRefused`]), while `optional` ones
+/// are taken when granted and ignored when refused. Returns the stream and
+/// the full accepted list so the caller can adapt to what the host
+/// supports — e.g. streaming host-exec output when the host grants
+/// `host_exec_stream`, buffered frames otherwise.
+pub fn negotiate_at_with_optional(
+    socket_path: &Path,
+    container: &str,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(UnixStream, Vec<String>), GuestError> {
     let mut stream = UnixStream::connect(socket_path)?;
-    let requested: Vec<String> = caps.iter().map(|c| (*c).to_string()).collect();
+    let mut requested: Vec<String> = required.iter().map(|c| (*c).to_string()).collect();
+    requested.extend(optional.iter().map(|c| (*c).to_string()));
     let (accepted, _idle_timeout, _shims) = handshake(&mut stream, container, &requested)?;
-    for cap in caps {
+    for cap in required {
         if !accepted.iter().any(|a| a == cap) {
             return Err(GuestError::CapabilityRefused((*cap).to_string()));
         }
     }
-    Ok(stream)
+    Ok((stream, accepted))
 }
 
 /// Negotiate `cap`, send one message on the same connection, and close.
@@ -133,5 +156,29 @@ pub fn read_host_message(stream: &mut UnixStream) -> Result<Option<HostMessage>,
             Ok(Some(msg))
         }
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `Shutdown` reply to `Hello` means the protocol versions do not
+    /// match. It must surface as a fatal error (no reconnect), not as a
+    /// retryable handshake failure.
+    #[test]
+    fn shutdown_reply_is_a_version_mismatch_not_a_retryable_error() {
+        let (mut guest, mut mock) = UnixStream::pair().unwrap();
+        std::thread::spawn(move || {
+            let bytes = read_frame(&mut mock).unwrap().expect("hello frame");
+            let hello: GuestMessage = serde_json::from_slice(&bytes).unwrap();
+            assert!(matches!(hello, GuestMessage::Hello { .. }));
+            write_frame(&mut mock, &HostMessage::Shutdown).unwrap();
+        });
+        let err = handshake(&mut guest, "dev", &["notify".to_string()]).unwrap_err();
+        assert!(
+            matches!(err, GuestError::VersionMismatch(_)),
+            "expected VersionMismatch, got {err:?}"
+        );
     }
 }
