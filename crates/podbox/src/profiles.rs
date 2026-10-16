@@ -28,6 +28,17 @@ pub fn find(name: &str) -> Option<Profile> {
         .find(|p| p.name == lower)
 }
 
+/// Find a bundled profile by name, ignoring user overrides.
+///
+/// Backs the `builtin:<name>` extends target: a user profile that shadows
+/// a bundled one can still inherit from the template it replaces.
+pub fn find_builtin(name: &str) -> Option<Profile> {
+    let lower = name.to_lowercase();
+    [cachy(), fedora(), ubuntu(), dev()]
+        .into_iter()
+        .find(|p| p.name == lower)
+}
+
 fn user_profiles_dir() -> PathBuf {
     crate::config::config_dir().join("profiles")
 }
