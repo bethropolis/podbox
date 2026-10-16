@@ -49,7 +49,6 @@ RUN chmod +x /usr/local/bin/podbox-guest
 ENV PODBOX_CONTAINER=myenv
 ENV PODBOX_HOST_VERSION=0.5.0
 ENV LANG=en_US.UTF-8
-ENV LC_ALL=en_US.UTF-8
 ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/usr/bin/fish"]
 ```

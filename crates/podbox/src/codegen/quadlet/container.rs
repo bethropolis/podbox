@@ -431,11 +431,12 @@ pub(super) fn emit_env(
     _env: &HostEnv,
     warnings: &mut Vec<String>,
 ) {
-    // Locale environment
+    // Locale environment: LANG only. Forcing LC_ALL would override the
+    // user's per-category settings (LC_TIME, LC_NUMERIC, …) inside the
+    // box, and a host locale the image lacks makes every program warn.
+    // Explicit [container.env] entries still layer over this below.
     if let Some(ref locale) = _env.host_locale {
         value::push_env(lines, warnings, "LANG", locale);
-        value::push_env(lines, warnings, "LC_ALL", locale);
-        value::push_env(lines, warnings, "LC_CTYPE", locale);
         lines.push(String::new());
     }
 

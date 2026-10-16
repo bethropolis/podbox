@@ -233,9 +233,10 @@ impl ContainerfileBuilder {
         }
         self.packages = pkgs;
         if let Some(locale) = host_locale {
+            // LANG only: forcing LC_ALL would override per-category
+            // settings inside the box and warn when the image lacks the
+            // host locale. Locale data itself comes from locale_packages.
             self.env_vars.push(("LANG".into(), locale.to_string()));
-            self.env_vars.push(("LC_ALL".into(), locale.to_string()));
-            self.env_vars.push(("LC_CTYPE".into(), locale.to_string()));
         }
         self
     }
@@ -388,6 +389,10 @@ mod tests {
         assert!(cf.contains("locales"));
         assert!(cf.contains("ENV LANG=en_US.UTF-8"));
         assert!(cf.contains("localedef -i en_US -f UTF-8 en_US.UTF-8"));
+        assert!(
+            !cf.contains("LC_ALL") && !cf.contains("LC_CTYPE"),
+            "only LANG is forced; LC_* overrides stay with the user:\n{cf}"
+        );
         assert!(cf.contains("ENV PODBOX_CONTAINER=test"));
     }
 

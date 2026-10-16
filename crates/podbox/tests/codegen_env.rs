@@ -200,8 +200,8 @@ fn quadlet_locale_env_vars_present() {
     env.host_locale = Some("en_US.UTF-8".into());
     let q = quadlet::generate_container(&config, &env, &default_xdg());
     assert!(q.contains("Environment=LANG=en_US.UTF-8"));
-    assert!(q.contains("Environment=LC_ALL=en_US.UTF-8"));
-    assert!(q.contains("Environment=LC_CTYPE=en_US.UTF-8"));
+    assert!(!q.contains("Environment=LC_ALL="));
+    assert!(!q.contains("Environment=LC_CTYPE="));
 }
 #[test]
 fn quadlet_locale_env_vars_absent_when_unset() {

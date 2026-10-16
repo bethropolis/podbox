@@ -98,7 +98,7 @@ These unit files are generated per container:
 | `SSH_AUTH_SOCK` | `/run/podbox/ssh-agent.sock` | SSH agent (conditional, Podman ≥ 5.6) |
 | `GPG_TTY` | `/dev/pts/0` | GPG TTY (conditional) |
 | `GNUPGHOME` | `/run/podbox/gnupg` | GPG home (conditional) |
-| `LANG`, `LC_ALL`, `LC_CTYPE` | From host locale | Locale (conditional) |
+| `LANG` | From host locale | Locale (conditional; `LC_*` overrides stay with the user) |
 | `PODBOX_CONTAINER` | `<name>` | Always set; identifies the container |
 
 Custom `[container.env]` entries are also passed as `Environment=`.
