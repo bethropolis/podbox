@@ -67,6 +67,21 @@ fn read_user_path(name: &str) -> Option<String> {
     }
 }
 
+/// Insert `--env=PATH=<container path>` before the container-name slot.
+///
+/// Read after the box is running: the guest daemon only writes
+/// `/run/podbox/path` once it is up, so reading before `ensure_running`
+/// misses it on every cold start and the session falls back to the Quadlet
+/// default PATH. Returns the (possibly shifted) name slot.
+fn insert_user_path(name: &str, args: &mut Vec<OsString>, name_index: usize) -> usize {
+    let Some(path) = read_user_path(name) else {
+        return name_index;
+    };
+    let index = name_index.min(args.len());
+    args.splice(index..index, [OsString::from(format!("--env=PATH={path}"))]);
+    name_index + 1
+}
+
 fn append_env_args(args: &mut Vec<OsString>, env: &[String]) -> Result<()> {
     for entry in env {
         let (key, value) = entry.split_once('=').ok_or_else(|| {
@@ -284,7 +299,7 @@ fn write_git_bridge_stamp(name: &str, stamp: &GitBridgeStamp) {
         return;
     }
     if let Ok(json) = serde_json::to_string(stamp) {
-        let _ = std::fs::write(&path, json);
+        let _ = podbox::fsutil::write_atomic(&path, json.as_bytes());
     }
 }
 
@@ -292,6 +307,7 @@ fn prepare_git_bridge(
     ctx: RunContext<'_>,
     git_user: &str,
     here: Option<&str>,
+    name_index: usize,
     args: &mut Vec<OsString>,
 ) {
     let RunContext {
@@ -332,10 +348,20 @@ fn prepare_git_bridge(
     if identity_env.is_empty() {
         return;
     }
+    splice_identity_args(args, name_index, &identity_env);
+}
+
+/// Splice `--env=...` args immediately before the container-name slot.
+///
+/// The slot index is recorded when the argv is built, never searched: the
+/// name can also appear as the `-u` user, and a trailing command argument
+/// can equal it too, so both `position` (wrong when user == name) and
+/// `rposition` (wrong when the command == name) misplace the flags and
+/// corrupt the argv.
+fn splice_identity_args(args: &mut Vec<OsString>, name_index: usize, identity_env: &[String]) {
     let identity_args: Vec<OsString> = identity_env.iter().map(OsString::from).collect();
-    if let Some(index) = args.iter().position(|arg| arg == name) {
-        args.splice(index..index, identity_args);
-    }
+    let index = name_index.min(args.len());
+    args.splice(index..index, identity_args);
 }
 
 /// The original per-exec logic, with the round-trips collapsed: one probe
@@ -549,11 +575,9 @@ pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
         "-w".into(),
         workdir.clone().into(),
     ];
-    if let Some(ref path) = read_user_path(name) {
-        exec_args.push(format!("--env=PATH={path}").into());
-    }
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
+    let name_index = exec_args.len();
     exec_args.push(name.into());
     exec_args.push(config.container.shell.as_str().into());
 
@@ -561,8 +585,17 @@ pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    prepare_git_bridge(ctx, &env.username, here.then_some(&workdir), &mut exec_args);
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running.
+    let name_index = insert_user_path(name, &mut exec_args, name_index);
+    prepare_git_bridge(
+        ctx,
+        &env.username,
+        here.then_some(&workdir),
+        name_index,
+        &mut exec_args,
+    );
     register_session(name, &env.xdg_runtime_dir);
     spawn_stdin_watchdog();
     let err = podbox::process::exec_replace("podman", &exec_args);
@@ -585,9 +618,6 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
     if !root {
         exec_args.push("-u".into());
         exec_args.push(env.username.as_str().into());
-        if let Some(ref path) = read_user_path(name) {
-            exec_args.push(format!("--env=PATH={path}").into());
-        }
     }
     if here {
         exec_args.push("-w".into());
@@ -595,6 +625,7 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
     }
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
+    let name_index = exec_args.len();
     exec_args.push(name.into());
     for a in cmd_args {
         exec_args.push(a.into());
@@ -604,7 +635,7 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     let here_path = if here {
         exec_args
             .windows(2)
@@ -614,10 +645,18 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
     } else {
         None
     };
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running. Root sessions keep the image PATH.
+    let name_index = if root {
+        name_index
+    } else {
+        insert_user_path(name, &mut exec_args, name_index)
+    };
     prepare_git_bridge(
         ctx,
         if root { "root" } else { &env.username },
         here_path.as_deref(),
+        name_index,
         &mut exec_args,
     );
     register_session(name, &env.xdg_runtime_dir);
@@ -642,11 +681,9 @@ pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()
         "-u".into(),
         env.username.as_str().into(),
     ];
-    if let Some(ref path) = read_user_path(name) {
-        exec_args.push(format!("--env=PATH={path}").into());
-    }
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
+    let name_index = exec_args.len();
     exec_args.push(name.into());
     exec_args.push(app.into());
     for a in app_args {
@@ -657,8 +694,11 @@ pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
-    crate::commands::ensure_running(name, dry_run, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
-    prepare_git_bridge(ctx, &env.username, None, &mut exec_args);
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running.
+    let name_index = insert_user_path(name, &mut exec_args, name_index);
+    prepare_git_bridge(ctx, &env.username, None, name_index, &mut exec_args);
     register_session(name, &env.xdg_runtime_dir);
     podbox::process::spawn_interactive_checked("podman", &exec_args)
 }
@@ -808,7 +848,7 @@ mod workdir_tests {
 
 #[cfg(test)]
 mod git_bridge_tests {
-    use super::{GitBridgeStamp, git_bridge_is_current, parse_git_probe};
+    use super::{GitBridgeStamp, git_bridge_is_current, parse_git_probe, splice_identity_args};
 
     #[test]
     fn probe_reads_sections() {
@@ -903,5 +943,57 @@ mod git_bridge_tests {
         // No id recorded (podman could not be queried): must re-probe.
         assert!(!git_bridge_is_current(&s, None, &["/home/user".into()]));
         assert!(!git_bridge_is_current(&s, Some(""), &["/home/user".into()]));
+    }
+
+    fn rendered(args: &[std::ffi::OsString]) -> Vec<String> {
+        args.iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn identity_splice_survives_user_equal_to_name() {
+        // `podman exec -u dev dev sh` with user == container name: a
+        // first-match search lands on the `-u` value and corrupts argv.
+        let mut args: Vec<std::ffi::OsString> = ["exec", "-it", "-u", "dev", "dev", "sh"]
+            .iter()
+            .map(Into::into)
+            .collect();
+        splice_identity_args(&mut args, 4, &["--env=GIT_AUTHOR_NAME=x".to_string()]);
+        assert_eq!(
+            rendered(&args),
+            [
+                "exec",
+                "-it",
+                "-u",
+                "dev",
+                "--env=GIT_AUTHOR_NAME=x",
+                "dev",
+                "sh"
+            ]
+        );
+    }
+
+    #[test]
+    fn identity_splice_survives_command_equal_to_name() {
+        // `podman exec -u user dev dev`: a last-match search lands on the
+        // command and puts podman flags after the container name.
+        let mut args: Vec<std::ffi::OsString> = ["exec", "-it", "-u", "user", "dev", "dev"]
+            .iter()
+            .map(Into::into)
+            .collect();
+        splice_identity_args(&mut args, 4, &["--env=GIT_AUTHOR_NAME=x".to_string()]);
+        assert_eq!(
+            rendered(&args),
+            [
+                "exec",
+                "-it",
+                "-u",
+                "user",
+                "--env=GIT_AUTHOR_NAME=x",
+                "dev",
+                "dev"
+            ]
+        );
     }
 }

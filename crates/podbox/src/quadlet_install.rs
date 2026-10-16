@@ -27,6 +27,90 @@ use units::{
     remove_application_dir, remove_flat_units,
 };
 
+/// A Quadlet/systemd file as it was before an install: its path and its
+/// prior bytes, or `None` when the file did not exist (so rollback removes
+/// a half-written new file instead of leaving it behind).
+struct PriorFile {
+    path: std::path::PathBuf,
+    bytes: Option<Vec<u8>>,
+}
+
+/// Snapshot every unit file an install may replace, so a failure can put
+/// the previous state back.
+fn snapshot_prior_units(
+    name: &str,
+    qdir: &std::path::Path,
+    sdir: &std::path::Path,
+) -> Vec<PriorFile> {
+    let mut paths = vec![
+        qdir.join(format!("{name}.container")),
+        qdir.join(format!("{name}.build")),
+        qdir.join(name).join(format!("{name}.container")),
+        qdir.join(name).join(format!("{name}.build")),
+    ];
+    paths.extend(
+        units::custom_unit_filenames(name)
+            .iter()
+            .map(|f| sdir.join(f)),
+    );
+    paths
+        .into_iter()
+        .filter_map(|path| match std::fs::read(&path) {
+            Ok(bytes) => Some(PriorFile {
+                path,
+                bytes: Some(bytes),
+            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(PriorFile {
+                path,
+                bytes: None,
+            }),
+            Err(e) => {
+                eprintln!(
+                    "Warning: cannot snapshot '{}' for rollback ({e:#}); it will be left alone on failure",
+                    path.display()
+                );
+                None
+            }
+        })
+        .collect()
+}
+
+/// Best-effort restore of a [`snapshot_prior_units`] snapshot. Returns the
+/// number of files that could not be restored.
+fn restore_prior_units(prior: &[PriorFile]) -> usize {
+    let mut failed = 0usize;
+    for file in prior {
+        let result = match &file.bytes {
+            Some(bytes) => {
+                if let Some(parent) = file.path.parent() {
+                    if std::fs::create_dir_all(parent).is_err() {
+                        Err(())
+                    } else {
+                        crate::fsutil::write_atomic(&file.path, bytes).map_err(|_| ())
+                    }
+                } else {
+                    crate::fsutil::write_atomic(&file.path, bytes).map_err(|_| ())
+                }
+            }
+            None => {
+                if file.path.exists() {
+                    std::fs::remove_file(&file.path).map_err(|_| ())
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        if result.is_err() {
+            eprintln!(
+                "Warning: rollback could not restore '{}'",
+                file.path.display()
+            );
+            failed += 1;
+        }
+    }
+    failed
+}
+
 /// Install systemd service and socket files for a container.
 pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: bool) -> Result<()> {
     let name = &config.container.name;
@@ -105,9 +189,9 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
     // Ensure .flatpak-info is written to the host build directory
     let _ = std::fs::create_dir_all(&context_dir);
-    std::fs::write(
-        context_dir.join(".flatpak-info"),
-        "[Application]\nname=podbox\n",
+    crate::fsutil::write_atomic(
+        &context_dir.join(".flatpak-info"),
+        b"[Application]\nname=podbox\n",
     )?;
 
     // Pre-flight validation
@@ -125,33 +209,58 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     // ownership, so podman never creates them as root (see targets.rs).
     targets::precreate_bind_targets(config, env, xdg)?;
 
-    if ver.at_least(6, 0) {
-        // 6.0+: use --application with directory install.
-        remove_flat_units(name);
-        podman_quadlet_install_application(name, &container_content, build_content.as_deref())?;
-    } else if ver.at_least(5, 6) {
-        // 5.6–5.x: install individual files for flat layout.
-        remove_application_dir(name);
-        podman_quadlet_install_files(name, &container_content, build_content.as_deref())?;
-    } else {
-        // 5.5 fallback: copy files manually
-        std::fs::create_dir_all(&qdir)?;
-        if let Some(ref bc) = build_content {
-            std::fs::write(qdir.join(format!("{name}.build")), bc)?;
-        }
-        std::fs::write(qdir.join(format!("{name}.container")), container_content)?;
-        println!("Quadlet files installed to {}", qdir.display());
-    }
+    // Snapshot the current unit files before touching Quadlet state: the
+    // steps below delete the old layout first (flat units on the Podman 6
+    // path), so without a snapshot a failed install leaves a half-written
+    // state behind with no way back.
+    let prior = snapshot_prior_units(name, &qdir, &sdir);
 
-    finalize_units(
-        name,
-        &sdir,
-        &socket_content,
-        &host_service_content,
-        dbus_proxy_content.as_deref(),
-        compositor_service_content.as_deref(),
-        config.use_wayland_proxy(),
-    )?;
+    let install_result = (|| -> Result<()> {
+        if ver.at_least(6, 0) {
+            // 6.0+: use --application with directory install.
+            remove_flat_units(name);
+            podman_quadlet_install_application(name, &container_content, build_content.as_deref())?;
+        } else if ver.at_least(5, 6) {
+            // 5.6–5.x: install individual files for flat layout.
+            remove_application_dir(name);
+            podman_quadlet_install_files(name, &container_content, build_content.as_deref())?;
+        } else {
+            // 5.5 fallback: copy files manually
+            std::fs::create_dir_all(&qdir)?;
+            if let Some(ref bc) = build_content {
+                crate::fsutil::write_atomic(&qdir.join(format!("{name}.build")), bc.as_bytes())?;
+            }
+            crate::fsutil::write_atomic(
+                &qdir.join(format!("{name}.container")),
+                container_content.as_bytes(),
+            )?;
+            println!("Quadlet files installed to {}", qdir.display());
+        }
+
+        finalize_units(
+            name,
+            &sdir,
+            &socket_content,
+            &host_service_content,
+            dbus_proxy_content.as_deref(),
+            compositor_service_content.as_deref(),
+            config.use_wayland_proxy(),
+        )?;
+        Ok(())
+    })();
+
+    if let Err(e) = install_result {
+        // Roll back to the snapshotted units so the box keeps whatever
+        // worked before instead of a half-installed layout.
+        let unrestored = restore_prior_units(&prior);
+        let _ = systemd::daemon_reload();
+        if unrestored == 0 {
+            return Err(e.context("install failed; previous units were restored"));
+        }
+        return Err(e.context(
+            "install failed; rollback was attempted but some previous units could not be restored",
+        ));
+    }
 
     // Auto-export runs at start time (see `ensure_exports`), not here:
     // app discovery execs into the container, which may not exist yet at
@@ -168,6 +277,33 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
 
 /// Remove Quadlet and systemd files for a container.
 pub fn uninstall(name: &str) -> Result<()> {
+    // Disable first: `enable --now` leaves enabled symlinks behind, and
+    // deleting the unit files without disabling orphans them — the socket
+    // stays enabled across daemon-reloads. Best-effort: the units may never
+    // have been enabled, and file cleanup must proceed regardless.
+    if systemd::is_available() {
+        let unit_names = [
+            format!("{name}.socket"),
+            format!("{name}.service"),
+            format!("{name}-host.service"),
+            format!("{name}-proxy.service"),
+            format!("{name}-compositor.service"),
+        ];
+        let mut args: Vec<std::ffi::OsString> = vec!["--user".into(), "disable".into()];
+        args.extend(unit_names.iter().map(std::ffi::OsString::from));
+        match crate::process::run_piped("systemctl", &args) {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!(
+                    "Warning: systemctl disable for '{name}' failed: {}",
+                    stderr.trim()
+                );
+            }
+            Err(e) => eprintln!("Warning: systemctl disable for '{name}' failed: {e:#}"),
+        }
+    }
+
     let ver = podman_version().unwrap_or(PodmanVersion {
         major: 5,
         minor: 5,

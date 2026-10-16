@@ -15,6 +15,7 @@ pub mod config;
 pub mod contract;
 pub mod env;
 pub mod error;
+pub mod fsutil;
 pub mod guest;
 pub mod profiles;
 pub mod protocol;

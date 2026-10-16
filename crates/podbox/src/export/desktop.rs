@@ -6,7 +6,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::error::PodboxError;
 
@@ -46,11 +46,13 @@ pub(crate) fn find_desktop_file(container_name: &str, app: &str) -> Result<(Stri
         }
     }
 
-    // Second: per-user installs.
-    let user_dirs = ["/root/.local/share/applications", "/home"];
-    for dir in user_dirs {
-        if let Some(content) = try_cat(container_name, &format!("{dir}/{filename}"))? {
-            return Ok((format!("{dir}/{filename}"), content));
+    // Second: per-user installs, relative to the container default user's
+    // home. (Hardcoded guesses like /root/... miss the unprivileged user
+    // podbox containers run as, which is where user-installed apps land.)
+    if let Some(home) = container_home_dir(container_name) {
+        let candidate = format!("{home}/.local/share/applications/{filename}");
+        if let Some(content) = try_cat(container_name, &candidate)? {
+            return Ok((candidate, content));
         }
     }
 
@@ -67,6 +69,23 @@ pub(crate) fn find_desktop_file(container_name: &str, app: &str) -> Result<(Stri
         ),
     }
     .into())
+}
+
+/// Home directory of the container's default user, for per-user lookups.
+pub(crate) fn container_home_dir(container_name: &str) -> Option<String> {
+    let args: Vec<OsString> = vec![
+        "exec".into(),
+        container_name.into(),
+        "sh".into(),
+        "-c".into(),
+        "printf %s \"$HOME\"".into(),
+    ];
+    let output = crate::process::run_piped("podman", &args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!home.is_empty()).then_some(home)
 }
 
 /// `podman exec <container> cat <path>` — returns `Some(content)` if the
@@ -129,22 +148,28 @@ pub(crate) fn rewrite_desktop_file(content: &str, container_name: &str, _app: &s
     let suffix = format!("({container_name})");
     content
         .lines()
-        .map(|line| {
+        .filter_map(|line| {
+            // TryExec still points inside the container, where the host can
+            // never satisfy it — a launcher carrying it is hidden as
+            // "not installed". Drop it; the rewritten Exec is authoritative.
+            if line.starts_with("TryExec=") {
+                return None;
+            }
             if let Some(original) = line.strip_prefix("Exec=") {
-                format!(
+                Some(format!(
                     "Exec={} --container \"{}\" run {}",
                     exe,
                     container_name.replace('"', "\\\""),
                     original
-                )
+                ))
             } else if let Some((key, val)) = line.split_once('=') {
                 if (key == "Name" || key.starts_with("Name[")) && !val.contains(&suffix) {
-                    format!("{key}={val} ({container_name})")
+                    Some(format!("{key}={val} ({container_name})"))
                 } else {
-                    line.to_string()
+                    Some(line.to_string())
                 }
             } else {
-                line.to_string()
+                Some(line.to_string())
             }
         })
         .collect::<Vec<_>>()
@@ -161,13 +186,21 @@ pub(crate) fn copy_icon_from_container(
     container_name: &str,
     icon_name: &str,
     _profile: &str,
-) -> Result<()> {
-    // Sanitize icon name: refuse path separators to prevent traversal
-    if icon_name.contains('/') || icon_name.contains("..") {
+) -> Result<Option<PathBuf>> {
+    // Refuse traversal, but accept absolute container paths by their
+    // basename: `Icon=/opt/app/icon.png` is common and safe to copy under
+    // our own name.
+    if icon_name.contains("..") {
         return Err(anyhow::anyhow!(
-            "icon name contains path separators, refusing: {icon_name}"
+            "icon name contains '..', refusing: {icon_name}"
         ));
     }
+    let base: String = PathBuf::from(icon_name)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .with_context(|| format!("invalid icon name: '{icon_name}'"))?
+        .to_string();
 
     let icons_dir = dirs::data_dir()
         .unwrap_or_else(|| {
@@ -178,14 +211,20 @@ pub(crate) fn copy_icon_from_container(
         .join(format!("icons/podbox/{container_name}"));
     std::fs::create_dir_all(&icons_dir)?;
 
-    let icon_paths: Vec<String> = vec![
-        format!("/usr/share/icons/hicolor/48x48/apps/{}.png", icon_name),
-        format!("/usr/share/icons/hicolor/scalable/apps/{}.svg", icon_name),
-        format!("/usr/share/icons/hicolor/64x64/apps/{}.png", icon_name),
-        format!("/usr/share/icons/hicolor/128x128/apps/{}.png", icon_name),
-        format!("/usr/share/icons/hicolor/256x256/apps/{}.png", icon_name),
-        format!("/usr/share/icons/hicolor/48x48/apps/{}.svg", icon_name),
-    ];
+    // An absolute Icon names the file directly; a bare name is looked up in
+    // the hicolor theme.
+    let icon_paths: Vec<String> = if icon_name.starts_with('/') {
+        vec![icon_name.to_string()]
+    } else {
+        vec![
+            format!("/usr/share/icons/hicolor/48x48/apps/{icon_name}.png"),
+            format!("/usr/share/icons/hicolor/scalable/apps/{icon_name}.svg"),
+            format!("/usr/share/icons/hicolor/64x64/apps/{icon_name}.png"),
+            format!("/usr/share/icons/hicolor/128x128/apps/{icon_name}.png"),
+            format!("/usr/share/icons/hicolor/256x256/apps/{icon_name}.png"),
+            format!("/usr/share/icons/hicolor/48x48/apps/{icon_name}.svg"),
+        ]
+    };
 
     for path in &icon_paths {
         let ext = std::path::Path::new(path)
@@ -200,11 +239,36 @@ pub(crate) fn copy_icon_from_container(
         ];
         let output = crate::process::run_piped("podman", &args)?;
         if output.status.success() {
-            let dest = icons_dir.join(format!("{icon_name}.{ext}"));
-            std::fs::write(dest, &output.stdout)?;
-            break;
+            let dest = icons_dir.join(format!("{base}.{ext}"));
+            crate::fsutil::write_atomic(&dest, &output.stdout)?;
+            return Ok(Some(dest));
         }
     }
 
+    Ok(None)
+}
+
+/// Point the exported launcher's `Icon=` at a copied host icon.
+///
+/// The copy lands outside the theme search path, so leaving the container
+/// name or path in place shows no icon. Only called after a successful
+/// copy; a missing Icon line is left alone.
+pub(crate) fn rewrite_host_icon(host_path: &PathBuf, dest: &std::path::Path) -> Result<()> {
+    let content = std::fs::read_to_string(host_path)?;
+    let mut replaced = false;
+    let out: Vec<String> = content
+        .lines()
+        .map(|line| {
+            if !replaced && line.starts_with("Icon=") {
+                replaced = true;
+                format!("Icon={}", dest.display())
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    if replaced {
+        crate::fsutil::write_atomic(host_path, out.join("\n").as_bytes())?;
+    }
     Ok(())
 }

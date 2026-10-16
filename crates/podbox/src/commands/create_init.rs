@@ -54,7 +54,7 @@ pub fn run_init(
         std::fs::create_dir_all(&config_dir)?;
         result.config.validate()?;
         let toml = toml::to_string_pretty(&result.config)?;
-        std::fs::write(&config_path, &toml)?;
+        podbox::fsutil::write_atomic(&config_path, toml.as_bytes())?;
         println!("Created: {}", config_path.display());
         println!(
             "Run `podbox start -C {}` to build, enable, and start.",
@@ -88,7 +88,7 @@ pub fn run_init(
         }
 
         std::fs::create_dir_all(&config_dir)?;
-        std::fs::write(&config_path, &toml_str)?;
+        podbox::fsutil::write_atomic(&config_path, toml_str.as_bytes())?;
         println!("Created config: {}", config_path.display());
         println!();
         println!(

@@ -256,9 +256,9 @@ pub fn provision(config: &Config, env: &HostEnv, dry_run: bool) -> Result<()> {
     if dry_run {
         println!("touch {}/.podbox-dotfiles.done", path.guest_home);
     } else {
-        std::fs::write(
-            config.container.home.join(".podbox-dotfiles.done"),
-            "done\n",
+        podbox::fsutil::write_atomic(
+            &config.container.home.join(".podbox-dotfiles.done"),
+            b"done\n",
         )
         .context("writing dotfiles provisioning stamp")?;
         println!("Dotfiles provisioned for '{}'", config.container.name);

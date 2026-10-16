@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -23,13 +22,11 @@ pub fn read(path: &Path) -> Result<Option<LockFile>> {
     Ok(Some(lock))
 }
 
-/// Write a lock file.
+/// Write a lock file, atomically so a crash never leaves a torn lock behind.
 pub fn write(path: &Path, lock: &LockFile) -> Result<()> {
-    let mut file = std::fs::File::create(path)
-        .with_context(|| format!("failed to create lock file '{}'", path.display()))?;
     let json = serde_json::to_string_pretty(lock)
         .with_context(|| format!("failed to serialize lock data for '{}'", path.display()))?;
-    writeln!(file, "{json}")
+    crate::fsutil::write_atomic(path, format!("{json}\n").as_bytes())
         .with_context(|| format!("failed to write lock file '{}'", path.display()))?;
     Ok(())
 }

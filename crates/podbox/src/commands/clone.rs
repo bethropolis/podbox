@@ -34,10 +34,15 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     let mut cfg: Config = toml::from_str(&content)
         .map_err(|e| anyhow::anyhow!("Failed to parse '{}': {}", src_path.display(), e))?;
 
-    let new_home = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("~"))
-        .join("containers")
-        .join(dst);
+    // The clone's home sits next to the source home, whatever it is: the
+    // source home comes from its config, not from a hardcoded guess.
+    let src_home = cfg.container.home.clone();
+    let new_home = src_home.parent().map(|p| p.join(dst)).unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("~"))
+            .join("containers")
+            .join(dst)
+    });
     cfg.image.name = dst.to_string();
     cfg.container.name = dst.to_string();
     cfg.container.home.clone_from(&new_home);
@@ -46,30 +51,37 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     if let Some(parent) = dst_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&dst_path, &new_content)?;
+    podbox::fsutil::write_atomic(&dst_path, new_content.as_bytes())?;
     println!("Created config: {}", dst_path.display());
 
     if copy_home {
-        let home = dirs::home_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("~"))
-            .join("containers")
-            .join(src);
-        if home.exists() {
-            let entries = std::fs::read_dir(&home).map_or(0, std::iter::Iterator::count);
+        if src_home.exists() {
+            let entries = std::fs::read_dir(&src_home).map_or(0, std::iter::Iterator::count);
             if entries > 500 {
                 eprintln!("Warning: source home has {entries} items. Copying may take a while.");
             }
-            let status = std::process::Command::new("cp")
-                .args(["-a", &home.to_string_lossy(), &new_home.to_string_lossy()])
-                .status()?;
-            if !status.success() {
-                anyhow::bail!("Failed to copy home directory contents.");
+            std::fs::create_dir_all(&new_home)?;
+            // Copy the *contents*: `cp -a src dst` nests (`dst/src`) when
+            // dst exists and fails when its parent is missing.
+            let status = podbox::process::run_checked(
+                "cp",
+                &podbox::process::args(&[
+                    "-a",
+                    &src_home.join(".").to_string_lossy(),
+                    &new_home.to_string_lossy(),
+                ]),
+            );
+            if let Err(e) = status {
+                anyhow::bail!("Failed to copy home directory contents: {e:#}");
             }
+            // A fresh box must re-provision dotfiles; the copied stamp
+            // would claim the source's provisioning covers the clone.
+            let _ = std::fs::remove_file(new_home.join(".podbox-dotfiles.done"));
             println!("Home directory copied.");
         } else {
             eprintln!(
                 "Warning: source home '{}' does not exist, skipping copy.",
-                home.display()
+                src_home.display()
             );
         }
     }

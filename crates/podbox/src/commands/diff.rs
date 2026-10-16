@@ -64,7 +64,7 @@ pub fn run_diff(
             ));
             return Ok(());
         }
-        std::fs::write(&definition_path, patched)?;
+        podbox::fsutil::write_atomic(&definition_path, patched.as_bytes())?;
         // Stdout stays a single JSON document in JSON mode; the
         // confirmation is a diagnostic and goes to stderr there.
         if matches!(output, OutputFormat::Json) {
