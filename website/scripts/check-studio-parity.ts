@@ -191,4 +191,22 @@ if (failed > 0) {
   }
   console.log(`✓ prebuilt: Containerfile overlay rendered (${compiled.containerfile.split("\n").length} lines)`);
 }
+// Unknown dbus presets are parse errors that name every valid option.
+{
+  const toml =
+    '[container]\nname = "x"\nhome = "/tmp/x"\n[image]\nimage = "cachyos:latest"\n[integration]\ndbus = true\n[dbus]\npreset = "gnoem"\n';
+  const v = validate_toml(toml) as {
+    valid: boolean;
+    errors: Array<{ field?: string; message: string }>;
+  };
+  const presetErr = v.errors.find((e) => e.message.includes("dbus.preset"));
+  const namesAll = ["flatpak", "gnome", "kde", "portal", "none"].every((o) =>
+    presetErr?.message.includes(o),
+  );
+  if (v.valid || !presetErr || !namesAll) {
+    console.error('✗ dbus-preset: expected a dbus.preset issue naming all options');
+    process.exit(1);
+  }
+  console.log(`✓ dbus-preset: dbus.preset rejected, all options named`);
+}
 console.log("\nAll Studio presets round-trip through the Rust engine.");

@@ -896,7 +896,7 @@ mod numeric_duration_tests {
     fn ordinary_cpus_are_accepted() {
         for good in ["2.0", "0.5", "16"] {
             Config::parse(&minimal("", &format!("cpus = \"{good}\"\n"), ""))
-                .expect(&format!("cpus = {good:?} should validate"));
+                .unwrap_or_else(|_| panic!("cpus = {good:?} should validate"));
         }
     }
 
