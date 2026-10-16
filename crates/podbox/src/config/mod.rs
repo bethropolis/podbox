@@ -30,4 +30,4 @@ pub use types::{
     SystemdConfig, WaylandConfig, XdgDirConfig, all_builtin_cache_paths, builtin_cache_mount_names,
     builtin_cache_names,
 };
-pub use validation::validate_container_name;
+pub use validation::{is_valid_env_key, validate_container_name};

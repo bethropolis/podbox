@@ -442,12 +442,10 @@ pub(super) fn emit_env(
 
     // Extra user env, layered over engine-derived defaults (SHELL and
     // friends — see ContainerConfig::effective_env). Explicit wins.
+    // Names are validated up front (`config::is_valid_env_key`), so every
+    // key here is emitted; nothing is warned-and-skipped at this layer.
     for (key, value) in &config.container.effective_env() {
-        if key.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            value::push_env(lines, warnings, key, value);
-        } else {
-            warnings.push(format!("ignoring invalid environment variable key '{key}'"));
-        }
+        value::push_env(lines, warnings, key, value);
     }
     if !config.container.services.is_empty() {
         let payload =

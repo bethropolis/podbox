@@ -134,6 +134,11 @@ impl Config {
             }
         }
         for (key, val) in &self.container.env.values {
+            if !is_valid_env_key(key) {
+                errors.push(format!(
+                    "container.env: invalid key '{key}' (use ^[A-Za-z_][A-Za-z0-9_]*$)"
+                ));
+            }
             if key.contains('\n') {
                 errors.push(format!("container.env: key {key:?} contains newline"));
             }
@@ -218,8 +223,10 @@ impl Config {
         errors.extend(validate_provision(&self.provision));
         errors.extend(caches::validate_caches(self));
         for (i, pattern) in self.container.env.forward.iter().enumerate() {
+            // A trailing `*` marks a prefix forward (`FOO_*`); the key
+            // itself must still be a valid env name.
             let key = pattern.strip_suffix('*').unwrap_or(pattern);
-            if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            if !is_valid_env_key(key) {
                 errors.push(format!(
                     "container.env.forward[{i}]: '{pattern}' must be an environment key or PREFIX_*"
                 ));
@@ -251,9 +258,7 @@ impl Config {
             }
             if let Some(values) = env {
                 for (key, value) in values {
-                    if key.is_empty()
-                        || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                        || key.as_bytes()[0].is_ascii_digit()
+                    if !is_valid_env_key(key)
                         || value.chars().any(|c| matches!(c, '\0' | '\n' | '\r'))
                     {
                         errors.push(format!(
@@ -373,7 +378,7 @@ impl Config {
                 }
                 if *secret_type == crate::config::SecretType::Env
                     && let Some(t) = target
-                    && (t.is_empty() || !t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+                    && !is_valid_env_key(t)
                 {
                     errors.push(format!(
                         "{prefix}.target: '{t}' must be a valid environment variable name"
@@ -610,7 +615,11 @@ fn is_valid_provision_name(s: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
 
-fn is_valid_env_key(s: &str) -> bool {
+/// True for `^[A-Za-z_][A-Za-z0-9_]*$`: the single environment-name rule
+/// used by every env-bearing field (`container.env`, forwards, service and
+/// provision env, systemd secret targets). Codegen no longer re-checks
+/// names; validation rejects them with a field path instead.
+pub fn is_valid_env_key(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
@@ -788,5 +797,78 @@ mod numeric_duration_tests {
         let err = Config::parse(&minimal("pull_retry_delay = \"5x\"\n", "", ""))
             .expect_err("pull_retry_delay with bad suffix must fail");
         assert!(err.to_string().contains("image.pull_retry_delay"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod env_key_tests {
+    use super::is_valid_env_key;
+    use crate::config::Config;
+
+    fn base() -> String {
+        "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
+         [container]\nname = \"env\"\nhome = \"~/env\"\n"
+            .to_string()
+    }
+
+    #[test]
+    fn key_grammar() {
+        for bad in ["1ABC", "A-B", "Ä", "", "A B", "A=B"] {
+            assert!(!is_valid_env_key(bad), "should reject {bad:?}");
+        }
+        for good in ["_A1", "PATH", "_", "A1_b2"] {
+            assert!(is_valid_env_key(good), "should accept {good:?}");
+        }
+    }
+
+    #[test]
+    fn container_env_values_are_checked() {
+        let err = Config::parse(&(base() + "[container.env]\n1ABC = \"x\"\n"))
+            .expect_err("bad container.env key must fail");
+        assert!(err.to_string().contains("container.env"), "{err}");
+    }
+
+    #[test]
+    fn container_env_forward_patterns_are_checked() {
+        let err = Config::parse(&(base() + "[container.env]\nforward = [\"1ABC\"]\n"))
+            .expect_err("bad forward pattern must fail");
+        assert!(err.to_string().contains("container.env.forward"), "{err}");
+        Config::parse(&(base() + "[container.env]\nforward = [\"FOO_*\"]\n"))
+            .expect("PREFIX_* forwards should validate");
+    }
+
+    #[test]
+    fn service_env_is_checked() {
+        let err = Config::parse(
+            &(base()
+                + "[container.services.web]\ncommand = \"x\"\n[container.services.web.env]\nA-B = \"x\"\n"),
+        )
+        .expect_err("bad service env key must fail");
+        assert!(
+            err.to_string().contains("container.services.web.env"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn provision_env_is_checked() {
+        let err = Config::parse(
+            &(base() + "[[provision]]\nname = \"step\"\nrun = \"echo\"\n[provision.env]\n\"Ä\" = \"x\"\n"),
+        )
+        .expect_err("bad provision env key must fail");
+        assert!(err.to_string().contains("provision[0].env"), "{err}");
+    }
+
+    #[test]
+    fn systemd_secret_targets_are_checked() {
+        let err = Config::parse(
+            &(base()
+                + "[[security.secrets]]\nname = \"tok\"\nsource = \"systemd\"\npath = \"/run/x\"\ntype = \"env\"\ntarget = \"1ABC\"\n"),
+        )
+        .expect_err("bad secret target must fail");
+        assert!(
+            err.to_string().contains("security.secrets[0].target"),
+            "{err}"
+        );
     }
 }
