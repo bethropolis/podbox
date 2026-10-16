@@ -12,12 +12,15 @@ import { generateStudioToml } from "../src/design/islands/studio/generateToml";
 import { tomlToPatch } from "../src/design/islands/studio/parseImport";
 import { presetPatch } from "../src/design/islands/studio/presets";
 import { STUDIO_DEFAULTS } from "../src/design/islands/studio/schema";
+import { studioReducer } from "../src/design/islands/studio/reducer";
 import type { StudioValues } from "../src/design/islands/studio/useStudioState";
 
 await init();
 
 // Defaults live in the shared schema module (same object the UI boots
-// from), so this guard tests exactly what users see.
+// from), and every patch goes through the real UI reducer — the exact path
+// presets, Reset, import and share links take — so a key the reducer drops
+// fails here instead of silently losing user data.
 const defaults: StudioValues = { ...STUDIO_DEFAULTS };
 
 const cases: Array<[string, Partial<StudioValues>]> = [
@@ -85,7 +88,7 @@ const cases: Array<[string, Partial<StudioValues>]> = [
 
 let failed = 0;
 for (const [name, patch] of cases) {
-  const values = { ...defaults, ...patch };
+  const values = studioReducer(defaults, { type: "patch", patch });
   const toml = generateStudioToml(values);
   const v = validate_toml(toml) as {
     valid: boolean;
@@ -144,7 +147,10 @@ for (const [name, patch] of cases) {
   }
   // Import loop: generated TOML -> state patch -> regenerated TOML must
   // still validate (guards parseImport.ts against schema drift too).
-  const reimported = { ...values, ...tomlToPatch(parseTomlText(toml) as Record<string, any>) };
+  const reimported = studioReducer(values, {
+    type: "patch",
+    patch: tomlToPatch(parseTomlText(toml) as Record<string, any>) as Record<string, unknown>,
+  });
   const toml2 = generateStudioToml(reimported);
   const v2 = validate_toml(toml2) as {
     valid: boolean;
@@ -210,3 +216,34 @@ if (failed > 0) {
   console.log(`✓ dbus-preset: dbus.preset rejected, all options named`);
 }
 console.log("\nAll Studio presets round-trip through the Rust engine.");
+
+// Every key in STUDIO_DEFAULTS must survive a patch through the reducer:
+// this is the guard that catches a repeat of the 19 silently-dropped
+// fields (presets, Reset, import, share links and session restore all
+// funnel through `applyPatch`).
+{
+  const keys = Object.keys(STUDIO_DEFAULTS);
+  const failedKeys: string[] = [];
+  for (const key of keys) {
+    const sentinel = { __sentinel: key };
+    const next = studioReducer(defaults, {
+      type: "patch",
+      patch: { [key]: sentinel },
+    }) as unknown as Record<string, unknown>;
+    if (next[key] !== sentinel) failedKeys.push(key);
+  }
+  // Unknown keys are ignored, not stored.
+  const withUnknown = studioReducer(defaults, {
+    type: "patch",
+    patch: { __no_such_key: 1 },
+  }) as unknown as Record<string, unknown>;
+  if (failedKeys.length > 0) {
+    console.error(`✗ reducer-keys: patch dropped ${failedKeys.length} key(s): ${failedKeys.join(", ")}`);
+    process.exit(1);
+  }
+  if ("__no_such_key" in withUnknown) {
+    console.error("✗ reducer-keys: unknown patch key was stored");
+    process.exit(1);
+  }
+  console.log(`✓ reducer-keys: all ${keys.length} defaults survive applyPatch`);
+}
