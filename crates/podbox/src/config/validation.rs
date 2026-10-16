@@ -114,7 +114,13 @@ impl Config {
             }
         }
         if let Some(ref cpus) = self.container.cpus {
-            if cpus.parse::<f64>().is_err() || cpus.parse::<f64>().unwrap_or(0.0) <= 0.0 {
+            // `NaN`/`inf` parse as f64 but are meaningless as CPU counts;
+            // without the finiteness check they sailed through to
+            // `PodmanArgs=--cpus=NaN`.
+            let valid = cpus
+                .parse::<f64>()
+                .is_ok_and(|v| v.is_finite() && v > 0.0 && v <= MAX_CPUS);
+            if !valid {
                 errors.push(format!(
                     "container.cpus: '{cpus}' is not a valid CPU count (e.g. '2.0', '0.5')"
                 ));
@@ -446,12 +452,17 @@ impl Config {
 
         let t = &self.lifecycle.idle_timeout;
         if t != "off" {
-            let (digits, suffix) = parse_duration_suffix(t);
-            if digits.is_empty() || !matches!(suffix, Some('s' | 'm' | 'h')) {
+            if let Err(e) = parse_duration_secs(t) {
                 errors.push(format!(
-                    "lifecycle.idle_timeout: '{t}' is invalid (expected 'off', '30s', '5m', '1h')"
+                    "lifecycle.idle_timeout: '{t}' is invalid ({e}; expected 'off', '30s', '5m', '1h')"
                 ));
             }
+        }
+        if let Err(e) = parse_duration_secs(&self.image.pull_retry_delay) {
+            errors.push(format!(
+                "image.pull_retry_delay: '{}' is invalid ({e}; expected e.g. '5s')",
+                self.image.pull_retry_delay
+            ));
         }
 
         if errors.is_empty() {
@@ -510,12 +521,44 @@ fn is_portal_family(svc: &str) -> bool {
         || svc.starts_with("org.freedesktop.impl.portal")
 }
 
-/// Parse a duration string into (digit_part, suffix_char).
-fn parse_duration_suffix(s: &str) -> (String, Option<char>) {
+/// Upper bound for `container.cpus`: far above any real host, but finite so
+/// typos like `99999` fail fast instead of producing a puzzling runtime error.
+const MAX_CPUS: f64 = 1024.0;
+
+/// Parse a duration string (`30s`, `5m`, `1h`, `500ms`) into whole seconds.
+///
+/// The whole string must be consumed: leading/trailing junk (`5mx`, `m5`,
+/// empty) is an error, not silently ignored. Sub-second values truncate
+/// toward zero, so callers that need a positive duration keep rejecting
+/// them via the `0` they produce.
+pub fn parse_duration_secs(s: &str) -> Result<u64> {
     let trimmed = s.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("empty duration (expected e.g. '30s', '5m', '1h')");
+    }
     let digits: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
-    let suffix = trimmed.chars().nth(digits.len());
-    (digits, suffix)
+    if digits.is_empty() {
+        anyhow::bail!("'{s}' does not start with a number (expected e.g. '30s', '5m', '1h')");
+    }
+    let rest = &trimmed[digits.len()..];
+    let value: u64 = digits
+        .parse()
+        .map_err(|_| anyhow::anyhow!("'{s}' is not a valid duration"))?;
+    let secs = match rest {
+        "ms" => value / 1000,
+        "s" => value,
+        "m" => value.saturating_mul(60),
+        "h" => value.saturating_mul(3600),
+        _ => {
+            anyhow::bail!(
+                "'{s}' has trailing characters after the duration (expected a single 's', 'm', 'h' or 'ms' suffix)"
+            );
+        }
+    };
+    if secs == 0 {
+        anyhow::bail!("'{s}' is not a positive duration (expected e.g. '30s', '5m', '1h')");
+    }
+    Ok(secs)
 }
 
 /// Convert an idle_timeout config string to seconds.
@@ -524,14 +567,7 @@ pub fn parse_idle_timeout_secs(s: &str) -> u64 {
     if s == "off" {
         return 0;
     }
-    let (digits, suffix) = parse_duration_suffix(s);
-    let value: u64 = digits.parse().unwrap_or(0);
-    match suffix {
-        Some('s') => value,
-        Some('m') => value.saturating_mul(60),
-        Some('h') => value.saturating_mul(3600),
-        _ => 0,
-    }
+    parse_duration_secs(s).unwrap_or(0)
 }
 
 pub fn is_valid_memory(s: &str) -> bool {
@@ -558,25 +594,7 @@ pub fn is_bare_memory_digits(s: &str) -> bool {
 /// Parse a provision `timeout` (`30s`, `5m`, `1h`) into seconds.
 /// Returns 0 when invalid or non-positive (callers treat 0 as invalid).
 pub fn parse_provision_timeout_secs(s: &str) -> u64 {
-    let (digits, suffix) = parse_duration_suffix(s);
-    if digits.is_empty() {
-        return 0;
-    }
-    let value: u64 = digits.parse().unwrap_or(0);
-    if value == 0 {
-        return 0;
-    }
-    // Entire string must be digits + single suffix.
-    let trimmed = s.trim();
-    if trimmed.len() != digits.len() + 1 {
-        return 0;
-    }
-    match suffix {
-        Some('s') => value,
-        Some('m') => value.saturating_mul(60),
-        Some('h') => value.saturating_mul(3600),
-        _ => 0,
-    }
+    parse_duration_secs(s).unwrap_or(0)
 }
 
 fn is_valid_provision_name(s: &str) -> bool {
@@ -705,5 +723,70 @@ mod name_tests {
     fn enforces_length_limit() {
         assert!(validate_container_name("container", &"a".repeat(63)).is_ok());
         assert!(validate_container_name("container", &"a".repeat(64)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod numeric_duration_tests {
+    use super::parse_duration_secs;
+    use crate::config::Config;
+
+    fn minimal(image_extra: &str, container_extra: &str, tail: &str) -> String {
+        format!(
+            "[image]\nbase = \"fedora:41\"\nname = \"env\"\n{image_extra}\
+             [container]\nname = \"env\"\nhome = \"~/env\"\n{container_extra}\
+             {tail}\n"
+        )
+    }
+
+    #[test]
+    fn valid_durations_parse() {
+        assert_eq!(parse_duration_secs("90s").unwrap(), 90);
+        assert_eq!(parse_duration_secs("5m").unwrap(), 300);
+        assert_eq!(parse_duration_secs("1h").unwrap(), 3600);
+        assert_eq!(parse_duration_secs(" 10s ").unwrap(), 10);
+    }
+
+    #[test]
+    fn trailing_junk_and_empty_are_rejected() {
+        for bad in ["5mx", "m5", "", "off", "5", "0s", "500ms", "-5s"] {
+            assert!(parse_duration_secs(bad).is_err(), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn non_finite_and_non_positive_cpus_are_rejected() {
+        for bad in ["NaN", "inf", "-inf", "-1", "0", "0.0", "999999"] {
+            let err = Config::parse(&minimal("", &format!("cpus = \"{bad}\"\n"), ""))
+                .expect_err(&format!("cpus = {bad:?} must fail validation"));
+            assert!(
+                err.to_string().contains("container.cpus"),
+                "error should name the field: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_cpus_are_accepted() {
+        for good in ["2.0", "0.5", "16"] {
+            Config::parse(&minimal("", &format!("cpus = \"{good}\"\n"), ""))
+                .expect(&format!("cpus = {good:?} should validate"));
+        }
+    }
+
+    #[test]
+    fn idle_timeout_with_trailing_junk_is_rejected() {
+        let err = Config::parse(&minimal("", "", "[lifecycle]\nidle_timeout = \"5mx\"\n"))
+            .expect_err("idle_timeout with trailing junk must fail");
+        assert!(err.to_string().contains("lifecycle.idle_timeout"), "{err}");
+        Config::parse(&minimal("", "", "[lifecycle]\nidle_timeout = \"5m\"\n"))
+            .expect("a plain duration should validate");
+    }
+
+    #[test]
+    fn pull_retry_delay_is_duration_checked() {
+        let err = Config::parse(&minimal("pull_retry_delay = \"5x\"\n", "", ""))
+            .expect_err("pull_retry_delay with bad suffix must fail");
+        assert!(err.to_string().contains("image.pull_retry_delay"), "{err}");
     }
 }
