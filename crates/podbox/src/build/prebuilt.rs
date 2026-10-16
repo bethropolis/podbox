@@ -10,7 +10,6 @@ use anyhow::{Context, Result};
 use nix::fcntl::{Flock, FlockArg};
 
 use crate::cli::OutputFormat;
-use crate::codegen::distros::DistroFamily;
 use crate::config::Config;
 use crate::env::build_context_dir;
 use crate::error::PodboxError;
@@ -243,18 +242,9 @@ pub(crate) fn run_prebuilt(
     Ok(())
 }
 
-/// Resolve the distro family for package installation on a prebuilt image.
-///
-/// An explicit `manager` always wins. An omitted one is detected from the
-/// image reference (falling back to the base name), so prebuilt images from
-/// any distro family build without pinning a manager.
-pub(crate) fn resolve_prebuilt_distro(config: &Config) -> DistroFamily {
-    crate::codegen::distros::family_for_config(config)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::codegen::distros::{DistroFamily, family_for_config};
     use crate::config::Config;
 
     fn config_with(image_base: &str, image_ref: Option<&str>, manager: Option<&str>) -> Config {
@@ -287,17 +277,17 @@ home = "~/env"
             Some("ghcr.io/bethropolis/podbox:ubuntu-latest"),
             None,
         );
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::DebianLike);
+        assert_eq!(family_for_config(&cfg), DistroFamily::DebianLike);
 
         let cfg = config_with("cachyos/cachyos:latest", None, None);
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::ArchLike);
+        assert_eq!(family_for_config(&cfg), DistroFamily::ArchLike);
 
         // Unknown names stay Unknown (whose manager resolves to dnf),
         // rather than guessing a family.
         let cfg = config_with("unknown:latest", None, None);
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::Unknown);
+        assert_eq!(family_for_config(&cfg), DistroFamily::Unknown);
         assert_eq!(
-            resolve_prebuilt_distro(&cfg).manager(),
+            family_for_config(&cfg).manager(),
             crate::config::PackageManager::Dnf
         );
     }
@@ -309,6 +299,6 @@ home = "~/env"
             Some("ghcr.io/bethropolis/podbox:ubuntu-latest"),
             Some("dnf"),
         );
-        assert_eq!(resolve_prebuilt_distro(&cfg), DistroFamily::FedoraLike);
+        assert_eq!(family_for_config(&cfg), DistroFamily::FedoraLike);
     }
 }

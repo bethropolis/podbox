@@ -162,11 +162,17 @@ pub(crate) fn check_hardware(config: &Config, env: &HostEnv) -> Vec<Check> {
 /// parameter so tests can point at temp dirs instead of the host.
 fn cdi_specs_present_in(dirs: &[&Path]) -> bool {
     dirs.iter().any(|dir| {
-        std::fs::read_dir(dir).ok().is_some_and(|entries| {
+        std::fs::read_dir(dir).is_ok_and(|entries| {
             entries.filter_map(Result::ok).any(|entry| {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                let is_spec =
-                    name.ends_with(".yaml") || name.ends_with(".yml") || name.ends_with(".json");
+                let is_spec = entry
+                    .path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("yaml")
+                            || ext.eq_ignore_ascii_case("yml")
+                            || ext.eq_ignore_ascii_case("json")
+                    });
                 is_spec && entry.file_type().is_ok_and(|t| t.is_file())
             })
         })
