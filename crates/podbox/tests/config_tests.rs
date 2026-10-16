@@ -327,3 +327,17 @@ fn all_fixtures_and_bundled_profiles_still_parse() {
         "expected fixtures + profiles, checked {checked}"
     );
 }
+
+/// The USB hardware switch round-trips: omitted when false so written
+/// TOML stays minimal, parsed when true.
+#[test]
+fn hardware_usb_round_trip() {
+    let base = "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n";
+    let off = Config::parse(base).unwrap();
+    assert!(!off.integration.hardware.usb);
+    let written = toml::to_string(&off).unwrap();
+    assert!(!written.contains("usb"), "{written}");
+
+    let on = Config::parse(&(base.to_owned() + "[integration.hardware]\nusb = true\n")).unwrap();
+    assert!(on.integration.hardware.usb);
+}

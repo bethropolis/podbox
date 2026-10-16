@@ -123,6 +123,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | SSH agent socket | `/run/podbox/ssh-agent.sock` | (none) | `ssh_agent = true` + `SSH_AUTH_SOCK` present on host (plus `Environment=SSH_AUTH_SOCK`) |
 | GPG agent socket | `/run/podbox/gnupg/S.gpg-agent` | `ro` | `gpg_agent = true` |
 | `%t/podbox/<name>.sock` | `%t/podbox/<name>.sock` | (none) | Always (host-guest socket) |
+| `/dev/bus/usb` | `/dev/bus/usb` | (none, never `:z`) | `integration.hardware.usb = true` (optional mount: skipped when the host has no USB bus) |
 | Extra mounts | Per config | Per config | From `[container.mounts].extra` |
 
 ### `PodmanArgs=`

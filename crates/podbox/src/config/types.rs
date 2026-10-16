@@ -577,4 +577,6 @@ pub struct HardwareConfig {
     pub serial: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub kvm: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub usb: bool,
 }

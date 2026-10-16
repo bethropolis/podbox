@@ -129,6 +129,14 @@ pub(crate) fn check_hardware(config: &Config, env: &HostEnv) -> Vec<Check> {
                 "yubikey preset enabled (pcscd + hidraw)",
             ));
         }
+        if hw.usb {
+            out.extend(check_usb(
+                config.security.security_label_disable,
+                &env.username,
+                Path::new("/dev/bus/usb"),
+                Path::new("/sys/fs/selinux/enforce"),
+            ));
+        }
     }
     // ── NVIDIA CDI spec ──
     // Device nodes alone don't carry the user-space driver libraries, which
@@ -153,4 +161,152 @@ pub(crate) fn check_hardware(config: &Config, env: &HostEnv) -> Vec<Check> {
         }
     }
     out
+}
+
+/// USB passthrough checks for `integration.hardware.usb`.
+///
+/// `usb_root` stands in for `/dev/bus/usb` and `selinux_enforce` for
+/// `/sys/fs/selinux/enforce` so tests can point at temp dirs instead of
+/// the host. Accessibility is probed with `access(R_OK|W_OK)` — a real
+/// open would claim the device — and zero accessible nodes is a hint,
+/// not an error: it is normal when nothing is plugged in.
+fn check_usb(
+    security_label_disable: bool,
+    username: &str,
+    usb_root: &Path,
+    selinux_enforce: &Path,
+) -> Vec<Check> {
+    let mut out = Vec::new();
+    if !usb_root.exists() {
+        out.push(Check::new(
+            "hardware: usb",
+            "warn",
+            "/dev/bus/usb not found — USB passthrough is enabled but the host has no USB bus; the mount is skipped",
+        ));
+    } else {
+        let accessible = count_readable_writable_nodes(usb_root);
+        if accessible == 0 {
+            out.push(Check::new(
+                "hardware: usb",
+                "warn",
+                format!(
+                    "no USB device is accessible to {username} (nothing plugged in, or missing udev rules); install your device's rules (android-tools / android-udev) or add the user to plugdev"
+                ),
+            ));
+        } else {
+            out.push(Check::new(
+                "hardware: usb",
+                "pass",
+                format!("{accessible} USB device node(s) accessible"),
+            ));
+        }
+    }
+    let enforcing =
+        std::fs::read_to_string(selinux_enforce).is_ok_and(|content| content.trim() == "1");
+    if enforcing && !security_label_disable {
+        out.push(Check::new(
+            "hardware: usb",
+            "warn",
+            "SELinux is enforcing and security_label_disable is false: container_t is denied usb_device_t — set security.security_label_disable = true (the default)",
+        ));
+    }
+    out
+}
+
+/// Count device nodes under `usb_root/*/*` the current user can open
+/// read-write. Every level-two entry is probed — nodes are character
+/// devices, not regular files, so no file-type filtering.
+fn count_readable_writable_nodes(usb_root: &Path) -> usize {
+    let buses = std::fs::read_dir(usb_root).map(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>()
+    });
+    buses.map_or(0, |dirs| {
+        dirs.iter()
+            .filter_map(|dir| std::fs::read_dir(dir).ok())
+            .flat_map(|entries| entries.filter_map(Result::ok).map(|entry| entry.path()))
+            .filter(|node| {
+                nix::unistd::access(
+                    node,
+                    nix::unistd::AccessFlags::R_OK | nix::unistd::AccessFlags::W_OK,
+                )
+                .is_ok()
+            })
+            .count()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fn usb_layout(root: &Path, mode: u32) {
+        let bus = root.join("001");
+        std::fs::create_dir_all(&bus).unwrap();
+        let node = bus.join("002");
+        std::fs::write(&node, []).unwrap();
+        let mut perms = std::fs::metadata(&node).unwrap().permissions();
+        perms.set_mode(mode);
+        std::fs::set_permissions(&node, perms).unwrap();
+    }
+
+    fn enforce_file(dir: &Path, content: &str) -> std::path::PathBuf {
+        let p = dir.join("enforce");
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[test]
+    fn missing_bus_warns() {
+        let tmp = tempfile::tempdir().unwrap();
+        let enforce = enforce_file(tmp.path(), "0");
+        let checks = check_usb(true, "user", &tmp.path().join("nope"), &enforce);
+        assert_eq!(checks.len(), 1);
+        assert!(checks[0].message.contains("no USB bus"), "{checks:?}");
+    }
+
+    #[test]
+    fn empty_bus_warns_with_hint() {
+        // No nodes at all: zero accessible is normal when nothing is
+        // plugged in, so the message is a hint naming the user, not an
+        // error.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("001")).unwrap();
+        let enforce = enforce_file(tmp.path(), "0");
+        let checks = check_usb(true, "someuser", tmp.path(), &enforce);
+        assert_eq!(checks.len(), 1);
+        assert!(checks[0].message.contains("someuser"), "{checks:?}");
+    }
+
+    #[test]
+    fn accessible_nodes_pass() {
+        let tmp = tempfile::tempdir().unwrap();
+        usb_layout(tmp.path(), 0o666);
+        let enforce = enforce_file(tmp.path(), "0");
+        let checks = check_usb(true, "user", tmp.path(), &enforce);
+        assert!(
+            checks.iter().any(|c| c.message.contains("accessible")),
+            "{checks:?}"
+        );
+    }
+
+    #[test]
+    fn selinux_enforcing_without_label_disable_warns() {
+        let tmp = tempfile::tempdir().unwrap();
+        usb_layout(tmp.path(), 0o666);
+        let enforce = enforce_file(tmp.path(), "1");
+        let warns: Vec<_> = check_usb(false, "user", tmp.path(), &enforce)
+            .into_iter()
+            .filter(|c| c.message.contains("SELinux"))
+            .collect();
+        assert_eq!(warns.len(), 1, "expected the SELinux warning");
+        let no_warn = check_usb(true, "user", tmp.path(), &enforce);
+        assert!(
+            no_warn.iter().all(|c| !c.message.contains("SELinux")),
+            "{no_warn:?}"
+        );
+    }
 }

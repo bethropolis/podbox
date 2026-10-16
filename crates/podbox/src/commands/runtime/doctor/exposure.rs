@@ -95,6 +95,7 @@ pub(crate) fn print_exposure_summary(config: &Config) {
             hw.yubikey.then_some("yubikey"),
             hw.serial.then_some("serial"),
             hw.kvm.then_some("kvm"),
+            hw.usb.then_some("usb"),
         ]
         .into_iter()
         .flatten()
