@@ -7,6 +7,26 @@ use super::value;
 use crate::config::{Config, GpuMode};
 use crate::env::HostEnv;
 
+/// NVIDIA device nodes passed through when no CDI spec is in use.
+///
+/// Every entry carries the `-` prefix, so a host without that node skips
+/// it instead of failing the unit. This is the pure-codegen approximation
+/// of globbing `/dev/nvidia*`: all GPU indexes, the modeset node and the
+/// UVM nodes. Device nodes alone do not carry the user-space driver
+/// libraries, which must match the host kernel driver exactly — `doctor`
+/// points at `nvidia-ctk cdi generate` for that. Once the CDI fact arrives
+/// via the host environment, the CDI-present path emits
+/// `AddDevice=nvidia.com/gpu=all` instead.
+fn emit_nvidia_fallback(lines: &mut Vec<String>) {
+    lines.push("AddDevice=-/dev/nvidiactl".into());
+    for i in 0..8 {
+        lines.push(format!("AddDevice=-/dev/nvidia{i}"));
+    }
+    lines.push("AddDevice=-/dev/nvidia-modeset".into());
+    lines.push("AddDevice=-/dev/nvidia-uvm".into());
+    lines.push("AddDevice=-/dev/nvidia-uvm-tools".into());
+}
+
 pub(super) fn emit_gpu(
     lines: &mut Vec<String>,
     config: &Config,
@@ -20,11 +40,7 @@ pub(super) fn emit_gpu(
         }
         GpuMode::Nvidia => {
             lines.push("AddDevice=/dev/dri".into());
-            lines.push("AddDevice=-/dev/nvidiactl".into());
-            lines.push("AddDevice=-/dev/nvidia0".into());
-            if env.gpu_has_nvidia_uvm {
-                lines.push("AddDevice=-/dev/nvidia-uvm".into());
-            }
+            emit_nvidia_fallback(lines);
             lines.push(String::new());
         }
         GpuMode::Auto => {
@@ -32,11 +48,7 @@ pub(super) fn emit_gpu(
                 lines.push("AddDevice=/dev/dri".into());
             }
             if env.gpu_has_nvidia {
-                lines.push("AddDevice=-/dev/nvidiactl".into());
-                lines.push("AddDevice=-/dev/nvidia0".into());
-                if env.gpu_has_nvidia_uvm {
-                    lines.push("AddDevice=-/dev/nvidia-uvm".into());
-                }
+                emit_nvidia_fallback(lines);
             }
             if env.gpu_has_dri || env.gpu_has_nvidia {
                 lines.push(String::new());

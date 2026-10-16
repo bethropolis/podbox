@@ -62,6 +62,12 @@ fn quadlet_gpu_nvidia() {
     assert!(q.contains("AddDevice=-/dev/nvidiactl"));
     assert!(q.contains("AddDevice=-/dev/nvidia0"));
     assert!(q.contains("AddDevice=-/dev/nvidia-uvm"));
+    // CDI-absent fallback covers every GPU index plus the modeset and
+    // UVM-tools nodes; `-` marks each optional so absent ones are skipped.
+    assert!(q.contains("AddDevice=-/dev/nvidia1"));
+    assert!(q.contains("AddDevice=-/dev/nvidia7"));
+    assert!(q.contains("AddDevice=-/dev/nvidia-modeset"));
+    assert!(q.contains("AddDevice=-/dev/nvidia-uvm-tools"));
 }
 #[test]
 fn quadlet_gpu_absent_when_disabled() {
@@ -91,7 +97,9 @@ fn quadlet_gpu_auto_detects_nvidia() {
     let q = quadlet::generate_container(&config, &env, &default_xdg());
     assert!(q.contains("AddDevice=-/dev/nvidiactl"));
     assert!(q.contains("AddDevice=-/dev/nvidia0"));
+    assert!(q.contains("AddDevice=-/dev/nvidia-modeset"));
     assert!(q.contains("AddDevice=-/dev/nvidia-uvm"));
+    assert!(q.contains("AddDevice=-/dev/nvidia-uvm-tools"));
     // Should NOT have /dev/dri (no dri detected)
     assert!(!q.contains("AddDevice=/dev/dri"));
 }
@@ -110,7 +118,9 @@ fn quadlet_pipewire_runtime_dir() {
     assert!(q.contains("Environment=PIPEWIRE_RUNTIME_DIR=%t"));
 }
 #[test]
-fn quadlet_gpu_nvidia_without_uvm() {
+fn quadlet_gpu_nvidia_lists_all_nodes_even_without_uvm_on_host() {
+    // The fallback lists every /dev/nvidia* node as optional (`-`), so a
+    // host probe miss cannot hide a node: absent ones are skipped at start.
     let config = load_config("full.toml");
     let mut config = config.clone();
     config.integration.gpu = GpuMode::Nvidia;
@@ -120,7 +130,7 @@ fn quadlet_gpu_nvidia_without_uvm() {
     assert!(q.contains("AddDevice=/dev/dri"));
     assert!(q.contains("AddDevice=-/dev/nvidiactl"));
     assert!(q.contains("AddDevice=-/dev/nvidia0"));
-    assert!(!q.contains("nvidia-uvm"));
+    assert!(q.contains("AddDevice=-/dev/nvidia-uvm"));
 }
 
 const SECRET_BASE: &str = r#"

@@ -323,7 +323,7 @@ stays off even when the image label says `true`.
 | `"auto"` (default) | Detect available GPU devices at runtime |
 | `true` | Enable `/dev/dri` (Intel/AMD) |
 | `false` | Disable all GPU passthrough |
-| `"nvidia"` | Enable `/dev/dri` + NVIDIA device nodes |
+| `"nvidia"` | Enable `/dev/dri` + all `/dev/nvidia*` nodes (optional each; `doctor` suggests `nvidia-ctk cdi generate` when no CDI spec exists) |
 
 ### `[integration.hardware]`
 
