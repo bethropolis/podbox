@@ -138,7 +138,7 @@ pub(crate) fn check_hardware(config: &Config, env: &HostEnv) -> Vec<Check> {
     if matches!(config.integration.gpu, GpuMode::Nvidia)
         || (matches!(config.integration.gpu, GpuMode::Auto) && env.gpu_has_nvidia)
     {
-        if nvidia_cdi_spec_present() {
+        if env.nvidia_cdi_present {
             out.push(Check::new(
                 "hardware: nvidia CDI",
                 "pass",
@@ -153,60 +153,4 @@ pub(crate) fn check_hardware(config: &Config, env: &HostEnv) -> Vec<Check> {
         }
     }
     out
-}
-
-/// True when an NVIDIA CDI spec exists under one of `dirs`.
-///
-/// `nvidia-ctk cdi generate` writes `*.yaml`/`*.json` specs into `/etc/cdi`;
-/// the runtime also reads `/var/run/cdi`. Takes the directories as a
-/// parameter so tests can point at temp dirs instead of the host.
-fn cdi_specs_present_in(dirs: &[&Path]) -> bool {
-    dirs.iter().any(|dir| {
-        std::fs::read_dir(dir).is_ok_and(|entries| {
-            entries.filter_map(Result::ok).any(|entry| {
-                let is_spec = entry
-                    .path()
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .is_some_and(|ext| {
-                        ext.eq_ignore_ascii_case("yaml")
-                            || ext.eq_ignore_ascii_case("yml")
-                            || ext.eq_ignore_ascii_case("json")
-                    });
-                is_spec && entry.file_type().is_ok_and(|t| t.is_file())
-            })
-        })
-    })
-}
-
-fn nvidia_cdi_spec_present() -> bool {
-    cdi_specs_present_in(&[Path::new("/etc/cdi"), Path::new("/var/run/cdi")])
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn write(dir: &std::path::Path, name: &str) {
-        std::fs::write(dir.join(name), "cdiVersion: 0.1.0\n").unwrap();
-    }
-
-    #[test]
-    fn cdi_probe_finds_yaml_and_json_specs() {
-        let tmp = tempfile::tempdir().unwrap();
-        write(tmp.path(), "nvidia.yaml");
-        assert!(cdi_specs_present_in(&[tmp.path()]));
-        let tmp2 = tempfile::tempdir().unwrap();
-        write(tmp2.path(), "nvidia.json");
-        assert!(cdi_specs_present_in(&[tmp.path(), tmp2.path()]));
-    }
-
-    #[test]
-    fn cdi_probe_ignores_non_spec_files_and_missing_dirs() {
-        let tmp = tempfile::tempdir().unwrap();
-        write(tmp.path(), "README");
-        write(tmp.path(), "nvidia.txt");
-        assert!(!cdi_specs_present_in(&[tmp.path()]));
-        assert!(!cdi_specs_present_in(&[Path::new("/nonexistent-cdi-dir")]));
-    }
 }

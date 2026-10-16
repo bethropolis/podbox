@@ -1,7 +1,6 @@
-use crate::codegen::distros::{
-    DistroFamily, detect_host_locale, detect_host_shell, family_for_config,
-};
+use crate::codegen::distros::{DistroFamily, family_for_config};
 use crate::config::Config;
+use crate::env::HostEnv;
 use crate::error::PodboxError;
 
 /// Marker emitted in place of the guest `COPY` when no guest binary is
@@ -17,7 +16,14 @@ const GUEST_PLACEHOLDER: &str = "\
 /// image it would produce cannot start, and [`crate::build`] would fail on
 /// the missing bytes anyway. Preview callers that cannot embed a guest
 /// (the wasm engine behind Studio) use [`generate_preview`] instead.
-pub fn generate(config: &Config, guest_binary_name: &str) -> Result<String, PodboxError> {
+///
+/// Host facts (shell, locale) come from `env`: codegen is pure
+/// (config in, string out) and never reads the process environment.
+pub fn generate(
+    config: &Config,
+    guest_binary_name: &str,
+    env: &HostEnv,
+) -> Result<String, PodboxError> {
     if config.image.source().is_prebuilt() {
         // Prebuilt registry images already embed a guest binary; the local
         // overlay path (`build::prebuilt`) layers the host guest on top when
@@ -28,7 +34,7 @@ pub fn generate(config: &Config, guest_binary_name: &str) -> Result<String, Podb
     if crate::guest::PODBOX_GUEST.is_none() {
         return Err(PodboxError::GuestBinaryUnavailable);
     }
-    Ok(generate_custom_with(config, guest_binary_name, true))
+    Ok(generate_custom_with(config, guest_binary_name, true, env))
 }
 
 /// Render the Containerfile for preview, never failing on a missing guest.
@@ -41,7 +47,7 @@ pub fn generate(config: &Config, guest_binary_name: &str) -> Result<String, Podb
 /// That placeholder is deliberately not reported as a warning: it is a fact
 /// about the preview environment rather than anything wrong with the config,
 /// and it is plainly visible in the rendered output.
-pub fn generate_preview(config: &Config, guest_binary_name: &str) -> String {
+pub fn generate_preview(config: &Config, guest_binary_name: &str, env: &HostEnv) -> String {
     if config.image.source().is_prebuilt() {
         return generate_prebuilt(config);
     }
@@ -49,6 +55,7 @@ pub fn generate_preview(config: &Config, guest_binary_name: &str) -> String {
         config,
         guest_binary_name,
         crate::guest::PODBOX_GUEST.is_some(),
+        env,
     )
 }
 
@@ -163,10 +170,15 @@ fn needs_hook_sandbox_relaxation(distro: DistroFamily, base_image: &str) -> bool
 ///
 /// `guest_available` decides whether the guest `COPY`/`chmod` pair is
 /// emitted or replaced by [`GUEST_PLACEHOLDER`].
-fn generate_custom_with(config: &Config, guest_name: &str, guest_available: bool) -> String {
+fn generate_custom_with(
+    config: &Config,
+    guest_name: &str,
+    guest_available: bool,
+    env: &HostEnv,
+) -> String {
     let distro = family_for_config(config);
-    let host_shell = detect_host_shell();
-    let host_locale = detect_host_locale();
+    let host_shell = env.host_shell.clone();
+    let host_locale = env.host_locale.clone();
 
     let builder = ContainerfileBuilder::new(&config.image.base, &config.container.name);
     builder
@@ -498,7 +510,13 @@ mod tests {
     /// still render, with the guest layer marked rather than silently dropped.
     #[test]
     fn test_preview_without_guest_marks_the_guest_layer() {
-        let cf = generate_custom_with(&crate::config::Config::embedded(), "podbox-guest", false);
+        let env = HostEnv::mock_preview();
+        let cf = generate_custom_with(
+            &crate::config::Config::embedded(),
+            "podbox-guest",
+            false,
+            &env,
+        );
         assert!(cf.contains("FROM "));
         assert!(cf.contains("RUN "));
         assert!(cf.contains(GUEST_PLACEHOLDER));
@@ -512,9 +530,17 @@ mod tests {
     /// otherwise `CMD` would point at a binary that was never installed.
     #[test]
     fn test_configured_shell_is_installed_regardless_of_host_shell() {
+        // A host with no detectable shell or locale: everything in the
+        // recipe must come from the config and `env`, never the process
+        // environment (codegen is pure).
+        let env = HostEnv {
+            host_shell: None,
+            host_locale: None,
+            ..HostEnv::mock_preview()
+        };
         let mut config = crate::config::Config::embedded();
         config.container.shell = "fish".into();
-        let cf = generate_custom_with(&config, "podbox-guest", true);
+        let cf = generate_custom_with(&config, "podbox-guest", true, &env);
         assert!(
             cf.lines()
                 .any(|l| l.starts_with("RUN ") && l.contains(" fish")),
@@ -522,10 +548,10 @@ mod tests {
         );
         assert!(cf.contains("CMD [\"fish\"]"), "{cf}");
 
-        // A shell the host also runs stays installed exactly once.
+        // The configured shell is installed exactly once.
         let mut config = crate::config::Config::embedded();
         config.container.shell = "zsh".into();
-        let cf = generate_custom_with(&config, "podbox-guest", true);
+        let cf = generate_custom_with(&config, "podbox-guest", true, &env);
         assert!(cf.contains("CMD [\"zsh\"]"), "{cf}");
         let install_line = cf
             .lines()
@@ -540,7 +566,13 @@ mod tests {
 
     #[test]
     fn test_guest_layer_present_when_available() {
-        let cf = generate_custom_with(&crate::config::Config::embedded(), "podbox-guest", true);
+        let env = HostEnv::mock_preview();
+        let cf = generate_custom_with(
+            &crate::config::Config::embedded(),
+            "podbox-guest",
+            true,
+            &env,
+        );
         assert!(cf.contains("COPY podbox-guest /usr/local/bin/podbox-guest"));
         assert!(cf.contains("RUN chmod +x /usr/local/bin/podbox-guest"));
         assert!(!cf.contains(GUEST_PLACEHOLDER));

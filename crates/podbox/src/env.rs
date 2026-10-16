@@ -1,8 +1,6 @@
 #[cfg(feature = "cli")]
 use std::env;
-#[cfg(feature = "cli")]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "cli")]
 use anyhow::Result;
@@ -23,6 +21,11 @@ pub struct HostEnv {
     pub gpu_has_dri: bool,
     pub gpu_has_nvidia: bool,
     pub gpu_has_nvidia_uvm: bool,
+    /// An NVIDIA CDI spec exists on the host (`nvidia-ctk cdi generate`
+    /// output under `/etc/cdi` or `/var/run/cdi`). Codegen then passes the
+    /// GPU through by CDI device ID instead of enumerating device nodes,
+    /// which also carries the matching user-space driver libraries.
+    pub nvidia_cdi_present: bool,
     pub host_has_localtime: bool,
     pub host_has_timezone_file: bool,
     pub host_has_themes: bool,
@@ -66,6 +69,7 @@ impl HostEnv {
             gpu_has_dri: true,
             gpu_has_nvidia: false,
             gpu_has_nvidia_uvm: false,
+            nvidia_cdi_present: false,
             host_has_localtime: true,
             host_has_timezone_file: false,
             host_has_themes: true,
@@ -138,6 +142,8 @@ pub fn resolve() -> Result<HostEnv> {
     let gpu_has_dri = Path::new("/dev/dri").exists();
     let gpu_has_nvidia = Path::new("/dev/nvidiactl").exists();
     let gpu_has_nvidia_uvm = Path::new("/dev/nvidia-uvm").exists();
+    let nvidia_cdi_present =
+        cdi_specs_present_in(&[Path::new("/etc/cdi"), Path::new("/var/run/cdi")]);
 
     let host_has_localtime = Path::new("/etc/localtime").exists();
     let host_has_timezone_file = Path::new("/etc/timezone").exists();
@@ -189,6 +195,7 @@ pub fn resolve() -> Result<HostEnv> {
         gpu_has_dri,
         gpu_has_nvidia,
         gpu_has_nvidia_uvm,
+        nvidia_cdi_present,
         host_has_localtime,
         host_has_timezone_file,
         host_has_themes,
@@ -206,6 +213,31 @@ pub fn resolve() -> Result<HostEnv> {
     })
 }
 
+/// True when an NVIDIA CDI spec exists under one of `dirs`.
+///
+/// `nvidia-ctk cdi generate` writes `*.yaml`/`*.json` specs into `/etc/cdi`;
+/// the runtime also reads `/var/run/cdi`. Takes the directories as a
+/// parameter so tests can point at temp dirs instead of the host. Shared
+/// by host probing ([`HostEnv`]) and the doctor hardware check.
+pub fn cdi_specs_present_in(dirs: &[&Path]) -> bool {
+    dirs.iter().any(|dir| {
+        std::fs::read_dir(dir).is_ok_and(|entries| {
+            entries.filter_map(Result::ok).any(|entry| {
+                let is_spec = entry
+                    .path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("yaml")
+                            || ext.eq_ignore_ascii_case("yml")
+                            || ext.eq_ignore_ascii_case("json")
+                    });
+                is_spec && entry.file_type().is_ok_and(|t| t.is_file())
+            })
+        })
+    })
+}
+
 /// Host cache directories that exist on this host, as `~/`-prefixed
 /// container paths. Probes every built-in so the answer does not depend on
 /// what a particular config happens to enable; a missing directory is
@@ -219,4 +251,32 @@ fn probe_host_cache_dirs(home: &Path) -> Vec<String> {
             home.join(rest).is_dir().then(|| format!("~/{rest}"))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(dir: &Path, name: &str) {
+        std::fs::write(dir.join(name), "cdiVersion: 0.1.0\n").unwrap();
+    }
+
+    #[test]
+    fn cdi_probe_finds_yaml_and_json_specs() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), "nvidia.yaml");
+        assert!(cdi_specs_present_in(&[tmp.path()]));
+        let tmp2 = tempfile::tempdir().unwrap();
+        write(tmp2.path(), "nvidia.json");
+        assert!(cdi_specs_present_in(&[tmp.path(), tmp2.path()]));
+    }
+
+    #[test]
+    fn cdi_probe_ignores_non_spec_files_and_missing_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), "README");
+        write(tmp.path(), "nvidia.txt");
+        assert!(!cdi_specs_present_in(&[tmp.path()]));
+        assert!(!cdi_specs_present_in(&[Path::new("/nonexistent-cdi-dir")]));
+    }
 }

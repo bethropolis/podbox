@@ -73,7 +73,8 @@ fn containerfile_prebuilt_with_nothing_extra_has_no_overlay() {
         true,
     );
     assert!(overlay.is_none());
-    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest").unwrap();
+    let env = podbox::env::HostEnv::mock_preview();
+    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest", &env).unwrap();
     assert!(cf.starts_with("FROM ghcr.io/bethropolis/podbox:cachy-latest\n"));
 }
 
@@ -125,7 +126,8 @@ fn containerfile_prebuilt_preview_matches_cli_overlay() {
     config.image.run.commands = vec!["echo hello".into()];
     // The preview delegates to the same function with the ambient guest
     // flag, so this holds both on the CLI and in the wasm Studio build.
-    let preview = podbox::codegen::containerfile::generate_preview(&config, "podbox-guest");
+    let env = podbox::env::HostEnv::mock_preview();
+    let preview = podbox::codegen::containerfile::generate_preview(&config, "podbox-guest", &env);
     let overlay = podbox::codegen::containerfile::generate_prebuilt_overlay(
         &config,
         "ghcr.io/bethropolis/podbox:cachy-latest",
@@ -151,7 +153,8 @@ fn quadlet_prebuilt_with_run_commands_points_at_local_overlay() {
 #[test]
 fn containerfile_custom_has_packages() {
     let config = load_config("full.toml");
-    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest").unwrap();
+    let env = podbox::env::HostEnv::mock_preview();
+    let cf = podbox::codegen::containerfile::generate(&config, "podbox-guest", &env).unwrap();
     assert!(!cf.starts_with("FROM ghcr.io"));
     assert!(cf.contains("dnf install -y"));
     assert!(cf.contains("RUN "));
@@ -216,6 +219,7 @@ fn quadlet_prebuilt_uses_registry_image() {
         gpu_has_dri: false,
         gpu_has_nvidia: false,
         gpu_has_nvidia_uvm: false,
+        nvidia_cdi_present: false,
         host_has_localtime: false,
         host_has_timezone_file: false,
         host_has_themes: false,
@@ -265,6 +269,7 @@ fn quadlet_custom_uses_build_ref() {
         gpu_has_dri: false,
         gpu_has_nvidia: false,
         gpu_has_nvidia_uvm: false,
+        nvidia_cdi_present: false,
         host_has_localtime: false,
         host_has_timezone_file: false,
         host_has_themes: false,
@@ -317,6 +322,7 @@ fn quadlet_has_environment_home() {
         gpu_has_dri: false,
         gpu_has_nvidia: false,
         gpu_has_nvidia_uvm: false,
+        nvidia_cdi_present: false,
         host_has_localtime: false,
         host_has_timezone_file: false,
         host_has_themes: false,

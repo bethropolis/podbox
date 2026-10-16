@@ -224,7 +224,8 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
         None
     };
 
-    let containerfile = podbox::codegen::containerfile::generate_preview(&config, "podbox-guest");
+    let containerfile =
+        podbox::codegen::containerfile::generate_preview(&config, "podbox-guest", &env);
 
     // Companion units mirror `podbox enable`. Service binaries resolve via
     // `current_exe`, which has no meaningful value on wasm — the preview

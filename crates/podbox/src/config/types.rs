@@ -9,7 +9,7 @@ use crate::config::defaults::{
     is_default_pull_retry_delay, is_default_run, is_default_shell, is_false, is_true,
 };
 use crate::config::enums::{
-    GpuMode, ImageSource, NetworkMode, OnStop, PackageManager, ServiceRestart, XdgDirValue,
+    GpuMode, ImageSource, OnStop, PackageManager, ServiceRestart, XdgDirValue,
 };
 use crate::config::expand_tilde;
 

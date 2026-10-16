@@ -132,6 +132,21 @@ fn quadlet_gpu_nvidia_lists_all_nodes_even_without_uvm_on_host() {
     assert!(q.contains("AddDevice=-/dev/nvidia0"));
     assert!(q.contains("AddDevice=-/dev/nvidia-uvm"));
 }
+#[test]
+fn quadlet_gpu_nvidia_cdi_present_uses_device_id() {
+    // With a CDI spec on the host, the unit passes the GPU by device ID
+    // (which also carries the matching driver libraries) instead of
+    // enumerating device nodes.
+    let config = load_config("full.toml");
+    let mut config = config.clone();
+    config.integration.gpu = GpuMode::Nvidia;
+    let mut env = default_env();
+    env.gpu_has_nvidia = true;
+    env.nvidia_cdi_present = true;
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(q.contains("AddDevice=nvidia.com/gpu=all"));
+    assert!(!q.contains("/dev/nvidiactl"));
+}
 
 const SECRET_BASE: &str = r#"
 [image]
