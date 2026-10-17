@@ -218,7 +218,7 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
-                failures = 0;
+                let _ = failures;
                 handlers::handle_xdg_open(
                     stream,
                     actions,

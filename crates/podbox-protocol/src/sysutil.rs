@@ -92,6 +92,8 @@ mod tests {
         let fallback = xdg_runtime_dir();
         // SAFETY: restoring the original value for any later test.
         if let Some(v) = saved {
+            // SAFETY: restoration of a prior env var under single-threaded
+            // test conditions; matches the contract above.
             #[allow(unsafe_code)]
             unsafe {
                 std::env::set_var("XDG_RUNTIME_DIR", v);
