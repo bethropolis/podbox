@@ -390,23 +390,27 @@ pub(crate) fn run_edit(dry_run: bool, container: Option<&str>, rebuild_after: bo
                 podbox::cli::OutputFormat::Text,
             )?;
         } else if podbox::codegen::distros::is_tty() {
-            let yes = dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                .with_prompt("Rebuild now?")
-                .default(true)
-                .interact()?;
-            if yes {
-                let config = Config::load(&config_path)?;
-                let env = podbox::env::resolve()?;
-                let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
-                commands::lifecycle::run_build(
-                    &config,
-                    &env,
-                    &xdg,
-                    false,
-                    false,
-                    false,
-                    podbox::cli::OutputFormat::Text,
-                )?;
+            let ctx = podbox::ui::Ctx::new(false, false, dry_run);
+            match podbox::ui::confirm(&ctx, "Rebuild now?", true) {
+                Ok(()) => {
+                    let config = Config::load(&config_path)?;
+                    let env = podbox::env::resolve()?;
+                    let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;
+                    commands::lifecycle::run_build(
+                        &config,
+                        &env,
+                        &xdg,
+                        false,
+                        false,
+                        false,
+                        podbox::cli::OutputFormat::Text,
+                    )?;
+                }
+                Err(PodboxError::ConfirmationRequired) => {
+                    eprintln!("Run `podbox build` to apply changes.");
+                }
+                // Declined on purpose; stay quiet like before.
+                Err(_) => {}
             }
         } else {
             eprintln!("Run `podbox build` to apply changes.");

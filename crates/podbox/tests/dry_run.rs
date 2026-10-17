@@ -248,6 +248,60 @@ fn dry_doctor_fix_reports_without_fixing() {
     assert!(sb.mutating_podman_calls().is_empty());
 }
 
+/// Non-interactive `cache prune` (no name) must refuse without `--yes` and
+/// say so, and `cache prune --yes` must actually prune: volumes are named
+/// caches the operator shared on purpose, but a scripted wipe still needs an
+/// explicit flag because there is nobody to ask.
+#[test]
+fn cache_prune_needs_confirmation_unless_yes() {
+    let sb = Sandbox::new("cache-prune");
+    sb.write_config("dev", "dev");
+    // The default stub prints nothing; `cache prune` needs a `volume ls`
+    // that answers, so swap in a stub that lists two cache volumes.
+    let log = sb.root.join("podman.log");
+    let podman = sb.root.join("bin").join("podman");
+    std::fs::write(
+        &podman,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\ncase \"$*\" in\n  *\"volume ls\"*) printf 'podbox-cache-cargo\\npodbox-cache-npm\\n';;\nesac\nexit 0\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&podman, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let out = sb.run(&["cache", "prune"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(
+        text(&out).contains("requires confirmation in a terminal") && text(&out).contains("--yes"),
+        "refusal should name the confirmation rule and the flag: {}",
+        text(&out)
+    );
+    assert!(
+        sb.podman_calls()
+            .iter()
+            .all(|c| !c.starts_with("volume rm ")),
+        "nothing may be removed without --yes: {:?}",
+        sb.podman_calls()
+    );
+
+    let out = sb.run(&["cache", "prune", "--yes"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let removed: Vec<String> = sb
+        .podman_calls()
+        .into_iter()
+        .filter(|c| c.starts_with("volume rm "))
+        .collect();
+    assert!(
+        removed.contains(&"volume rm podbox-cache-cargo".to_string()),
+        "expected the default cache volumes to be pruned, got {removed:?}"
+    );
+}
+
 #[test]
 fn dry_build_edit_does_not_open_the_editor() {
     let sb = Sandbox::new("dry-edit");

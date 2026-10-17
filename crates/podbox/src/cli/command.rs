@@ -553,8 +553,15 @@ pub enum ConfigCommand {
 pub enum CacheCommand {
     /// List provisioned shared caches and their attachments.
     List,
-    /// Remove one cache volume, or prompt before removing all caches.
-    Prune { name: Option<String> },
+    /// Remove one cache volume, or prompt before removing all caches
+    /// (`--yes` skips the prompt, also for stdin that is not a terminal).
+    Prune {
+        /// Restrict pruning to this shared cache (omit for all of them).
+        name: Option<String>,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]

@@ -194,8 +194,10 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
         b"[Application]\nname=podbox\n",
     )?;
 
-    // Pre-flight validation
-    preflight_check(config)?;
+    // Pre-flight validation. Confirmation state mirrors the install call:
+    // dry runs print instead of validating ahead, and callers that carry
+    // `--yes` use it to skip prompts inside the preflight.
+    preflight_check(config, &crate::ui::Ctx::new(false, false, dry_run))?;
 
     // Ensure home and runtime dirs exist
     std::fs::create_dir_all(&config.container.home).with_context(|| {

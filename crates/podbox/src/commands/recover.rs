@@ -18,19 +18,22 @@ pub struct RecoverOpts {
     pub dry_run: bool,
 }
 
+/// A step is skipped, not fatal, when it cannot be confirmed: scripts
+/// without `--yes` keep going with the steps they can run safely, and a
+/// declined prompt does the same (recover never deletes anything).
 fn confirmed(opts: &RecoverOpts, step: &str) -> bool {
-    if opts.yes || opts.dry_run {
+    if opts.dry_run {
         return true;
     }
-    if !podbox::codegen::distros::is_tty() {
-        eprintln!("Skipping '{step}' (non-interactive; use --yes to allow).");
-        return false;
+    let ctx = ui::Ctx::new(opts.yes, false, opts.dry_run);
+    match ui::confirm(&ctx, &format!("Step: {step}"), true) {
+        Ok(()) => true,
+        Err(podbox::error::PodboxError::ConfirmationRequired) => {
+            eprintln!("Skipping '{step}' (non-interactive; use --yes to allow).");
+            false
+        }
+        Err(_) => false,
     }
-    dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt(format!("Step: {step}"))
-        .default(true)
-        .interact()
-        .unwrap_or(false)
 }
 
 /// Walk the recovery plan. Every step is safe to re-run.

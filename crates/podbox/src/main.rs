@@ -277,7 +277,11 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Cache { cache_cmd } => {
-            return commands::cache::run(cache_cmd, cli.dry_run);
+            let yes = matches!(
+                cache_cmd,
+                podbox::cli::CacheCommand::Prune { yes, .. } if *yes
+            );
+            return commands::cache::run(cache_cmd, cli.dry_run, yes);
         }
 
         Command::Init {

@@ -7,16 +7,11 @@ use std::path::Path;
 use anyhow::Result;
 
 /// Ask before applying a destructive-ish `--fix` action. Only prompts on a
-/// real TTY; scripts must stay non-interactive.
+/// real TTY; scripts must stay non-interactive, so both the non-TTY refusal
+/// and a declined prompt skip the fix rather than erroring.
 pub(crate) fn confirm_fix(action: &str) -> bool {
-    if !podbox::codegen::distros::is_tty() {
-        return false;
-    }
-    dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt(format!("Fix: {action}"))
-        .default(false)
-        .interact()
-        .unwrap_or(false)
+    let ctx = podbox::ui::Ctx::new(false, false, false);
+    podbox::ui::confirm(&ctx, &format!("Fix: {action}"), false).is_ok()
 }
 
 /// Enable lingering for `user` so autostart units run at boot.
