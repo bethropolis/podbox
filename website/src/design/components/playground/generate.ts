@@ -1,69 +1,73 @@
-import { tomlString } from '../islands/studio/toml';
+import { tomlString } from './toml';
 
 export interface PlaygroundConfig {
   name: string;
   distro: 'fedora' | 'arch' | 'ubuntu' | 'debian' | 'custom';
   customImage: string;
-  wayland: boolean;
-  pipewire: boolean;
-  gpu: 'auto' | 'nvidia' | 'off';
-  dbusNotifications: boolean;
-  shareProjects: boolean;
-  packages: string;
+  packages: string[];
+  packagesRemove: string[];
+  run: string[];
+  env: Record<string, string>;
+  mounts: Array<{ host: string; container: string }>;
+  ports: Array<{ host: string; container: string }>;
+  gpu: 'off' | 'nvidia' | 'intel' | 'amd';
+  memory: string;
+  cpus: string;
+  network: 'bridge' | 'host' | 'none' | 'slirp4netns';
 }
 
 const DISTRO_BASES: Record<string, string> = {
-  fedora: 'fedora:44',
+  fedora: 'quay.io/fedora/fedora:latest',
   arch: 'archlinux:latest',
   ubuntu: 'ubuntu:24.04',
-  debian: 'debian:bookworm',
+  debian: 'debian:bookworm-slim',
 };
 
 export function generatePlaygroundToml(cfg: PlaygroundConfig): string {
-  const { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects } = cfg;
-  const parsedPackages = cfg.packages
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean);
+  let toml = '';
+  toml += `[container]\n`;
+  toml += `name = ${tomlString(cfg.name)}\n`;
+  toml += `home = ${tomlString(`~/containers/${cfg.name}`)}\n`;
+  toml += `memory = ${cfg.memory ? tomlString(cfg.memory) : '""'}\n`;
+  toml += `cpus = ${cfg.cpus ? tomlString(cfg.cpus) : '""'}\n`;
+  toml += `network = ${tomlString(cfg.network)}\n\n`;
 
-  let toml = `# podbox.toml for ${name}\n`;
   toml += `[image]\n`;
-  toml += `name = ${tomlString(name)}\n`;
-  toml += `base = ${tomlString(distro === 'custom' ? customImage : DISTRO_BASES[distro])}\n`;
-  if (parsedPackages.length > 0) {
-    // `image.packages` is a table, not a bare list: the engine rejects
-    // `packages = [...]`, so the friendly shape would not survive a paste
-    // into a real config file.
-    toml += `\n[image.packages]\n`;
-    toml += `install = [${parsedPackages.map((p) => tomlString(p)).join(', ')}]\n`;
+  const base = cfg.distro === 'custom' ? cfg.customImage : DISTRO_BASES[cfg.distro];
+  toml += `base = ${tomlString(base)}\n`;
+  if (cfg.packages.length) toml += `packages = [${cfg.packages.map((p) => tomlString(p)).join(', ')}]\n`;
+  if (cfg.packagesRemove.length) toml += `packages.remove = [${cfg.packagesRemove.map((p) => tomlString(p)).join(', ')}]\n`;
+  if (cfg.run.length) toml += `run = [${cfg.run.map((r) => tomlString(r)).join(', ')}]\n`;
+  toml += `\n`;
+
+  if (Object.keys(cfg.env).length) {
+    toml += `[env]\n`;
+    for (const [k, v] of Object.entries(cfg.env)) toml += `${tomlString(k)} = ${tomlString(v)}\n`;
+    toml += `\n`;
   }
 
-  toml += `\n[container]\n`;
-  toml += `name = ${tomlString(name)}\n`;
-  toml += `home = ${tomlString(`~/containers/${name}`)}\n`;
-
-  toml += `\n[integration]\n`;
-  toml += `wayland = ${wayland}\n`;
-  toml += `audio = ${pipewire}\n`;
-  toml += `gpu = ${gpu === 'off' ? 'false' : tomlString(gpu)}\n`;
-  toml += `dbus = ${dbusNotifications}\n`;
-
-  if (shareProjects) {
-    toml += `\n[integration.xdg_dirs]\n`;
-    // Read-write on purpose: the panel above promises your code is "right
-    // there", and a read-only mount would not deliver that.
-    toml += `projects = { enabled = true, read_write = true }\n`;
+  if (cfg.mounts.length) {
+    toml += `[mounts]\n`;
+    for (const m of cfg.mounts) toml += `${tomlString(m.host)} = ${tomlString(m.container)}\n`;
+    toml += `\n`;
   }
 
-  toml += `\n[lifecycle]\n`;
-  toml += `quadlet = true\n`;
-  toml += `on_stop = "keep"\n`;
+  if (cfg.ports.length) {
+    toml += `[ports]\n`;
+    for (const p of cfg.ports) toml += `${tomlString(p.host)} = ${tomlString(p.container)}\n`;
+    toml += `\n`;
+  }
+
+  if (cfg.gpu !== 'off') {
+    toml += `[gpu]\n`;
+    toml += `gpu = ${tomlString(cfg.gpu)}\n\n`;
+  }
 
   return toml;
 }
 
 export function generatePlaygroundQuadlet(cfg: PlaygroundConfig): string {
-  const { name, wayland, pipewire, gpu, dbusNotifications, shareProjects } = cfg;
+  const { name, wayland, pipewire, gpu, dbusNotifications, shareProjects } = cfg as any;
 
   let quadlet = `# ~/.config/containers/systemd/${name}.container\n`;
   quadlet += `[Unit]\n`;

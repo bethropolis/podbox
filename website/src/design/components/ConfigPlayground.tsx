@@ -52,13 +52,13 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
   const [customImage, setCustomImage] = useState('ghcr.io/username/custom-env:latest');
   const [wayland, setWayland] = useState(true);
   const [pipewire, setPipewire] = useState(true);
-  const [gpu, setGpu] = useState<'auto' | 'nvidia' | 'off'>('auto');
+  const [gpu, setGpu] = useState<'auto' | 'nvidia' | 'amd' | 'intel' | 'off'>('auto');
   const [dbusNotifications, setDbusNotifications] = useState(true);
   const [shareProjects, setShareProjects] = useState(true);
   const [packages, setPackages] = useState('neovim, ripgrep, git, fish');
   const [activeView, setActiveView] = useState<'toml' | 'quadlet'>('toml');
 
-  const config: PlaygroundConfig = { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects, packages };
+  const config: PlaygroundConfig = { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects, packages, packagesRemove: [], run: [], env: {}, mounts: [], ports: [] } as any;
   const code = activeView === 'toml' ? generatePlaygroundToml(config) : generatePlaygroundQuadlet(config);
 
   const tabs = [
