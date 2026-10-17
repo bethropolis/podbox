@@ -175,9 +175,9 @@ pub fn stage_import(
         );
     }
     if let Some(pkgs) = packages {
-        for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            if !cfg.image.packages.install.contains(&pkg.to_string()) {
-                cfg.image.packages.install.push(pkg.to_string());
+        for pkg in podbox::config::parse_package_list(pkgs) {
+            if !cfg.image.packages.install.contains(&pkg) {
+                cfg.image.packages.install.push(pkg);
             }
         }
     }
@@ -342,9 +342,9 @@ pub fn run_create(
         let mut cfg = template;
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
-            for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                if !cfg.image.packages.install.contains(&pkg.to_string()) {
-                    cfg.image.packages.install.push(pkg.to_string());
+            for pkg in podbox::config::parse_package_list(pkgs) {
+                if !cfg.image.packages.install.contains(&pkg) {
+                    cfg.image.packages.install.push(pkg);
                 }
             }
         }
@@ -465,17 +465,14 @@ pub fn run_create(
         cfg.image.base = image.to_string();
         cfg.image.name.clone_from(&container_name);
         cfg.container.name.clone_from(&container_name);
-        cfg.container.home = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .join("containers")
-            .join(&container_name);
+        cfg.container.home = podbox::config::default_home(&container_name);
         cfg.image.packages.manager = Some(detect_package_manager(image));
         cfg.container.shell.clear();
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         if let Some(pkgs) = packages {
-            for pkg in pkgs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                if !cfg.image.packages.install.contains(&pkg.to_string()) {
-                    cfg.image.packages.install.push(pkg.to_string());
+            for pkg in podbox::config::parse_package_list(pkgs) {
+                if !cfg.image.packages.install.contains(&pkg) {
+                    cfg.image.packages.install.push(pkg);
                 }
             }
         }

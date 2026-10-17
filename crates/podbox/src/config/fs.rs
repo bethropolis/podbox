@@ -2,6 +2,24 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+/// Default home directory for a container: `~/containers/<name>`.
+pub fn default_home(name: &str) -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("~"))
+        .join("containers")
+        .join(name)
+}
+
+/// Parse a comma-separated package list into trimmed, non-empty entries.
+pub fn parse_package_list(input: &str) -> Vec<String> {
+    input
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 pub fn expand_tilde(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {

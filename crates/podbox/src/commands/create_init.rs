@@ -118,10 +118,7 @@ pub fn run_init(
     cfg.image.base = base.to_string();
     cfg.image.name.clone_from(&container_name);
     cfg.container.name.clone_from(&container_name);
-    cfg.container.home = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("~"))
-        .join("containers")
-        .join(&container_name);
+    cfg.container.home = podbox::config::default_home(&container_name);
     cfg.image.packages.manager = Some(detect_package_manager(base));
 
     cfg.container.shell.clear();
