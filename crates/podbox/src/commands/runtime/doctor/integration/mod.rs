@@ -14,7 +14,7 @@ mod secrets;
 mod tools;
 mod wayland;
 
-pub(crate) use cleanup::{check_dead_exports, check_stale_sockets};
+pub(crate) use cleanup::{check_dead_exports, check_desktop_entries, check_stale_sockets};
 pub(crate) use hardware::check_hardware;
 pub(crate) use host_exec::check_host_exec;
 pub(crate) use secrets::check_secrets;

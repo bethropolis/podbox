@@ -110,6 +110,73 @@ pub(crate) fn check_sub_ids(env: &HostEnv) -> Vec<Check> {
     out
 }
 
+pub(crate) fn check_mount_propagation() -> Vec<Check> {
+    // Rootless containers need a shared root mount for nested mounts created
+    // after start to be visible; on some distros `/` defaults to private.
+    match podbox::process::run_piped(
+        "findmnt",
+        &podbox::process::args(&["-o", "PROPAGATION", "/"]),
+    ) {
+        Ok(output) => vec![propagation_check(&String::from_utf8_lossy(&output.stdout))],
+        Err(_) => Vec::new(), // no findmnt: nothing useful to say
+    }
+}
+
+/// Classify the root mount's propagation. `findmnt -o PROPAGATION /` prints
+/// a `PROPAGATION` header line and then the value.
+fn propagation_check(stdout: &str) -> Check {
+    let value = stdout
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .find(|l| !l.is_empty());
+    match value {
+        Some(v) if v.contains("shared") => Check::new("mount propagation", "pass", "shared"),
+        Some(v) => Check::new(
+            "mount propagation",
+            "warn",
+            format!(
+                "root mount is '{v}', not shared — nested mounts created after start are invisible; fix with `sudo mount --make-rshared /`"
+            ),
+        ),
+        None => Check::new(
+            "mount propagation",
+            "warn",
+            "could not read propagation of /",
+        ),
+    }
+}
+
+pub(crate) fn check_graph_driver() -> Vec<Check> {
+    match podbox::process::run_piped(
+        "podman",
+        &podbox::process::args(&["info", "--format", "{{.Store.GraphDriverName}}"]),
+    ) {
+        Ok(output) => {
+            let driver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            graph_driver_check(&driver).into_iter().collect()
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Slow storage drivers make builds and large workloads crawl; only
+/// `fuse-overlayfs` and `vfs` are avoidable pain. An empty name (stub or
+/// pre-4.x podman without the `Store` object) is no data, not a failure.
+fn graph_driver_check(driver: &str) -> Option<Check> {
+    match driver {
+        "" => None,
+        "fuse-overlayfs" | "vfs" => Some(Check::new(
+            "graph driver",
+            "warn",
+            format!(
+                "'{driver}' is slow and can hit overlay errors — native overlay needs kernel >= 5.13 (see docs/troubleshooting.md)"
+            ),
+        )),
+        other => Some(Check::new("graph driver", "pass", other)),
+    }
+}
+
 pub(crate) fn check_embedded_guest() -> Vec<Check> {
     match podbox::guest::PODBOX_GUEST {
         Some(bytes) => {
@@ -224,5 +291,48 @@ pub(crate) fn check_config_layout(fix: bool) -> Vec<Check> {
             "pass",
             "using canonical ~/.config/podbox/profiles/",
         )]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_propagation_passes() {
+        let c = propagation_check("PROPAGATION\nshared\n");
+        assert_eq!(c.status, "pass", "{c:?}");
+    }
+
+    #[test]
+    fn private_propagation_warns_with_fix() {
+        let c = propagation_check("PROPAGATION\nprivate\n");
+        assert_eq!(c.status, "warn", "{c:?}");
+        assert!(c.message.contains("make-rshared"), "{c:?}");
+    }
+
+    #[test]
+    fn empty_propagation_warns() {
+        let c = propagation_check("PROPAGATION\n");
+        assert_eq!(c.status, "warn", "{c:?}");
+    }
+
+    #[test]
+    fn native_overlay_passes() {
+        let c = graph_driver_check("overlay").unwrap();
+        assert_eq!(c.status, "pass", "{c:?}");
+    }
+
+    #[test]
+    fn fuse_overlayfs_warns() {
+        let c = graph_driver_check("fuse-overlayfs").unwrap();
+        assert_eq!(c.status, "warn", "{c:?}");
+        let vfs = graph_driver_check("vfs").unwrap();
+        assert_eq!(vfs.status, "warn", "{vfs:?}");
+    }
+
+    #[test]
+    fn absent_driver_name_says_nothing() {
+        assert!(graph_driver_check("").is_none());
     }
 }
