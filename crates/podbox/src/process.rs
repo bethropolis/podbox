@@ -234,25 +234,16 @@ fn spawn_interactive_timeout_cmd(
 
 /// Wait for a child process to complete, enforcing a timeout via SIGKILL.
 pub fn wait_child_timeout(child: std::process::Child, timeout: Duration) -> anyhow::Result<Output> {
-    let pid = Pid::from_raw(child.id().cast_signed());
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        if rx.recv_timeout(timeout).is_err() {
-            let _ = kill(pid, Signal::SIGKILL);
-        }
-    });
-    let output = child.wait_with_output()?;
-    let _ = tx.send(());
-    Ok(output)
+    Ok(crate::protocol::sysutil::wait_child_timeout(
+        child, timeout,
+    )?)
 }
 
 /// Open a pidfd for a given PID (Linux 5.3+).
 ///
 /// Returns `Err` on old kernels or when the PID does not exist.
 pub fn open_pidfd(pid: i32) -> io::Result<OwnedFd> {
-    let pid = rustix::process::Pid::from_raw(pid)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid PID"))?;
-    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).map_err(io::Error::from)
+    crate::protocol::sysutil::open_pidfd(pid)
 }
 
 /// Send a raw file descriptor over a connected Unix stream via `SCM_RIGHTS`.

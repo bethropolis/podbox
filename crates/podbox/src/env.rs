@@ -123,9 +123,7 @@ pub fn resolve() -> Result<HostEnv> {
                 .unwrap_or_else(|| "user".into())
         });
 
-    let xdg_runtime_dir: PathBuf = env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}")));
+    let xdg_runtime_dir = crate::protocol::sysutil::xdg_runtime_dir();
 
     let wayland_display = env::var("WAYLAND_DISPLAY").ok();
     let wayland_socket = wayland_display

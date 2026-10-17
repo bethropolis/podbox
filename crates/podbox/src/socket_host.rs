@@ -18,7 +18,7 @@ pub use actions::{HostActions, SystemActions};
 
 use conn::handle_connection;
 use conn::peer_is_in_host_userns;
-use monitor::{listen_fd, setup_signal_handler};
+use monitor::listen_fd;
 
 /// Maximum consecutive failed negotiations (bad hello, unauthenticated
 /// privileged message, malformed frame) before the connection is dropped.
@@ -167,8 +167,8 @@ fn accept_loop(
 
 /// Run the host socket server for a container.
 pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow::Result<()> {
-    let shutdown = Arc::new(AtomicBool::new(false));
-    setup_signal_handler(&shutdown)?;
+    // SIGTERM/SIGINT set this flag; the accept loop polls it on its tick.
+    let shutdown = crate::protocol::sysutil::install_shutdown_signal_handler();
 
     let config = config.clone();
     let path = socket_path.to_path_buf();

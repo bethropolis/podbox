@@ -17,10 +17,13 @@ pub use enums::{
     CapPreset, GpuMode, ImageSource, NetworkMode, OnStop, PackageManager, ServiceRestart,
     UsernsMode, XdgDirValue,
 };
+#[cfg(feature = "cli")]
+pub use fs::select_config_interactive;
 pub use fs::{
     active_context_path, clear_active_context, config_dir, default_home, expand_tilde,
     find_by_runtime_name, find_config_path, find_definition, find_legacy_root_configs,
-    list_configs, parse_package_list, profiles_dir, read_active_context, write_active_context,
+    list_configs, missing_config_error, parse_package_list, profiles_dir, read_active_context,
+    write_active_context,
 };
 pub use schema::{Config, IMAGE_REPO_PREFIX, SchemaVersion};
 pub use types::{

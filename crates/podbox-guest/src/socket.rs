@@ -15,11 +15,8 @@ pub fn container_name() -> Result<String, GuestError> {
 /// Host socket path inside the container.
 pub fn host_socket_path() -> Result<PathBuf, GuestError> {
     let cn = container_name()?;
-    let xdg_runtime = env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| format!("/run/user/{}", nix::unistd::getuid()));
-    Ok(PathBuf::from(&xdg_runtime)
-        .join("podbox")
-        .join(format!("{cn}.sock")))
+    let socket_dir = podbox_protocol::sysutil::xdg_runtime_dir().join("podbox");
+    Ok(socket_dir.join(format!("{cn}.sock")))
 }
 
 /// Connect to the host socket with retries using exponential backoff.

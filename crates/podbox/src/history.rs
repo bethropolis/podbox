@@ -96,6 +96,11 @@ fn parse_line(line: &str) -> Option<HistoryEntry> {
 }
 
 fn timestamp() -> String {
+    now_rfc3339()
+}
+
+/// Current wall clock as RFC3339 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
+pub fn now_rfc3339() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
@@ -105,7 +110,7 @@ fn timestamp() -> String {
 
 /// Format a Unix epoch seconds as RFC3339 UTC (`YYYY-MM-DDTHH:MM:SSZ`) using
 /// the civil-from-days algorithm so the log stays readable without `chrono`.
-fn format_rfc3339(secs: i64) -> String {
+pub fn format_rfc3339(secs: i64) -> String {
     const DAY: i64 = 86_400;
     let days = secs.div_euclid(DAY);
     let rem = secs.rem_euclid(DAY);

@@ -120,7 +120,7 @@ pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool, yes: bool) -> Res
                 );
             }
         }
-        podbox::cli::CacheCommand::Prune { name, yes } => {
+        podbox::cli::CacheCommand::Prune { name, .. } => {
             let volumes = if let Some(name) = name {
                 if name.is_empty()
                     || !name
@@ -162,7 +162,7 @@ pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool, yes: bool) -> Res
                     return Ok(());
                 }
                 if !dry_run {
-                    let ctx = podbox::ui::Ctx::new(*yes, false, false);
+                    let ctx = podbox::ui::Ctx::new(yes, false, false);
                     let prompt = format!("Remove all {} shared cache volume(s)?", volumes.len());
                     match podbox::ui::confirm(&ctx, &prompt, false) {
                         Ok(()) => {}

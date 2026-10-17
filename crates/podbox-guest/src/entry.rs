@@ -404,10 +404,9 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     }
 
     // 5. Make runtime directory writable by all
-    let runtime_dir =
-        std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{uid}"));
+    let runtime_dir = podbox_protocol::sysutil::xdg_runtime_dir();
     let _ = std::process::Command::new("chmod")
-        .args(["777", &runtime_dir])
+        .args(["777", &runtime_dir.to_string_lossy()])
         .status();
 
     // 6. Flatpak-info compatibility symlink (points to read-only host mount)

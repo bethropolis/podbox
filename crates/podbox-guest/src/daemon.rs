@@ -14,22 +14,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
-/// Register SIGTERM/SIGINT handlers that set `shutdown`.
-///
-/// The event loop polls the flag (and tolerates `EINTR`), so no
-/// `SA_RESTART` coordination is needed.
-fn setup_signal_handler(shutdown: &Arc<AtomicBool>) -> std::io::Result<()> {
-    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-        signal_hook::flag::register(sig, Arc::clone(shutdown))?;
-    }
-    Ok(())
-}
-
 use crate::error::GuestError;
 use crate::protocol::{GuestMessage, HostMessage, write_frame};
 use crate::socket;
 
 mod services;
+
+/// Register SIGTERM/SIGINT handlers via the shared sysutil flag.
+///
+/// The event loop polls the flag (and tolerates `EINTR`), so no
+/// `SA_RESTART` coordination is needed.
+fn setup_signal_handler() -> Arc<AtomicBool> {
+    podbox_protocol::sysutil::install_shutdown_signal_handler()
+}
 
 const EXCLUDED_COMMS: &[&str] = &[
     "podbox-guest",
@@ -43,10 +40,7 @@ const EXCLUDED_COMMS: &[&str] = &[
 ///
 /// Returns `Err` on old kernels or when the PID does not exist.
 fn open_pidfd(pid: i32) -> std::io::Result<OwnedFd> {
-    let pid = rustix::process::Pid::from_raw(pid)
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid PID"))?;
-    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty())
-        .map_err(std::io::Error::from)
+    podbox_protocol::sysutil::open_pidfd(pid)
 }
 
 struct TrackedProcess {
@@ -154,8 +148,7 @@ fn has_event(revents: PollFlags) -> bool {
 
 pub fn run() -> Result<(), GuestError> {
     services::start_service_supervisor();
-    let shutdown = Arc::new(AtomicBool::new(false));
-    setup_signal_handler(&shutdown)?;
+    let shutdown = setup_signal_handler();
 
     let host_socket_path = socket::host_socket_path()?;
     let container_name = socket::container_name()?;
@@ -364,26 +357,7 @@ fn run_command_with_timeout(
     timeout: std::time::Duration,
 ) -> Option<std::process::Output> {
     let child = cmd.spawn().ok()?;
-    let child_id = child.id();
-
-    // Spawn a monitor thread to enforce the timeout
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        if rx.recv_timeout(timeout).is_err() {
-            // Timeout reached; terminate the child process safely
-            #[cfg(unix)]
-            {
-                let _ = nix::sys::signal::kill(
-                    nix::unistd::Pid::from_raw(child_id.cast_signed()),
-                    nix::sys::signal::Signal::SIGKILL,
-                );
-            }
-        }
-    });
-
-    let output = child.wait_with_output().ok();
-    let _ = tx.send(()); // Signal the monitor thread to exit
-    output
+    podbox_protocol::sysutil::wait_child_timeout(child, timeout).ok()
 }
 
 /// Marker-delimited probe output: interactive shells print MOTD/greetings

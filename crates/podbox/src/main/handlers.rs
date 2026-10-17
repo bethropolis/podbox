@@ -171,18 +171,11 @@ pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(
         match config_list.len().cmp(&1) {
             std::cmp::Ordering::Greater => {
                 if tty {
-                    let items: Vec<String> = config_list
-                        .iter()
-                        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                        .collect();
-                    let selection =
-                        dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                            .with_prompt("Multiple containers found")
-                            .items(&items)
-                            .default(0)
-                            .interact()
-                            .map_err(|e| anyhow::anyhow!("selection failed: {e}"))?;
-                    Config::load(&config_list[selection])?
+                    let selection = config::select_config_interactive(
+                        &config_list,
+                        "Multiple containers found",
+                    )?;
+                    Config::load(&selection)?
                 } else {
                     let names: Vec<String> = config_list
                         .iter()
@@ -229,12 +222,7 @@ pub(crate) fn resolve_config_path(container: Option<&str>) -> Result<PathBuf> {
         if let Some(path) = config::find_config_path(name) {
             return Ok(path);
         }
-        anyhow::bail!(
-            "no config found for container '{}' at '{}/{{profiles/,}}/{}.toml'",
-            name,
-            config::config_dir().display(),
-            name
-        );
+        anyhow::bail!(config::missing_config_error(name));
     }
 
     let configs = config::list_configs();
@@ -249,17 +237,8 @@ pub(crate) fn resolve_config_path(container: Option<&str>) -> Result<PathBuf> {
         1 => Ok(configs.into_iter().next().unwrap()),
         _ => {
             if podbox::codegen::distros::is_tty() {
-                let items: Vec<String> = configs
-                    .iter()
-                    .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                    .collect();
-                let idx =
-                    dialoguer::Select::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                        .with_prompt("Select container")
-                        .items(&items)
-                        .default(0)
-                        .interact()?;
-                Ok(configs[idx].clone())
+                let selection = config::select_config_interactive(&configs, "Select container")?;
+                Ok(selection)
             } else {
                 anyhow::bail!("multiple configs found — specify one with --container <name>")
             }
