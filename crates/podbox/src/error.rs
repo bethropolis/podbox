@@ -59,6 +59,15 @@ pub enum PodboxError {
     #[error("command exited with status {0}")]
     ChildExit(i32),
 
+    /// The user declined a confirmation prompt.
+    #[error("cancelled")]
+    Cancelled,
+
+    /// A destructive command needs confirmation but stdin is not a TTY and
+    /// `--yes`/`--force` was not given.
+    #[error("confirmation required: re-run with --yes (or --force)")]
+    ConfirmationRequired,
+
     #[error("config validation failed:\n{details}")]
     ConfigValidationFailed { details: String },
 
@@ -103,6 +112,8 @@ impl PodboxError {
             Self::ConfigInvalid(_) => "config_invalid",
             Self::ProtocolMismatch { .. } => "protocol_mismatch",
             Self::ChildExit(_) => "child_exit",
+            Self::Cancelled => "cancelled",
+            Self::ConfirmationRequired => "confirmation_required",
             Self::InvalidName { .. } => "invalid_name",
             Self::GuestBinaryUnavailable => "guest_binary_unavailable",
         }

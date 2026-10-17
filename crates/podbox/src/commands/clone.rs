@@ -37,12 +37,10 @@ pub fn run_clone(src: &str, dst: &str, copy_home: bool, dry_run: bool) -> Result
     // The clone's home sits next to the source home, whatever it is: the
     // source home comes from its config, not from a hardcoded guess.
     let src_home = cfg.container.home.clone();
-    let new_home = src_home.parent().map(|p| p.join(dst)).unwrap_or_else(|| {
-        dirs::home_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("~"))
-            .join("containers")
-            .join(dst)
-    });
+    let new_home = src_home
+        .parent()
+        .map(|p| p.join(dst))
+        .unwrap_or_else(|| podbox::config::default_home(dst));
     cfg.image.name = dst.to_string();
     cfg.container.name = dst.to_string();
     cfg.container.home.clone_from(&new_home);

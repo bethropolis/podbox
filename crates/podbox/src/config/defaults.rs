@@ -1,10 +1,5 @@
-use std::collections::HashMap;
-
-use crate::config::enums::{GpuMode, NetworkMode, OnStop};
-use crate::config::types::{
-    HostExecConfig, LifecycleConfig, NetworkConfig, PackageConfig, RunConfig, SecurityConfig,
-    SystemdConfig,
-};
+use crate::config::enums::{GpuMode, NetworkMode};
+use crate::config::types::{HostExecConfig, PackageConfig, RunConfig};
 
 pub const EMBEDDED_DEFAULT: &str = r#"
 [image]
@@ -52,10 +47,6 @@ pub fn is_default_pull_retry_delay(v: &str) -> bool {
     v == "5s"
 }
 
-pub fn is_empty_hashmap(v: &HashMap<String, String>) -> bool {
-    v.is_empty()
-}
-
 pub fn is_default_mounts(v: &super::types::MountConfig) -> bool {
     v.extra.is_empty()
 }
@@ -84,35 +75,6 @@ pub fn is_default_idle_timeout(v: &str) -> bool {
     v == "off"
 }
 
-pub fn is_default_lifecycle(v: &LifecycleConfig) -> bool {
-    !v.quadlet
-        && !v.autostart
-        && v.on_stop == OnStop::Keep
-        && !v.auto_update
-        && v.idle_timeout == "off"
-}
-
-pub fn is_default_systemd(v: &SystemdConfig) -> bool {
-    v.requires.is_empty() && v.after.is_empty()
-}
-
-pub fn is_default_dbus(v: &super::types::DbusConfig) -> bool {
-    v.preset == super::types::DbusPreset::None && v.talk.is_empty() && v.own.is_empty()
-}
-
-pub fn is_default_security(v: &SecurityConfig) -> bool {
-    v.apparmor.is_none()
-        && v.seccomp.is_none()
-        && v.security_label_disable
-        && v.no_new_privileges
-        && !v.read_only_rootfs
-        && v.userns.is_none()
-}
-
 pub fn default_network_mode() -> NetworkMode {
     NetworkMode::Pasta
-}
-
-pub fn is_default_network(v: &NetworkConfig) -> bool {
-    v.mode == NetworkMode::Pasta && v.ports.is_empty()
 }
