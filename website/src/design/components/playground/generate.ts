@@ -1,3 +1,5 @@
+import { tomlString } from '../islands/studio/toml';
+
 export interface PlaygroundConfig {
   name: string;
   distro: 'fedora' | 'arch' | 'ubuntu' | 'debian' | 'custom';
@@ -26,24 +28,24 @@ export function generatePlaygroundToml(cfg: PlaygroundConfig): string {
 
   let toml = `# podbox.toml for ${name}\n`;
   toml += `[image]\n`;
-  toml += `name = "${name}"\n`;
-  toml += `base = "${distro === 'custom' ? customImage : DISTRO_BASES[distro]}"\n`;
+  toml += `name = ${tomlString(name)}\n`;
+  toml += `base = ${tomlString(distro === 'custom' ? customImage : DISTRO_BASES[distro])}\n`;
   if (parsedPackages.length > 0) {
     // `image.packages` is a table, not a bare list: the engine rejects
     // `packages = [...]`, so the friendly shape would not survive a paste
     // into a real config file.
     toml += `\n[image.packages]\n`;
-    toml += `install = [${parsedPackages.map((p) => `"${p}"`).join(', ')}]\n`;
+    toml += `install = [${parsedPackages.map((p) => tomlString(p)).join(', ')}]\n`;
   }
 
   toml += `\n[container]\n`;
-  toml += `name = "${name}"\n`;
-  toml += `home = "~/containers/${name}"\n`;
+  toml += `name = ${tomlString(name)}\n`;
+  toml += `home = ${tomlString(`~/containers/${name}`)}\n`;
 
   toml += `\n[integration]\n`;
   toml += `wayland = ${wayland}\n`;
   toml += `audio = ${pipewire}\n`;
-  toml += `gpu = ${gpu === 'off' ? 'false' : `"${gpu}"`}\n`;
+  toml += `gpu = ${gpu === 'off' ? 'false' : tomlString(gpu)}\n`;
   toml += `dbus = ${dbusNotifications}\n`;
 
   if (shareProjects) {

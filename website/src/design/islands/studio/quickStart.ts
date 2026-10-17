@@ -22,13 +22,39 @@ import type { StudioValues } from './useStudioState';
 
 type Naming = Pick<StudioValues, 'containerName' | 'imagePrebuiltRef'>;
 
+/**
+ * Quote one shell word. Values made only of safe characters stay bare, so
+ * the common `podbox create dev --edit` reads exactly as before; anything
+ * else gets single-quoted. sh and fish need separate rules for an embedded
+ * quote: sh closes and reopens around it (`'\''`), fish backslash-escapes
+ * it (`\'`) — one dialect's escape is the other's literal.
+ */
+export function shellQuote(value: string, shell: 'sh' | 'fish'): string {
+  if (value !== '' && /^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) return value;
+  if (shell === 'fish') {
+    return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** Container names double as a filename segment and an argv word. The UI
+ * sanitizes them on entry, but a share link can carry anything, so clean
+ * the path segment here: the `~` prefix must stay a literal tilde (quoting
+ * it would stop expansion), which is why this is a sanitizer, not a quote.
+ */
+function fileName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'podbox';
+}
+
 /** `podbox create … --edit` for hand-finish: writes the config when missing,
- * opens it in the editor, then creates from what was saved. */
-export function cliCommand(s: Naming): string {
-  const name = s.containerName || 'podbox';
+ * opens it in the editor, then creates from what was saved. Every
+ * interpolated value is quoted: the image ref rides in on share links and
+ * must never break out of its word. */
+export function cliCommand(s: Naming, shell: 'sh' | 'fish' = 'sh'): string {
+  const name = shellQuote(s.containerName || 'podbox', shell);
   const image = s.imagePrebuiltRef?.trim();
   if (!image) return `podbox create ${name} --edit`;
-  return `podbox create ${image} --name ${name} --edit`;
+  return `podbox create ${shellQuote(image, shell)} --name ${name} --edit`;
 }
 
 /** Heredoc delimiter that cannot collide with a line of the TOML body. */
@@ -46,11 +72,12 @@ function fishQuote(body: string): string {
 
 /** Block that writes the TOML to profiles/, then creates. */
 export function quickStartCommand(s: Naming, toml: string, shell: 'sh' | 'fish' = 'sh'): string {
-  const name = s.containerName || 'podbox';
+  const rawName = s.containerName || 'podbox';
+  const name = shellQuote(rawName, shell);
   const image = s.imagePrebuiltRef?.trim();
-  if (image) return cliCommand(s);
+  if (image) return cliCommand(s, shell);
   const body = toml.trimEnd();
-  const target = `~/.config/podbox/profiles/${name}.toml`;
+  const target = `~/.config/podbox/profiles/${fileName(rawName)}.toml`;
   if (shell === 'fish') {
     // Trailing newline stays inside the quotes so the file ends with one.
     return [

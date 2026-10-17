@@ -10,6 +10,7 @@
 // guards the data layer against drift.
 
 import type { EnvVarItem, HostExecItem, MountItem, ProvisionItem, SecretItem, ServiceItem } from './types';
+import { tomlString } from './toml';
 
 export type { ProvisionItem };
 export { ON_FAILURE_OPTIONS, PROVISION_DEFAULT_TIMEOUT } from './types';
@@ -585,7 +586,7 @@ export function shouldEmit(field: FieldDef, value: unknown): boolean {
 
 export function formatScalar(kind: FieldKind, value: unknown): string {
   if (kind === 'string-list') {
-    return `[${((value as string[]) ?? []).map((e) => `"${e}"`).join(', ')}]`;
+    return `[${((value as string[]) ?? []).map((e) => tomlString(e)).join(', ')}]`;
   }
   if (kind === 'xdg-dir') {
     // `true` is the read-only shorthand; the table form is the only way to ask
@@ -593,7 +594,7 @@ export function formatScalar(kind: FieldKind, value: unknown): string {
     return value === 'rw' ? '{ enabled = true, read_write = true }' : 'true';
   }
   if (kind === 'boolean' || kind === 'number') return String(value);
-  return `"${value}"`;
+  return tomlString(String(value));
 }
 
 /** Read a dotted path from a parsed TOML document. */
