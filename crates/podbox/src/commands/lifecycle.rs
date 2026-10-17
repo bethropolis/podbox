@@ -5,8 +5,6 @@ mod snapshot;
 
 pub use snapshot::{run_restore, run_snapshot, run_snapshot_list, run_snapshot_prune};
 
-use std::io::Write;
-
 use anyhow::{Context, Result};
 
 use podbox::config::Config;

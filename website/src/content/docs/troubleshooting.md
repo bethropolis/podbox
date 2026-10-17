@@ -167,3 +167,133 @@ podbox use                  # show current context
 podbox use <name>           # set it
 podbox use --clear          # clear it
 ```
+
+## Mount propagation errors (nested mounts not visible)
+
+Symptom: bind mounts or nested mounts created inside the container are not
+visible on the host, or `podman` reports mount-propagation errors.
+
+Cause: the root filesystem `/` is not marked `shared`, so mount events do not
+propagate across the mount namespace boundary.
+
+Fix: check the current propagation mode and make the root shared:
+
+```bash
+findmnt -o PROPAGATION /
+sudo mount --make-rshared /
+```
+
+To make it persistent across reboots, add the `mount --make-rshared /` step
+to your boot sequence (for example via a systemd oneshot unit).
+
+## Slow builds or `overlay` errors in rootless mode
+
+Symptom: image builds are very slow, or fail with overlay/fuse-overlayfs
+errors when running rootless podman.
+
+Cause: podman is using the `fuse-overlayfs` storage driver instead of the
+kernel's native overlay, usually because the kernel is older than 5.13 or
+user-namespace support is disabled.
+
+Diagnose:
+
+```bash
+podman info --format '{{.Store.GraphDriverName}}'
+```
+
+Fix: upgrade to a kernel >= 5.13 with user namespaces enabled, then reset
+the storage:
+
+```bash
+podman system reset
+```
+
+After reset, `podman info` should report `overlay` as the graph driver.
+
+## Exported app missing from the application menu
+
+Symptom: `podbox export` succeeded but the exported application does not
+appear in the desktop menu.
+
+Cause: the generated `.desktop` file fails `TryExec` (the binary is not on
+`PATH` inside the container or the shim is stale), or the desktop database
+is out of date.
+
+Fix: validate the exported file and refresh the database:
+
+```bash
+desktop-file-validate ~/.local/share/applications/<name>.desktop
+update-desktop-database ~/.local/share/applications
+```
+
+Also verify the `TryExec` line points at an executable that exists.
+
+## Prompt shows "I have no name!"
+
+Symptom: a shell inside the container prints `I have no name!` instead of
+the username.
+
+Cause: the image creates a user whose UID collides with an existing UID in
+the image's `/etc/passwd`, so NSS cannot resolve the name.
+
+Diagnose inside the container:
+
+```bash
+podman exec <container> getent passwd $UID
+```
+
+Fix: rebuild with a non-colliding UID, or set `container.user` / the
+image's user explicitly in the TOML definition.
+
+## `setlocale` warnings
+
+Symptom: commands print warnings such as
+`bash: warning: setlocale: LC_ALL: cannot change locale`.
+
+Cause: the locale requested by the host (or by `[container.env]`) is not
+generated inside the image.
+
+Diagnose inside the container:
+
+```bash
+podman exec <container> locale -a
+```
+
+Fix: add the locale packages to `[image.packages].install` (for example
+`glibc-langpack-en` on Fedora or `locales` on Debian/Ubuntu) and rebuild,
+or drop the offending `LC_*`/`LANG` value from the config.
+
+## Notifications, clipboard or xdg-open do nothing
+
+Symptom: `notify-send`, clipboard copy/paste or `xdg-open` inside the
+container silently does nothing.
+
+Cause: the capability was not negotiated during the guest↔host handshake,
+or the host socket service is down.
+
+Diagnose:
+
+```bash
+systemctl --user status podbox-<name>.socket
+```
+
+Fix: ensure the socket unit is active and re-run `podbox enable <name>`.
+The guest sends a `Hello` on connect; a successful handshake is required
+before any interceptor request is served.
+
+## GPU apps fail on NVIDIA
+
+Symptom: GPU-accelerated applications fail to start inside the container on
+an NVIDIA host.
+
+Cause: no CDI (Container Device Interface) specification was generated for
+the NVIDIA devices, so podman cannot inject them.
+
+Fix: generate the CDI spec and re-enable the container:
+
+```bash
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+podbox enable <name>
+```
+
+See the NVIDIA container toolkit documentation for details.

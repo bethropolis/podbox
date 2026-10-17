@@ -9,8 +9,6 @@ use anyhow::Result;
 use podbox::codegen::distros;
 use podbox::config::{self, Config};
 
-use std::path::PathBuf;
-
 use super::create::{derive_container_name, detect_package_manager, read_profile_content};
 
 /// Initialize a new container config.
