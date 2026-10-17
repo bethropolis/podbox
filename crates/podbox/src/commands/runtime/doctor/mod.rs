@@ -59,14 +59,15 @@ struct DoctorEntry {
 fn group_for(check_name: &str) -> &'static str {
     match check_name {
         "podman"
+        | "mount propagation"
+        | "graph driver"
         | "/etc/subuid"
         | "/etc/subgid"
         | "loginctl linger"
         | "embedded guest binary"
         | "config layout" => "Host",
-        "Quadlet files" | "orphaned snapshot" | "memory" | "guest version" | "protocol" => {
-            "Container"
-        }
+        "Quadlet files" | "orphaned snapshot" | "memory" | "guest version" | "protocol"
+        | "guest user" | "guest locale" => "Container",
         _ => "Integration",
     }
 }
@@ -101,6 +102,8 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     }
 
     collect!(host::check_podman());
+    collect!(host::check_mount_propagation());
+    collect!(host::check_graph_driver());
     collect!(integration::check_wayland(config, env, fix));
     collect!(integration::check_xdg_user_dir());
     collect!(host::check_sub_ids(env));
@@ -113,10 +116,14 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     collect!(host::check_config_layout(fix));
     collect!(container::check_memory(config, fix));
     collect!(container::check_guest_version(config));
+    collect!(container::check_guest_user(config));
+    collect!(container::check_guest_locale(config));
+    collect!(container::check_guest_socket(config));
     collect!(integration::check_toolchain());
     collect!(integration::check_stale_sockets(fix));
     collect!(container::check_orphaned_snapshots());
     collect!(integration::check_dead_exports(fix));
+    collect!(integration::check_desktop_entries());
 
     match output {
         OutputFormat::Json => {

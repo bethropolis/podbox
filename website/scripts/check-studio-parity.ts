@@ -50,6 +50,9 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       netOffline: true,
       intGitIdentity: false,
       lifeAutoCheckpoint: true,
+      // USB passthrough was missing from Studio while the engine and doctor
+      // already supported it.
+      hwUsb: true,
     },
   ],
   // [[provision]]: array-of-tables, defaults omitted, abort + root + env
@@ -215,6 +218,67 @@ if (failed > 0) {
     process.exit(1);
   }
   console.log(`✓ dbus-preset: dbus.preset rejected, all options named`);
+}
+// xdg_open table form: a custom scheme allowlist must survive emission and
+// import in Studio-land. The Rust engine gained the table form at the same
+// time as Studio, so wasm bindings older than that still reject the shape —
+// that combination is a "needs wasm rebuild" skip, not a failure.
+{
+  const values = studioReducer(defaults, {
+    type: "patch",
+    patch: { intXdgOpen: true, intXdgOpenSchemes: ["http", "smb"] },
+  });
+  const toml = generateStudioToml(values);
+  if (!toml.includes('xdg_open = { enabled = true, allowed_schemes = ["http", "smb"] }')) {
+    console.error(`✗ xdg-open-schemes: table form not emitted:\n${toml}`);
+    process.exit(1);
+  }
+  if (toml.includes("xdg_open = true")) {
+    console.error("✗ xdg-open-schemes: bool shorthand conflicts with the table line");
+    process.exit(1);
+  }
+  // The default allowlist stays in the bool shorthand.
+  const plain = generateStudioToml(
+    studioReducer(defaults, { type: "patch", patch: { intXdgOpen: true } }),
+  );
+  if (!plain.includes("xdg_open = true")) {
+    console.error("✗ xdg-open-schemes: default allowlist must stay the bool shorthand");
+    process.exit(1);
+  }
+  const v = validate_toml(toml) as {
+    valid: boolean;
+    errors: Array<{ field?: string; message: string }>;
+  };
+  if (!v.valid) {
+    const staleEngine = v.errors.some((e) => `${e.field ?? ""}${e.message}`.includes("xdg_open"));
+    if (!staleEngine) {
+      console.error(
+        `✗ xdg-open-schemes: TOML rejected for an unrelated reason:\n  - ${v.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  - ")}`,
+      );
+      process.exit(1);
+    }
+    console.log(
+      "~ xdg-open-schemes: engine skipped — wasm bindings predate the table form (needs wasm rebuild)",
+    );
+  } else {
+    console.log("✓ xdg-open-schemes: table form accepted by the Rust engine");
+  }
+  // Regardless of engine staleness, importing the emitted shape must land
+  // back in exactly the same state.
+  const reimported = studioReducer(values, {
+    type: "patch",
+    patch: tomlToPatch(parseTomlText(toml) as Record<string, any>) as Record<string, unknown>,
+  });
+  // `intXdgOpen` stays; import must not reset the engine-implied enabling.
+  if (reimported.intXdgOpen !== true || JSON.stringify(reimported.intXdgOpenSchemes) !== JSON.stringify(["http", "smb"])) {
+    console.error(`✗ xdg-open-schemes: import lost state: ${JSON.stringify({ intXdgOpen: reimported.intXdgOpen, intXdgOpenSchemes: reimported.intXdgOpenSchemes })}`);
+    process.exit(1);
+  }
+  const toml2 = generateStudioToml(reimported as StudioValues);
+  if (toml2 !== toml) {
+    console.error(`✗ xdg-open-schemes: emission is not a fixed point of import\nbefore:\n${toml}\nafter:\n${toml2}`);
+    process.exit(1);
+  }
 }
 console.log("\nAll Studio presets round-trip through the Rust engine.");
 

@@ -48,7 +48,10 @@ pub(crate) fn print_exposure_summary(config: &Config) {
     );
     line("Clipboard", on(config.integration.clipboard));
     line("Notifications", on(config.integration.notify));
-    line("URL opening (xdg-open)", on(config.integration.xdg_open));
+    line(
+        "URL opening (xdg-open)",
+        on(config.integration.xdg_open.enabled),
+    );
     line("SSH agent socket", on(config.integration.ssh_agent));
     line("GPG agent socket", on(config.integration.gpg_agent));
     match (

@@ -217,6 +217,17 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
     if (allow) patch.hostExecList = allow;
   }
 
+  // `xdg_open = { enabled, allowed_schemes }` — the bool form arrives through
+  // the generic pass above; naming schemes without `enabled` still enables
+  // (the engine's rule), so an import of either shape lands in state.
+  const xdgOpen = integration.xdg_open as Record<string, unknown> | undefined;
+  if (xdgOpen && typeof xdgOpen === 'object') {
+    patch.intXdgOpen = bool(xdgOpen.enabled) ?? true;
+    const schemes = strArr(xdgOpen.allowed_schemes);
+    if (schemes) patch.intXdgOpenSchemes = schemes;
+    else patch.intXdgOpenSchemes = [];
+  }
+
   const dbus = sec('dbus');
   if (str(dbus.preset) !== undefined) {
     patch.dbusPreset = dbus.preset;

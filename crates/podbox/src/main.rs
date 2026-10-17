@@ -277,7 +277,11 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Cache { cache_cmd } => {
-            return commands::cache::run(cache_cmd, cli.dry_run);
+            let yes = matches!(
+                cache_cmd,
+                podbox::cli::CacheCommand::Prune { yes, .. } if *yes
+            );
+            return commands::cache::run(cache_cmd, cli.dry_run, yes);
         }
 
         Command::Init {
@@ -400,14 +404,8 @@ fn run(mut cli: Cli) -> Result<()> {
         }
 
         Command::Compositor { name } => {
-            let config_path = podbox::config::find_config_path(name).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no config found for container '{}' at '{}/{{profiles/,}}{}.toml'",
-                    name,
-                    podbox::config::config_dir().display(),
-                    name
-                )
-            })?;
+            let config_path = podbox::config::find_config_path(name)
+                .ok_or_else(|| podbox::config::missing_config_error(name))?;
             let config = podbox::config::Config::load(&config_path)?;
             return podbox::compositor::run_compositor(&config, name);
         }

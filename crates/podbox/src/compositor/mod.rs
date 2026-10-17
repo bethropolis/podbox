@@ -11,12 +11,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
-/// Register SIGTERM/SIGINT handlers that set `shutdown`.
-fn setup_signal_handler(shutdown: Arc<AtomicBool>) -> Result<()> {
-    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-        signal_hook::flag::register(sig, Arc::clone(&shutdown))?;
-    }
-    Ok(())
+/// Register SIGTERM/SIGINT handlers via the shared sysutil dead-simple flag.
+fn setup_signal_handler() -> Result<Arc<AtomicBool>> {
+    Ok(crate::protocol::sysutil::install_shutdown_signal_handler())
 }
 
 use crate::config::Config;
@@ -37,12 +34,10 @@ use firewall::FirewallState;
 /// Wayland socket, and filters blocked interfaces from `wl_registry::global`
 /// events on the host→client path.
 pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
-    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
-        .or_else(|_| {
-            let uid = nix::unistd::getuid().as_raw();
-            Ok::<_, std::env::VarError>(format!("/run/user/{uid}"))
-        })
-        .context("XDG_RUNTIME_DIR not set")?;
+    // The old code had a `.context("XDG_RUNTIME_DIR not set")` here, but the
+    // `or_else` always supplied the uid fallback, so the context was
+    // unreachable; the shared helper is exactly that behaviour.
+    let xdg_runtime = crate::protocol::sysutil::xdg_runtime_dir();
 
     let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into());
     let host_socket = Path::new(&xdg_runtime).join(&wayland_display);
@@ -62,8 +57,7 @@ pub fn run_compositor(config: &Config, name: &str) -> Result<()> {
     let _ = std::fs::remove_file(&socket_path);
     std::fs::create_dir_all(socket_path.parent().context("socket path has no parent")?)?;
 
-    let shutdown = Arc::new(AtomicBool::new(false));
-    setup_signal_handler(Arc::clone(&shutdown))?;
+    let shutdown = setup_signal_handler()?;
 
     let listener = UnixListener::bind(&socket_path).with_context(|| {
         format!(

@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use crate::config::Config;
 
 /// Validate that mount paths referenced in extra mounts exist on the host.
-pub(crate) fn preflight_check(config: &Config) -> Result<()> {
+pub(crate) fn preflight_check(config: &Config, ctx: &crate::ui::Ctx) -> Result<()> {
     let name = &config.container.name;
 
     // Check home directory
@@ -27,33 +27,28 @@ pub(crate) fn preflight_check(config: &Config) -> Result<()> {
         };
         let path = std::path::Path::new(host_path);
         if !path.exists() {
-            if crate::codegen::distros::is_tty() {
-                let prompt = format!(
-                    "Mount path '{}' does not exist on the host. Create it?",
-                    path.display()
-                );
-                let create =
-                    dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                        .with_prompt(prompt)
-                        .default(true)
-                        .interact_opt()?;
-                if create == Some(true) {
+            let prompt = format!(
+                "Mount path '{}' does not exist on the host. Create it?",
+                path.display()
+            );
+            match crate::ui::confirm(ctx, &prompt, true) {
+                Ok(()) => {
                     std::fs::create_dir_all(path).with_context(|| {
                         format!("failed to create mount directory '{}'", path.display())
                     })?;
                     println!("✓ Directory '{}' created.", path.display());
-                } else {
-                    eprintln!(
-                        "Warning: mount path '{}' does not exist on the host. This may cause the container to fail to load.",
-                        path.display()
-                    );
                 }
-            } else {
-                eprintln!(
+                // Without a terminal there is nobody to ask — warn and let the
+                // install fail downstream with its own error, like before.
+                Err(crate::error::PodboxError::ConfirmationRequired) => eprintln!(
                     "Warning: mount path '{}' does not exist on the host (container '{}').",
                     path.display(),
                     name
-                );
+                ),
+                Err(_) => eprintln!(
+                    "Warning: mount path '{}' does not exist on the host. This may cause the container to fail to load.",
+                    path.display()
+                ),
             }
         }
     }
@@ -90,26 +85,21 @@ pub(crate) fn preflight_check(config: &Config) -> Result<()> {
 
     // Check admin cap_preset
     if config.security.cap_preset == crate::config::CapPreset::Admin {
-        if crate::codegen::distros::is_tty() {
-            let caps = config.security.cap_preset.caps().join(", ");
-            let confirmed = dialoguer::Confirm::with_theme(
-                &dialoguer::theme::ColorfulTheme::default(),
-            )
-            .with_prompt(format!(
-                "WARNING: CapPreset::Admin grants {caps}. Only proceed if you fully trust this container. Continue?"
-            ))
-            .default(false)
-            .interact()?;
-            if !confirmed {
-                anyhow::bail!(
-                    "Aborted — set cap_preset to a lower level or use cap_add for specific caps"
-                );
-            }
-        } else {
-            let caps = config.security.cap_preset.caps().join(", ");
-            eprintln!(
+        let caps = config.security.cap_preset.caps().join(", ");
+        let prompt = format!(
+            "WARNING: CapPreset::Admin grants {caps}. Only proceed if you fully trust this container. Continue?"
+        );
+        match crate::ui::confirm(ctx, &prompt, false) {
+            Ok(()) => {}
+            // Same trade the old non-TTY branch made: an unattended install
+            // of an admin-preset config is documented, not silent.
+            Err(crate::error::PodboxError::ConfirmationRequired) => eprintln!(
                 "Note: cap_preset = \"admin\" grants {caps}. Non-interactive mode, continuing without confirmation."
-            );
+            ),
+            Err(crate::error::PodboxError::Cancelled) => anyhow::bail!(
+                "Aborted — set cap_preset to a lower level or use cap_add for specific caps"
+            ),
+            Err(e) => return Err(e.into()),
         }
     }
 

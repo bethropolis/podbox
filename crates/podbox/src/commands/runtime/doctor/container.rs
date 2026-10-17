@@ -266,8 +266,10 @@ pub(crate) fn check_orphaned_snapshots() -> Vec<Check> {
     out
 }
 
-#[allow(dead_code)]
-fn query_guest_info_via_socket(name: &str) -> anyhow::Result<(String, u32)> {
+/// Handshake with the container's guest daemon as a pseudo-guest and ask
+/// for `Info`: the closest thing to "the guest daemon is alive" that works
+/// from the host. Also used by the doctor's guest-socket check.
+pub(crate) fn query_guest_info_via_socket(name: &str) -> anyhow::Result<(String, u32)> {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::path::PathBuf::from("/run/user/1000"));
@@ -303,5 +305,213 @@ fn query_guest_info_via_socket(name: &str) -> anyhow::Result<(String, u32)> {
             protocol_version,
         } => Ok((guest_version, protocol_version)),
         other => anyhow::bail!("unexpected reply: {other:?}"),
+    }
+}
+
+fn is_running(name: &str) -> bool {
+    podbox::podman::query_state(name).is_ok_and(|s| s == podbox::podman::ContainerState::Running)
+}
+
+/// The "I have no name!" symptom (012): the shell's uid has no passwd
+/// entry in the image, so `$HOME` and the prompt are broken.
+pub(crate) fn check_guest_user(config: &Config) -> Vec<Check> {
+    let name = &config.container.name;
+    if !is_running(name) {
+        return Vec::new();
+    }
+    // Resolve the uid inside the container: with keep-id userns it matches
+    // the host uid, but the shell's own `id -u` is what's actually broken.
+    match podbox::process::run_piped(
+        "podman",
+        &podbox::process::args(&["exec", name, "sh", "-c", "getent passwd \"$(id -u)\""]),
+    ) {
+        Ok(output) => vec![passwd_entry_check(&String::from_utf8_lossy(&output.stdout))],
+        Err(_) => Vec::new(),
+    }
+}
+
+/// `getent` exits non-zero when there is no entry, but an empty stdout
+/// from a successful run means the same thing — no passwd entry at all.
+fn passwd_entry_check(stdout: &str) -> Check {
+    if stdout.trim().is_empty() {
+        Check::new(
+            "guest user",
+            "warn",
+            "no passwd entry for the runtime uid — the prompt shows 'I have no name!'; create the user in the image (see docs/troubleshooting.md)",
+        )
+    } else {
+        Check::new(
+            "guest user",
+            "pass",
+            "passwd entry found for the runtime uid",
+        )
+    }
+}
+
+/// Locale handling (068): the image must generate the host `LANG`, or every
+/// program prints `setlocale` warnings.
+pub(crate) fn check_guest_locale(config: &Config) -> Vec<Check> {
+    let lang = std::env::var("LANG").unwrap_or_default().trim().to_string();
+    if lang.is_empty() || lang == "C" || lang == "POSIX" {
+        return Vec::new();
+    }
+    let name = &config.container.name;
+    if !is_running(name) {
+        return Vec::new();
+    }
+    match podbox::process::run_piped(
+        "podman",
+        &podbox::process::args(&["exec", name, "locale", "-a"]),
+    ) {
+        Ok(output) => vec![locale_check(
+            &lang,
+            &String::from_utf8_lossy(&output.stdout),
+        )],
+        Err(_) => Vec::new(),
+    }
+}
+
+fn locale_check(lang: &str, list: &str) -> Check {
+    let key = locale_key(lang);
+    if list.lines().any(|l| locale_key(l) == key) {
+        Check::new("guest locale", "pass", format!("{lang} available"))
+    } else {
+        Check::new(
+            "guest locale",
+            "warn",
+            format!(
+                "host LANG '{lang}' is not generated in the image — programs print setlocale warnings; rebuild with `podbox build --rebuild` to generate it (see docs/troubleshooting.md)"
+            ),
+        )
+    }
+}
+
+/// Normalize a locale name for comparison: case-insensitive, `_` and `-`
+/// interchangeable, @variant dropped, UTF-8 spelled either way.
+fn locale_key(locale: &str) -> String {
+    let lower = locale.trim().to_lowercase().replace('_', "-");
+    let base = lower.split('@').next().unwrap_or(&lower);
+    for suffix in [".utf-8", ".utf8"] {
+        if let Some(stem) = base.strip_suffix(suffix) {
+            return stem.strip_suffix('.').unwrap_or(stem).to_string();
+        }
+    }
+    base.to_string()
+}
+
+/// Guest socket (001): the `{name}.socket` unit must be active, and the
+/// guest daemon behind it must answer a test `Hello`. Without this, the
+/// interceptors (notify-send, clipboard, xdg-open) silently do nothing.
+pub(crate) fn check_guest_socket(config: &Config) -> Vec<Check> {
+    let name = &config.container.name;
+    let unit = format!("{name}.socket");
+    // No user manager, or the box was never installed: the earlier checks
+    // cover those, and we cannot distinguish "down" from "uninstalled".
+    if !podbox::systemd::is_available() || !podbox::quadlet_install::is_installed(name) {
+        return Vec::new();
+    }
+    // `systemctl is-active` prints active/failed/... and exits accordingly.
+    let active = podbox::process::run_piped(
+        "systemctl",
+        &podbox::process::args(&["--user", "is-active", &unit]),
+    )
+    .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "active");
+    match unit_state_check(active, &unit) {
+        Some(c) => vec![c],
+        None => vec![hello_probe_check(
+            query_guest_info_via_socket(name).map_err(|e| e.to_string()),
+        )],
+    }
+}
+
+/// `None` = unit active, probe can decide; `Some` = unit is down.
+fn unit_state_check(active: bool, unit: &str) -> Option<Check> {
+    if active {
+        None
+    } else {
+        Some(Check::new(
+            "guest socket",
+            "warn",
+            format!(
+                "{unit} is not active — notifications, clipboard and xdg-open silently fail; start the box with `podbox start`"
+            ),
+        ))
+    }
+}
+
+fn hello_probe_check(probe: Result<(String, u32), String>) -> Check {
+    match probe {
+        Ok((gv, proto)) => Check::new(
+            "guest socket",
+            "pass",
+            format!("test hello ok (guest {gv}, protocol v{proto})"),
+        ),
+        Err(e) => Check::new(
+            "guest socket",
+            "warn",
+            format!("unit active but the test hello failed: {e}"),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn passwd_entry_passes_when_getent_prints() {
+        let c = passwd_entry_check("bet:x:1000:1000:Bet:/home/bet:/bin/bash\n");
+        assert_eq!(c.status, "pass", "{c:?}");
+    }
+
+    #[test]
+    fn missing_passwd_entry_warns() {
+        let c = passwd_entry_check("   \n");
+        assert_eq!(c.status, "warn", "{c:?}");
+        assert!(c.message.contains("I have no name!"), "{c:?}");
+    }
+
+    #[test]
+    fn host_locale_listed_in_container_passes() {
+        // `locale -a` spells the code set differently than the host does.
+        let c = locale_check("de_DE.UTF-8", "C\nC.utf8\nde_DE.utf8\nen_US.utf8\n");
+        assert_eq!(c.status, "pass", "{c:?}");
+    }
+
+    #[test]
+    fn missing_locale_warns_with_rebuild_hint() {
+        let c = locale_check("de_DE.UTF-8", "C\nC.utf8\nen_US.utf8\n");
+        assert_eq!(c.status, "warn", "{c:?}");
+        assert!(c.message.contains("--rebuild"), "{c:?}");
+    }
+
+    #[test]
+    fn locale_keys_unify_spellings() {
+        assert_eq!(locale_key("de_DE.UTF-8"), locale_key("de_DE.utf8"));
+        assert_eq!(locale_key("de_DE.UTF-8"), locale_key("de-de"));
+        assert_eq!(locale_key("C.UTF-8"), "c");
+        // Distinct base locales must not collapse into each other.
+        assert_ne!(locale_key("de_DE.utf8"), locale_key("en_US.utf8"));
+    }
+
+    #[test]
+    fn inactive_socket_warns() {
+        let c = unit_state_check(false, "alpha.socket").unwrap();
+        assert_eq!(c.status, "warn", "{c:?}");
+        assert!(c.message.contains("alpha.socket"), "{c:?}");
+    }
+
+    #[test]
+    fn active_socket_leaves_probe_to_decide() {
+        assert!(unit_state_check(true, "alpha.socket").is_none());
+    }
+
+    #[test]
+    fn hello_probe_pass_and_fail() {
+        let ok = hello_probe_check(Ok(("0.9.0".into(), 1)));
+        assert_eq!(ok.status, "pass", "{ok:?}");
+        let dead = hello_probe_check(Err("connection refused".into()));
+        assert_eq!(dead.status, "warn", "{dead:?}");
+        assert!(dead.message.contains("connection refused"), "{dead:?}");
     }
 }

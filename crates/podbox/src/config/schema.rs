@@ -105,13 +105,13 @@ impl Config {
                     .into(),
             );
         }
-        if self.integration.xdg_open {
+        if self.integration.xdg_open.enabled {
             rules.push(
                 "--call=org.freedesktop.portal.Desktop=org.freedesktop.portal.OpenURI.*@/org/freedesktop/portal/desktop"
                     .into(),
             );
         }
-        if self.integration.notify || self.integration.xdg_open {
+        if self.integration.notify || self.integration.xdg_open.enabled {
             // Portals use the async Request pattern, so the `Request` interface
             // on the `/org/freedesktop/portal/desktop/request/*` subtree is
             // always allowed alongside (method calls for `Request.Close`, and

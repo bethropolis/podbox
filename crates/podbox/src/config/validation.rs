@@ -430,6 +430,19 @@ impl Config {
             }
         }
 
+        // The scheme allowlist is security-relevant input: a typo like
+        // "HTTPS" would be parsed as a (never-matching) scheme and silently
+        // refuse exactly the traffic the user meant to allow. Refuse it here
+        // instead, while the definition file is still open for editing.
+        for (i, scheme) in self.integration.xdg_open.allowed_schemes.iter().enumerate() {
+            if !crate::config::types::is_scheme_token(scheme) {
+                errors.push(format!(
+                    "integration.xdg_open.allowed_schemes[{i}]: '{scheme}' is not a valid \
+                     scheme name (lowercase letters, digits, '-', '+' or '.', starting with a letter)"
+                ));
+            }
+        }
+
         // D-Bus rules without the bus itself are dead config: with
         // `integration.dbus` off the container gets no D-Bus at all, so talk,
         // own, or a preset would be silently ignored. Fail fast instead.

@@ -283,6 +283,10 @@ impl FrameReader {
     }
 }
 
+/// Unix-only helpers shared by the host CLI and the guest daemon.
+#[cfg(unix)]
+pub mod sysutil;
+
 #[cfg(test)]
 mod tests {
     use super::*;

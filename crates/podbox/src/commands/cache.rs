@@ -85,7 +85,7 @@ fn attachments(volume: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool) -> Result<()> {
+pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool, yes: bool) -> Result<()> {
     match command {
         podbox::cli::CacheCommand::List => {
             let names = volume_names()?;
@@ -120,7 +120,7 @@ pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool) -> Result<()> {
                 );
             }
         }
-        podbox::cli::CacheCommand::Prune { name } => {
+        podbox::cli::CacheCommand::Prune { name, .. } => {
             let volumes = if let Some(name) = name {
                 if name.is_empty()
                     || !name
@@ -162,22 +162,18 @@ pub fn run(command: &podbox::cli::CacheCommand, dry_run: bool) -> Result<()> {
                     return Ok(());
                 }
                 if !dry_run {
-                    if !podbox::codegen::distros::is_tty() {
-                        anyhow::bail!(
-                            "pruning all shared caches requires confirmation in a terminal; specify a cache name to prune one"
-                        );
-                    }
-                    let yes = dialoguer::Confirm::new()
-                        .with_prompt(format!(
-                            "Remove all {} shared cache volume(s)?",
-                            volumes.len()
-                        ))
-                        .default(false)
-                        .interact_opt()?
-                        .unwrap_or(false);
-                    if !yes {
-                        println!("Cancelled.");
-                        return Ok(());
+                    let ctx = podbox::ui::Ctx::new(yes, false, false);
+                    let prompt = format!("Remove all {} shared cache volume(s)?", volumes.len());
+                    match podbox::ui::confirm(&ctx, &prompt, false) {
+                        Ok(()) => {}
+                        Err(podbox::error::PodboxError::ConfirmationRequired) => anyhow::bail!(
+                            "pruning all shared caches requires confirmation in a terminal; specify a cache name to prune one, or rerun with --yes"
+                        ),
+                        Err(podbox::error::PodboxError::Cancelled) => {
+                            println!("Cancelled.");
+                            return Ok(());
+                        }
+                        Err(e) => return Err(e.into()),
                     }
                 }
                 volumes

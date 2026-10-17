@@ -5,20 +5,9 @@
 
 use std::os::fd::{AsFd, OwnedFd, RawFd};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use super::SharedState;
-
-/// Register SIGTERM/SIGINT handlers that set `shutdown`.
-///
-/// The accept loop polls the flag on a 200ms tick, so no SA_RESTART /
-/// EINTR coordination is needed.
-pub(crate) fn setup_signal_handler(shutdown: &Arc<AtomicBool>) -> std::io::Result<()> {
-    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-        signal_hook::flag::register(sig, Arc::clone(shutdown))?;
-    }
-    Ok(())
-}
 
 pub(crate) fn listen_fd() -> Option<RawFd> {
     let pid = std::env::var("LISTEN_PID").ok()?.parse::<u32>().ok()?;

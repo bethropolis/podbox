@@ -83,7 +83,7 @@ pub(super) fn print_summary(config: &Config, name: &str) {
         } else {
             None
         },
-        if config.integration.xdg_open {
+        if config.integration.xdg_open.enabled {
             Some("xdg_open")
         } else {
             None

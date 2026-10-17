@@ -18,5 +18,12 @@ name = "podbox_protocol"
 serde      = { workspace = true }
 serde_json = { workspace = true }
 
+# Unix process helpers (`sysutil`); compiled out on wasm, so the website
+# build never needs these.
+[target.'cfg(unix)'.dependencies]
+nix         = { workspace = true }
+rustix      = { workspace = true }
+signal-hook = { workspace = true }
+
 [lints]
 workspace = true

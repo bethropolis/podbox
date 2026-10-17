@@ -121,11 +121,7 @@ pub fn stop_compositor(name: &str) -> Result<()> {
 
 /// Path of the guest-facing socket for a container (`%t/podbox/<name>.sock`).
 pub(crate) fn guest_socket_path(name: &str) -> std::path::PathBuf {
-    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-        let uid = nix::unistd::getuid().as_raw();
-        format!("/run/user/{uid}")
-    });
-    std::path::PathBuf::from(runtime)
+    crate::protocol::sysutil::xdg_runtime_dir()
         .join("podbox")
         .join(format!("{name}.sock"))
 }

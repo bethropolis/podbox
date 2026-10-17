@@ -80,12 +80,12 @@ pub fn run_wizard(
     let (notify, clipboard, xdg_open, ssh_agent) = prompts::prompt_integration_extras(
         config.integration.notify,
         config.integration.clipboard,
-        config.integration.xdg_open,
+        config.integration.xdg_open.enabled,
         config.integration.ssh_agent,
     );
     config.integration.notify = notify;
     config.integration.clipboard = clipboard;
-    config.integration.xdg_open = xdg_open;
+    config.integration.xdg_open.enabled = xdg_open;
     config.integration.ssh_agent = ssh_agent;
 
     config.integration.xdg_dirs = prompts::prompt_xdg_dirs();
