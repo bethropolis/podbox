@@ -23,12 +23,14 @@ pub fn fetch(image_ref: &str) -> anyhow::Result<LabelMap> {
 /// Boolean integration flags an image label may fill in. The label key is
 /// `podbox.integration.<name>` (compat: `podmgr.integration.<name>`); the
 /// explicit path is the matching `integration.<name>` definition key.
+///
+/// `xdg_open` is not here: as a table-or-bool shape its label only flips
+/// `enabled`, so it is applied separately below.
 const BOOL_FIELDS: &[&str] = &[
     "wayland",
     "audio",
     "dbus",
     "notify",
-    "xdg_open",
     "clipboard",
     "sync_fonts",
     "sync_icons",
@@ -53,7 +55,6 @@ fn bool_field<'a>(integration: &'a mut IntegrationConfig, name: &str) -> Option<
         "audio" => &mut integration.audio,
         "dbus" => &mut integration.dbus,
         "notify" => &mut integration.notify,
-        "xdg_open" => &mut integration.xdg_open,
         "clipboard" => &mut integration.clipboard,
         "sync_fonts" => &mut integration.sync_fonts,
         "sync_icons" => &mut integration.sync_icons,
@@ -123,6 +124,18 @@ pub fn apply_defaults(config: &mut Config, labels: &LabelMap) {
             && let Some(field) = bool_field(int, name)
         {
             *field = v == "true";
+        }
+    }
+
+    // xdg_open accepts the same label keys, but the definition side is the
+    // bool-or-table shape, so only the enabled half is label-driven.
+    if !config.explicit_keys.contains("integration.xdg_open") {
+        if let Some(v) = lookup(
+            labels,
+            "podbox.integration.xdg_open",
+            "podmgr.integration.xdg_open",
+        ) {
+            int.xdg_open.enabled = v == "true";
         }
     }
 

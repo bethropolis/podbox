@@ -14,14 +14,16 @@ import { StudioTooltip } from '../../../components/StudioTooltip';
 import {
   GPU_OPTIONS,
   HOST_EXEC_SUGGESTIONS,
+  DEFAULT_XDG_OPEN_SCHEMES,
+  XDG_OPEN_SCHEME_SUGGESTIONS,
   type XdgDirMode,
 } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
+type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'intXdgOpenSchemes' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setIntXdgOpenSchemes' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
 export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; errorMap?: Record<string, string> }) {
-  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
+  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, intXdgOpenSchemes, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setIntXdgOpenSchemes, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
   const err = (field: string) => errorMap?.[field];
   const XDG_DIRS = [
     { id: 'documents', label: 'Documents', mode: xdgDocuments, setter: setXdgDocuments },
@@ -331,6 +333,20 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
         }
       />
     </div>
+    {intXdgOpen && (
+      <StudioTagInput
+        label="Allowed URI Schemes"
+        tags={intXdgOpenSchemes}
+        onChange={setIntXdgOpenSchemes}
+        placeholder="Scheme token, e.g. smb..."
+        suggestions={XDG_OPEN_SCHEME_SUGGESTIONS.filter((c) => !intXdgOpenSchemes.includes(c))}
+        helperText={
+          intXdgOpenSchemes.length === 0
+            ? `Empty = the engine default (${DEFAULT_XDG_OPEN_SCHEMES.join(', ')}). Widening this list lets container-supplied URIs reach host handlers — add only schemes you understand.`
+            : `Opens ${intXdgOpenSchemes.join(', ')} on the host, alongside the default web schemes. Widened allowlists are a trust decision: container URLs now drive host handlers.`
+        }
+      />
+    )}
   </div>
 
   {/* XDG directories */}

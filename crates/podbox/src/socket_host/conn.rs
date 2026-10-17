@@ -218,7 +218,13 @@ pub(crate) fn handle_connection(
                     }
                     continue;
                 }
-                handlers::handle_xdg_open(stream, actions, uri)?;
+                failures = 0;
+                handlers::handle_xdg_open(
+                    stream,
+                    actions,
+                    &config.integration.xdg_open.scheme_list(),
+                    uri,
+                )?;
                 // One request per connection: closing lets the guest's xdg-open exit.
                 return Ok(());
             }

@@ -79,7 +79,7 @@ fn quadlet_dbus_proxy_portal_rules_absent_when_caps_disabled() {
     let mut config = load_config("full.toml");
     config.dbus.talk = vec!["org.freedesktop.Notifications".into()];
     config.integration.notify = false;
-    config.integration.xdg_open = false;
+    config.integration.xdg_open.enabled = false;
     config.integration.clipboard = false;
     let unit = quadlet::generate_dbus_proxy_service("myenv", &config)
         .expect("proxy service should be generated");
@@ -182,7 +182,7 @@ fn quadlet_portal_preset_never_mounts_raw_bus() {
     config.integration.dbus = true;
     config.dbus.preset = podbox::config::DbusPreset::Portal;
     config.integration.notify = false;
-    config.integration.xdg_open = false;
+    config.integration.xdg_open.enabled = false;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(
         !q.contains("Volume=%t/bus:%t/bus"),

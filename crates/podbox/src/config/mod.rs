@@ -30,7 +30,7 @@ pub use types::{
     IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig,
     ProvisionOnFailure, ProvisionStep, RunConfig, SecretEntry, SecretSource, SecretType,
     SecurityConfig, ServiceConfig, ServiceDetailConfig, SharedCachesConfig, StorageConfig,
-    SystemdConfig, WaylandConfig, XdgDirConfig, all_builtin_cache_paths, builtin_cache_mount_names,
-    builtin_cache_names,
+    SystemdConfig, WaylandConfig, XdgDirConfig, XdgOpenConfig, all_builtin_cache_paths,
+    builtin_cache_mount_names, builtin_cache_names,
 };
 pub use validation::{is_valid_env_key, validate_container_name};

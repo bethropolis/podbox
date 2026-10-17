@@ -67,7 +67,7 @@ pub(super) fn handle_hello(
     for cap in capabilities {
         let enabled = match cap.as_str() {
             crate::protocol::CAP_NOTIFY => config.notify,
-            crate::protocol::CAP_XDG_OPEN => config.xdg_open,
+            crate::protocol::CAP_XDG_OPEN => config.xdg_open.enabled,
             crate::protocol::CAP_CLIPBOARD => config.clipboard,
             crate::protocol::CAP_HOST_EXEC => config.host_exec.enabled,
             // Streaming output still runs allowlisted commands only, so it
@@ -132,13 +132,6 @@ pub(super) fn handle_notify(
     Ok(())
 }
 
-/// Schemes the host will open with `xdg-open`. Anything else is refused.
-///
-/// An allowlist, not a blocklist: a blocklist misses every handler the host
-/// has installed (`smb:`, `vscode:`, `steam:`, `trash:`, ...), and each one is
-/// a way for guest input to reach a host app or a network share.
-pub(crate) const ALLOWED_URI_SCHEMES: &[&str] = &["http", "https", "mailto"];
-
 /// Longest URI accepted from the guest.
 pub(crate) const MAX_URI_LEN: usize = 8192;
 
@@ -149,7 +142,11 @@ pub(crate) enum UriError {
     TooLong,
     ControlCharacter,
     Malformed,
-    SchemeNotAllowed(String),
+    /// `scheme` is refused because it is not in `allowed`.
+    SchemeNotAllowed {
+        scheme: String,
+        allowed: Vec<String>,
+    },
     MissingHost,
 }
 
@@ -160,10 +157,10 @@ impl std::fmt::Display for UriError {
             Self::TooLong => write!(f, "URI longer than {MAX_URI_LEN} bytes"),
             Self::ControlCharacter => write!(f, "URI contains a control character"),
             Self::Malformed => write!(f, "not a URI"),
-            Self::SchemeNotAllowed(scheme) => write!(
+            Self::SchemeNotAllowed { scheme, allowed } => write!(
                 f,
                 "scheme '{scheme}' is not allowed (allowed: {})",
-                ALLOWED_URI_SCHEMES.join(", ")
+                allowed.join(", ")
             ),
             Self::MissingHost => write!(f, "web URL has no host"),
         }
@@ -174,7 +171,7 @@ impl std::fmt::Display for UriError {
 ///
 /// A bare host such as `example.com` is opened over https. Paths and anything
 /// that is not a URI are refused.
-pub(crate) fn validate_uri(uri: &str) -> Result<String, UriError> {
+pub(crate) fn validate_uri(uri: &str, allowed: &[String]) -> Result<String, UriError> {
     let s = uri.trim();
     if s.is_empty() {
         return Err(UriError::Empty);
@@ -200,8 +197,11 @@ pub(crate) fn validate_uri(uri: &str) -> Result<String, UriError> {
     };
 
     let scheme = parsed.scheme().to_ascii_lowercase();
-    if !ALLOWED_URI_SCHEMES.contains(&scheme.as_str()) {
-        return Err(UriError::SchemeNotAllowed(scheme));
+    if !allowed.iter().any(|a| a.eq_ignore_ascii_case(&scheme)) {
+        return Err(UriError::SchemeNotAllowed {
+            scheme,
+            allowed: allowed.to_vec(),
+        });
     }
     let web = scheme == "http" || scheme == "https";
     if web && parsed.host_str().is_none_or(str::is_empty) {
@@ -218,9 +218,10 @@ pub(crate) fn validate_uri(uri: &str) -> Result<String, UriError> {
 pub(super) fn handle_xdg_open(
     stream: &mut UnixStream,
     actions: &dyn HostActions,
+    allowed: &[String],
     uri: String,
 ) -> anyhow::Result<()> {
-    match validate_uri(&uri) {
+    match validate_uri(&uri, allowed) {
         Ok(validated) => actions.open_uri(&validated)?,
         Err(e) => {
             tracing::warn!("refused xdg-open request: {e}");

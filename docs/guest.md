@@ -94,13 +94,22 @@ the connection: a clean close exits 0, and a refusal exits 1 with the reason.
 
 ### xdg-open scheme allowlist
 
-The host opens only `http`, `https` and `mailto` URIs. Anything else is
-refused with an error the guest prints, exit 1. Refused include `file:`,
-`smb:`, `sftp:`, `trash:`, `archive:` and app handlers such as `vscode:` or
-`steam:`. A bare hostname such as `example.com` is opened as `https://`.
-Control characters, URIs over 8 KiB and `http(s)` URLs without a host are
-refused too. The list is fixed in this release; making it configurable is a
-separate change.
+The host opens only `http`, `https` and `mailto` URIs by default. Anything
+else is refused with an error the guest prints, exit 1. Refused include
+`file:`, `smb:`, `sftp:`, `trash:`, `archive:` and app handlers such as
+`vscode:` or `steam:`. A bare hostname such as `example.com` is opened as
+`https://`. Control characters, URIs over 8 KiB and `http(s)` URLs without a
+host are refused too.
+
+The allowlist is a footgun by design: a container's xdg-open is the host
+declining to run unknown handlers on URLs a container found. If you widen
+`integration.xdg_open.allowed_schemes`, a `file:` or `vscode:` URL from
+inside the container now reaches the host's handler for that scheme — opening
+local files or launching editor windows. Only add schemes you understand the
+host-side side effects of (for example `smb:` paired with an allowlisted
+`talk` daemon like a VFS client); the web schemes and `mailto` stay refused
+when they would otherwise not be, and trust in a URI inside the container
+lives and dies with this list.
 
 ### Host-exec security
 

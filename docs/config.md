@@ -323,7 +323,7 @@ stays off even when the image label says `true`.
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
 | `dbus` | bool | `false` | Enable D-Bus session bus access. Talk/own/preset rules without it are rejected |
 | `notify` | bool | `false` | Desktop notification forwarding |
-| `xdg_open` | bool | `false` | URI opening via host (`xdg-open`). Only `http`, `https` and `mailto` are opened; see [guest.md](guest.md#xdg-open-scheme-allowlist) |
+| `xdg_open` | bool or table | `false` | URI opening via host (`xdg-open`). The bool form uses the default allowlist (`http`, `https`, `mailto`); the table form is `{ enabled = bool, allowed_schemes = [string, ...] }`, and naming schemes implies `enabled = true`. An empty stored list means the default list. Schemes must be RFC 3986 lowercase scheme tokens (letters, digits, `+`, `-`, `.`; e.g. `smb`, `mailto`, `steam`); invalid tokens are a parse error. **Widening this list lets container-supplied URIs reach host handlers for those schemes (file managers, editors, mail clients) — add only schemes you understand; see [guest.md](guest.md#xdg-open-scheme-allowlist)** |
 | `clipboard` | bool | `false` | Clipboard sharing |
 | `sync_fonts` | bool | `false` | Bind-mount `~/.fonts` and `~/.local/share/fonts` (read-only) when present on the host |
 | `sync_icons` | bool | `false` | Bind-mount `~/.icons` and `~/.local/share/icons` (read-only) when present on the host |

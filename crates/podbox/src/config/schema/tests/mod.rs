@@ -8,3 +8,4 @@ mod provision;
 mod resources;
 mod security;
 mod version;
+mod xdg_open;

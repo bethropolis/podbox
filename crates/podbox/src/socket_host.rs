@@ -217,14 +217,25 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
 mod tests {
     use super::conn::{has_cap, note_failure};
     use super::handlers::{MAX_URI_LEN, UriError, validate_host_exec_args, validate_uri};
+    use crate::config::types::DEFAULT_ALLOWED_URI_SCHEMES;
     use std::collections::HashSet;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
     // ── validate_uri tests ──
 
+    /// The default (unconfigured) allowlist shape used by every request
+    /// before the operator widens `integration.xdg_open.allowed_schemes`.
+    fn default_schemes() -> Vec<String> {
+        DEFAULT_ALLOWED_URI_SCHEMES
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    }
+
     fn ok(uri: &str) -> String {
-        validate_uri(uri).unwrap_or_else(|e| panic!("{uri:?} should be accepted: {e}"))
+        validate_uri(uri, &default_schemes())
+            .unwrap_or_else(|e| panic!("{uri:?} should be accepted: {e}"))
     }
 
     #[test]
@@ -252,37 +263,89 @@ mod tests {
             "ms-settings:display",
         ] {
             assert!(
-                matches!(validate_uri(uri), Err(UriError::SchemeNotAllowed(_))),
+                matches!(
+                    validate_uri(uri, &default_schemes()),
+                    Err(UriError::SchemeNotAllowed { .. })
+                ),
                 "{uri:?} should be refused by scheme"
             );
         }
     }
 
     #[test]
+    fn configured_scheme_is_accepted_and_the_refusal_names_it() {
+        let schemes = vec!["smb".to_string(), "http".to_string()];
+        assert_eq!(
+            validate_uri("smb://host/share", &schemes).unwrap(),
+            "smb://host/share",
+            "an explicitly configured scheme must open"
+        );
+        // The refusal lists the configured allowlist, not the built-in one.
+        let err = validate_uri("steam://run/1", &schemes).unwrap_err();
+        let UriError::SchemeNotAllowed { scheme, allowed } = err else {
+            panic!("expected a scheme refusal, got {err:?}")
+        };
+        assert_eq!(scheme, "steam");
+        assert_eq!(allowed, schemes);
+        // Still case-insensitive for a configured entry.
+        assert!(validate_uri("SMB://host/share", &schemes).is_ok());
+    }
+
+    #[test]
+    fn web_urls_without_a_host_are_refused_for_any_configured_list() {
+        let schemes = vec!["smb".to_string()];
+        // A configured non-web scheme does not need a host...
+        assert_eq!(
+            validate_uri("smb:mailbox", &schemes).unwrap(),
+            "smb:mailbox"
+        );
+        // ...but http/https always do, web or not configured.
+        assert_eq!(
+            validate_uri("https://", &default_schemes()),
+            Err(UriError::Malformed)
+        );
+    }
+
+    #[test]
     fn refuses_paths_and_empty_input() {
-        assert_eq!(validate_uri("/etc/passwd"), Err(UriError::Malformed));
-        assert_eq!(validate_uri("../foo"), Err(UriError::Malformed));
-        assert_eq!(validate_uri(""), Err(UriError::Empty));
-        assert_eq!(validate_uri("   "), Err(UriError::Empty));
+        assert_eq!(
+            validate_uri("/etc/passwd", &default_schemes()),
+            Err(UriError::Malformed)
+        );
+        assert_eq!(
+            validate_uri("../foo", &default_schemes()),
+            Err(UriError::Malformed)
+        );
+        assert_eq!(validate_uri("", &default_schemes()), Err(UriError::Empty));
+        assert_eq!(
+            validate_uri("   ", &default_schemes()),
+            Err(UriError::Empty)
+        );
     }
 
     #[test]
     fn refuses_control_characters_and_oversized_input() {
         assert_eq!(
-            validate_uri("https://example.com/\nrm"),
+            validate_uri("https://example.com/\nrm", &default_schemes()),
             Err(UriError::ControlCharacter)
         );
         assert_eq!(
-            validate_uri("https://example.com/\0"),
+            validate_uri("https://example.com/\0", &default_schemes()),
             Err(UriError::ControlCharacter)
         );
         let long = format!("https://example.com/{}", "a".repeat(MAX_URI_LEN));
-        assert_eq!(validate_uri(&long), Err(UriError::TooLong));
+        assert_eq!(
+            validate_uri(&long, &default_schemes()),
+            Err(UriError::TooLong)
+        );
     }
 
     #[test]
     fn refuses_web_urls_without_a_host() {
-        assert_eq!(validate_uri("https://"), Err(UriError::Malformed));
+        assert_eq!(
+            validate_uri("https://", &default_schemes()),
+            Err(UriError::Malformed)
+        );
     }
 
     #[test]
@@ -608,7 +671,7 @@ mod tests {
         let mut config = crate::config::Config::embedded();
         config.integration.notify = true;
         config.integration.clipboard = true;
-        config.integration.xdg_open = false;
+        config.integration.xdg_open.enabled = false;
         let outcome = handle_hello(
             &mut server,
             &config.integration,

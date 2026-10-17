@@ -66,6 +66,7 @@ function scalarLines(s: StudioValues, table: string): string[] {
   const lines: string[] = [];
   for (const f of FIELDS) {
     if (tableOf(f.tomlPath) !== table) continue;
+    if (f.hidden?.(s) === true) continue;
     const v = vals[f.stateKey];
     if (!shouldEmit(f, v)) continue;
     lines.push(`${keyOf(f.tomlPath)} = ${formatScalar(f.kind, v)}`);
@@ -133,9 +134,18 @@ function customLines(s: StudioValues, table: string): string[] {
       // gpu accepts bare bools or "auto"/"nvidia" strings in the schema.
       // "auto" is the engine default — like every other default, it is not
       // written out.
+      const lines: string[] = [];
       const g = s.intGpu;
-      if (g === 'auto') return [];
-      return [`gpu = ${g === 'true' || g === 'false' ? g : tomlString(g)}`];
+      if (g !== 'auto') lines.push(`gpu = ${g === 'true' || g === 'false' ? g : tomlString(g)}`);
+      // A custom xdg_open allowlist leaves the bool shorthand: the table form
+      // carries enabled + the scheme list. An empty list means the engine
+      // default, so the bool-form field above handles the common cases.
+      const schemes = (s.intXdgOpenSchemes ?? []).filter((e) => e.trim());
+      if (schemes.length > 0) {
+        const list = schemes.map((c) => tomlString(c.trim())).join(', ');
+        lines.push(`xdg_open = { enabled = ${s.intXdgOpen}, allowed_schemes = [${list}] }`);
+      }
+      return lines;
     }
     case 'integration.host_exec': {
       if (!s.hostExecEnabled) return [];

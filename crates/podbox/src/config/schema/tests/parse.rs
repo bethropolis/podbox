@@ -25,7 +25,8 @@ home = "~/containers/myenv"
     assert!(!cfg.integration.audio);
     assert!(!cfg.integration.dbus);
     assert!(!cfg.integration.notify);
-    assert!(!cfg.integration.xdg_open);
+    assert!(!cfg.integration.xdg_open.enabled);
+    assert!(cfg.integration.xdg_open.allowed_schemes.is_empty());
     assert!(!cfg.integration.clipboard);
     assert!(!cfg.integration.host_exec.enabled);
     assert!(cfg.integration.host_exec.allowlist.is_none());

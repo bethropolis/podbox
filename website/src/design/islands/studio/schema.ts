@@ -44,6 +44,12 @@ export interface FieldDef {
   def: unknown;
   emit?: EmitMode;
   options?: SelectOption[];
+  /**
+   * Suppresses the scalar line when the custom table emitter takes over
+   * instead (e.g. a key whose shape is bool-or-table). Evaluated with the
+   * full state, not the field value.
+   */
+  hidden?: (s: Record<string, any>) => boolean;
 }
 
 export interface SelectOption {
@@ -167,6 +173,16 @@ export const SERVICE_RESTART_OPTIONS: SelectOption[] = [
   { value: 'always', label: 'always' },
   { value: 'never', label: 'never' },
 ];
+
+// Mirrors DEFAULT_ALLOWED_URI_SCHEMES in crates/podbox/src/config/types.rs:
+// what `xdg_open = true` opens. A stored empty list means this same default,
+// so the Studio only emits a scheme list once it differs from these.
+export const DEFAULT_XDG_OPEN_SCHEMES = ['http', 'https', 'mailto'];
+
+// A few known container schemes to offer one click away; anything can still
+// be typed by hand. `file` is deliberately absent: it opens local files on the
+// host for whatever a container page picks as its path.
+export const XDG_OPEN_SCHEME_SUGGESTIONS = ['nfs', 'smb', 'vscode', 'steam'];
 
 // ── caches (mirrors BUILTIN_CACHES in crates/podbox/src/config/types/cache.rs)
 
@@ -298,6 +314,8 @@ export interface StudioDefaults {
   intDbus: boolean;
   intNotify: boolean;
   intXdgOpen: boolean;
+  /** Schemes beyond the engine default; empty = default (`http`, `https`, `mailto`). */
+  intXdgOpenSchemes: string[];
   intClipboard: boolean;
   intSyncFonts: boolean;
   intSyncIcons: boolean;
@@ -422,6 +440,7 @@ extraMounts: [{ host: '', guest: '', mode: 'z' }],
   intDbus: false,
   intNotify: false,
   intXdgOpen: false,
+  intXdgOpenSchemes: [],
   intClipboard: false,
   intSyncFonts: false,
   intSyncIcons: false,
@@ -518,7 +537,11 @@ export const FIELDS: FieldDef[] = [
   { stateKey: 'intAudio', tomlPath: 'integration.audio', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intDbus', tomlPath: 'integration.dbus', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intNotify', tomlPath: 'integration.notify', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intXdgOpen', tomlPath: 'integration.xdg_open', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'intXdgOpen', tomlPath: 'integration.xdg_open', kind: 'boolean', def: false, emit: 'is-true',
+    // The bool shorthand only while the allowlist is the engine default
+    // (an empty list means the default). A custom scheme list switches to
+    // the table form, emitted in generateToml.ts's custom `integration` case.
+    hidden: (s) => s.intXdgOpenSchemes.length > 0 && !DEFAULT_XDG_OPEN_SCHEMES.every((c, i) => s.intXdgOpenSchemes[i] === c) },
   { stateKey: 'intClipboard', tomlPath: 'integration.clipboard', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intSyncFonts', tomlPath: 'integration.sync_fonts', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'intSyncIcons', tomlPath: 'integration.sync_icons', kind: 'boolean', def: false, emit: 'is-true' },

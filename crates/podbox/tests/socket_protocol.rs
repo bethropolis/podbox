@@ -76,7 +76,7 @@ impl HostActions for Recorder {
 fn enabled_config() -> Config {
     let mut cfg = Config::embedded();
     cfg.integration.notify = true;
-    cfg.integration.xdg_open = true;
+    cfg.integration.xdg_open.enabled = true;
     cfg.integration.clipboard = true;
     cfg.integration.host_exec.enabled = true;
     cfg.integration.host_exec.allowlist = Some(BTreeMap::from([
@@ -353,6 +353,52 @@ fn xdg_open_accepts_mailto_and_bare_domains() {
         xdg_open_once(uri, Arc::clone(&rec)).unwrap();
         assert_eq!(rec.calls().len(), 1, "{uri} was not opened");
     }
+}
+
+/// A scheme outside the built-in allowlist opens once the operator names it
+/// in `integration.xdg_open.allowed_schemes`; everything else stays refused.
+#[test]
+fn configured_allowed_schemes_open_and_others_stay_refused() {
+    let rec = Arc::new(Recorder::default());
+    let mut cfg = enabled_config();
+    cfg.integration.xdg_open.allowed_schemes = vec!["smb".to_string()];
+    {
+        let (mut c, h) = start(cfg.clone(), Arc::clone(&rec));
+        send(&mut c, &hello(&[CAP_XDG_OPEN]));
+        let _ = recv(&mut c);
+        send(
+            &mut c,
+            &GuestMessage::XdgOpen {
+                uri: "smb://host/share".into(),
+            },
+        );
+        h.join().expect("server thread panicked").unwrap();
+        assert!(read_frame(&mut c).unwrap().is_none(), "unexpected reply");
+        assert_eq!(rec.calls().len(), 1, "configured scheme was not opened");
+    }
+    // The configured list is the whole allowlist: the defaults that are not
+    // listed are refused by the same rule.
+    let reason = {
+        let (mut c, h) = start(cfg, Arc::clone(&rec));
+        send(&mut c, &hello(&[CAP_XDG_OPEN]));
+        let _ = recv(&mut c);
+        send(
+            &mut c,
+            &GuestMessage::XdgOpen {
+                uri: "https://example.com".into(),
+            },
+        );
+        let msg = recv(&mut c);
+        finish(c, h).unwrap();
+        match msg {
+            HostMessage::Error { reason } => reason,
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    };
+    assert!(
+        reason.contains("allowed: smb"),
+        "refusal should name only the configured list: {reason}"
+    );
 }
 
 #[test]
