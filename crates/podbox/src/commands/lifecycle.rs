@@ -74,25 +74,22 @@ pub fn run_enable(
             .unwrap_or(false);
         if is_running {
             if !yes {
-                if podbox::codegen::distros::is_tty() {
-                    let prompt = format!(
-                        "Container '{name}' is running — reinstalling Quadlet will reload systemd and may restart it. Continue?"
-                    );
-                    let confirmed =
-                        dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                            .with_prompt(prompt)
-                            .default(false)
-                            .interact_opt()?
-                            .unwrap_or(false);
-                    if !confirmed {
+                let ctx = podbox::ui::Ctx::new(yes, false, dry_run);
+                let prompt = format!(
+                    "Container '{name}' is running — reinstalling Quadlet will reload systemd and may restart it. Continue?"
+                );
+                match podbox::ui::confirm(&ctx, &prompt, false) {
+                    Ok(()) => {}
+                    Err(podbox::error::PodboxError::ConfirmationRequired) => {
+                        anyhow::bail!(
+                            "Container '{name}' is running — refusing to reinstall Quadlet without --yes (non-interactive). Use `podbox enable {name} --yes` or `podbox stop {name}` first."
+                        );
+                    }
+                    Err(_) => {
                         anyhow::bail!(
                             "Aborted. Container '{name}' is still running. Rerun with --yes or stop it first: `podbox enable {name} --yes`"
                         );
                     }
-                } else {
-                    anyhow::bail!(
-                        "Container '{name}' is running — refusing to reinstall Quadlet without --yes (non-interactive). Use `podbox enable {name} --yes` or `podbox stop {name}` first."
-                    );
                 }
             }
             podbox::ui::warn(&format!(
@@ -466,13 +463,9 @@ pub fn run_remove(
     }
 
     if !force {
-        print!("Remove container '{name}'? [y/N] ");
-        std::io::stdout().flush()?;
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        if !input.trim().eq_ignore_ascii_case("y") {
-            println!("Cancelled.");
-            return Ok(());
+        let ctx = podbox::ui::Ctx::new(false, force, dry_run);
+        if let Err(e) = podbox::ui::confirm(&ctx, &format!("Remove container '{name}'?"), false) {
+            return Err(e.into());
         }
     }
 
@@ -518,11 +511,14 @@ pub fn run_remove(
         let home = &config.container.home;
         if home.exists() {
             if !force {
-                print!("Remove home directory '{}'? [y/N] ", home.display());
-                std::io::stdout().flush()?;
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                if !input.trim().eq_ignore_ascii_case("y") {
+                let ctx = podbox::ui::Ctx::new(false, force, dry_run);
+                if podbox::ui::confirm(
+                    &ctx,
+                    &format!("Remove home directory '{}'?", home.display()),
+                    false,
+                )
+                .is_err()
+                {
                     println!("Home directory kept.");
                     return Ok(());
                 }
@@ -579,13 +575,9 @@ pub fn run_remove_stale(dry_run: bool, force: bool) -> Result<()> {
     }
 
     if !force {
-        print!("Remove these? [y/N] ");
-        std::io::stdout().flush()?;
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        if !input.trim().eq_ignore_ascii_case("y") {
-            println!("Cancelled.");
-            return Ok(());
+        let ctx = podbox::ui::Ctx::new(false, force, dry_run);
+        if let Err(e) = podbox::ui::confirm(&ctx, "Remove these?", false) {
+            return Err(e.into());
         }
     }
 

@@ -100,3 +100,53 @@ pub fn error(msg: &str) {
 pub fn would(msg: &str) {
     write_stderr(&format!("would: {msg}"));
 }
+
+/// Per-invocation context threaded through command handlers.
+///
+/// Carries the global flags that affect prompting and planning so individual
+/// commands do not have to thread `--yes`/`--force`/`--dry-run` separately.
+#[derive(Clone, Copy, Debug)]
+pub struct Ctx {
+    pub yes: bool,
+    pub force: bool,
+    pub dry_run: bool,
+}
+
+impl Ctx {
+    pub fn new(yes: bool, force: bool, dry_run: bool) -> Self {
+        Self {
+            yes,
+            force,
+            dry_run,
+        }
+    }
+}
+
+/// Ask for confirmation.
+///
+/// - `ctx.yes` or `ctx.force` → Ok (no prompt).
+/// - Non-TTY stdin without `--yes`/`--force` → `ConfirmationRequired`.
+/// - User declines → `Cancelled`.
+pub fn confirm(ctx: &Ctx, prompt: &str, default: bool) -> Result<(), crate::error::PodboxError> {
+    use crate::error::PodboxError;
+    use std::io::IsTerminal;
+
+    if ctx.yes || ctx.force {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err(PodboxError::ConfirmationRequired);
+    }
+
+    // dialoguer-based prompt so behaviour matches the rest of the CLI.
+    let confirmed = dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+        .with_prompt(prompt)
+        .default(default)
+        .interact()
+        .map_err(|_| PodboxError::Cancelled)?;
+    if confirmed {
+        Ok(())
+    } else {
+        Err(PodboxError::Cancelled)
+    }
+}
