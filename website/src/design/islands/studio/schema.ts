@@ -331,6 +331,7 @@ export interface StudioDefaults {
   hwJoystick: boolean;
   hwWebcam: boolean;
   hwSerial: boolean;
+  hwUsb: boolean;
   hwYubikey: boolean;
   /** [security].secrets */
   secrets: SecretItem[];
@@ -456,6 +457,7 @@ extraMounts: [{ host: '', guest: '', mode: 'z' }],
   hwJoystick: false,
   hwWebcam: false,
   hwSerial: false,
+  hwUsb: false,
   hwYubikey: false,
   secrets: [],
   xdgDocuments: 'off',
@@ -553,6 +555,7 @@ export const FIELDS: FieldDef[] = [
   { stateKey: 'hwJoystick', tomlPath: 'integration.hardware.joystick', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'hwWebcam', tomlPath: 'integration.hardware.webcam', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'hwSerial', tomlPath: 'integration.hardware.serial', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'hwUsb', tomlPath: 'integration.hardware.usb', kind: 'boolean', def: false, emit: 'is-true' },
   { stateKey: 'hwYubikey', tomlPath: 'integration.hardware.yubikey', kind: 'boolean', def: false, emit: 'is-true' },
   // [integration.xdg_dirs]
   { stateKey: 'xdgDocuments', tomlPath: 'integration.xdg_dirs.documents', kind: 'xdg-dir', def: 'off', emit: 'non-default' },

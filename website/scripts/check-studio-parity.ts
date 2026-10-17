@@ -50,6 +50,9 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       netOffline: true,
       intGitIdentity: false,
       lifeAutoCheckpoint: true,
+      // USB passthrough was missing from Studio while the engine and doctor
+      // already supported it.
+      hwUsb: true,
     },
   ],
   // [[provision]]: array-of-tables, defaults omitted, abort + root + env
