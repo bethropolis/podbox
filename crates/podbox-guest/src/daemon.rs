@@ -533,7 +533,10 @@ const IDLE_CONFIRM_MS: u64 = 1_000;
 fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &AtomicBool) -> Exit {
     let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
     let mut tracked: Vec<TrackedProcess> = Vec::new();
-    let mut remaining_ms = idle_limit_ms;
+    // Deadline-based idle timer: compute remaining time from a fixed start
+    // instant so a host Ping waking poll() can no longer restart the window.
+    let mut idle_deadline =
+        std::time::Instant::now() + std::time::Duration::from_millis(idle_limit_ms as u64);
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -551,39 +554,40 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
                 fds.push(PollFd::new(proc.fd.as_fd(), PollFlags::POLLIN));
             }
 
-            let timeout = if tracked.is_empty() && remaining_ms > 0 {
-                let poll_ms = remaining_ms.min(MAX_POLL_MS);
-                PollTimeout::from(Some(u16::try_from(poll_ms).unwrap_or(u16::MAX)))
+            let timeout = if tracked.is_empty() {
+                let now = std::time::Instant::now();
+                let rem = idle_deadline.saturating_duration_since(now).as_millis() as i64;
+                if rem > 0 {
+                    let poll_ms = rem.min(MAX_POLL_MS);
+                    PollTimeout::from(Some(u16::try_from(poll_ms).unwrap_or(u16::MAX)))
+                } else {
+                    PollTimeout::from(Some(0u16))
+                }
             } else {
                 PollTimeout::from(None::<u16>)
             };
 
             match poll(&mut fds, timeout) {
                 Ok(0) => {
-                    if tracked.is_empty() && remaining_ms > 0 {
-                        remaining_ms -= MAX_POLL_MS;
-                        if remaining_ms <= 0 {
-                            let mut active = scan_user_processes();
-                            if active.is_empty() {
-                                // Confirm we're still idle after a short grace
-                                // before killing the box, so a task started in
-                                // the window since the last scan is not lost.
-                                std::thread::sleep(std::time::Duration::from_millis(
-                                    IDLE_CONFIRM_MS,
-                                ));
-                                active = scan_user_processes();
-                            }
-                            if active.is_empty() {
-                                let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
-                                // Our own idle timer fired: the host will
-                                // stop the unit. Exit instead of
-                                // reconnecting to a container going down.
-                                return Exit::Shutdown;
-                            }
-                            tracked = track_processes(&active);
-                            remaining_ms = idle_limit_ms;
+                    if tracked.is_empty() {
+                        let mut active = scan_user_processes();
+                        if active.is_empty() {
+                            // Confirm we're still idle after a short grace
+                            // before killing the box, so a task started in
+                            // the window since the last scan is not lost.
+                            std::thread::sleep(std::time::Duration::from_millis(IDLE_CONFIRM_MS));
+                            active = scan_user_processes();
                         }
-                        continue;
+                        if active.is_empty() {
+                            let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
+                            // Our own idle timer fired: the host will
+                            // stop the unit. Exit instead of
+                            // reconnecting to a container going down.
+                            return Exit::Shutdown;
+                        }
+                        tracked = track_processes(&active);
+                        idle_deadline = std::time::Instant::now()
+                            + std::time::Duration::from_millis(idle_limit_ms as u64);
                     }
                     continue;
                 }
@@ -645,7 +649,8 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
                         let _ = write_frame(host_stream, &GuestMessage::IdleTimeout);
                     } else {
                         tracked = track_processes(&active);
-                        remaining_ms = idle_limit_ms;
+                        idle_deadline = std::time::Instant::now()
+                            + std::time::Duration::from_millis(idle_limit_ms as u64);
                         let _ = write_frame(host_stream, &GuestMessage::Busy);
                     }
                 }
@@ -682,10 +687,11 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
             let active = scan_user_processes();
             if !active.is_empty() {
                 tracked = track_processes(&active);
-                remaining_ms = idle_limit_ms;
+                idle_deadline = std::time::Instant::now()
+                    + std::time::Duration::from_millis(idle_limit_ms as u64);
             }
             // No processes found: idle timer started naturally on next poll iteration
-            // (poll timeout when tracked.is_empty() && remaining_ms > 0).
+            // (poll timeout when tracked.is_empty()).
         }
     }
 }
