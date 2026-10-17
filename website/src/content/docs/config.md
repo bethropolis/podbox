@@ -11,6 +11,23 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 3. `~/.config/podbox/*.toml` (first file, sorted by name)
 4. Embedded default (`fedora:44`, name `podbox`)
 
+## Inheritance (`extends`)
+
+A definition may start from another file with `extends`: a path
+(`./base.toml`), a profile (`profile:dev`, or `builtin:dev` for the
+shipped template even when you shadow it), or a sibling name. The parent
+merges first, then the child overrides. Tables merge key by key;
+scalars are overwritten by the child. Arrays merge by kind:
+
+- Set-like lists (packages, ports, mounts, blocked interfaces, …)
+  **union** with deduplication, parent order first.
+- Prefix an entry with `!` to **remove** a parent entry instead:
+  `install = ["!nano", "vim"]` drops the parent's `nano` and adds `vim`.
+- `[image.run].commands` **appends** verbatim — order and repetition
+  matter for `RUN` steps, so nothing is deduplicated there.
+- `[[provision]]` steps merge **by name**: a child step with the same
+  name replaces the parent's step in place; new names append.
+
 ## `[image]`
 
 | Key | Type | Default | Description |
@@ -323,7 +340,7 @@ stays off even when the image label says `true`.
 | `"auto"` (default) | Detect available GPU devices at runtime |
 | `true` | Enable `/dev/dri` (Intel/AMD) |
 | `false` | Disable all GPU passthrough |
-| `"nvidia"` | Enable `/dev/dri` + all `/dev/nvidia*` nodes (optional each; `doctor` suggests `nvidia-ctk cdi generate` when no CDI spec exists) |
+| `"nvidia"` | Enable `/dev/dri` + NVIDIA passthrough: `nvidia.com/gpu=all` when a host CDI spec exists, otherwise all `/dev/nvidia*` nodes (optional each; `doctor` suggests `nvidia-ctk cdi generate` when no CDI spec exists) |
 
 ### `[integration.hardware]`
 
@@ -338,6 +355,7 @@ instead of failing to start.
 | `webcam` | bool | `false` | `/dev/video*`, `/dev/media*` |
 | `serial` | bool | `false` | `/dev/ttyUSB*`, `/dev/ttyACM*` — microcontrollers |
 | `yubikey` | bool | `false` | `pcscd` socket and `/dev/hidraw*` — smartcards, 2FA |
+| `usb` | bool | `false` | `/dev/bus/usb` (bind-mounted, hotplug-aware) — adb, fastboot, flashers, SDR |
 
 ```toml
 [integration.hardware]
@@ -346,6 +364,16 @@ kvm = true
 ```
 
 `podbox doctor` reports when the host is missing a device these would need.
+
+USB access notes: the box sees exactly the devices your host user may
+open, so install the device's udev rules (`android-tools` /
+`android-udev` for phones) or join the owning group (`plugdev`,
+`dialout`). Only one adb server can claim a device — run
+`adb kill-server` on the host if the box sees nothing. With SELinux
+enforcing, keep `security.security_label_disable = true` (the default);
+otherwise the box is denied the USB device type. This grants the box raw
+access to every USB device you can open, including security keys and
+storage — wider than `serial`, so enable it deliberately.
 
 ### `[integration.host_exec]`
 

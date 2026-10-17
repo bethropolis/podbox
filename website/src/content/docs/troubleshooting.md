@@ -123,6 +123,19 @@ grep ssh_agent ~/.config/podbox/profiles/<name>.toml
 On Podman 5.5 the socket path is baked at `enable` time — if `$SSH_AUTH_SOCK`
 changed since (e.g. new login), re-run `podbox disable && podbox enable`.
 
+## `adb`: no permissions / device unauthorized
+
+With `[integration.hardware] usb = true`:
+
+- `podbox doctor` tells you whether any USB node is accessible to your
+  user. If none is, install the device's udev rules (`android-tools` /
+  `android-udev` for phones) or add yourself to the owning group
+  (`plugdev`), then replug.
+- Only one adb server can claim a device: `adb kill-server` on the host
+  before listing devices in the box.
+- "unauthorized" means the phone is waiting on the RSA prompt — accept it
+  on the device and run `adb devices` again.
+
 ## Build fails or produces a stale image
 
 ```bash

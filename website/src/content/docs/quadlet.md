@@ -72,7 +72,7 @@ These unit files are generated per container:
 | `AddCapability` | From `security.cap_preset` + `security.cap_add` | Capabilities (conditional; Quadlet has no `CpuQuota` key, so `--cpus` still goes through `PodmanArgs`) |
 | `AppArmor` | From `security.apparmor` | AppArmor profile (conditional, e.g. `"unconfined"`) |
 | `AddDevice` | `/dev/dri` | GPU (conditional on `gpu=true` or `gpu="auto"` with DRI present) |
-| `AddDevice` | `-/dev/nvidiactl`, `-/dev/nvidia0`…`-/dev/nvidia7`, `-/dev/nvidia-modeset`, `-/dev/nvidia-uvm`, `-/dev/nvidia-uvm-tools` | NVIDIA GPU fallback when no CDI spec exists (conditional on `gpu="nvidia"` or `gpu="auto"` with NVIDIA present; `-` marks each node optional, and `doctor` suggests `nvidia-ctk cdi generate` for full driver passthrough) |
+| `AddDevice` | `nvidia.com/gpu=all` when a host CDI spec exists, else `-/dev/nvidiactl`, `-/dev/nvidia0`…`-/dev/nvidia7`, `-/dev/nvidia-modeset`, `-/dev/nvidia-uvm`, `-/dev/nvidia-uvm-tools` | NVIDIA GPU passthrough (conditional on `gpu="nvidia"` or `gpu="auto"` with NVIDIA present; `-` marks each fallback node optional, and `doctor` suggests `nvidia-ctk cdi generate` for full driver passthrough) |
 | `Network` | From `network.mode` | Network mode (default `host`) |
 | `PublishPort` | From `network.ports` | Port mapping (conditional, ignored in `host` mode) |
 | `AutoUpdate` | `registry` or `local` | Auto-update (conditional on `lifecycle.auto_update`; `registry` for prebuilt, `local` for custom) |
@@ -123,6 +123,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | SSH agent socket | `/run/podbox/ssh-agent.sock` | (none) | `ssh_agent = true` + `SSH_AUTH_SOCK` present on host (plus `Environment=SSH_AUTH_SOCK`) |
 | GPG agent socket | `/run/podbox/gnupg/S.gpg-agent` | `ro` | `gpg_agent = true` |
 | `%t/podbox/<name>.sock` | `%t/podbox/<name>.sock` | (none) | Always (host-guest socket) |
+| `/dev/bus/usb` | `/dev/bus/usb` | (none, never `:z`) | `integration.hardware.usb = true` (optional mount: skipped when the host has no USB bus) |
 | Extra mounts | Per config | Per config | From `[container.mounts].extra` |
 
 ### `PodmanArgs=`

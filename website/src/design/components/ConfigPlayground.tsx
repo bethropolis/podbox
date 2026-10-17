@@ -58,7 +58,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
   const [packages, setPackages] = useState('neovim, ripgrep, git, fish');
   const [activeView, setActiveView] = useState<'toml' | 'quadlet'>('toml');
 
-  const config: PlaygroundConfig = { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects, packages, packagesRemove: [], run: [], env: {}, mounts: [], ports: [] } as any;
+  const config: PlaygroundConfig = { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects, packages, packagesRemove: [], run: [], env: {}, mounts: [], ports: [], network: 'bridge', memory: '', cpus: '' } as any;
   const code = activeView === 'toml' ? generatePlaygroundToml(config) : generatePlaygroundQuadlet(config);
 
   const tabs = [

@@ -28,16 +28,16 @@ export function generatePlaygroundToml(cfg: PlaygroundConfig): string {
   toml += `[container]\n`;
   toml += `name = ${tomlString(cfg.name)}\n`;
   toml += `home = ${tomlString(`~/containers/${cfg.name}`)}\n`;
-  toml += `memory = ${cfg.memory ? tomlString(cfg.memory) : '""'}\n`;
-  toml += `cpus = ${cfg.cpus ? tomlString(cfg.cpus) : '""'}\n`;
-  toml += `network = ${tomlString(cfg.network)}\n\n`;
+  toml += `memory = ${tomlString(cfg.memory || '')}\n`;
+  toml += `cpus = ${tomlString(cfg.cpus || '')}\n`;
+  toml += `network = ${tomlString(cfg.network || 'bridge')}\n\n`;
 
   toml += `[image]\n`;
-  const base = cfg.distro === 'custom' ? cfg.customImage : DISTRO_BASES[cfg.distro];
-  toml += `base = ${tomlString(base)}\n`;
-  if (cfg.packages.length) toml += `packages = [${cfg.packages.map((p) => tomlString(p)).join(', ')}]\n`;
-  if (cfg.packagesRemove.length) toml += `packages.remove = [${cfg.packagesRemove.map((p) => tomlString(p)).join(', ')}]\n`;
-  if (cfg.run.length) toml += `run = [${cfg.run.map((r) => tomlString(r)).join(', ')}]\n`;
+  const base = (cfg.distro === 'custom' ? cfg.customImage : (DISTRO_BASES[cfg.distro] ?? ''));
+  toml += `base = ${tomlString(base ?? '')}\n`;
+  if (Array.isArray(cfg.packages) && cfg.packages.length) toml += `packages = [${cfg.packages.map((p) => tomlString(p)).join(', ')}]\n`;
+  if (Array.isArray(cfg.packagesRemove) && cfg.packagesRemove.length) toml += `packages.remove = [${cfg.packagesRemove.map((p) => tomlString(p)).join(', ')}]\n`;
+  if (Array.isArray(cfg.run) && cfg.run.length) toml += `run = [${cfg.run.map((r) => tomlString(r)).join(', ')}]\n`;
   toml += `\n`;
 
   if (Object.keys(cfg.env).length) {

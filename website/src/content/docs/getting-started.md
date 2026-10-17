@@ -473,6 +473,9 @@ podbox edit myenv --rebuild
 
 Your own `profiles/<name>.toml` always wins over a bundled profile of the
 same name, so `podbox create dev` builds your file — never the template.
+To inherit from the template you shadowed, extend `builtin:<name>`
+(e.g. `extends = "builtin:dev"`): `profile:<name>` would resolve back to
+your own file and fail as circular.
 
 ### Creating and building
 
