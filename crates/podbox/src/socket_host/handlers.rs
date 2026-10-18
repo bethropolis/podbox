@@ -229,6 +229,7 @@ pub(super) fn handle_xdg_open(
                 stream,
                 &HostMessage::Error {
                     reason: format!("xdg-open refused: {e}"),
+                    code: None,
                 },
             )?;
         }
@@ -253,6 +254,7 @@ pub(super) fn handle_clipboard_set(
                     "clipboard content exceeds the {} MiB limit",
                     crate::protocol::MAX_CLIPBOARD_BYTES / (1024 * 1024)
                 ),
+                code: None,
             },
         )?;
         return Ok(());
@@ -277,6 +279,7 @@ pub(super) fn handle_clipboard_get(
                     "clipboard content exceeds the {} MiB limit",
                     crate::protocol::MAX_CLIPBOARD_BYTES / (1024 * 1024)
                 ),
+                code: None,
             },
         )?;
         return Ok(());

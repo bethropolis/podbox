@@ -69,6 +69,7 @@ pub(crate) fn handle_connection(
                         stream,
                         &HostMessage::Error {
                             reason: "hello deadline exceeded".into(),
+                            code: None,
                         },
                     );
                     return Ok(());
@@ -140,6 +141,7 @@ pub(crate) fn handle_connection(
                         stream,
                         &HostMessage::Error {
                             reason: "register_session is host-only".into(),
+                            code: None,
                         },
                     );
                     return Ok(());
@@ -150,6 +152,7 @@ pub(crate) fn handle_connection(
                         stream,
                         &HostMessage::Error {
                             reason: "session limit reached".into(),
+                            code: Some("busy".into()),
                         },
                     );
                     return Ok(());
@@ -285,6 +288,7 @@ pub(crate) fn note_failure(stream: &mut UnixStream, failures: &mut u32, reason: 
         stream,
         &HostMessage::Error {
             reason: reason.to_string(),
+            code: None,
         },
     );
     *failures >= MAX_NEGOTIATION_FAILURES

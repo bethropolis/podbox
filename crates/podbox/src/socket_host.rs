@@ -137,6 +137,7 @@ fn accept_loop(
                         &mut stream,
                         &HostMessage::Error {
                             reason: "busy: too many concurrent connections".into(),
+                            code: Some("busy".into()),
                         },
                     );
                     continue;
@@ -501,9 +502,10 @@ mod tests {
         for _ in 0..super::MAX_NEGOTIATION_FAILURES {
             let bytes = read_frame(&mut client).unwrap().expect("error frame");
             let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
-            assert!(
-                matches!(msg, crate::protocol::HostMessage::Error { reason } if reason == "probe")
-            );
+            assert!(matches!(
+                msg,
+                crate::protocol::HostMessage::Error { reason, .. } if reason == "probe"
+            ));
         }
     }
 
@@ -576,14 +578,17 @@ mod tests {
             .unwrap();
         }
 
-        fn reply_kind(stream: &mut UnixStream) -> String {
+        fn reply_msg(stream: &mut UnixStream) -> crate::protocol::HostMessage {
             let bytes = crate::protocol::read_frame(stream)
                 .unwrap()
                 .expect("server closed the connection");
-            let msg: crate::protocol::HostMessage = serde_json::from_slice(&bytes).unwrap();
-            match msg {
+            serde_json::from_slice(&bytes).unwrap()
+        }
+
+        fn reply_kind(stream: &mut UnixStream) -> String {
+            match reply_msg(stream) {
                 crate::protocol::HostMessage::HelloAck { .. } => "ack".into(),
-                crate::protocol::HostMessage::Error { reason } => format!("error:{reason}"),
+                crate::protocol::HostMessage::Error { reason, .. } => format!("error:{reason}"),
                 other => panic!("unexpected reply: {other:?}"),
             }
         }
@@ -593,14 +598,21 @@ mod tests {
         hello(&mut guest);
         assert_eq!(reply_kind(&mut guest), "ack");
 
-        // The pool is full: the next guest is refused with a busy reason.
+        // The pool is full: the next guest is refused with a busy reason
+        // and a typed `busy` code so clients can branch without parsing.
         let mut refused = connect(&path);
         hello(&mut refused);
-        let reply = reply_kind(&mut refused);
-        assert!(
-            reply.contains("busy"),
-            "expected a busy refusal, got {reply:?}"
-        );
+        let reply = reply_msg(&mut refused);
+        match reply {
+            crate::protocol::HostMessage::Error { reason, code } => {
+                assert!(
+                    reason.contains("busy"),
+                    "expected a busy refusal, got {reason:?}"
+                );
+                assert_eq!(code.as_deref(), Some("busy"));
+            }
+            other => panic!("expected an error frame, got {other:?}"),
+        }
         drop(refused);
 
         // A host-side peer still gets a reserved slot.

@@ -31,7 +31,7 @@ pub fn run(args: &[String]) {
         match socket::read_host_message(&mut stream) {
             // Host closed the connection: the request was handled.
             Ok(None) => return,
-            Ok(Some(HostMessage::Error { reason })) => {
+            Ok(Some(HostMessage::Error { reason, .. })) => {
                 eprintln!("xdg-open: {reason}");
                 std::process::exit(1);
             }
