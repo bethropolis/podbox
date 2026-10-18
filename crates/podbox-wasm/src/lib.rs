@@ -15,6 +15,7 @@ use podbox::config::Config;
 use podbox::contract::{find_field_line, offset_to_line_col};
 use podbox::env::HostEnv;
 use podbox::error::PodboxError;
+use podbox::tomlscan;
 use podbox::xdg::ResolvedXdgDirs;
 
 #[derive(Serialize)]
@@ -58,56 +59,6 @@ pub struct CompileResponse {
     /// the preview environment, not a problem with the submitted config.
     pub containerfile: Option<String>,
     pub warnings: Vec<String>,
-}
-
-/// Scan a TOML document into a `dotted.path -> 1-based line` source map.
-///
-/// Covers `[table]` headers, `key =` assignments (qualified by their table),
-/// and `[[array]]` headers. Comment-only and blank lines are skipped. Used
-/// for error squiggles and field-to-line highlighting in Studio.
-fn field_lines_map(text: &str) -> std::collections::HashMap<String, usize> {
-    let mut map = std::collections::HashMap::new();
-    let mut current_table = String::new();
-    for (idx, raw) in text.lines().enumerate() {
-        let line_no = idx + 1;
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix("[[") {
-            if let Some(end) = rest.find("]]") {
-                let table = rest[..end].trim().to_string();
-                current_table.clone_from(&table);
-                map.entry(table).or_insert(line_no);
-            }
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix('[') {
-            if let Some(end) = rest.find(']') {
-                let table = rest[..end]
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string();
-                current_table.clone_from(&table);
-                map.entry(table).or_insert(line_no);
-            }
-            continue;
-        }
-        if let Some((lhs, _)) = trimmed.split_once('=') {
-            let key = lhs.trim().trim_matches('"').trim_matches('\'');
-            if key.is_empty() {
-                continue;
-            }
-            let dotted = if current_table.is_empty() {
-                key.to_string()
-            } else {
-                format!("{current_table}.{key}")
-            };
-            map.entry(dotted).or_insert(line_no);
-        }
-    }
-    map
 }
 
 /// Split an `anyhow` parse error into Studio-ready issues.
@@ -261,10 +212,12 @@ pub fn locate_field_in_toml(toml_str: &str, field_path: &str) -> JsValue {
 
 /// Scan a TOML document into a `dotted.path -> 1-based line` source map for
 /// field-to-line highlighting in Studio. One call per render; hover and
-/// click-to-edit resolve locally from the result.
+/// click-to-edit resolve locally from the result. Uses the same span-based
+/// scanner as the error lookup, so quoted keys, inline tables and `[[array]]`
+/// indices all resolve.
 #[wasm_bindgen]
 pub fn field_lines_in_toml(toml_str: &str) -> JsValue {
-    serde_wasm_bindgen::to_value(&field_lines_map(toml_str)).unwrap_or(JsValue::NULL)
+    serde_wasm_bindgen::to_value(&tomlscan::field_lines(toml_str)).unwrap_or(JsValue::NULL)
 }
 
 /// Parse a TOML definition into a plain JS object for Studio state import.
@@ -311,7 +264,7 @@ mod tests {
     #[test]
     fn field_map_covers_tables_and_keys() {
         let toml = "[container]\nname = \"x\"\n\n[network]\nmode = \"pasta\"\n";
-        let map = field_lines_map(toml);
+        let map = tomlscan::field_lines(toml);
         assert_eq!(map.get("container"), Some(&1));
         assert_eq!(map.get("container.name"), Some(&2));
         assert_eq!(map.get("network.mode"), Some(&5));

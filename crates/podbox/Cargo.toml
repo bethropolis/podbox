@@ -34,7 +34,6 @@ cli = [
     "dep:sha2",
     "dep:shell-words",
     "dep:signal-hook",
-    "dep:toml_edit",
     "dep:tracing-journald",
     "dep:tracing-subscriber",
     "dep:url",
@@ -62,7 +61,7 @@ dialoguer       = { workspace = true, optional = true }
 sha2            = { workspace = true, optional = true }
 hex             = { workspace = true, optional = true }
 url             = { workspace = true, optional = true }
-toml_edit       = { workspace = true, optional = true }
+toml_edit       = { workspace = true }
 shell-words     = { workspace = true, optional = true }
 owo-colors      = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }

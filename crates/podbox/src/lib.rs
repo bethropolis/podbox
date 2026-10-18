@@ -19,6 +19,7 @@ pub mod fsutil;
 pub mod guest;
 pub mod profiles;
 pub mod protocol;
+pub mod tomlscan;
 pub mod xdg;
 
 // Linux / host CLI modules. Gated behind the `cli` feature (enabled by
