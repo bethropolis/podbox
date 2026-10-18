@@ -37,7 +37,7 @@ pub fn run(args: &[String]) {
                 Ok(HostMessage::ClipboardData { text }) => {
                     let _ = std::io::stdout().write_all(text.as_bytes());
                 }
-                Ok(HostMessage::Error { reason }) => {
+                Ok(HostMessage::Error { reason, .. }) => {
                     eprintln!("clipboard get: {reason}");
                     std::process::exit(1);
                 }

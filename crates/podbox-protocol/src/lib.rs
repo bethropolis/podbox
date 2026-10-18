@@ -151,6 +151,10 @@ pub enum HostMessage {
     /// negotiation, or a capability that was not accepted).
     Error {
         reason: String,
+        /// Optional machine-readable code (e.g. `busy`) so clients can
+        /// distinguish rejection kinds without parsing `reason`.
+        #[serde(default)]
+        code: Option<String>,
     },
     /// Host → guest version/info query (doctor).
     GetInfo,

@@ -138,7 +138,7 @@ fn notify(summary: &str, actions: Vec<NotifyAction>) -> GuestMessage {
 
 fn expect_error(msg: HostMessage, needle: &str) {
     match msg {
-        HostMessage::Error { reason } => {
+        HostMessage::Error { reason, .. } => {
             assert!(
                 reason.contains(needle),
                 "reason {reason:?} lacks {needle:?}"
@@ -318,7 +318,7 @@ fn xdg_open_refuses_schemes_outside_the_allowlist_with_a_reason() {
         let _ = recv(&mut c);
         send(&mut c, &GuestMessage::XdgOpen { uri: uri.into() });
         match recv(&mut c) {
-            HostMessage::Error { reason } => {
+            HostMessage::Error { reason, .. } => {
                 assert!(reason.starts_with("xdg-open refused"), "{uri}: {reason}");
             }
             other => panic!("{uri}: expected a refusal, got {other:?}"),
@@ -391,7 +391,7 @@ fn configured_allowed_schemes_open_and_others_stay_refused() {
         let msg = recv(&mut c);
         finish(c, h).unwrap();
         match msg {
-            HostMessage::Error { reason } => reason,
+            HostMessage::Error { reason, .. } => reason,
             other => panic!("expected a refusal, got {other:?}"),
         }
     };

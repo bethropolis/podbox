@@ -522,7 +522,7 @@ fn resolve_user_path() {
 }
 
 /// Max poll interval in ms (`PollTimeout` caps at `u16::MAX` = 65535).
-const MAX_POLL_MS: i64 = 60_000;
+const MAX_POLL_MS: u64 = 60_000;
 
 /// Grace period between the final idle scan and firing `IdleTimeout`. A task
 /// that spawns during this window is caught by the confirm scan, closing the
@@ -531,12 +531,12 @@ const IDLE_CONFIRM_MS: u64 = 1_000;
 
 #[allow(clippy::too_many_lines)]
 fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &AtomicBool) -> Exit {
-    let idle_limit_ms = (idle_timeout_secs.saturating_mul(1000)).cast_signed();
+    let idle_limit_ms = idle_timeout_secs.saturating_mul(1000);
     let mut tracked: Vec<TrackedProcess> = Vec::new();
     // Deadline-based idle timer: compute remaining time from a fixed start
     // instant so a host Ping waking poll() can no longer restart the window.
     let mut idle_deadline =
-        std::time::Instant::now() + std::time::Duration::from_millis(idle_limit_ms as u64);
+        std::time::Instant::now() + std::time::Duration::from_millis(idle_limit_ms);
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -556,7 +556,11 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
 
             let timeout = if tracked.is_empty() {
                 let now = std::time::Instant::now();
-                let rem = idle_deadline.saturating_duration_since(now).as_millis() as i64;
+                let rem = idle_deadline
+                    .saturating_duration_since(now)
+                    .as_millis()
+                    .try_into()
+                    .unwrap_or(u64::MAX);
                 if rem > 0 {
                     let poll_ms = rem.min(MAX_POLL_MS);
                     PollTimeout::from(Some(u16::try_from(poll_ms).unwrap_or(u16::MAX)))
@@ -587,7 +591,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
                         }
                         tracked = track_processes(&active);
                         idle_deadline = std::time::Instant::now()
-                            + std::time::Duration::from_millis(idle_limit_ms as u64);
+                            + std::time::Duration::from_millis(idle_limit_ms);
                     }
                     continue;
                 }
@@ -650,7 +654,7 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
                     } else {
                         tracked = track_processes(&active);
                         idle_deadline = std::time::Instant::now()
-                            + std::time::Duration::from_millis(idle_limit_ms as u64);
+                            + std::time::Duration::from_millis(idle_limit_ms);
                         let _ = write_frame(host_stream, &GuestMessage::Busy);
                     }
                 }
@@ -687,8 +691,8 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
             let active = scan_user_processes();
             if !active.is_empty() {
                 tracked = track_processes(&active);
-                idle_deadline = std::time::Instant::now()
-                    + std::time::Duration::from_millis(idle_limit_ms as u64);
+                idle_deadline =
+                    std::time::Instant::now() + std::time::Duration::from_millis(idle_limit_ms);
             }
             // No processes found: idle timer started naturally on next poll iteration
             // (poll timeout when tracked.is_empty()).
