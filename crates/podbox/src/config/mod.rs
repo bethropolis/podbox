@@ -4,6 +4,7 @@
 //! module.
 
 pub mod defaults;
+pub mod emit;
 pub mod enums;
 pub mod extends;
 pub mod fs;
@@ -13,6 +14,7 @@ pub mod types;
 pub mod validation;
 
 pub use defaults::EMBEDDED_DEFAULT;
+pub use emit::toml_string;
 pub use enums::{
     CapPreset, GpuMode, ImageSource, NetworkMode, OnStop, PackageManager, ServiceRestart,
     UsernsMode, XdgDirValue,

@@ -11,6 +11,13 @@ use podbox::config::{self, Config};
 
 use super::create::{derive_container_name, detect_package_manager, read_profile_content};
 
+/// Canonical TOML export lives with the config (shared with the wasm
+/// Studio bindings), so what `podbox init` writes and what Studio
+/// generates cannot drift apart.
+fn toml_string(config: &Config) -> Result<String> {
+    podbox::config::toml_string(config)
+}
+
 /// Initialize a new container config.
 pub fn run_init(
     dry_run: bool,
@@ -31,7 +38,7 @@ pub fn run_init(
         let profiles = podbox::profiles::all();
         let result = podbox::wizard::run_wizard(&profiles, &shell_info)?;
         if !result.confirmed {
-            let toml = toml::to_string_pretty(&result.config)?;
+            let toml = toml_string(&result.config)?;
             println!("{toml}");
             return Ok(());
         }
@@ -44,14 +51,14 @@ pub fn run_init(
             );
         }
         if dry_run {
-            let toml = toml::to_string_pretty(&result.config)?;
+            let toml = toml_string(&result.config)?;
             println!("Would write to: {}", config_path.display());
             println!("---\n{toml}");
             return Ok(());
         }
         std::fs::create_dir_all(&config_dir)?;
         result.config.validate()?;
-        let toml = toml::to_string_pretty(&result.config)?;
+        let toml = toml_string(&result.config)?;
         podbox::fsutil::write_atomic(&config_path, toml.as_bytes())?;
         println!("Created: {}", config_path.display());
         println!(
@@ -68,7 +75,7 @@ pub fn run_init(
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
         cfg.container.name.clone_from(&container_name);
         cfg.image.name.clone_from(&container_name);
-        let toml_str = toml::to_string_pretty(&cfg)?;
+        let toml_str = toml_string(&cfg)?;
         let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
 
@@ -122,7 +129,7 @@ pub fn run_init(
     cfg.container.shell.clear();
     podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
     cfg.validate()?;
-    let toml_str = toml::to_string_pretty(&cfg)?;
+    let toml_str = toml_string(&cfg)?;
     let config_dir = config::profiles_dir();
     let config_path = config_dir.join(format!("{container_name}.toml"));
 
