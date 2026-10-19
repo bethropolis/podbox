@@ -1,7 +1,6 @@
 //! Binary entrypoint. Keeps the slim `main()`/`run()` dispatch, tracing init,
-//! and exit-code mapping; command handlers live in the `handlers` module.
-//! This large dispatch function is a single cohesive concern (documented
-//! exemption to the ~300 LOC guideline, per the modularization guide 1/8).
+//! and exit-code mapping; command handlers live in `handlers`, and the single
+//! config-resolution chain lives in `resolve`.
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
@@ -17,9 +16,12 @@ mod commands;
 #[path = "main/handlers.rs"]
 mod handlers;
 
+#[path = "main/resolve.rs"]
+mod resolve;
+
 use handlers::{
-    extract_positional_name, promote_leading_container_name, resolve_config, resolve_config_path,
-    run_edit, run_profile_command, run_snapshot_command,
+    extract_positional_name, promote_leading_container_name, run_edit, run_profile_command,
+    run_snapshot_command,
 };
 
 use podbox::ui;
@@ -169,7 +171,7 @@ fn edit_config_for_command(cli: &Cli) -> Result<()> {
         None => {
             let positional = extract_positional_name(&cli.command);
             let name = positional.as_deref().or(cli.container.as_deref());
-            resolve_config_path(name)?
+            resolve::resolve_config_path(name).map_err(resolve::ConfigResolveError::into_report)?
         }
     };
     if cli.dry_run {
@@ -354,14 +356,16 @@ fn run(mut cli: Cli) -> Result<()> {
             podbox::cli::ConfigCommand::Set { key, value, output } => {
                 let path = match &cli.config {
                     Some(p) => p.clone(),
-                    None => resolve_config_path(cli.container.as_deref())?,
+                    None => resolve::resolve_config_path(cli.container.as_deref())
+                        .map_err(resolve::ConfigResolveError::into_report)?,
                 };
                 return commands::config::run_set(&path, key, value, cli.dry_run, *output);
             }
             podbox::cli::ConfigCommand::Validate { output } => {
                 let path = match &cli.config {
                     Some(p) => p.clone(),
-                    None => resolve_config_path(cli.container.as_deref())?,
+                    None => resolve::resolve_config_path(cli.container.as_deref())
+                        .map_err(resolve::ConfigResolveError::into_report)?,
                 };
                 return commands::config::run_validate(&path, *output);
             }
@@ -453,29 +457,34 @@ fn run(mut cli: Cli) -> Result<()> {
             ui::warn("--fix is skipped under --dry-run; reporting only");
         }
         let target_for_doctor = target_name.clone();
-        match resolve_config(&cli, target_for_doctor.clone()) {
+        match resolve::resolve_config(&cli, target_for_doctor.clone()) {
             Ok((config, _)) => {
                 let env = podbox::env::resolve()?;
                 return commands::runtime::run_doctor(&config, &env, apply_fix, *output);
             }
             Err(err) => {
-                let err_str = format!("{err:#}");
-                if err_str.contains("container.memory") && apply_fix {
-                    if commands::runtime::try_fix_bare_memory_for_target(
+                // A bare `memory = "2"` fails validation, so resolution
+                // refuses to load the config. Detection is a typed check on
+                // the validation details, not a match on message text.
+                if err.is_bare_memory()
+                    && apply_fix
+                    && commands::runtime::try_fix_bare_memory_for_target(
                         target_for_doctor.as_deref(),
                         apply_fix,
-                    )? {
-                        let (config2, _) = resolve_config(&cli, target_for_doctor)?;
-                        let env2 = podbox::env::resolve()?;
-                        return commands::runtime::run_doctor(&config2, &env2, apply_fix, *output);
-                    }
+                    )?
+                {
+                    let (config2, _) = resolve::resolve_config(&cli, target_for_doctor)
+                        .map_err(resolve::ConfigResolveError::into_report)?;
+                    let env2 = podbox::env::resolve()?;
+                    return commands::runtime::run_doctor(&config2, &env2, apply_fix, *output);
                 }
-                return Err(err);
+                return Err(err.into_report());
             }
         }
     }
 
-    let (config, name) = resolve_config(&cli, target_name)?;
+    let (config, name) = resolve::resolve_config(&cli, target_name)
+        .map_err(resolve::ConfigResolveError::into_report)?;
 
     let env = podbox::env::resolve()?;
     let xdg = podbox::xdg::resolve(&config.integration.xdg_dirs)?;

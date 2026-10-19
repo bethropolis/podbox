@@ -1,30 +1,17 @@
-//! Command handlers and config-resolution helpers for the `podbox` binary.
+//! Command handlers for the `podbox` binary: positional-name
+//! classification, the leading-name promotion, and a few small multi-branch
+//! command flows. Config resolution lives in `resolve`.
 //!
-//! Extracted from `main.rs`, which keeps `main`, the `run` dispatch, tracing
-//! init, and exit-code mapping. Items here are `pub(crate)` because only the
-//! binary crate consumes them.
-
-use std::path::PathBuf;
+//! Items here are `pub(crate)` because only the binary crate consumes them.
 
 use anyhow::{Context, Result};
 
-use podbox::cli::{Cli, Command};
-use podbox::config::{self, Config};
+use podbox::cli::Command;
+use podbox::config::Config;
 use podbox::editor;
 use podbox::error::PodboxError;
-use podbox::ui;
 
 use crate::commands;
-
-/// Commands that need image label defaults applied to the config.
-/// These generate Quadlet files or build the image — the rest can skip
-/// the ~100ms `podman inspect` fork.
-pub(crate) fn needs_image_labels(cmd: &Command) -> bool {
-    matches!(
-        cmd,
-        Command::Build { .. } | Command::Enable { .. } | Command::Update { .. }
-    )
-}
 
 #[allow(clippy::unnested_or_patterns)]
 pub(crate) fn extract_positional_name(cmd: &Command) -> Option<String> {
@@ -103,146 +90,6 @@ pub(crate) fn promote_leading_container_name(
             *explicit_container = Some(name);
         }
         _ => {}
-    }
-}
-
-pub(crate) fn resolve_config(cli: &Cli, target_name: Option<String>) -> Result<(Config, String)> {
-    let mut config = if let Some(ref path) = cli.config {
-        // A missing explicit path is an error, never the embedded default:
-        // `--config typo.toml rm --force` must not act on some other box.
-        if !path.is_file() {
-            return Err(PodboxError::ConfigFileMissing { path: path.clone() }.into());
-        }
-        Config::load(path)?
-    } else if let Some(ref container_name) = target_name {
-        let config_path = config::find_config_path(container_name).ok_or_else(|| {
-            // Human detail stays on stderr; the typed error carries exit 3
-            // and the `container_missing` code for JSON-mode clients.
-            ui::hint(&[&format!(
-                "no config for '{container_name}' at '{}/{{profiles/,}}{container_name}.toml' — use `--config <PATH>` or `-C <NAME>` from {}",
-                config::config_dir().display(),
-                config::config_dir().display(),
-            )]);
-            PodboxError::ContainerMissing(container_name.clone())
-        })?;
-        Config::load(&config_path).map_err(|e| {
-            anyhow::anyhow!(
-                "{}\n\nHint: Use `--config <PATH>` to specify a config file, or `-C <NAME>` to use a config from {}",
-                e,
-                config::config_dir().display()
-            )
-        })?
-    } else {
-        let config_list = config::list_configs();
-        let tty = podbox::codegen::distros::is_tty();
-
-        // No configs at all — welcome the user and offer the wizard (TTY only).
-        if config_list.is_empty() && config::find_definition().is_none() {
-            if !tty {
-                anyhow::bail!(
-                    "No container configs found.\n\n\
-                     Hint: Run `podbox init -i` to create one interactively, or\n\
-                           `podbox create <profile>` for a one-shot setup, or\n\
-                           point at a file with `--config <PATH>`."
-                );
-            }
-            eprintln!("Welcome to podbox! It looks like you don't have any containers set up yet.");
-            let launch =
-                dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                    .with_prompt("Would you like to run the interactive setup wizard?")
-                    .default(true)
-                    .interact()
-                    .unwrap_or(false);
-            if launch {
-                commands::create::run_init(cli.dry_run, None, None, true, None)?;
-                // Continue with the config the wizard wrote, not the embedded
-                // default. The retry sees a non-empty list, so it cannot loop.
-                if config::list_configs().is_empty() {
-                    anyhow::bail!(
-                        "Setup finished without creating a config. Run `podbox init` to create one."
-                    );
-                }
-                return resolve_config(cli, target_name);
-            }
-        }
-
-        // Multiple configs without an explicit name: prompt on a TTY, fail
-        // with a hint otherwise so scripts never hang or guess.
-        match config_list.len().cmp(&1) {
-            std::cmp::Ordering::Greater => {
-                if tty {
-                    let selection = config::select_config_interactive(
-                        &config_list,
-                        "Multiple containers found",
-                    )?;
-                    Config::load(&selection)?
-                } else {
-                    let names: Vec<String> = config_list
-                        .iter()
-                        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                        .collect();
-                    anyhow::bail!(
-                        "Multiple container configs found ({}).\n\n\
-                         Hint: Pass `-C <NAME>`, set $PODBOX_CONTAINER, or pin one with\n\
-                               `podbox use <NAME>` for non-interactive use.",
-                        names.join(", ")
-                    );
-                }
-            }
-            std::cmp::Ordering::Equal => Config::load(&config_list[0])?,
-            std::cmp::Ordering::Less => match config::find_definition() {
-                Some(path) => Config::load(&path)?,
-                None => {
-                    anyhow::bail!(
-                        "No container configs found. Create one with `podbox init --interactive` \
-                         or specify a config with `--config <PATH>` / `-C <NAME>`."
-                    );
-                }
-            },
-        }
-    };
-
-    let name = config.container.name.clone();
-
-    if needs_image_labels(&cli.command) {
-        let local_tag = config.local_image_tag();
-        if let Ok(true) = podbox::podman::image_exists(&local_tag)
-            && let Ok(labels) = podbox::labels::fetch(&local_tag)
-        {
-            podbox::labels::apply_defaults(&mut config, &labels);
-        }
-    }
-
-    Ok((config, name))
-}
-
-/// Resolve the config file path for the given container name (or auto-detect).
-pub(crate) fn resolve_config_path(container: Option<&str>) -> Result<PathBuf> {
-    if let Some(name) = container {
-        if let Some(path) = config::find_config_path(name) {
-            return Ok(path);
-        }
-        anyhow::bail!(config::missing_config_error(name));
-    }
-
-    let configs = config::list_configs();
-    match configs.len() {
-        0 => {
-            let local = config::find_definition();
-            match local {
-                Some(p) => Ok(p),
-                None => anyhow::bail!("no config found. Run `podbox init` to create one."),
-            }
-        }
-        1 => Ok(configs.into_iter().next().unwrap()),
-        _ => {
-            if podbox::codegen::distros::is_tty() {
-                let selection = config::select_config_interactive(&configs, "Select container")?;
-                Ok(selection)
-            } else {
-                anyhow::bail!("multiple configs found — specify one with --container <name>")
-            }
-        }
     }
 }
 
@@ -338,7 +185,8 @@ pub(crate) fn run_profile_command(cmd: &podbox::cli::ProfileCommand, dry_run: bo
 
 /// Open the config in the user's editor, detect [image] changes, and offer to rebuild.
 pub(crate) fn run_edit(dry_run: bool, container: Option<&str>, rebuild_after: bool) -> Result<()> {
-    let config_path = resolve_config_path(container)?;
+    let config_path = super::resolve::resolve_config_path(container)
+        .map_err(super::resolve::ConfigResolveError::into_report)?;
 
     if dry_run {
         println!("Would open: {}", config_path.display());
