@@ -66,6 +66,11 @@ pub fn schema_defaults() -> Map<String, Value> {
         "lifecycle.idle_timeout",
         json!(defaults::default_idle_timeout()),
     );
+    put("lifecycle.on_stop", json!(OnStop::default()));
+    // [wayland]
+    // podbox enables the firewall by default, so the Studio prefills what
+    // the engine keeps when the key is absent.
+    put("wayland.firewall", json!(defaults::default_true()));
     // [dbus] — the effective default once `integration.dbus` is on is the
     // portal preset (`Config::apply_defaults` promotes `none` to it), so
     // the Studio prefills what the engine ends up using.
