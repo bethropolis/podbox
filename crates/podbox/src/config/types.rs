@@ -90,9 +90,12 @@ pub enum DotfilesCloneOn {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DotfilesConfig {
     pub source: String,
-    #[serde(default = "default_dotfiles_target")]
+    #[serde(
+        default = "default_dotfiles_target",
+        skip_serializing_if = "is_default_dotfiles_target"
+    )]
     pub target: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_dotfiles_clone_on")]
     pub clone_on: DotfilesCloneOn,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install: Option<String>,
@@ -104,6 +107,14 @@ pub const DOTFILES_TARGET: &str = "~/.dotfiles";
 
 fn default_dotfiles_target() -> String {
     DOTFILES_TARGET.into()
+}
+
+fn is_default_dotfiles_target(v: &str) -> bool {
+    v == DOTFILES_TARGET
+}
+
+fn is_default_dotfiles_clone_on(v: &DotfilesCloneOn) -> bool {
+    *v == DotfilesCloneOn::default()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -602,14 +613,25 @@ pub enum ProvisionOnFailure {
 pub struct ProvisionStep {
     pub name: String,
     pub run: String,
-    #[serde(default = "default_provision_timeout")]
+    #[serde(
+        default = "default_provision_timeout",
+        skip_serializing_if = "is_default_provision_timeout"
+    )]
     pub timeout: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_provision_on_failure")]
     pub on_failure: ProvisionOnFailure,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub root: bool,
+}
+
+fn is_default_provision_timeout(v: &str) -> bool {
+    v == default_provision_timeout()
+}
+
+fn is_default_provision_on_failure(v: &ProvisionOnFailure) -> bool {
+    *v == ProvisionOnFailure::Warn
 }
 
 fn is_default_on_stop(on_stop: &OnStop) -> bool {
