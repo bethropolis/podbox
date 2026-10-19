@@ -227,6 +227,49 @@ pub fn parse_toml_to_json(toml_str: &str) -> Result<JsValue, JsError> {
     Ok(serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::NULL))
 }
 
+/// Per-field schema defaults for Studio prefill, keyed by dotted config path.
+///
+/// Hand-built in the config crate from the same defaults serde and the
+/// schema use; an absent path means "no engine default" (required keys,
+/// engine-derived values), so the Studio never invents a placeholder where
+/// Rust has none.
+#[wasm_bindgen]
+pub fn schema_defaults() -> JsValue {
+    serde_wasm_bindgen::to_value(&podbox::config::schema_defaults()).unwrap_or(JsValue::NULL)
+}
+
+/// Valid enum values per config path, straight from the strum derives.
+///
+/// The Studio builds its select options from this list and attaches labels
+/// in TypeScript; a variant added on the Rust side appears here and the
+/// parity check forces it a label instead of it being silently missing.
+#[wasm_bindgen]
+pub fn schema_enums() -> JsValue {
+    serde_wasm_bindgen::to_value(&podbox::config::schema_enums()).unwrap_or(JsValue::NULL)
+}
+
+/// Emit a `Config`-shaped JSON object as canonical TOML.
+///
+/// Same serializer `podbox init` writes through, so the Studio's preview and
+/// the engine's own files cannot disagree. Shaped like `serde` defaults:
+/// absent optional keys and default values stay out of the output, and
+/// invalid input (unknown fields, missing `image.base` / `container.name`)
+/// raises with the schema error rather than re-typing TS-side validation.
+#[wasm_bindgen]
+pub fn config_to_toml(config: JsValue) -> Result<String, JsError> {
+    let config: Config = match serde_wasm_bindgen::from_value(config) {
+        Ok(config) => config,
+        Err(e) => return Err(JsError::new(&format!("{e:#}"))),
+    };
+    write_config_toml(config).map_err(|e| JsError::new(&format!("{e:#}")))
+}
+
+/// Serialize an already-resolved `Config`; the wasm entry point wraps the
+/// error in `JsError`, the native tests keep the typed `anyhow`.
+fn write_config_toml(config: Config) -> anyhow::Result<String> {
+    podbox::config::toml_string(&config)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +321,71 @@ mod tests {
         assert!(podbox::codegen::quadlet::generate_host_service(name).contains("serve"));
         assert!(podbox::codegen::quadlet::generate_dbus_proxy_service(name, &config).is_some());
         assert!(podbox::codegen::quadlet::generate_compositor_service(name, &config).is_some());
+    }
+
+    // Native stand-in for `config_to_toml`: same serde types, but the input
+    // arrives as `serde_json` because `JsValue` panics off-wasm.
+    fn emit_json(json: serde_json::Value) -> anyhow::Result<String> {
+        write_config_toml(serde_json::from_value(json)?)
+    }
+
+    #[test]
+    fn config_to_toml_emits_a_minimal_config() {
+        // Same minimal shape the CLI writes: required keys only, every
+        // serde-defaulted value absent (the empty `[integration]`-style
+        // headers and `schema_version` are what serde emits there too).
+        let emitted = emit_json(serde_json::json!({
+            "image": {"base": "fedora:44", "name": "x"},
+            "container": {"name": "x", "home": "/home/user/c/x"},
+        }))
+        .expect("serializable");
+        assert!(emitted.contains("base = \"fedora:44\""));
+        assert!(emitted.contains("[container]"));
+        // Schema defaults stay out of the emitted file.
+        assert!(!emitted.contains("packages"));
+        assert!(!emitted.contains("pull_retry"));
+    }
+
+    #[test]
+    fn config_to_toml_rejects_unknown_fields() {
+        let json = serde_json::json!({
+            "image": {"base": "fedora:44", "name": "x"},
+            "container": {"name": "x", "home": "/home/user/c/x"},
+            "nonsense": 1,
+        });
+        assert!(
+            emit_json(json).is_err(),
+            "unknown fields are a schema error, never quietly dropped"
+        );
+    }
+
+    #[test]
+    fn schema_enums_lists_every_network_mode() {
+        let enums: serde_json::Value =
+            serde_json::to_value(podbox::config::schema_enums()).unwrap();
+        let network = enums
+            .get("network.mode")
+            .and_then(|v| v.as_array())
+            .expect("network.mode is an enum list");
+        for expected in ["host", "pasta", "slirp4netns", "private"] {
+            assert!(
+                network.iter().any(|v| v == &serde_json::json!(expected)),
+                "network.mode must list {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_defaults_omit_required_keys() {
+        let serde_defaults = serde_json::to_value(podbox::config::schema_defaults()).unwrap();
+        assert_eq!(
+            serde_defaults.get("container.name"),
+            None,
+            "required keys ship no placeholder"
+        );
+        assert_eq!(
+            serde_defaults.get("container.shell"),
+            Some(&serde_json::json!("bash"))
+        );
     }
 }
