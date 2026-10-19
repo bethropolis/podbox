@@ -10,6 +10,7 @@ pub mod extends;
 pub mod fs;
 pub mod merge;
 pub mod schema;
+pub mod schema_defs;
 pub mod types;
 pub mod validation;
 
@@ -28,6 +29,7 @@ pub use fs::{
     write_active_context,
 };
 pub use schema::{Config, IMAGE_REPO_PREFIX, SchemaVersion};
+pub use schema_defs::{schema_defaults, schema_enums};
 pub use types::{
     BuiltinCachePath, BuiltinCaches, ContainerConfig, ContainerEnvConfig, CustomCacheConfig,
     DbusConfig, DbusPreset, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig,
