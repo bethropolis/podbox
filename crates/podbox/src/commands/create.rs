@@ -7,7 +7,6 @@ use podbox::codegen::distros;
 use podbox::config::{self, Config};
 use podbox::editor;
 use podbox::error::PodboxError;
-use podbox::systemd;
 
 /// Build image, install Quadlet, and start the container.
 fn finish_create(cfg: &Config, _caller_name: &str, dry_run: bool, no_start: bool) -> Result<()> {
@@ -73,12 +72,11 @@ fn finish_create(cfg: &Config, _caller_name: &str, dry_run: bool, no_start: bool
         crate::commands::provision::run_for_create(cfg, &podbox::env::resolve()?, true)?;
     } else {
         podbox::ui::step("Starting container...");
-        if systemd::is_available() {
-            systemd::start_unit(container_name)?;
-        } else {
-            let args = podbox::process::args(&["start", container_name]);
-            podbox::process::spawn_interactive_checked("podman", &args)?;
-        }
+        // The Quadlet unit is freshly installed, so whether systemd owns the
+        // start depends only on systemctl being present (see
+        // `runner::Runtime::for_system`).
+        let ctx = crate::ctx::Ctx { dry_run };
+        crate::commands::runner::Runtime::for_system().start(&ctx, cfg)?;
         podbox::ui::ok(&format!("Container '{container_name}' is running"));
         // `create` starts via systemd/podman directly, bypassing `run_start`,
         // so exports happen here rather than riding along with it.
