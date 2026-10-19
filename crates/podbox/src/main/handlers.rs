@@ -1,9 +1,10 @@
-//! Command handlers for the `podbox` binary: positional-name
-//! classification, the leading-name promotion, and a few small multi-branch
-//! command flows. Config resolution lives in `resolve`.
+//! Shared command handlers for the `podbox` binary.
 //!
-//! Items here are `pub(crate)` because only the binary crate consumes them.
-
+//! Positional-name classification, the leading-name promotion for
+//! `exec`/`run`, and a few small multi-branch command flows. Config
+//! resolution itself lives in `resolve`; the dispatch in `dispatch`. Items
+//! here are `pub(crate)` because only the binary crate consumes them.
+//
 use anyhow::{Context, Result};
 
 use podbox::cli::Command;
