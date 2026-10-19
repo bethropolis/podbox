@@ -19,6 +19,11 @@ pub const CAP_HOST_EXEC: &str = "host_exec";
 /// `host_exec`; old hosts leave it in the rejected list and the guest falls
 /// back to buffered frames.
 pub const CAP_HOST_EXEC_STREAM: &str = "host_exec_stream";
+/// Host-exec with the child's stdio supplied by the guest: a
+/// `HostExecV2` frame with three descriptors attached via `SCM_RIGHTS`,
+/// plus `HostExecSignal` relay while the child runs. Old hosts leave it
+/// in the rejected list and the guest falls back to plain `HostExec`.
+pub const CAP_HOST_EXEC_FDS: &str = "host_exec_fds";
 
 /// All known capabilities in negotiation order.
 pub const ALL_CAPABILITIES: &[&str] = &[
@@ -27,6 +32,7 @@ pub const ALL_CAPABILITIES: &[&str] = &[
     CAP_CLIPBOARD,
     CAP_HOST_EXEC,
     CAP_HOST_EXEC_STREAM,
+    CAP_HOST_EXEC_FDS,
 ];
 
 /// Interceptor binaries and the capability each needs: `(binary, capability)`.
@@ -70,6 +76,39 @@ pub enum GuestMessage {
     HostExec {
         cmd: String,
         args: Vec<String>,
+    },
+    /// Host-exec with the child's stdio taken from descriptors the guest
+    /// attaches to this frame (capability `host_exec_fds`).
+    ///
+    /// Exactly three descriptors ride via `SCM_RIGHTS` on the same message,
+    /// in stdin, stdout, stderr order. The host uses them directly as the
+    /// child's stdio, so binary data and large outputs never pass through
+    /// the protocol. A guest whose request is refused by this capability
+    /// keeps using [`GuestMessage::HostExec`] instead.
+    ///
+    /// The optional fields are serde-defaulted so the wire format here is
+    /// frozen now, while the host phases in behaviour behind them:
+    /// `cmd`/`args`/`env` are consumed, `cwd` is carried but not yet
+    /// processed, and `tty` must be false (the host refuses `true` with a
+    /// typed error until the TTY path exists).
+    HostExecV2 {
+        cmd: String,
+        args: Vec<String>,
+        /// Key/value pairs the guest asks the host to export to the child.
+        /// The host applies only allowlisted keys (TERM, LANG, COLORTERM).
+        #[serde(default)]
+        env: Vec<(String, String)>,
+        #[serde(default)]
+        cwd: Option<String>,
+        #[serde(default)]
+        tty: bool,
+    },
+    /// Relay a signal (SIGINT, SIGTERM, SIGHUP or SIGWINCH) from the guest
+    /// shim to a running host-exec child. Only sent on a `host_exec_fds`
+    /// session: the host forwards it to the child's process group. The
+    /// child's death is reported through the regular `HostExecDone` frame.
+    HostExecSignal {
+        sig: i32,
     },
     /// Sent by the host CLI to register a new terminal session.
     /// The `pidfd` follows via `SCM_RIGHTS` on the same connection.
@@ -521,6 +560,105 @@ mod tests {
             }
             _ => panic!("wrong message type"),
         }
+    }
+
+    #[test]
+    fn host_exec_v2_optional_fields_are_serde_defaulted() {
+        // A minimal V2 frame (old guest shims that only know cmd/args,
+        // mostly future guests) must decode with every new field defaulted:
+        // the wire format is frozen without bumping PROTOCOL_VERSION.
+        let json = br#"{"type":"host_exec_v2","cmd":"cat","args":["-s"]}"#;
+        let msg: GuestMessage = serde_json::from_slice(json).unwrap();
+        match msg {
+            GuestMessage::HostExecV2 {
+                cmd,
+                args,
+                env,
+                cwd,
+                tty,
+            } => {
+                assert_eq!(cmd, "cat");
+                assert_eq!(args, vec!["-s"]);
+                assert!(env.is_empty());
+                assert!(cwd.is_none());
+                assert!(!tty);
+            }
+            other => panic!("expected HostExecV2, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn host_exec_v2_round_trips_the_full_field_set() {
+        let msg = GuestMessage::HostExecV2 {
+            cmd: "git".into(),
+            args: vec!["log".into()],
+            env: vec![("TERM".into(), "xterm-256color".into())],
+            cwd: Some("/home/user/project".into()),
+            tty: true,
+        };
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &msg).unwrap();
+        let payload = read_frame(&mut &buf[..]).unwrap().unwrap();
+        let decoded: GuestMessage = serde_json::from_slice(&payload).unwrap();
+        match decoded {
+            GuestMessage::HostExecV2 {
+                cmd,
+                args,
+                env,
+                cwd,
+                tty,
+            } => {
+                assert_eq!(cmd, "git");
+                assert_eq!(args, vec!["log"]);
+                assert_eq!(
+                    env,
+                    vec![("TERM".to_string(), "xterm-256color".to_string())]
+                );
+                assert_eq!(cwd.as_deref(), Some("/home/user/project"));
+                assert!(tty);
+            }
+            other => panic!("expected HostExecV2, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn host_exec_signal_round_trips() {
+        let msg = GuestMessage::HostExecSignal { sig: 2 };
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &msg).unwrap();
+        let payload = read_frame(&mut &buf[..]).unwrap().unwrap();
+        let decoded: GuestMessage = serde_json::from_slice(&payload).unwrap();
+        match decoded {
+            GuestMessage::HostExecSignal { sig } => assert_eq!(sig, 2),
+            other => panic!("expected HostExecSignal, got {other:?}"),
+        }
+    }
+
+    /// Wire compatibility in the other direction: a host built before
+    /// `host_exec_fds` can still parse a `Hello` that requests it — the
+    /// unknown capability lands in `capabilities` and negotiation rejects
+    /// it, which is how old hosts degrade the guest to plain `HostExec`.
+    #[test]
+    fn hello_with_an_unknown_capability_parses_on_the_old_schema() {
+        // Serde deserializes every declared field, so the enum's own test
+        // reads are the negotiate path, not these bindings.
+        #[allow(dead_code)]
+        #[derive(Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case")]
+        enum OldGuestMessage {
+            Hello {
+                protocol_version: u32,
+                guest_version: String,
+                container: String,
+                capabilities: Vec<String>,
+            },
+        }
+
+        let json = r#"{"type":"hello","protocol_version":1,"guest_version":"0.2.0",
+            "container":"dev","capabilities":["host_exec","host_exec_fds"]}"#;
+        let msg: OldGuestMessage = serde_json::from_slice(json.as_bytes()).unwrap();
+        let OldGuestMessage::Hello { capabilities, .. } = msg;
+        assert_eq!(capabilities, vec!["host_exec", "host_exec_fds"]);
     }
 
     #[test]

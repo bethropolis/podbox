@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -13,8 +14,9 @@ use std::time::Duration;
 
 use podbox::config::{Config, HostExecEntry};
 use podbox::protocol::{
-    CAP_CLIPBOARD, CAP_HOST_EXEC, CAP_HOST_EXEC_STREAM, CAP_NOTIFY, CAP_XDG_OPEN, ExecStream,
-    GuestMessage, HostMessage, NotifyAction, PROTOCOL_VERSION, read_frame, write_frame,
+    CAP_CLIPBOARD, CAP_HOST_EXEC, CAP_HOST_EXEC_FDS, CAP_HOST_EXEC_STREAM, CAP_NOTIFY,
+    CAP_XDG_OPEN, ExecStream, GuestMessage, HostMessage, NotifyAction, PROTOCOL_VERSION,
+    read_frame, write_frame,
 };
 use podbox::socket_host::{HostActions, serve_connection};
 
@@ -988,5 +990,380 @@ fn unstreamed_guest_still_gets_buffered_frames() {
         recv(&mut c),
         HostMessage::HostExecDone { exit_code: 0, .. }
     ));
+    finish(c, h).unwrap();
+}
+
+// ── fd-passing host-exec (new capability, old session shape untouched) ──
+
+/// Hello with `host_exec_fds` granted.
+fn hello_fds() -> GuestMessage {
+    hello(&[CAP_HOST_EXEC, CAP_HOST_EXEC_FDS])
+}
+
+/// Serialize a `HostExecV2` frame and send it with descriptors attached,
+/// exactly the way the guest shim does.
+fn send_v2_with_fds(c: &mut UnixStream, msg: &GuestMessage, fds: &[OwnedFd]) {
+    let mut wire = Vec::new();
+    write_frame(&mut wire, msg).unwrap();
+    let raws: Vec<RawFd> = fds.iter().map(AsRawFd::as_raw_fd).collect();
+    podbox::protocol::sysutil::send_bytes_with_fds(c, &[&wire], &raws).unwrap();
+}
+
+/// A `HostExecV2` request with plain bodies.
+fn v2(cmd: &str, args: Vec<String>) -> GuestMessage {
+    GuestMessage::HostExecV2 {
+        cmd: cmd.into(),
+        args,
+        env: vec![],
+        cwd: None,
+        tty: false,
+    }
+}
+
+/// A pipe whose read end the child will take as one of its stdio fds.
+/// Sending the descriptors over SCM_RIGHTS transfers the *same pipe*, so
+/// the bytes the guest writes are the bytes the child reads — with no
+/// protocol frame carrying them at all.
+fn pipe_pair() -> (OwnedFd, OwnedFd) {
+    let (read, write) = std::io::pipe().unwrap();
+    (read.into(), write.into())
+}
+
+/// A config that also allowlists `sleep` for the relay test.
+fn fds_config() -> Config {
+    let mut cfg = enabled_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "sleep".to_string(),
+            HostExecEntry::Simple("/usr/bin/sleep".into()),
+        );
+    cfg
+}
+
+#[test]
+fn fds_capability_is_granted_alongside_host_exec() {
+    let (mut c, h) = start(enabled_config(), Arc::default());
+    send(&mut c, &hello_fds());
+    match recv(&mut c) {
+        HostMessage::HelloAck { accepted, .. } => {
+            assert!(accepted.contains(&CAP_HOST_EXEC_FDS.to_string()));
+        }
+        other => panic!("expected HelloAck, got {other:?}"),
+    }
+    finish(c, h).unwrap();
+}
+
+/// `echo hi | host-exec cat` in miniature: the request carries the
+/// read end of a pipe as the child's stdin and the write end of another
+/// pipe as its stdout, both created on the "guest" side of this test.
+/// The bytes flow through the pipes themselves — the protocol carries
+/// only the request and one `HostExecDone`.
+#[test]
+fn attached_stdio_round_trips_without_protocol_copying() {
+    let mut cfg = fds_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert("cat".to_string(), HostExecEntry::Simple("/bin/cat".into()));
+    let (mut c, h) = start(cfg, Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    let (stdin_read, stdin_write) = pipe_pair();
+    let (our_read, child_stdout_w) = pipe_pair();
+    // Exactly three descriptors in child-fd order: the stderr slot is
+    // present and unread (no child error expected from `cat`).
+    let (_, stderr_write) = pipe_pair();
+
+    send_v2_with_fds(
+        &mut c,
+        &v2("cat", vec![]),
+        &[stdin_read, child_stdout_w, stderr_write],
+    );
+
+    // Write the payload into the guest's pipe and close it, so the child
+    // sees EOF and exits on its own.
+    use std::io::{Read, Write};
+    let mut stdin = std::io::BufWriter::new(std::fs::File::from(stdin_write));
+    stdin.write_all(b"attached-stdio payload\n").unwrap();
+    stdin.flush().unwrap();
+    drop(stdin);
+
+    // The result comes out of the pipe the "guest" wrote into — no
+    // `HostExecOutput` frame ever carries byte data on this path.
+    let mut out = String::new();
+    std::fs::File::from(our_read)
+        .read_to_string(&mut out)
+        .unwrap();
+    assert!(
+        out.contains("attached-stdio payload"),
+        "round-trip payload missing: {out:?}"
+    );
+
+    // Only the exit report rides the protocol.
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
+    finish(c, h).unwrap();
+}
+
+/// A frame forwarded while the child runs: `sleep 100` is relayed SIGINT
+/// into its own process group, dies with signal 2, and the guest sees
+/// the shell-convention `HostExecDone` exit 130.
+#[test]
+fn host_exec_signal_relay_reports_the_shell_convention_exit() {
+    let (mut c, h) = start(fds_config(), Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    // Allowlisted `sleep` runs directly (no shell to intercept the
+    // relay); stdin is an already-empty pipe.
+    send_v2_with_fds(
+        &mut c,
+        &v2("sleep", vec!["100".into()]),
+        &[pipe_pair().0, pipe_pair().1, pipe_pair().1],
+    );
+
+    // Let the child spawn, then forward SIGINT like the shim does. The
+    // host relay loop polls frames every 100 ms.
+    std::thread::sleep(Duration::from_millis(400));
+    send(&mut c, &GuestMessage::HostExecSignal { sig: 2 });
+    match recv(&mut c) {
+        HostMessage::HostExecDone { exit_code, signal } => {
+            assert_eq!(exit_code, 130, "SIGINT death reports 128+2");
+            assert_eq!(signal, Some(2));
+        }
+        other => panic!("expected HostExecDone, got {other:?}"),
+    }
+    finish(c, h).unwrap();
+}
+
+/// The env allowlist is the whole boundary: TERM reaches the child; an
+/// arbitrary variable and a forced `HOME` do not (the child keeps the
+/// host daemon's own `HOME`).
+#[test]
+fn host_exec_v2_env_is_allowlisted() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("showenv.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nprintf 'TERM=[%s]\\nEVIL=[%s]\\nHOME=[%s]\\n' \"$TERM\" \"$PODBOX_EVIL\" \"$HOME\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut cfg = fds_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "showenv".to_string(),
+            HostExecEntry::Simple(script.to_string_lossy().into_owned()),
+        );
+
+    let (mut c, h) = start(cfg, Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    let (out_r, out_w) = pipe_pair();
+    let home_before = std::env::var("HOME").unwrap_or_default();
+    let msg = GuestMessage::HostExecV2 {
+        cmd: "showenv".into(),
+        args: vec![],
+        env: vec![
+            ("TERM".into(), "xterm-forwarded".into()),
+            ("PODBOX_EVIL".into(), "smuggled".into()),
+            ("HOME".into(), "/container/fake".into()),
+        ],
+        cwd: None,
+        tty: false,
+    };
+    send_v2_with_fds(&mut c, &msg, &[pipe_pair().0, out_w, pipe_pair().1]);
+
+    // The child's stdout comes through the guest pipe, not the protocol.
+    // (The moved write ends drop when the temporary fd array does, so the
+    // pipe's last writer is the child and EOF is meaningful.)
+    let mut out = String::new();
+    use std::io::Read;
+    std::fs::File::from(out_r).read_to_string(&mut out).unwrap();
+    assert!(
+        out.contains("TERM=[xterm-forwarded]"),
+        "TERM forwarded: {out:?}"
+    );
+    assert!(
+        !out.contains("EVIL=[smuggled]"),
+        "unfiltered env must not pass through: {out:?}"
+    );
+    assert!(
+        !out.contains("HOME=[/container/fake]"),
+        "HOME from the container must not pass through: {out:?}"
+    );
+    if !home_before.is_empty() {
+        assert!(
+            out.contains(&format!("HOME=[{home_before}]")),
+            "HOME stays the host's own: {out:?} (host home {home_before:?})"
+        );
+    }
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
+    finish(c, h).unwrap();
+}
+
+/// The capability gate: a guest that never negotiated `host_exec_fds`
+/// gets a typed error, nothing executes, and the old session shape
+/// still works afterwards.
+#[test]
+fn vfs_refused_without_the_fds_capability() {
+    let (mut c, h) = start(enabled_config(), Arc::default());
+    // No `host_exec_stream`: the legacy request below must arrive in the
+    // buffered session shape the oldest guests know.
+    send(&mut c, &hello(&[CAP_HOST_EXEC]));
+    let _ = recv(&mut c);
+
+    send_v2_with_fds(
+        &mut c,
+        &v2("echo", vec!["should-not-run".into()]),
+        &[pipe_pair().0, pipe_pair().1, pipe_pair().1],
+    );
+    match recv(&mut c) {
+        HostMessage::Error { reason, .. } => {
+            assert!(reason.contains("host_exec_fds"), "reason {reason:?}");
+        }
+        other => panic!("expected typed Error, got {other:?}"),
+    }
+    // Nothing ran: no exit report — and the old-style request works in
+    // the same session afterwards.
+    send(
+        &mut c,
+        &GuestMessage::HostExec {
+            cmd: "echo".into(),
+            args: vec!["old-path-after-refusal".into()],
+        },
+    );
+    match recv(&mut c) {
+        HostMessage::HostExecStdout { data } => {
+            assert!(data.contains("old-path-after-refusal"))
+        }
+        other => panic!("expected old path to survive, got {other:?}"),
+    }
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
+    finish(c, h).unwrap();
+}
+
+/// tty=true is refused with a typed error until the TTY path exists.
+#[test]
+fn host_exec_v2_refuses_tty() {
+    let (mut c, h) = start(enabled_config(), Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+    let msg = GuestMessage::HostExecV2 {
+        cmd: "echo".into(),
+        args: vec![],
+        env: vec![],
+        cwd: None,
+        tty: true,
+    };
+    send_v2_with_fds(&mut c, &msg, &[pipe_pair().0, pipe_pair().1, pipe_pair().1]);
+    match recv(&mut c) {
+        HostMessage::Error { reason, code, .. } => {
+            assert!(reason.contains("tty"), "reason {reason:?}");
+            assert_eq!(code.as_deref(), Some("not_supported"));
+        }
+        other => panic!("expected typed Error, got {other:?}"),
+    }
+    // A refusal is not fatal: the session keeps serving requests.
+    send(
+        &mut c,
+        &GuestMessage::HostExec {
+            cmd: "echo".into(),
+            args: vec!["after-tty".into()],
+        },
+    );
+    assert!(matches!(recv(&mut c), HostMessage::HostExecStdout { .. }));
+    assert!(matches!(recv(&mut c), HostMessage::HostExecDone { .. }));
+    finish(c, h).unwrap();
+}
+
+/// An out-of-session relay frame is quietly ignored, and the session
+/// keeps working for an old-style request afterwards.
+#[test]
+fn out_of_session_signal_is_ignored_harmlessly() {
+    let (mut c, h) = start(enabled_config(), Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+    send(&mut c, &GuestMessage::HostExecSignal { sig: 9 });
+    send(
+        &mut c,
+        &GuestMessage::HostExec {
+            cmd: "echo".into(),
+            args: vec!["still-alive".into()],
+        },
+    );
+    match recv(&mut c) {
+        HostMessage::HostExecStdout { data } => assert!(data.contains("still-alive")),
+        other => panic!("expected stdout, got {other:?}"),
+    }
+    assert!(matches!(recv(&mut c), HostMessage::HostExecDone { .. }));
+    finish(c, h).unwrap();
+}
+
+/// The old request path is untouched for a guest that negotiated only
+/// the pre-fd capabilities, even on a host that also serves V2.
+#[test]
+fn old_host_exec_path_regression() {
+    let (mut c, h) = start(enabled_config(), Arc::default());
+    send(&mut c, &hello(&[CAP_HOST_EXEC]));
+    let _ = recv(&mut c);
+    // A clean exit…
+    send(
+        &mut c,
+        &GuestMessage::HostExec {
+            cmd: "echo".into(),
+            args: vec!["plain".into()],
+        },
+    );
+    match recv(&mut c) {
+        HostMessage::HostExecStdout { data } => assert!(data.contains("plain")),
+        other => panic!("expected legacy stdout frame, got {other:?}"),
+    }
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
+    // …a refusal…
+    send(
+        &mut c,
+        &GuestMessage::HostExec {
+            cmd: "rm".into(),
+            args: vec![],
+        },
+    );
+    match recv(&mut c) {
+        HostMessage::HostExecStderr { data } => {
+            assert!(data.contains("Permission denied"), "{data:?}");
+        }
+        other => panic!("expected legacy refusal, got {other:?}"),
+    }
+    // The refusal also reports its exit in a Done frame.
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 1, .. }
+    ));
+    // …and the recorded backend invocations reaching the same shape.
     finish(c, h).unwrap();
 }

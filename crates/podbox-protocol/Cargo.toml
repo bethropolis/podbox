@@ -25,5 +25,8 @@ nix         = { workspace = true }
 rustix      = { workspace = true }
 signal-hook = { workspace = true }
 
+[target.'cfg(unix)'.dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true

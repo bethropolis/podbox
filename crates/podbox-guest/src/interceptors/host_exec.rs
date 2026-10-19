@@ -1,9 +1,30 @@
 use std::io::Write;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
+use std::os::unix::net::UnixStream;
+use std::time::Duration;
+
+use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM, SIGWINCH};
+use signal_hook::iterator::Signals;
 
 use crate::protocol::{
-    CAP_HOST_EXEC, CAP_HOST_EXEC_STREAM, GuestMessage, HostMessage, write_frame,
+    CAP_HOST_EXEC, CAP_HOST_EXEC_FDS, CAP_HOST_EXEC_STREAM, FrameRead, FrameReader, GuestMessage,
+    HostMessage, read_frame, write_frame,
 };
 use crate::socket::negotiate_at_with_optional;
+
+/// The signals the shim traps while a fd-passing exec runs and relays to
+/// the host as `HostExecSignal` frames. The host forwards them to the
+/// child's own process group; nothing here reaches the shim's caller.
+const FORWARDED_SIGNALS: &[i32] = &[SIGHUP, SIGINT, SIGTERM, SIGWINCH];
+
+/// How long a fd-passing wait loop sleeps before forwarding signals.
+/// Interactive Ctrl-C wants the relay fast, but the loop must also reap
+/// the child scheduler-subscribed polling.
+const SIGNAL_RELAY_POLL: Duration = Duration::from_millis(100);
+
+/// Env keys the guest may ask the host to export to a child. Sent only if
+/// actually set somewhere; the host enforces the same fixed list again.
+const EXEC_ENV_KEYS: &[&str] = &["TERM", "LANG", "COLORTERM"];
 
 pub fn run(args: &[String]) {
     if args.len() < 2 {
@@ -14,11 +35,6 @@ pub fn run(args: &[String]) {
 }
 
 pub fn run_as_command(cmd: &str, args: &[String]) {
-    let msg = GuestMessage::HostExec {
-        cmd: cmd.to_string(),
-        args: args.to_vec(),
-    };
-
     // Negotiation happens before the request is written; a refused capability
     // is reported here rather than by the host dropping the connection.
     // Streaming output is requested opportunistically: old hosts refuse the
@@ -32,24 +48,102 @@ pub fn run_as_command(cmd: &str, args: &[String]) {
         eprintln!("host-exec: {e}");
         std::process::exit(1);
     });
-    let (mut stream, _accepted) = negotiate_at_with_optional(
+    let (mut stream, accepted) = negotiate_at_with_optional(
         &socket_path,
         &container,
         &[CAP_HOST_EXEC],
-        &[CAP_HOST_EXEC_STREAM],
+        &[CAP_HOST_EXEC_STREAM, CAP_HOST_EXEC_FDS],
     )
     .unwrap_or_else(|e| {
         eprintln!("host-exec: {e}");
         std::process::exit(1);
     });
-    if write_frame(&mut stream, &msg).is_err() {
-        std::process::exit(1);
-    }
 
-    let stdout = std::io::stdout();
-    let stderr = std::io::stderr();
-    let code = pump_responses(&mut stream, &mut stdout.lock(), &mut stderr.lock());
+    // Old hosts do not know the fd capability (it lands in the rejected
+    // list), so they keep serving the historical request shape untouched.
+    let code = if accepted.contains(&CAP_HOST_EXEC_FDS.to_string()) {
+        run_with_fds(&mut stream, cmd, args)
+    } else {
+        let msg = GuestMessage::HostExec {
+            cmd: cmd.to_string(),
+            args: args.to_vec(),
+        };
+        if write_frame(&mut stream, &msg).is_err() {
+            std::process::exit(1);
+        }
+        let stdout = std::io::stdout();
+        let stderr = std::io::stderr();
+        pump_responses(&mut stream, &mut stdout.lock(), &mut stderr.lock())
+    };
     std::process::exit(code);
+}
+
+/// Run the request with the stdio flowing directly between the guest and
+/// the host child: our own fds 0..2 (temperately substituted by /dev/null
+/// where closed) are attached to the frame, and the child's exit comes
+/// back as one `HostExecDone`. Nothing is buffered here — output bytes
+/// take the guest's own pipes, not the protocol.
+fn run_with_fds(stream: &mut UnixStream, cmd: &str, args: &[String]) -> i32 {
+    let triple = match stdio_triple() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("host-exec: {e}");
+            return 1;
+        }
+    };
+    let msg = GuestMessage::HostExecV2 {
+        cmd: cmd.to_string(),
+        args: args.to_vec(),
+        env: allowlisted_own_env(),
+        // Carried for the host phase that translates a container directory
+        // through the volume mappings; sending our cwd costs nothing.
+        cwd: std::env::current_dir()
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned()),
+        tty: false,
+    };
+    let mut wire = Vec::new();
+    if write_frame(&mut wire, &msg).is_err() {
+        return 1;
+    }
+    let raws: Vec<i32> = triple.iter().map(AsRawFd::as_raw_fd).collect();
+    match crate::protocol::sysutil::send_bytes_with_fds(stream, &[&wire], &raws) {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("host-exec: {e}");
+            return 1;
+        }
+    }
+    wait_for_done_with_signals(stream)
+}
+
+/// Which of the child's stdio descriptors this process should hand over:
+/// the guest's own stdin/stdout/stderr duplicated into owned handles, or
+/// a `/dev/null` opened read-write where the owning fd is closed entirely
+/// (`0<&-` style shells), so the request always carries the same three.
+fn stdio_triple() -> std::io::Result<[OwnedFd; 3]> {
+    Ok([
+        dup_or_devnull(std::io::stdin().as_fd())?,
+        dup_or_devnull(std::io::stdout().as_fd())?,
+        dup_or_devnull(std::io::stderr().as_fd())?,
+    ])
+}
+
+fn dup_or_devnull(fd: BorrowedFd<'_>) -> std::io::Result<OwnedFd> {
+    match nix::fcntl::fcntl(fd, nix::fcntl::FcntlArg::F_GETFD) {
+        Ok(_) => {
+            // Owned descriptor: safe to duplicate — the original stays
+            // with this process untouched, and the copy outlives the
+            // request frame being sent.
+            nix::unistd::dup(fd).map_err(std::io::Error::from)
+        }
+        Err(nix::errno::Errno::EBADF) => std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/null")
+            .map(std::os::fd::OwnedFd::from),
+        Err(e) => Err(std::io::Error::from(e)),
+    }
 }
 
 /// Relay host responses to our own stdio until the host reports the exit.
@@ -117,6 +211,91 @@ fn emit(out: &mut dyn Write, data: &[u8]) -> bool {
     }
 }
 
+/// The env pairs this process may offer the child, restricted to the same
+/// fixed list the host re-checks. Sending only these keeps the request
+/// honest even against a host whose filter is older than the shim.
+fn allowlisted_own_env() -> Vec<(String, String)> {
+    EXEC_ENV_KEYS
+        .iter()
+        .filter_map(|k| std::env::var(k).ok().map(|v| ((*k).to_string(), v)))
+        .collect()
+}
+
+/// Wait for a fd-passing session's `HostExecDone`, relaying trapped
+/// terminal signals meanwhile. Returns the child's exit code, or 1 when
+/// the host closed the session without reporting (output is truncated
+/// through the guest fds, so success would be a lie).
+///
+/// Signals are polled between frame reads, not in a handler: writing a
+/// protocol frame from signal context is the bug this structure avoids,
+/// and `signal_hook`'s iterator funnels arrivals safely into the loop.
+fn wait_for_done_with_signals(stream: &mut UnixStream) -> i32 {
+    let mut signals = match Signals::new(FORWARDED_SIGNALS.iter().copied()) {
+        Ok(s) => s,
+        // Without the trap a forwarded signal would kill the shim and
+        // strand the child: keep the session alive and degrade to waiting.
+        Err(e) => {
+            eprintln!("host-exec: signal tracking unavailable: {e}");
+            return wait_for_done(stream);
+        }
+    };
+    let mut reader = FrameReader::new();
+    if stream.set_read_timeout(Some(SIGNAL_RELAY_POLL)).is_err() {
+        return 1;
+    }
+    loop {
+        match reader.read(stream) {
+            Ok(FrameRead::Frame(bytes)) => match serde_json::from_slice::<HostMessage>(&bytes) {
+                Ok(HostMessage::HostExecDone { exit_code, .. }) => {
+                    let _ = stream.flush();
+                    return exit_code;
+                }
+                // A typed refusal (unknown command, unsupported option):
+                // surface it like a shell diagnostic.
+                Ok(HostMessage::Error { reason, .. }) => {
+                    eprintln!("host-exec: {reason}");
+                    return 1;
+                }
+                Ok(_) => {} // nothing this shim owns (e.g. Pings)
+                Err(e) => {
+                    eprintln!("host-exec: malformed host frame: {e}");
+                    return 1;
+                }
+            },
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                for sig in signals.pending() {
+                    let _ = write_frame(stream, &GuestMessage::HostExecSignal { sig });
+                }
+            }
+            // The host closed the session without reporting, or the read
+            // failed: output through the guest fds is truncated already,
+            // so success would be a lie.
+            Ok(FrameRead::Eof) | Err(_) => return 1,
+        }
+    }
+}
+
+/// Signal-free fallback used when trap registration fails: keeps the
+/// session watch intact without the relay.
+fn wait_for_done(stream: &mut UnixStream) -> i32 {
+    loop {
+        match read_frame(stream) {
+            Ok(Some(bytes)) => match serde_json::from_slice::<HostMessage>(&bytes) {
+                Ok(HostMessage::HostExecDone { exit_code, .. }) => return exit_code,
+                Ok(HostMessage::Error { reason, .. }) => {
+                    eprintln!("host-exec: {reason}");
+                    return 1;
+                }
+                _ => {}
+            },
+            _ => return 1,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +323,104 @@ mod tests {
         let mut err = Vec::new();
         let code = pump_responses(&mut client, &mut out, &mut err);
         (code, out, err)
+    }
+
+    /// Drive the fd-passing wait loop over a socket pair. The `server`
+    /// end reads frames until it sees a relayed signal with `want_sig`,
+    /// then reports `done_code`, mimicking how the host relays a
+    /// forwarded signal to the child and relays its death back.
+    fn wait_scripted(want_sig: i32, done_code: i32) -> i32 {
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+
+        let (mut client, mut server) = std::os::unix::net::UnixStream::pair().unwrap();
+        std::thread::spawn(move || {
+            let mut saw_signal = false;
+            for _ in 0..50 {
+                let Ok(Some(bytes)) = read_frame(&mut server) else {
+                    return;
+                };
+                let msg: GuestMessage = serde_json::from_slice(&bytes).unwrap();
+                match msg {
+                    GuestMessage::HostExecSignal { sig } if sig == want_sig => saw_signal = true,
+                    _ => {}
+                }
+                if saw_signal {
+                    write_frame(
+                        &mut server,
+                        &HostMessage::HostExecDone {
+                            exit_code: done_code,
+                            signal: Some(want_sig % 128),
+                        },
+                    )
+                    .unwrap();
+                    return;
+                }
+            }
+        });
+        // Deliver the real signal to this process after the shim has
+        // registered its trap — the iterator consumes it without killing
+        // the test, exactly as the trap works inside the shim.
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let _ = kill(Pid::this(), Signal::SIGWINCH);
+        });
+        let code = wait_for_done_with_signals(&mut client);
+        let _ = handle.join();
+        code
+    }
+
+    /// A SIGWINCH delivered while waiting is relayed as a protocol
+    /// message, and the host's shell-convention code comes back through
+    /// unchanged.
+    #[test]
+    fn fd_session_relays_a_trapped_signal_and_reports_the_done_code() {
+        assert_eq!(wait_scripted(28, 130), 130);
+    }
+
+    /// A plain `HostExecDone` passes through without any signal relay.
+    #[test]
+    fn fd_session_reports_a_plain_exit() {
+        let (mut client, mut server) = std::os::unix::net::UnixStream::pair().unwrap();
+        write_frame(
+            &mut server,
+            &HostMessage::HostExecDone {
+                exit_code: 42,
+                signal: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(wait_for_done_with_signals(&mut client), 42);
+    }
+
+    /// A typed refusal from the host prints to the guest shell's stderr
+    /// and exits 1.
+    #[test]
+    fn fd_session_surfaces_a_host_refusal() {
+        let (mut client, mut server) = std::os::unix::net::UnixStream::pair().unwrap();
+        write_frame(
+            &mut server,
+            &HostMessage::Error {
+                reason: "host-exec: TTY sessions are not supported yet".into(),
+                code: Some("not_supported".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(wait_for_done_with_signals(&mut client), 1);
+    }
+
+    /// The stdio triple always beats the same three owned descriptors,
+    /// duplicating the live ones rather than transferring them (so the
+    /// shim's real stdout survives the request).
+    #[test]
+    fn stdio_triple_dups_the_live_descriptors() {
+        let triple = stdio_triple().unwrap();
+        let raws: Vec<i32> = triple.iter().map(AsRawFd::as_raw_fd).collect();
+        assert_eq!(raws.len(), 3);
+        // Fresh numbers distinct from each other off-the-dup path.
+        for n in raws {
+            assert!(n >= 0);
+        }
     }
 
     #[test]

@@ -335,6 +335,99 @@ pub fn recv_fd(stream: &UnixStream) -> io::Result<Option<OwnedFd>> {
     Ok(owned.next())
 }
 
+/// Receive bytes from a connected Unix stream together with any
+/// descriptors the peer attached via `SCM_RIGHTS`.
+///
+/// Plain `read(2)` silently discards descriptors queued by a peer's
+/// `sendmsg`, so every read that may carry attached fds goes through
+/// here. Every descriptor the kernel delivers is adopted immediately
+/// (`MSG_CMSG_CLOEXEC`, so nothing added later inherits them).
+///
+/// # Security model for guest-supplied descriptors
+///
+/// The fds this returns originate on the guest side of the host
+/// connection — pipes, regular files and terminals the guest process
+/// already had open. Handing them to a spawned child as its stdio is what
+/// the guest asked for and gives the host **no new access**: the host
+/// only holds an extra handle to the pipe between the guest's two
+/// processes. Descriptors not consumed by a host-exec request are
+/// dropped by the caller, which is their only closing step.
+pub fn recv_bytes_with_fds(
+    stream: &UnixStream,
+    buf: &mut [u8],
+) -> io::Result<(usize, Vec<OwnedFd>)> {
+    /// Buffer covering several delivered descriptors; a peer that sends
+    /// more in one message is refused (see the `MSG_CTRUNC` check) rather
+    /// than partially honoured with the rest silently closed.
+    const CMSG_BUF_LEN: usize = 1024;
+
+    let raw_fd = stream.as_raw_fd();
+    let mut iov = [IoSliceMut::new(buf)];
+    let mut cmsg_buf = vec![0u8; CMSG_BUF_LEN];
+    let msg = loop {
+        match recvmsg::<()>(
+            raw_fd,
+            &mut iov,
+            Some(&mut cmsg_buf),
+            MsgFlags::MSG_CMSG_CLOEXEC,
+        ) {
+            Ok(m) => break m,
+            Err(nix::errno::Errno::EINTR) => {}
+            Err(e) => return Err(io::Error::from(e)),
+        }
+    };
+
+    let mut fds: Vec<OwnedFd> = Vec::new();
+    if let Ok(cmsgs) = msg.cmsgs() {
+        for cmsg in cmsgs {
+            if let ControlMessageOwned::ScmRights(arrived) = cmsg {
+                fds.extend(arrived.into_iter().map(adopt_scm_fd));
+            }
+        }
+    }
+    if msg.flags.contains(MsgFlags::MSG_CTRUNC) {
+        // The kernel dropped descriptors we had no room for. Refuse the
+        // whole message — every adopted descriptor is closed here — so a
+        // truncated request can never be executed as if it were whole.
+        drop(fds);
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "too many attached descriptors in one message",
+        ));
+    }
+    Ok((msg.bytes, fds))
+}
+
+/// A [`Read`] adapter that keeps [`recv_bytes_with_fds`]'s descriptors
+/// alongside the frame bytes a [`FrameReader`] consumes.
+///
+/// The protocol reader requests one length prefix or body slice per read;
+/// descriptors attached to a frame ride the *first* read of its bytes and
+/// are parked in `pending` until the frame is complete, so a frame and
+/// its attached fds are consumed as one unit no matter how many recv
+/// calls the frame needed.
+pub struct FdCapturingReader<'a> {
+    stream: &'a UnixStream,
+    /// Adopted descriptors waiting for the frame they arrived with. The
+    /// owner of this vec decides what to do with them once a frame is
+    /// complete (use or drop-closes).
+    pending: &'a mut Vec<OwnedFd>,
+}
+
+impl<'a> FdCapturingReader<'a> {
+    pub fn new(stream: &'a UnixStream, pending: &'a mut Vec<OwnedFd>) -> Self {
+        Self { stream, pending }
+    }
+}
+
+impl std::io::Read for FdCapturingReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let (n, fds) = recv_bytes_with_fds(self.stream, buf)?;
+        self.pending.extend(fds);
+        Ok(n)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,5 +542,59 @@ mod tests {
         assert_eq!(count_for(&target), 5);
         drop(got);
         assert_eq!(count_for(&target), 4);
+    }
+
+    /// Frame bytes and the descriptors attached to them arrive through
+    /// one recvmsg: a frame read via [`FdCapturingReader`] parks the
+    /// guest's stdio pipes in `pending` while [`FrameReader`] assembles
+    /// the payload, none of them lost to the prefix/body slicing the
+    /// protocol reader does, and a descriptor-free frame leaves the
+    /// pending list untouched.
+    #[test]
+    fn frame_bytes_and_attached_descriptors_arrive_together() {
+        use crate::protocol::{FrameRead, FrameReader, GuestMessage, write_frame};
+
+        let (mut tx, rx) = UnixStream::pair().unwrap();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let spares: Vec<std::fs::File> = (0..3).map(|_| tmp.reopen().unwrap()).collect();
+        let raws: Vec<RawFd> = spares.iter().map(|f| f.as_raw_fd()).collect();
+
+        let v2 = |cmd: &str| GuestMessage::HostExecV2 {
+            cmd: cmd.into(),
+            args: vec![],
+            env: vec![],
+            cwd: None,
+            tty: false,
+        };
+        let mut wire = Vec::new();
+        write_frame(&mut wire, &v2("cat")).unwrap();
+        crate::protocol::sysutil::send_bytes_with_fds(&tx, &[&wire], &raws).unwrap();
+
+        let mut pending: Vec<OwnedFd> = Vec::new();
+        let mut reader = FrameReader::new();
+        let mut fd_in = FdCapturingReader::new(&rx, &mut pending);
+        let frame = match reader.read(&mut fd_in).unwrap() {
+            FrameRead::Frame(b) => b,
+            other => panic!("expected a frame, got {other:?}"),
+        };
+
+        let msg: GuestMessage = serde_json::from_slice(&frame).unwrap();
+        assert!(matches!(msg, GuestMessage::HostExecV2 { cmd, .. } if cmd == "cat"));
+        assert_eq!(pending.len(), 3);
+
+        // A later frame that carries no descriptors leaves the pending
+        // list unchanged instead of reporting anything extra.
+        write_frame(&mut tx, &v2("true")).unwrap();
+        let mut pending2: Vec<OwnedFd> = Vec::new();
+        let mut fd_in = FdCapturingReader::new(&rx, &mut pending2);
+        match reader.read(&mut fd_in).unwrap() {
+            FrameRead::Frame(b) => {
+                let msg: GuestMessage = serde_json::from_slice(&b).unwrap();
+                assert!(matches!(msg, GuestMessage::HostExecV2 { cmd, .. } if cmd == "true"));
+            }
+            other => panic!("expected a frame, got {other:?}"),
+        }
+        assert!(pending2.is_empty(), "no descriptors were sent");
+        assert_eq!(pending.len(), 3);
     }
 }

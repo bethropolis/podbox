@@ -5,6 +5,7 @@
 //! Extracted verbatim from `socket_host.rs`.
 
 use std::collections::HashSet;
+use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -45,9 +46,17 @@ pub(crate) fn handle_connection(
     // Keeps a partly received frame across read timeouts. Dropping those bytes
     // (as `read_frame` would) misaligns the stream for every later frame.
     let mut reader = FrameReader::new();
-
+    // Descriptors that arrived with the frame under construction. Adopted
+    // on the read path (plain `read` would silently discard them) and
+    // drained into the message that claimed them — anything left over is
+    // closed at the frame boundary.
+    let mut pending_fds: Vec<OwnedFd> = Vec::new();
+    // Closure: the fd capture owns the stream borrow.
     loop {
-        let msg_bytes = match reader.read(stream) {
+        let msg_bytes = match reader.read(&mut process::FdCapturingReader::new(
+            stream,
+            &mut pending_fds,
+        )) {
             Ok(FrameRead::Frame(b)) => b,
             Ok(FrameRead::Eof) => return Ok(()),
             Err(e)
@@ -86,10 +95,14 @@ pub(crate) fn handle_connection(
         };
 
         last_ping = std::time::Instant::now();
+        // The frame is complete: exactly one message may claim the
+        // descriptors that arrived with it; anything else is closing them.
+        let attached_fds = std::mem::take(&mut pending_fds);
         let msg: GuestMessage = match serde_json::from_slice(&msg_bytes) {
             Ok(m) => m,
             Err(e) => {
                 tracing::warn!("malformed frame from peer: {e}");
+                drop(attached_fds);
                 if note_failure(stream, &mut failures, "malformed frame") {
                     return Ok(());
                 }
@@ -264,6 +277,43 @@ pub(crate) fn handle_connection(
                 // frames, which it already understands.
                 let streaming = has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC_STREAM);
                 handlers::handle_host_exec(stream, &config.integration, cmd, args, streaming)?
+            }
+            GuestMessage::HostExecV2 {
+                cmd,
+                args,
+                env,
+                cwd,
+                tty,
+            } => {
+                // Two gates: `host_exec` (the request runs a host command)
+                // and the fd capability it is built for. Without the fd
+                // grant the frame is refused with a typed error and the
+                // attached descriptors are closed unexecuted.
+                if !has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC)
+                    || !has_cap(&negotiated, crate::protocol::CAP_HOST_EXEC_FDS)
+                {
+                    drop(attached_fds);
+                    if note_failure(
+                        stream,
+                        &mut failures,
+                        "capability 'host_exec_fds' not accepted",
+                    ) {
+                        return Ok(());
+                    }
+                    continue;
+                }
+                failures = 0;
+                // The full field set is consumed by the handler; the
+                // descriptors already arrived with the frame.
+                let request = handlers::HostExecV2Request::from_message(cmd, args, env, cwd, tty);
+                handlers::handle_host_exec_v2(stream, &config.integration, request, attached_fds)?
+            }
+            GuestMessage::HostExecSignal { sig } => {
+                // Relay frames only mean something while a V2 child is
+                // running, and that path consumes them itself. Out here a
+                // signal has no target and no attached fds.
+                drop(attached_fds);
+                tracing::debug!("ignoring out-of-session HostExecSignal({sig})");
             }
             GuestMessage::Info {
                 guest_version,

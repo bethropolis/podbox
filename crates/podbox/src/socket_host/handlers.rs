@@ -2,15 +2,20 @@
 //! `host-exec`, `notify`, `xdg-open`, `clipboard`). Single cohesive concern;
 //! stays above ~300 LOC because the message-dispatch contract is one unit
 //! (documented exemption, per the modularization guide 1/8).
+use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use nix::sys::signal::{Signal, kill};
+use nix::sys::signal::{Signal, kill, killpg};
 use nix::unistd::Pid;
 
+use super::PING_INTERVAL;
 use super::actions::HostActions;
 use crate::config::IntegrationConfig;
-use crate::protocol::{ExecStream, HostMessage, write_frame};
+use crate::process::FdCapturingReader;
+use crate::protocol::{ExecStream, FrameRead, FrameReader, GuestMessage, HostMessage, write_frame};
 
 /// How long a host-exec child may run before it is killed. Per-allowlist-entry
 /// timeouts would need a config key; until then one default covers every entry.
@@ -73,6 +78,10 @@ pub(super) fn handle_hello(
             // Streaming output still runs allowlisted commands only, so it
             // rides on the same switch as plain host-exec.
             crate::protocol::CAP_HOST_EXEC_STREAM => config.host_exec.enabled,
+            // fd-passing is likewise allowlist-only: it adds stdio plumbing
+            // to the same command gate, with the child in its own process
+            // group and the guest env filtered to a fixed key list.
+            crate::protocol::CAP_HOST_EXEC_FDS => config.host_exec.enabled,
             _ => false,
         };
         if enabled {
@@ -289,25 +298,19 @@ pub(super) fn handle_clipboard_get(
     Ok(())
 }
 
-/// Handle a `HostExec` message from the guest.
-///
-/// When the guest negotiated `host_exec_stream`, the child's pipes are
-/// forwarded in raw-byte chunks as the command runs, so output larger
-/// than a frame (or not valid UTF-8) survives. Otherwise the whole output
-/// is buffered and sent as one frame per pipe, exactly as before, for
-/// guests that predate streaming.
-pub(super) fn handle_host_exec(
-    stream: &mut UnixStream,
+/// Resolve a host-exec request into a canonical executable path, shared
+/// by the plain and fd-passing paths. `Err` is the guest-facing message,
+/// with the same wording on both paths.
+fn resolve_host_exec_request(
     config: &IntegrationConfig,
-    cmd: String,
-    args: Vec<String>,
-    streaming: bool,
-) -> anyhow::Result<()> {
+    cmd: &str,
+    args: &[String],
+) -> Result<std::path::PathBuf, String> {
     if !config.host_exec.enabled {
-        return host_exec_failed(stream, "host-exec is disabled");
+        return Err("host-exec is disabled".to_string());
     }
 
-    let entry = match config.host_exec.resolve(&cmd) {
+    let entry = match config.host_exec.resolve(cmd) {
         Some(e) => e,
         None => {
             let allowed = config
@@ -316,20 +319,17 @@ pub(super) fn handle_host_exec(
                 .as_ref()
                 .map(|m| m.keys().cloned().collect::<Vec<_>>().join(", "))
                 .unwrap_or_default();
-            return host_exec_failed(
-                stream,
-                &format!(
-                    "Permission denied: '{cmd}' is not in the host-exec allowlist\nAllowed commands: {allowed}"
-                ),
-            );
+            return Err(format!(
+                "Permission denied: '{cmd}' is not in the host-exec allowlist\nAllowed commands: {allowed}"
+            ));
         }
     };
 
     // Conditional argument filtering: when `filter = false` the blocklist is
     // bypassed for this command (execution still uses execve, not a shell).
     if entry.filter_enabled() {
-        if let Err(msg) = validate_host_exec_args(&args) {
-            return host_exec_failed(stream, &format!("Security violation: {msg}"));
+        if let Err(msg) = validate_host_exec_args(args) {
+            return Err(format!("Security violation: {msg}"));
         }
     } else {
         tracing::debug!(
@@ -346,28 +346,48 @@ pub(super) fn handle_host_exec(
         Ok(p) => p,
         Err(e) => {
             tracing::error!("host-exec: failed to canonicalize '{}': {e}", resolved);
-            return host_exec_failed(
-                stream,
-                &format!("Failed to resolve executable path '{resolved}': {e}"),
-            );
+            return Err(format!(
+                "Failed to resolve executable path '{resolved}': {e}"
+            ));
         }
     };
     if !canonical_path.is_file() {
-        return host_exec_failed(
-            stream,
-            &format!("'{}' is not a regular file", canonical_path.display()),
-        );
+        return Err(format!(
+            "'{}' is not a regular file",
+            canonical_path.display()
+        ));
     }
     tracing::info!(
         "host-exec: resolved '{}' -> {}",
         resolved,
         canonical_path.display()
     );
+    Ok(canonical_path)
+}
 
-    match std::process::Command::new(&canonical_path)
+/// Handle a `HostExec` message from the guest.
+///
+/// When the guest negotiated `host_exec_stream`, the child's pipes are
+/// forwarded in raw-byte chunks as the command runs, so output larger
+/// than a frame (or not valid UTF-8) survives. Otherwise the whole output
+/// is buffered and sent as one frame per pipe, exactly as before, for
+/// guests that predate streaming.
+pub(super) fn handle_host_exec(
+    stream: &mut UnixStream,
+    config: &IntegrationConfig,
+    cmd: String,
+    args: Vec<String>,
+    streaming: bool,
+) -> anyhow::Result<()> {
+    let canonical_path = match resolve_host_exec_request(config, &cmd, &args) {
+        Ok(p) => p,
+        Err(msg) => return host_exec_failed(stream, &msg),
+    };
+
+    match Command::new(&canonical_path)
         .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
     {
         Ok(child) => {
@@ -406,6 +426,268 @@ fn host_exec_failed(stream: &mut UnixStream, msg: &str) -> anyhow::Result<()> {
         },
     )?;
     Ok(())
+}
+
+/// Exactly how many descriptors a `HostExecV2` request carries: the child
+/// reads fd 0 and writes fds 1 and 2. A peer that sends a different count
+/// is refused rather than guessed at.
+const EXEC_FD_COUNT: usize = 3;
+
+/// How long the host-exec relay loop waits for a peer frame before it
+/// reaps the child instead. Short enough for interactive Ctrl-C forwarding
+/// when the host is idle.
+const SIGNAL_RELAY_POLL: Duration = Duration::from_millis(100);
+
+/// Env keys a guest may export into a host-exec child. The child runs
+/// with the host's environment; a guessable key like `LD_PRELOAD` or
+/// `PATH` would let container content steer the child differently from
+/// the same command run on the host, so only terminal-presentation keys
+/// pass through.
+const EXEC_ENV_KEYS: &[&str] = &["TERM", "LANG", "COLORTERM"];
+
+/// Filter guest-requested child env down to the fixed allowlist.
+fn allowlisted_exec_env(env: &[(String, String)]) -> Vec<(String, String)> {
+    env.iter()
+        .filter(|(k, _)| EXEC_ENV_KEYS.contains(&k.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// The parsed fields of a `HostExecV2` request, without its descriptors.
+pub(super) struct HostExecV2Request {
+    pub(super) cmd: String,
+    pub(super) args: Vec<String>,
+    pub(super) env: Vec<(String, String)>,
+    pub(super) cwd: Option<String>,
+    pub(super) tty: bool,
+}
+
+impl HostExecV2Request {
+    pub(super) fn from_message(
+        cmd: String,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+        cwd: Option<String>,
+        tty: bool,
+    ) -> Self {
+        Self {
+            cmd,
+            args,
+            env,
+            cwd,
+            tty,
+        }
+    }
+}
+
+/// Handle a `HostExecV2` message: run the allowlisted command with the
+/// guest's descriptors as the child's stdio, relay signals to it while it
+/// runs, and report its exit.
+pub(super) fn handle_host_exec_v2(
+    stream: &mut UnixStream,
+    config: &IntegrationConfig,
+    request: HostExecV2Request,
+    fds: Vec<OwnedFd>,
+) -> anyhow::Result<()> {
+    let HostExecV2Request {
+        cmd,
+        args,
+        env,
+        cwd,
+        tty,
+    } = request;
+    // Descriptors are consumed by every path below: moved into the child's
+    // stdio, or dropped here — dropping closes them, so a refused request
+    // never leaves a stray fd describing guest state in the host process.
+    if tty {
+        return host_exec_v2_refused(
+            stream,
+            "host-exec: TTY sessions are not supported yet (request carried tty=true)",
+            "not_supported",
+        );
+    }
+    let canonical_path = match resolve_host_exec_request(config, &cmd, &args) {
+        Ok(p) => p,
+        Err(msg) => return host_exec_failed(stream, &msg),
+    };
+    let ok_fds = match <Vec<OwnedFd> as TryInto<[OwnedFd; EXEC_FD_COUNT]>>::try_into(fds) {
+        Ok(f) => f,
+        Err(_) => {
+            return host_exec_v2_refused(
+                stream,
+                &format!(
+                    "host-exec: the request must carry exactly {EXEC_FD_COUNT} descriptors (stdin, stdout, stderr)"
+                ),
+                "bad_request",
+            );
+        }
+    };
+
+    // Security model: these descriptors arrived from the guest over the
+    // host connection and are guest-side pipes, files and terminals —
+    // plumbing between the guest's own processes. With them as its stdio
+    // the host child reads and writes what the guest asked it to, and the
+    // host gains no access it did not already have for running the
+    // allowlisted command. The delivery copies are consumed by the child's
+    // stdio and dropped right after spawn, so fds are closed here rather
+    // than leaked into later requests.
+    let [child_stdin, child_stdout, child_stderr] = ok_fds;
+
+    // Only the allowlisted keys reach through; the child otherwise runs in
+    // the host daemon's own environment. `cwd` is carried but not processed
+    // yet: translating a container path needs the volume mappings.
+    if cwd.is_some() {
+        tracing::debug!("host-exec: guest cwd carried but not yet used");
+    }
+    let mut command = Command::new(&canonical_path);
+    command.args(&args);
+    for (key, value) in allowlisted_exec_env(&env) {
+        command.env(key, value);
+    }
+    let child = command
+        .stdin(Stdio::from(child_stdin))
+        .stdout(Stdio::from(child_stdout))
+        .stderr(Stdio::from(child_stderr))
+        // Own process group: a relayed SIGINT/SIGTERM reaches the child and
+        // nothing above it, unlike a child sharing the daemon's group.
+        .process_group(0)
+        .spawn();
+
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = if e.kind() == std::io::ErrorKind::NotFound {
+                format!("host-exec: '{cmd}' not found in allowlist path or host $PATH")
+            } else {
+                format!("host-exec: failed to execute '{cmd}': {e}")
+            };
+            return host_exec_failed(stream, &msg);
+        }
+    };
+
+    // Spawn succeeded: the stdio descriptors are in the child now, and the
+    // host's own copies are closed by `Stdio`'s drop after `spawn` — no
+    // leaked fd holds the guest's pipes open past the child's lifetime.
+    run_child_with_signal_relay(stream, &mut child)
+}
+
+/// Refuse a `HostExecV2` request before anything runs: a typed `Error`
+/// frame, with the request's descriptors (if any) dropped by the caller of
+/// this handler not being run.
+fn host_exec_v2_refused(stream: &mut UnixStream, reason: &str, code: &str) -> anyhow::Result<()> {
+    write_frame(
+        stream,
+        &HostMessage::Error {
+            reason: reason.to_string(),
+            code: Some(code.to_string()),
+        },
+    )?;
+    Ok(())
+}
+
+/// While a V2 child runs, the connection carries relay messages only:
+/// poll the peer for `HostExecSignal` frames with a short timeout and
+/// reap the child in the gaps. On any disconnect or foreign frame with
+/// attached descriptors, stray descriptors are closed, and the child is
+/// killed and reaped so nothing outlives its session.
+fn run_child_with_signal_relay(
+    stream: &mut UnixStream,
+    child: &mut std::process::Child,
+) -> anyhow::Result<()> {
+    let pgid = Pid::from_raw(child.id().cast_signed());
+    let mut reader = FrameReader::new();
+    stream.set_read_timeout(Some(SIGNAL_RELAY_POLL))?;
+
+    let mut exited: Option<std::process::ExitStatus> = None;
+    while exited.is_none() {
+        // A peer that attaches descriptors to a relay frame misuses the
+        // session: capture and close them instead of leaving them for a
+        // later (different) request.
+        let mut stray: Vec<OwnedFd> = Vec::new();
+        let read = reader.read(&mut FdCapturingReader::new(stream, &mut stray));
+        drop(stray);
+        match read {
+            Ok(FrameRead::Frame(bytes)) => {
+                if let Ok(GuestMessage::HostExecSignal { sig }) =
+                    serde_json::from_slice::<GuestMessage>(&bytes)
+                {
+                    relay_signal(pgid, sig);
+                } else {
+                    tracing::debug!("host-exec: ignoring non-relay frame while child runs");
+                }
+            }
+            Ok(FrameRead::Eof) => {
+                // The shim died without reporting: nothing is left to
+                // write output to, so the child should not keep running.
+                tracing::warn!("host-exec: peer closed the connection; killing the child");
+                let _ = kill(pgid, Signal::SIGKILL);
+                child.wait()?;
+                stream.set_read_timeout(Some(PING_INTERVAL))?;
+                return Ok(());
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                match child.try_wait() {
+                    Ok(Some(status)) => exited = Some(status),
+                    Ok(None) => {}
+                    // A reap failure means the child is gone and unknown:
+                    // fail loudly, the caller treats it as host drift.
+                    Err(e) => {
+                        stream.set_read_timeout(Some(PING_INTERVAL))?;
+                        return Err(anyhow::Error::from(e));
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("host-exec: relay read failed: {e}");
+                let _ = kill(pgid, Signal::SIGKILL);
+                let _ = child.wait();
+                stream.set_read_timeout(Some(PING_INTERVAL))?;
+                return Err(anyhow::Error::from(e));
+            }
+        }
+    }
+
+    stream.set_read_timeout(Some(PING_INTERVAL))?;
+    let (exit_code, signal) = exit_code_and_signal(exited.as_ref().unwrap());
+    write_frame(stream, &HostMessage::HostExecDone { exit_code, signal })?;
+    Ok(())
+}
+
+/// Map a guest-relayed signal number to the child's process group. Only
+/// the shim's known set is relayed (SIGHUP, SIGINT, SIGTERM, SIGWINCH):
+/// `HostExecSignal` is a relay channel for terminal signals, not an
+/// arbitrary host API, so any other number is dropped with a log. Relay
+/// errors are debug-logged, since a child that has just exited races any
+/// late `HostExecSignal` with an unavoidable `ESRCH`.
+fn relay_signal(pgid: Pid, sig: i32) {
+    let signal = match sig {
+        1 => Signal::SIGHUP,
+        2 => Signal::SIGINT,
+        15 => Signal::SIGTERM,
+        28 => Signal::SIGWINCH,
+        other => {
+            tracing::debug!("host-exec: ignoring unforwardable signal {other}");
+            return;
+        }
+    };
+    // The child leads its own process group (`process_group(0)` at
+    // spawn), so the relay reaches only it — not the daemon's group —
+    // however the guest shim was itself signalled.
+    match killpg(pgid, signal) {
+        Err(nix::errno::Errno::ESRCH) => {}
+        Err(e) => {
+            tracing::debug!("host-exec: relay of signal {} failed: {e}", signal as i32)
+        }
+        Ok(()) => {
+            tracing::debug!(
+                "host-exec: relayed signal {} to the child's group",
+                signal as i32
+            )
+        }
+    }
 }
 
 /// Wait for the child, then send its whole stdout and stderr as one frame

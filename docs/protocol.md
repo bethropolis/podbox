@@ -64,6 +64,8 @@ accepted ones.
 | `clipboard_set` | `text` (at most 8 MiB; larger content gets an `error` reply and leaves the session open) |
 | `clipboard_get` | — (the host answers `error` when the selection exceeds 8 MiB) |
 | `host_exec` | `cmd`, `args` |
+| `host_exec_v2` | `cmd`, `args`, `env` (optional key/value pairs; only `TERM`, `LANG`, `COLORTERM` pass), `cwd` (optional; carried for a future phase, unused today), `tty` (optional; `true` is refused with a typed error for now) — the child's stdin/stdout/stderr arrive as three descriptors via `SCM_RIGHTS` on the same connection |
+| `host_exec_signal` | `sig` (optional signal number to relay to a running fd-passing host-exec child) |
 | `register_session` | — (pidfd via `SCM_RIGHTS`) |
 | `busy` | — |
 | `idle_timeout` | — |
@@ -115,8 +117,17 @@ no symlink, no retries.
 | `clipboard` | `podbox-clipboard` | Clipboard sharing |
 | `host_exec` | `host-exec` | Execute commands on host |
 | `host_exec_stream` | — (requested by `host-exec` alongside `host_exec`) | Chunked raw-byte output streaming; without it the host buffers one frame per pipe |
+| `host_exec_fds` | — (requested by `host-exec` alongside `host_exec`) | Attached-stdio sessions: `host_exec_v2` requests carry the child's three stdio descriptors via `SCM_RIGHTS`, so bytes flow through the pipes themselves with no protocol copying; `host_exec_signal` relays signals to the child |
 
 A guest that predates `host_exec_stream` never requests it and keeps
 receiving buffered `host_exec_stdout`/`host_exec_stderr` frames, and it
 parses the newer `host_exec_done` fine (the extra `signal` field is
 ignored). No protocol version bump was needed.
+
+`host_exec_fds` follows the same rule. A guest without it keeps using the
+plain `host_exec` frames exactly as before; a host that predates the
+capability never grants it, so an acknowledging guest falls back to the
+plain path. The child spawned for an fd-passing session sits in its own
+process group, so Ctrl-C typed in the guest's terminal reaches it as a
+relayed SIGINT rather than killing anything else; the exit is still
+reported through the regular `host_exec_done` frame.

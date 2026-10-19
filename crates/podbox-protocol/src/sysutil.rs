@@ -7,6 +7,9 @@
 //! `nix`/`rustix`/`signal-hook` shims, so the wire-pure core of the crate
 //! stays usable from wasm targets (this module is compiled out there).
 
+use std::io::{self, IoSlice};
+use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::Arc;
@@ -67,9 +70,35 @@ pub fn wait_child_timeout(
     Ok(output)
 }
 
+/// Send `data` on a Unix stream with file descriptors attached, so the
+/// receiver reads both in one message.
+///
+/// This is the guest→host direction of descriptor passing (the host's
+/// `process::recv_bytes_with_fds` mirrors it). Descriptors and frame bytes
+/// travel together: when a `HostExecV2` request arrives, the host has the
+/// stdio descriptors before it parses the frame. Retries on `EINTR`.
+pub fn send_bytes_with_fds(stream: &UnixStream, data: &[&[u8]], fds: &[RawFd]) -> io::Result<()> {
+    use nix::sys::socket::{ControlMessage, MsgFlags, sendmsg};
+
+    let raw_fd = stream.as_raw_fd();
+    let cmsg = ControlMessage::ScmRights(fds);
+    let iov: Vec<IoSlice<'_>> = data.iter().map(|d| IoSlice::new(d)).collect();
+    loop {
+        match sendmsg::<()>(raw_fd, &iov, &[cmsg], MsgFlags::empty(), None) {
+            Ok(_) => return Ok(()),
+            Err(nix::errno::Errno::EINTR) => {}
+            Err(e) => return Err(io::Error::from(e)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::IoSliceMut;
+    use std::os::fd::AsRawFd;
+    use std::os::fd::FromRawFd;
+    use std::os::fd::OwnedFd;
 
     // Single-threaded test: set_var/remove_var are process-global and unsafe
     // in edition 2024, so this is wrapped in a targeted allowance.
@@ -103,5 +132,60 @@ mod tests {
             fallback.starts_with("/run/user/") && !fallback.to_string_lossy().ends_with("4242"),
             "unexpected fallback {fallback:?}"
         );
+    }
+
+    /// Data and descriptors travel in one message: the frame payload is
+    /// readable on the other end and the descriptor points at the file the
+    /// sender chose.
+    #[test]
+    fn send_bytes_with_fds_delivers_data_and_descriptors_together() {
+        let (tx, rx) = UnixStream::pair().unwrap();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), b"sent-by-test").unwrap();
+        let file = std::fs::File::open(tmp.path()).unwrap();
+
+        let frame = b"proton frame bytes";
+        send_bytes_with_fds(&tx, &[&frame[..], b""], &[file.as_raw_fd()])
+            .expect("sendmsg with rights");
+
+        let mut buf = [0u8; 64];
+        let (n, owned) = {
+            let mut iov = [IoSliceMut::new(&mut buf)];
+            let mut cmsg = vec![0u8; 64];
+            let msg = nix::sys::socket::recvmsg::<()>(
+                rx.as_raw_fd(),
+                &mut iov,
+                Some(&mut cmsg),
+                nix::sys::socket::MsgFlags::MSG_CMSG_CLOEXEC,
+            )
+            .unwrap();
+            let n = msg.bytes;
+            let mut owned: Vec<OwnedFd> = Vec::new();
+            if let Ok(cmsgs) = msg.cmsgs() {
+                for cmsg in cmsgs {
+                    if let nix::sys::socket::ControlMessageOwned::ScmRights(fds) = cmsg {
+                        owned.extend(fds.into_iter().map(|r| {
+                            // SAFETY: SCM_RIGHTS delivery transferred exactly one
+                            // reference per descriptor to this process.
+                            #[allow(unsafe_code)]
+                            unsafe {
+                                OwnedFd::from_raw_fd(r)
+                            }
+                        }));
+                    }
+                }
+            }
+            (n, owned)
+        };
+        assert_eq!(&buf[..n], frame, "frame bytes did not arrive");
+        assert_eq!(owned.len(), 1);
+        // Reopening through the descriptor proves it is the temp file.
+        let target = tmp.path().to_path_buf();
+        // Reopening through the descriptor proves it is the temp file.
+        let mut fd_file = std::fs::File::from(owned.into_iter().next().unwrap());
+        let mut contents = String::new();
+        std::io::Read::read_to_string(&mut fd_file, &mut contents).unwrap();
+        assert_eq!(contents, "sent-by-test");
+        drop(target);
     }
 }
