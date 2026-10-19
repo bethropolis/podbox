@@ -388,4 +388,21 @@ mod tests {
             Some(&serde_json::json!("bash"))
         );
     }
+
+    #[test]
+    fn schema_enums_list_storage_caches() {
+        let enums: serde_json::Value =
+            serde_json::to_value(podbox::config::schema_enums()).unwrap();
+        let shared = enums
+            .get("storage.shared_caches")
+            .and_then(|v| v.as_array())
+            .expect("caches exported");
+        assert!(shared.contains(&serde_json::json!("cargo")));
+        assert!(shared.contains(&serde_json::json!("mbx")));
+        assert_eq!(
+            enums.get("storage.host_caches"),
+            enums.get("storage.shared_caches"),
+            "the tick-list is the same for both cache tables"
+        );
+    }
 }

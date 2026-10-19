@@ -98,6 +98,19 @@ pub fn schema_enums() -> Map<String, Value> {
     put("security.secrets.type", SecretType::VARIANTS);
     put("security.secrets.source", SecretSource::VARIANTS);
     put("container.services.restart", ServiceRestart::VARIANTS);
+    // The `[storage.*_caches]` tick-lists: cache names in declaration
+    // order, straight from `BUILTIN_CACHES`.
+    let caches = crate::config::types::builtin_cache_list();
+    put(
+        "storage.shared_caches",
+        caches.collect::<Vec<_>>().as_slice(),
+    );
+    put(
+        "storage.host_caches",
+        crate::config::types::builtin_cache_list()
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
     out
 }
 

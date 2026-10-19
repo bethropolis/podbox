@@ -17,8 +17,8 @@ mod cache;
 mod runtime;
 pub use cache::{
     BuiltinCachePath, BuiltinCaches, CustomCacheConfig, HostCacheConfig, HostCachesConfig,
-    SharedCachesConfig, StorageConfig, all_builtin_cache_paths, builtin_cache_mount_names,
-    builtin_cache_names,
+    SharedCachesConfig, StorageConfig, all_builtin_cache_paths, builtin_cache_list,
+    builtin_cache_mount_names, builtin_cache_names,
 };
 pub use runtime::{NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig};
 
