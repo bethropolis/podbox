@@ -5,7 +5,10 @@ use crate::config::enums::{CapPreset, NetworkMode, UsernsMode};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NetworkConfig {
-    #[serde(default = "default_network_mode")]
+    #[serde(
+        default = "default_network_mode",
+        skip_serializing_if = "is_default_network_mode"
+    )]
     pub mode: NetworkMode,
     #[serde(default, skip_serializing_if = "is_false")]
     pub offline: bool,
@@ -21,6 +24,10 @@ impl Default for NetworkConfig {
             ports: Vec::new(),
         }
     }
+}
+
+fn is_default_network_mode(mode: &NetworkMode) -> bool {
+    *mode == default_network_mode()
 }
 
 impl NetworkConfig {
@@ -66,16 +73,22 @@ fn default_secret_source() -> SecretSource {
     SecretSource::Podman
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum SecretType {
     #[default]
     Env,
     Mount,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum SecretSource {
     #[default]
     Podman,

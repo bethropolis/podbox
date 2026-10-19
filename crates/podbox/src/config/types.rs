@@ -76,8 +76,11 @@ pub struct RunConfig {
     pub commands: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum DotfilesCloneOn {
     #[default]
     Host,
@@ -558,8 +561,11 @@ fn default_provision_timeout() -> String {
     "5m".into()
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum ProvisionOnFailure {
     #[default]
     Warn,
@@ -645,8 +651,11 @@ impl Default for WaylandConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum DbusPreset {
     Flatpak,
     Gnome,
