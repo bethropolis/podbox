@@ -12,6 +12,8 @@ use podbox::env::HostEnv;
 use podbox::systemd;
 use podbox::xdg::ResolvedXdgDirs;
 
+use super::runner::Runtime;
+
 /// Build the container image (or pull a prebuilt image).
 pub fn run_build(
     config: &Config,
@@ -181,50 +183,31 @@ pub fn run_start(
 
 /// Stop the container.
 ///
-/// Uses `systemctl --user stop` when quadlet is enabled so that systemd
-/// tracks the service state transition (preventing a stale "unknown" in
-/// subsequent `systemctl is-active` checks).
+/// The "systemctl --user stop" vs "podman stop" decision (and its dry-run
+/// line) lives in [`runner::Runtime::stop`]: through systemd when Quadlet
+/// manages the box so systemd tracks the state transition (preventing a
+/// stale "unknown" in subsequent `systemctl is-active` checks), plain
+/// podman otherwise.
 pub fn run_stop(config: &Config, name: &str, dry_run: bool) -> Result<()> {
-    if dry_run {
-        if config.lifecycle.quadlet && systemd::is_available() {
-            println!("systemctl --user stop {name}");
-        } else {
-            println!("podman stop {name}");
-        }
-        return Ok(());
+    let ctx = crate::ctx::Ctx { dry_run };
+    Runtime::for_config(config).stop(&ctx, config)?;
+    if !dry_run {
+        let _ = podbox::history::record(name, "stop", "");
     }
-    if config.lifecycle.quadlet && systemd::is_available() {
-        systemd::stop_unit(name)?;
-    } else {
-        let args = podbox::process::args(&["stop", name]);
-        podbox::process::spawn_interactive_checked("podman", &args)?;
-    }
-    let _ = podbox::history::record(name, "stop", "");
     Ok(())
 }
 
 /// Restart the container.
 ///
-/// Same mechanism as the restart inside `update`: `systemctl --user restart`
-/// (after `reset-failed`, so a failed unit actually restarts) when Quadlet
-/// manages the box, plain `podman restart` otherwise.
+/// Same mechanism as the restart inside `update`: through `systemctl --user
+/// restart` (after `reset-failed`, so a failed unit actually restarts) when
+/// Quadlet manages the box, plain `podman restart` otherwise.
 pub fn run_restart(config: &Config, name: &str, dry_run: bool) -> Result<()> {
-    if dry_run {
-        if config.lifecycle.quadlet && systemd::is_available() {
-            println!("systemctl --user restart {name}.service");
-        } else {
-            println!("podman restart {name}");
-        }
-        return Ok(());
+    let ctx = crate::ctx::Ctx { dry_run };
+    Runtime::for_config(config).restart(&ctx, config)?;
+    if !dry_run {
+        let _ = podbox::history::record(name, "restart", "");
     }
-    if config.lifecycle.quadlet && systemd::is_available() {
-        systemd::reset_failed(name)?;
-        systemd::restart_unit(name)?;
-    } else {
-        let args = podbox::process::args(&["restart", name]);
-        podbox::process::spawn_interactive_checked("podman", &args)?;
-    }
-    let _ = podbox::history::record(name, "restart", "");
     Ok(())
 }
 
@@ -267,7 +250,10 @@ pub fn run_stop_all(dry_run: bool) -> Result<()> {
                 eprintln!(
                     "Warning: config for '{stem}' failed to load ({e:#}); stopping directly."
                 );
-                stop_by_name(&stem)
+                // The config is gone, so the quadlet decision comes from what
+                // is actually installed rather than from a config flag.
+                let ctx = crate::ctx::Ctx { dry_run: false };
+                Runtime::for_installed(&stem).stop_named(&ctx, &stem)
             }
         };
         match result {
@@ -290,19 +276,6 @@ pub fn run_stop_all(dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-/// Stop a container without its config: systemd unit when installed,
-/// plain podman otherwise.
-fn stop_by_name(name: &str) -> Result<()> {
-    if podbox::quadlet_install::is_installed(name) {
-        podbox::systemd::stop_unit(name)?;
-    } else {
-        let args = podbox::process::args(&["stop", name]);
-        podbox::process::spawn_interactive_checked("podman", &args)?;
-    }
-    let _ = podbox::history::record(name, "stop", "");
-    Ok(())
-}
-
 /// Update a container: pull latest image, rebuild, and restart.
 pub fn run_update(
     config: &Config,
@@ -319,11 +292,10 @@ pub fn run_update(
         println!("podbox update: pull/rebuild and restart {name}");
         println!("  build::run(config, env, xdg, dry_run: true, rebuild: true)");
         if !no_restart {
-            if config.lifecycle.quadlet && systemd::is_available() {
-                println!("  systemctl --user restart {name}");
-            } else {
-                println!("  podman restart {name}");
-            }
+            println!(
+                "  {}",
+                Runtime::for_config(config).describe("restart", name)
+            );
         }
         return Ok(());
     }
@@ -349,13 +321,8 @@ pub fn run_update(
     }
 
     println!("Restarting container...");
-    if config.lifecycle.quadlet && systemd::is_available() {
-        systemd::reset_failed(name)?;
-        systemd::restart_unit(name)?;
-    } else {
-        let args = podbox::process::args(&["restart", name]);
-        podbox::process::spawn_interactive_checked("podman", &args)?;
-    }
+    let ctx = crate::ctx::Ctx { dry_run: false };
+    Runtime::for_config(config).restart(&ctx, config)?;
 
     println!("Update complete.");
     let _ = podbox::history::record(name, "update", "");
