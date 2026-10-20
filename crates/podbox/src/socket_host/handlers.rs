@@ -2,7 +2,7 @@
 //! `host-exec`, `notify`, `xdg-open`, `clipboard`). Single cohesive concern;
 //! stays above ~300 LOC because the message-dispatch contract is one unit
 //! (documented exemption, per the modularization guide 1/8).
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -540,13 +540,8 @@ pub(super) fn handle_host_exec_v2(
     // Descriptors are consumed by every path below: moved into the child's
     // stdio, or dropped here — dropping closes them, so a refused request
     // never leaves a stray fd describing guest state in the host process.
-    if tty {
-        return host_exec_v2_refused(
-            stream,
-            "host-exec: TTY sessions are not supported yet (request carried tty=true)",
-            "not_supported",
-        );
-    }
+    // A tty request carries the slave end of the guest's own pty; the
+    // descriptors still flow the same way.
     // The cwd policy is applied before anything runs: a refusal must not
     // execute a command whose working directory the admin did not allow.
     let guest_cwd = resolve_guest_cwd(&cwd, config.integration.host_exec.cwd, cwd_map);
@@ -619,13 +614,20 @@ pub(super) fn handle_host_exec_v2(
         // that resolves to `Refused` twice.
         GuestCwd::Refused => {}
     }
+    // Own process group for pipe sessions: a relayed SIGINT/SIGTERM reaches
+    // the child and nothing above it, unlike a child sharing the daemon's
+    // group. A tty child gets its own session instead (ties the terminal
+    // to it and gives it a group of its pid anyway), and must NOT be made
+    // a group leader here, or the session creation fails.
+    if tty {
+        give_the_child_its_tty(&mut command, &child_stdin);
+    } else {
+        command.process_group(0);
+    }
     let child = command
         .stdin(Stdio::from(child_stdin))
         .stdout(Stdio::from(child_stdout))
         .stderr(Stdio::from(child_stderr))
-        // Own process group: a relayed SIGINT/SIGTERM reaches the child and
-        // nothing above it, unlike a child sharing the daemon's group.
-        .process_group(0)
         .spawn();
 
     let mut child = match child {
@@ -645,14 +647,52 @@ pub(super) fn handle_host_exec_v2(
     // leaked fd holds the guest's pipes open past the child's lifetime.
     // The per-entry timeout kills only this child's group, and is reported
     // as a signal death like any other kill; a session with no configured
-    // timeout is never time-limited here.
-    let timeout = config
-        .integration
-        .host_exec
-        .resolve(&cmd)
-        .and_then(|entry| entry.timeout_secs())
-        .map(Duration::from_secs);
+    // timeout is never time-limited here, and neither is a tty session —
+    // an interactive child outliving its request is correct behaviour.
+    let timeout = if tty {
+        None
+    } else {
+        config
+            .integration
+            .host_exec
+            .resolve(&cmd)
+            .and_then(|entry| entry.timeout_secs())
+            .map(Duration::from_secs)
+    };
     run_child_with_signal_relay(stream, &mut child, timeout)
+}
+
+/// Register the tty child's session setup on the command: `setsid` makes
+/// the child a session leader — its own process group, so the relay's
+/// `killpg` target is exactly this child — and `TIOCSCTTY` on the stdin
+/// it inherits makes the guest's pty its controlling terminal, so the
+/// kernel exercises the terminal's own Ctrl-C, job control and
+/// window-size accounting directly on the child.
+///
+/// Must not be combined with `process_group(0)`: a group leader cannot
+/// `setsid`, and the session creation would fail before the exec.
+fn give_the_child_its_tty(command: &mut Command, ctty: &OwnedFd) {
+    let ctty_fd = ctty.as_raw_fd();
+    // SAFETY: `pre_exec` runs the closure between fork and exec, where
+    // only async-signal-safe code may touch the world. `setsid` and
+    // `ioctl` are raw syscalls (nix and libc wrap them in direct calls,
+    // no allocation, no locks), the descriptor used is the slave the
+    // child inherits as stdin, and a failure aborts the spawn with an
+    // error instead of leaving a half-configured child behind.
+    //
+    // The workspace denies `unsafe` wholesale; this session-leader
+    // kernel setup has no safe wrapper, as documented above.
+    #[allow(unsafe_code)]
+    // SAFETY: see above.
+    unsafe {
+        command.pre_exec(move || {
+            nix::unistd::setsid().map_err(std::io::Error::from)?;
+            if nix::libc::ioctl(ctty_fd, nix::libc::TIOCSCTTY, 0) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
 }
 
 /// Refuse a `HostExecV2` request before anything runs: a typed `Error`

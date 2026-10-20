@@ -1370,37 +1370,145 @@ fn vfs_refused_without_the_fds_capability() {
     finish(c, h).unwrap();
 }
 
-/// tty=true is refused with a typed error until the TTY path exists.
-#[test]
-fn host_exec_v2_refuses_tty() {
-    let (mut c, h) = start(enabled_config(), Arc::default());
-    send(&mut c, &hello_fds());
-    let _ = recv(&mut c);
-    let msg = GuestMessage::HostExecV2 {
-        cmd: "echo".into(),
-        args: vec![],
+/// A V2 request with the tty flag set.
+fn v2_tty(cmd: &str, args: Vec<String>) -> GuestMessage {
+    GuestMessage::HostExecV2 {
+        cmd: cmd.into(),
+        args,
         env: vec![],
         cwd: None,
         tty: true,
-    };
-    send_v2_with_fds(&mut c, &msg, &[pipe_pair().0, pipe_pair().1, pipe_pair().1]);
-    match recv(&mut c) {
-        HostMessage::Error { reason, code, .. } => {
-            assert!(reason.contains("tty"), "reason {reason:?}");
-            assert_eq!(code.as_deref(), Some("not_supported"));
-        }
-        other => panic!("expected typed Error, got {other:?}"),
     }
-    // A refusal is not fatal: the session keeps serving requests.
-    send(
-        &mut c,
-        &GuestMessage::HostExec {
-            cmd: "echo".into(),
-            args: vec!["after-tty".into()],
-        },
+}
+
+/// Open a pty pair the way the guest shim does: a master, and the slave
+/// end opened peer to it, in owned duplicate form for the request's
+/// three stdio slots.
+fn pty_pair() -> (OwnedFd, [OwnedFd; 3]) {
+    use rustix::pty::{OpenptFlags, ioctl_tiocgptpeer, openpt, unlockpt};
+    let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+    unlockpt(&master).unwrap();
+    let slave = ioctl_tiocgptpeer(&master, OpenptFlags::RDWR).unwrap();
+    let slave2 = nix::unistd::dup(&slave).unwrap();
+    let slave3 = nix::unistd::dup(&slave).unwrap();
+    (master, [slave, slave2, slave3])
+}
+
+/// Read the pty master until the slave side is gone (kernel EIO / EOF).
+/// Non-blocking so an unexpected child that never exits fails the test
+/// in the assert below instead of hanging it.
+fn drain_master(master: OwnedFd) -> String {
+    use std::fs::File;
+    use std::io::Read;
+    nix::fcntl::fcntl(
+        &master,
+        nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+    )
+    .unwrap();
+    let mut master_file = File::from(master);
+    let mut out = Vec::new();
+    let mut chunk = [0u8; 256];
+    loop {
+        match master_file.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => out.extend_from_slice(&chunk[..n]),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::Interrupted
+                    || e.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                // The child may still be writing; a clean poll keeps the
+                // loop from spinning.
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            // EIO on Linux: every slave copy is closed, nothing more
+            // will arrive.
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A tty request runs the child on the guest's pty: the slave end
+/// arrives as the request's three descriptors, `setsid`+`TIOCSCTTY`
+/// attach it as the child's controlling terminal (a failure there
+/// aborts the whole spawn, so reaching the exit report proves it), and
+/// the child's output flows out of the master — no protocol copy.
+#[test]
+fn host_exec_v2_tty_runs_the_child_on_a_pty() {
+    let mut cfg = fds_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "tty".to_string(),
+            HostExecEntry::Simple("/usr/bin/tty".into()),
+        );
+    let (mut c, h) = start(cfg, Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    let (master, slave_triple) = pty_pair();
+    send_v2_with_fds(&mut c, &v2_tty("tty", vec![]), &slave_triple);
+    // Our owned slave copies were handed over by descriptor; dropping
+    // them is what closes the last slave open and lets the master drain
+    // to its EIO end below.
+    drop(slave_triple);
+
+    // `/usr/bin/tty` prints its stdin's device path only when it is a
+    // controlling-terminal-capable terminal, and exits 0.
+    let out = drain_master(master);
+    assert!(
+        out.contains("/dev/pts/"),
+        "the child did not see the pty as its stdin: {out:?}"
     );
-    assert!(matches!(recv(&mut c), HostMessage::HostExecStdout { .. }));
-    assert!(matches!(recv(&mut c), HostMessage::HostExecDone { .. }));
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
+    finish(c, h).unwrap();
+}
+
+/// The per-entry timeout never applies to a tty session: an interactive
+/// child that outlives its allowlist entry's `timeout` reports its own
+/// natural exit instead of a deadline kill.
+#[test]
+fn host_exec_v2_tty_sessions_are_never_time_limited() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("linger.sh");
+    std::fs::write(&script, "#!/bin/sh\nsleep 2\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut cfg = fds_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "linger".to_string(),
+            HostExecEntry::Detailed {
+                path: script.to_string_lossy().into_owned(),
+                filter: true,
+                shim: false,
+                // Smaller than the child's actual runtime: a deadline
+                // kill would report 137 + SIGKILL instead of this exit.
+                timeout: Some(1),
+            },
+        );
+    let (mut c, h) = start(cfg, Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    let (_master, slave_triple) = pty_pair();
+    send_v2_with_fds(&mut c, &v2_tty("linger", vec![]), &slave_triple);
+    drop(slave_triple);
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
     finish(c, h).unwrap();
 }
 

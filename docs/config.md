@@ -387,7 +387,9 @@ storage — wider than `serial`, so enable it deliberately.
 
 The fd-passing session carries the shell's working directory in
 `HostExecV2.cwd`; `cwd` decides what the host does with it before the
-command runs:
+command runs. The policy applies to tty sessions the same way — an
+interactive session can be directed to its host project directory, or
+refused, exactly like a piped one:
 
 | Value | Behaviour |
 |-------|-----------|

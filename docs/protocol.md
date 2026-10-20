@@ -64,7 +64,7 @@ accepted ones.
 | `clipboard_set` | `text` (at most 8 MiB; larger content gets an `error` reply and leaves the session open) |
 | `clipboard_get` | — (the host answers `error` when the selection exceeds 8 MiB) |
 | `host_exec` | `cmd`, `args` |
-| `host_exec_v2` | `cmd`, `args`, `env` (optional key/value pairs; only `TERM`, `LANG`, `COLORTERM` pass), `cwd` (optional guest working directory; interpreted per the configured [cwd handling](config.md#cwd-handling), defaulting to the host `$HOME`), `tty` (optional; `true` is refused with a typed error for now) — the child's stdin/stdout/stderr arrive as three descriptors via `SCM_RIGHTS` on the same connection |
+| `host_exec_v2` | `cmd`, `args`, `env` (optional key/value pairs; only `TERM`, `LANG`, `COLORTERM` pass), `cwd` (optional guest working directory; interpreted per the configured [cwd handling](config.md#cwd-handling), defaulting to the host `$HOME`), `tty` (optional; see [TTY sessions](#tty-sessions) below) — the child's stdin/stdout/stderr arrive as three descriptors via `SCM_RIGHTS` on the same connection |
 | `host_exec_signal` | `sig` (optional signal number to relay to a running fd-passing host-exec child) |
 | `register_session` | — (pidfd via `SCM_RIGHTS`) |
 | `busy` | — |
@@ -131,3 +131,29 @@ plain path. The child spawned for an fd-passing session sits in its own
 process group, so Ctrl-C typed in the guest's terminal reaches it as a
 relayed SIGINT rather than killing anything else; the exit is still
 reported through the regular `host_exec_done` frame.
+
+## TTY sessions
+
+A fd-passing `host_exec_v2` request with `tty = true` carries the slave
+end of the guest's own pty three times (one descriptor per stdio slot).
+The guest allocates the pty when its stdout is a terminal, copies its
+terminal's termios and window size onto the slave, and keeps the master
+open until the session's exit report arrives — dropping it hangs the
+terminal up.
+
+The host runs the child as the new session's leader: `setsid` gives it
+a process group of its own (the same group `host_exec_signal` targets),
+and `TIOCSCTTY` on the inherited stdin makes the pty its controlling
+terminal, so the kernel delivers Ctrl-C, job control and window-size
+changes on the child directly, the way an interactive shell expects.
+An error in that setup aborts the spawn, and the guest sees the same
+typed failure a missing command does.
+
+Everything else on the session is unchanged: the cwd policy, the
+allowlist and argument filter apply the same way, output flows through
+the descriptors rather than the protocol, and the exit arrives as one
+`host_exec_done`. The per-entry `timeout` (below) never applies to a
+tty session: an interactive child outliving its request is correct
+behaviour, not a leak. Window-size changes are one-way: the session
+starts with the geometry the guest's terminal had, and later resizes
+by either side are not propagated.
