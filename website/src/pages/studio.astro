@@ -1,6 +1,6 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
-import { StudioPage } from '../design/islands/StudioPage';
+import { StudioEntry } from '../design/islands/studio/StudioEntry';
 ---
 
 <SiteLayout
@@ -8,5 +8,5 @@ import { StudioPage } from '../design/islands/StudioPage';
   description="Real-time interactive GUI workbench for tailoring rootless Podman containers, hardware passthrough, and generating production systemd Quadlet units."
   currentPath="/studio"
 >
-  <StudioPage client:load />
+  <StudioEntry client:load />
 </SiteLayout>

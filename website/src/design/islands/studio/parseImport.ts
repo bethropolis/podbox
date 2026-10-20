@@ -6,8 +6,7 @@
 
 import type { StudioValues } from './useStudioState';
 import type { MountItem, EnvVarItem, HostExecItem, ProvisionItem, SecretItem, ServiceItem } from './types';
-import { FIELDS, CACHE_ORDER, getPath, coerceScalar } from './schema';
-import { PROVISION_DEFAULT_TIMEOUT } from './types';
+import { FIELDS, cacheOrder, provisionTimeout, getPath, coerceScalar } from './schema';
 
 type Patch = Partial<StudioValues>;
 
@@ -94,8 +93,9 @@ function parseServices(rec: unknown): ServiceItem[] | undefined {
 function parseCacheFlags(rec: unknown): string[] | undefined {
   if (!rec || typeof rec !== 'object') return undefined;
   const entries = rec as Record<string, unknown>;
-  return CACHE_ORDER.filter((c) => entries[c] === true).concat(
-    Object.keys(entries).filter((k) => !CACHE_ORDER.includes(k) && entries[k] === true),
+  const order = cacheOrder();
+  return order.filter((c) => entries[c] === true).concat(
+    Object.keys(entries).filter((k) => !order.includes(k) && entries[k] === true),
   );
 }
 
@@ -112,7 +112,7 @@ function parseProvisionSteps(rec: unknown): ProvisionItem[] | undefined {
     return [{
       name,
       run,
-      timeout: str(t.timeout) ?? PROVISION_DEFAULT_TIMEOUT,
+      timeout: str(t.timeout) ?? provisionTimeout(),
       onFailure: t.on_failure === 'abort' ? 'abort' : 'warn',
       envList: parseEnv(t.env) ?? [],
       root: bool(t.root) ?? false,

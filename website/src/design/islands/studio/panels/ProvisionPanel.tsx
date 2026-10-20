@@ -11,7 +11,7 @@ import {
   StudioSelect,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { ON_FAILURE_OPTIONS, PROVISION_DEFAULT_TIMEOUT } from '../types';
+import { provisionOnFailureOptions, provisionTimeout } from '../schema';
 import type { EnvVarItem, ProvisionItem } from '../types';
 import type { StudioState } from '../useStudioState';
 
@@ -20,7 +20,7 @@ type ProvisionStepsProps = Pick<StudioState, 'provisionSteps' | 'setProvisionSte
 const blankStep = (): ProvisionItem => ({
   name: '',
   run: '',
-  timeout: PROVISION_DEFAULT_TIMEOUT,
+  timeout: provisionTimeout(),
   onFailure: 'warn',
   envList: [],
   root: false,
@@ -222,7 +222,7 @@ export function ProvisionSteps({
             const badges: string[] = [];
             if (step.onFailure === 'abort') badges.push('abort');
             if (step.root) badges.push('root');
-            if (step.timeout.trim() && step.timeout.trim() !== PROVISION_DEFAULT_TIMEOUT) {
+            if (step.timeout.trim() && step.timeout.trim() !== provisionTimeout()) {
               badges.push(step.timeout.trim());
             }
             if (step.envList.some((e) => e.key.trim())) {
@@ -376,7 +376,7 @@ export function ProvisionSteps({
                           }
                           value={step.onFailure}
                           onChange={(v) => patch(idx, { onFailure: v as ProvisionItem['onFailure'] })}
-                          options={ON_FAILURE_OPTIONS}
+                          options={provisionOnFailureOptions()}
                         />
                       </div>
 

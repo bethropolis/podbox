@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { shareFromHash, hasPendingSharedLoad } from './share';
-import { STUDIO_DEFAULTS, UI_ONLY_KEYS, type StudioDefaults } from './schema';
+import { initialStudioValues, UI_ONLY_KEYS, type StudioDefaults } from './schema';
 import {
   studioReducer,
   setterName,
@@ -71,11 +71,14 @@ function loadSavedUI(): {
 }
 
 export function useStudioState() {
-  // One state object keyed exactly by STUDIO_DEFAULTS. Every transition
+  // One state object keyed exactly by the schema defaults. Every transition
   // goes through `studioReducer` (the same reducer `check:studio` drives),
   // so a key added to the defaults is automatically patched, persisted
   // and reset — there is no hand-maintained setters map left to drift.
-  const [state, dispatch] = useReducer(studioReducer, STUDIO_DEFAULTS);
+  // Reducer construction is lazy on both the ordering and engine timing: by
+  // the time this hook mounts, the wasm engine is up (StudioEntry gates on
+  // it), so the wasm-backed defaults are safely readable.
+  const [state, dispatch] = useReducer(studioReducer, undefined, () => initialStudioValues());
 
   const { isFullscreen, activeCategory, activeView } = state;
 
@@ -107,10 +110,10 @@ export function useStudioState() {
   };
 
   // Per-key setters keep the panel APIs stable (`st.setHwWebcam(...)`).
-  // They are derived from STUDIO_DEFAULTS, so new keys arrive with their
+  // They are derived from the schema defaults, so new keys arrive with their
   // setter instead of needing a second hand-written list.
   const setters = Object.fromEntries(
-    (Object.keys(STUDIO_DEFAULTS) as StudioKey[]).map((key) => [
+    (Object.keys(initialStudioValues()) as StudioKey[]).map((key) => [
       setterName(key),
       (value: unknown) =>
         dispatch({ type: 'set', key, value: value as StudioDefaults[StudioKey] }),

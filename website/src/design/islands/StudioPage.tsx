@@ -3,12 +3,11 @@ import { X } from 'lucide-react';
 import { SettingsPalette } from './studio/SettingsPalette';
 import { useStudioState } from './studio/useStudioState';
 import { useWasm } from './studio/useWasm';
-import { generateStudioToml } from './studio/generateToml';
+import { emittedToml, stateToConfig } from './studio/configShape';
 import { generateStudioQuadlet } from './studio/generateQuadlet';
-import { tomlFieldLines } from './studio/tomlLines';
 import { tomlToPatch } from './studio/parseImport';
 import { decodeShare, markSharedLoadPending, shareFromHash } from './studio/share';
-import { STUDIO_DEFAULTS } from './studio/schema';
+import { initialStudioValues } from './studio/schema';
 import { defaultPatch, presetPatch } from './studio/presets';
 import { StudioHeader } from './studio/StudioHeader';
 import { CategoryTabs } from './studio/CategoryTabs';
@@ -30,7 +29,11 @@ interface StudioPageProps {
 export function StudioPage(_props: StudioPageProps) {
   const st = useStudioState();
   const { isFullscreen, activeCategory } = st;
-  const toml = generateStudioToml(st.values);
+  // TOML comes from the same serializer the CLI writes through, so preview
+  // and `podbox enable` cannot disagree. StudioEntry gated this page on the
+  // engine, and even a state the schema rejects returns '' rather than
+  // crashing the page (the error is logged).
+  const toml = emittedToml(st.values);
 
   // Rust engine (wasm): exact CLI validation + Quadlet codegen. TS template
   // stays as the fallback until wasm initializes (or if it fails to load).
@@ -127,10 +130,9 @@ export function StudioPage(_props: StudioPageProps) {
   // Advisories keep their tab badge but never the red banner or field border.
   const errors = validation?.errors ?? [];
 
-  // TOML source map: wasm when ready, TS mirror before that. Inverted for
-  // click-to-edit (line -> field).
+  // TOML source map (line -> field) for click-to-edit. Inverted per render.
   const fieldMap = useMemo(
-    () => fieldLines(toml) ?? tomlFieldLines(toml),
+    () => fieldLines(toml) ?? {},
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [toml, wasmReady],
   );
@@ -320,11 +322,11 @@ export function StudioPage(_props: StudioPageProps) {
         </div>
 
         {/* "What changed" baseline: the active preset (or blank defaults for
-            custom) rendered through the same generator, so the diff shows
+            custom) rendered through the same serializer, so the diff shows
             real drift instead of formatting noise. */}
         {(() => {
-          const baselineValues = { ...STUDIO_DEFAULTS, ...(st.values.activePreset !== 'custom' ? presetPatch(st.values.activePreset as Parameters<typeof presetPatch>[0]) : defaultPatch()) } as typeof st.values;
-          const baselineToml = generateStudioToml(baselineValues);
+          const baselineValues = { ...initialStudioValues(), ...(st.values.activePreset !== 'custom' ? presetPatch(st.values.activePreset as Parameters<typeof presetPatch>[0]) : defaultPatch()) } as typeof st.values;
+          const baselineToml = emittedToml(baselineValues);
           const baselineLabel = st.values.activePreset !== 'custom' ? st.values.activePreset : 'defaults';
           return (
             <CodePreview

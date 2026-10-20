@@ -7,7 +7,7 @@ import {
   StudioSelect,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { DOTFILES_CLONE_OPTIONS } from '../schema';
+import { dotfilesCloneOnOptions } from '../schema';
 import { ProvisionSteps } from './ProvisionPanel';
 import type { StudioState } from '../useStudioState';
 
@@ -82,7 +82,7 @@ export function DotfilesPanel({ st, errorMap }: { st: DotfilesPanelProps; errorM
       }
       value={dotfilesCloneOn}
       onChange={setDotfilesCloneOn}
-      options={DOTFILES_CLONE_OPTIONS}
+      options={dotfilesCloneOnOptions()}
       error={err('dotfiles.clone_on')}
     />
   </div>

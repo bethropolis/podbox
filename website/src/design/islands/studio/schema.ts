@@ -1,19 +1,16 @@
 // Shared podbox schema: every Studio field declared exactly once.
 //
-// When the Rust schema (`crates/podbox/src/config`) gains or changes a
-// field, update it HERE and everything follows: state defaults
-// (STUDIO_DEFAULTS), TOML emission (emitToml), TOML import (parseTomlDoc),
-// tab metadata (CATEGORIES), and select options (OPTIONS).
-//
-// Panels stay bespoke JSX, but they read defaults, options, and constants
-// from this module instead of hardcoding them. `bun run check:studio`
-// guards the data layer against drift.
+// The Rust schema (`crates/podbox/src/config`) is the source of truth: its
+// defaults and enum variants arrive through the wasm engine (engine.ts),
+// and this module wires them to the state the panels edit — the field
+// list (FIELDS), the state shape (StudioDefaults / initialStudioValues),
+// and the UI metadata the engine does not carry (labels, descriptions).
+// `bun run check:studio` guards the wiring against drift.
 
+import { engineDefault, engineSchema, enumVariants } from './engine';
 import type { EnvVarItem, HostExecItem, MountItem, ProvisionItem, SecretItem, ServiceItem } from './types';
-import { tomlString } from './toml';
 
 export type { ProvisionItem };
-export { ON_FAILURE_OPTIONS, PROVISION_DEFAULT_TIMEOUT } from './types';
 
 // ── scalar field kinds ────────────────────────────────────────────────────
 
@@ -26,30 +23,12 @@ export type FieldKind = 'string' | 'number' | 'boolean' | 'select' | 'string-lis
  */
 export type XdgDirMode = 'off' | 'ro' | 'rw';
 
-/** When a scalar field is written to TOML. */
-export type EmitMode =
-  | 'always' // e.g. integration scalars, required keys
-  | 'non-empty' // strings/lists: emit iff truthy / non-empty
-  | 'non-default' // emit iff !== def (numbers, selects, sentineled strings)
-  | 'is-true' // emit `= true` iff true
-  | 'is-false'; // emit `= false` iff false
-
 export interface FieldDef {
   /** Key in StudioValues, e.g. 'containerMemory'. */
   stateKey: string;
   /** Dotted TOML path, e.g. 'container.memory'. */
   tomlPath: string;
   kind: FieldKind;
-  /** Studio default; emission compares against it for 'non-default'. */
-  def: unknown;
-  emit?: EmitMode;
-  options?: SelectOption[];
-  /**
-   * Suppresses the scalar line when the custom table emitter takes over
-   * instead (e.g. a key whose shape is bool-or-table). Evaluated with the
-   * full state, not the field value.
-   */
-  hidden?: (s: Record<string, any>) => boolean;
 }
 
 export interface SelectOption {
@@ -60,7 +39,182 @@ export interface SelectOption {
   group?: string;
 }
 
-// ── select options (mirrors Rust enums) ───────────────────────────────────
+/**
+ * UI label metadata for one enum variant. Variants the table does not
+ * name fall back to their raw token, so a Rust-side addition stays
+ * selectable and the parity check fails until it gets a real label.
+ */
+export type SelectLabelMeta = Record<string, { label?: string; sublabel?: string; group?: string }>;
+
+// ── options from the schema data ──────────────────────────────────────────
+
+/**
+ * Build the select options for a config enum: variant order from the
+ * engine, display metadata from `labels`. A variant without a label entry
+ * renders with its raw token rather than being silently dropped.
+ */
+export function enumOptions(path: string, labels: SelectLabelMeta = {}): SelectOption[] {
+  return enumVariants(path).map((value) => {
+    const meta = labels[value] ?? {};
+    return { value, label: meta.label ?? value, ...meta };
+  });
+}
+
+/**
+ * UI labels per config enum, keyed by config path. Every served variant
+ * must have an entry here — `check:studio` fails until a new Rust variant
+ * is labeled, instead of the option rendering as a raw token.
+ */
+export const ENUM_LABELS: Record<string, SelectLabelMeta> = {
+  'image.packages.manager': {
+    dnf: { label: 'DNF (Fedora / RHEL)' },
+    apt: { label: 'APT (Ubuntu / Debian)' },
+    pacman: { label: 'Pacman (Arch Linux)' },
+    apk: { label: 'APK (Alpine)' },
+    zypper: { label: 'Zypper (openSUSE)' },
+  },
+  'dotfiles.clone_on': {
+    host: { label: 'host', sublabel: 'clones with host git' },
+    container: { label: 'container', sublabel: 'clones inside the image' },
+  },
+  'container.services.restart': {
+    never: { label: 'never' },
+    'on-failure': { label: 'on-failure' },
+    always: { label: 'always' },
+  },
+  'security.userns': {
+    'keep-id': { label: 'keep-id (Host UID = Container UID)' },
+    nomap: { label: 'nomap (Rootless subordinate IDs)' },
+    private: { label: 'private (Standard user namespace)' },
+  },
+  'security.cap_preset': {
+    default: { label: 'Default (Standard rootless dev)' },
+    none: { label: 'None (Drop all capabilities)' },
+    monitoring: { label: 'Monitoring (Add SYS_PTRACE)' },
+    admin: { label: 'Admin (CAP_NET_ADMIN / SYS_ADMIN)' },
+  },
+  'security.secrets.type': {
+    env: { label: 'env', sublabel: 'environment variable' },
+    mount: { label: 'mount', sublabel: 'file in the container' },
+  },
+  'security.secrets.source': {
+    podman: { label: 'podman secret', sublabel: 'podman secret show' },
+    systemd: { label: 'systemd', sublabel: 'LoadCredential' },
+  },
+  'network.mode': {
+    private: { label: 'private (Isolated loopback namespace)' },
+    pasta: { label: 'pasta (Podman userspace networking)' },
+    host: { label: 'host (Direct host network stack)' },
+    bridge: { label: 'bridge (Podman default CNI bridge)' },
+    none: { label: 'none (Completely offline / airgapped)' },
+    slirp4netns: { label: 'slirp4netns (Legacy user-mode networking)' },
+  },
+  'lifecycle.on_stop': {
+    keep: { label: 'keep (Preserve container on stop)' },
+    remove: { label: 'remove (Destroy container on stop)' },
+  },
+  'dbus.preset': {
+    portal: { label: 'portal (Desktop Portals & Notifications)' },
+    gnome: { label: 'gnome (GNOME Shell integration)' },
+    kde: { label: 'kde (KDE Plasma integration)' },
+    flatpak: { label: 'flatpak (Strict Flatpak compatibility)' },
+    none: { label: 'none (Custom rules only)' },
+  },
+  'integration.gpu': {
+    auto: { label: 'auto (Pass /dev/dri if present on host)' },
+    nvidia: { label: 'nvidia (NVIDIA Container Toolkit CDI)' },
+    true: { label: 'true (Require /dev/dri passthrough)' },
+    false: { label: 'false (Software rendering only)' },
+  },
+  'provision.on_failure': {
+    warn: { label: 'warn', sublabel: 'warn and continue' },
+    abort: { label: 'abort', sublabel: 'stop on first failure' },
+  },
+};
+
+// ── engine-served data, typed for the Studio ──────────────────────────────
+
+/** The builtin cache tick-list, in engine declaration order. */
+export function cacheOrder(): string[] {
+  return enumVariants('storage.shared_caches');
+}
+
+/** Engine default for a `[[provision]]` step's timeout (`5m`). */
+export function provisionTimeout(): string {
+  const t = engineDefault('provision.timeout');
+  if (typeof t !== 'string') throw new Error('provision.timeout default must be a string');
+  return t;
+}
+
+/** The allowlist `xdg_open = true` opens when the config names no schemes. */
+export const DEFAULT_XDG_OPEN_SCHEMES = ['http', 'https', 'mailto'];
+
+/**
+ * TOML paths the engine serves schema data for beyond the one-field-each
+ * list: shapes with a custom Studio emitter (state->config in
+ * configShape.ts) rather than a scalar line. Kept next to FIELDS so the
+ * parity check can pin both halves.
+ */
+export const CUSTOM_SCHEMA_PATHS = {
+  defaults: ['image.run.commands', 'integration.gpu', 'provision.timeout', 'wayland.firewall'],
+  enums: [
+    'integration.gpu',
+    'provision.on_failure',
+    'security.secrets.type',
+    'security.secrets.source',
+    'container.services.restart',
+    'storage.shared_caches',
+    'storage.host_caches',
+  ],
+} as const;
+
+// Suggestions for [integration.host_exec.allowlist]. The browser cannot ask
+// the host what is installed, so these are the commands worth reaching for
+// often enough to be one click away; any absolute path still works.
+export const HOST_EXEC_SUGGESTIONS: { alias: string; path: string }[] = [
+  { alias: 'podbox', path: '/usr/local/bin/podbox' },
+  { alias: 'git', path: '/usr/bin/git' },
+  { alias: 'gh', path: '/usr/bin/gh' },
+  { alias: 'podman', path: '/usr/bin/podman' },
+  { alias: 'docker', path: '/usr/bin/docker' },
+  { alias: 'rsync', path: '/usr/bin/rsync' },
+];
+
+// A few known container schemes to offer one click away; anything can still
+// be typed by hand. `file` is deliberately absent: it opens local files on the
+// host for whatever a container page picks as its path.
+export const XDG_OPEN_SCHEME_SUGGESTIONS = ['nfs', 'smb', 'vscode', 'steam'];
+
+// ── caches (tick-list from the engine; blurbs are pure UI) ────────────────
+
+export const CACHE_DESCRIPTIONS: Record<string, string> = {
+  cargo: 'Rust crate registry + git checkouts',
+  npm: 'Node package cache',
+  pnpm: 'pnpm content-addressable store',
+  pip: 'Python wheel cache',
+  uv: 'uv package cache',
+  yarn: 'Yarn Classic + Berry caches',
+  bun: 'Bun install cache',
+  composer: 'PHP Composer cache',
+  maven: 'Maven local repository',
+  gradle: 'Gradle build caches',
+  ccache: 'C/C++ compiler cache',
+  go: 'Go module cache',
+  rustup: 'Rust toolchain installs',
+  mbx: 'Mr Boxington shared cache',
+};
+
+// The cache tick-lists are engine-served variant lists whose names land in
+// the page with a pure-UI blurb underneath. Both double as the label table
+// the parity check pins: a cache added in Rust fails check:studio until it
+// gets a description here.
+const CACHE_LABELS: SelectLabelMeta = Object.fromEntries(
+  Object.entries(CACHE_DESCRIPTIONS).map(([name, description]) => [name, { label: name, sublabel: description }]),
+);
+ENUM_LABELS['storage.shared_caches'] = CACHE_LABELS;
+ENUM_LABELS['storage.host_caches'] = CACHE_LABELS;
+
+// ── image presets ─────────────────────────────────────────────────────────
 
 // Tier-1 upstream images, grouped by family. Kept current on purpose:
 // Fedora 44 is stable, 45 is still in beta, and the rolling/testing entries
@@ -79,23 +233,8 @@ export const IMAGE_PRESET_OPTIONS: SelectOption[] = [
   { value: 'registry.opensuse.org/opensuse/tumbleweed:latest', label: 'openSUSE Tumbleweed', sublabel: 'rolling', group: 'openSUSE' },
 ];
 
-export const DOTFILES_CLONE_OPTIONS: SelectOption[] = [
-  { value: 'host', label: 'host', sublabel: 'clones with host git' },
-  { value: 'container', label: 'container', sublabel: 'clones inside the image' },
-];
-
-// Suggestions for [integration.host_exec.allowlist]. The browser cannot ask
-// the host what is installed, so these are the commands worth reaching for
-// often enough to be one click away; any absolute path still works.
-export const HOST_EXEC_SUGGESTIONS: { alias: string; path: string }[] = [
-  { alias: 'podbox', path: '/usr/local/bin/podbox' },
-  { alias: 'git', path: '/usr/bin/git' },
-  { alias: 'gh', path: '/usr/bin/gh' },
-  { alias: 'podman', path: '/usr/bin/podman' },
-  { alias: 'docker', path: '/usr/bin/docker' },
-  { alias: 'rsync', path: '/usr/bin/rsync' },
-];
-
+// Shell names are not config enums: the engine maps these well-known
+// binaries in `shell_binary`, anything with a slash passes through verbatim.
 export const SHELL_OPTIONS: SelectOption[] = [
   { value: 'bash', label: '/bin/bash' },
   { value: 'fish', label: '/usr/bin/fish' },
@@ -103,122 +242,58 @@ export const SHELL_OPTIONS: SelectOption[] = [
   { value: 'sh', label: '/bin/sh' },
 ];
 
-export const PACKAGE_MANAGER_OPTIONS: SelectOption[] = [
-  { value: 'auto', label: 'Auto Detect (Recommended)' },
-  { value: 'dnf', label: 'DNF (Fedora / RHEL)' },
-  { value: 'apt', label: 'APT (Ubuntu / Debian)' },
-  { value: 'pacman', label: 'Pacman (Arch Linux)' },
-  { value: 'apk', label: 'APK (Alpine)' },
-  { value: 'zypper', label: 'Zypper (openSUSE)' },
-];
+// `manager = "auto"` is the Studio's "no override" token (the engine stores
+// `manager` as an unset option); the variants come from the schema data.
+export function packageManagerOptions(): SelectOption[] {
+  return [
+    { value: 'auto', label: 'Auto Detect (Recommended)' },
+    ...enumOptions('image.packages.manager', ENUM_LABELS['image.packages.manager']),
+  ];
+}
 
-export const NETWORK_MODE_OPTIONS: SelectOption[] = [
-  { value: 'private', label: 'private (Isolated loopback namespace)' },
-  { value: 'pasta', label: 'pasta (Podman userspace networking)' },
-  { value: 'host', label: 'host (Direct host network stack)' },
-  { value: 'bridge', label: 'bridge (Podman default CNI bridge)' },
-  { value: 'none', label: 'none (Completely offline / airgapped)' },
-];
+export function dotfilesCloneOnOptions(): SelectOption[] {
+  return enumOptions('dotfiles.clone_on', ENUM_LABELS['dotfiles.clone_on']);
+}
 
-export const SECRET_TYPE_OPTIONS: SelectOption[] = [
-  { value: 'env', label: 'env', sublabel: 'environment variable' },
-  { value: 'mount', label: 'mount', sublabel: 'file in the container' },
-];
+export function serviceRestartOptions(): SelectOption[] {
+  return enumOptions('container.services.restart', ENUM_LABELS['container.services.restart']);
+}
 
-export const SECRET_SOURCE_OPTIONS: SelectOption[] = [
-  { value: 'podman', label: 'podman secret', sublabel: 'podman secret show' },
-  { value: 'systemd', label: 'systemd', sublabel: 'LoadCredential' },
-];
+export function usernsOptions(): SelectOption[] {
+  return enumOptions('security.userns', ENUM_LABELS['security.userns']);
+}
 
-export const USERNS_OPTIONS: SelectOption[] = [
-  { value: 'keep-id', label: 'keep-id (Host UID = Container UID)' },
-  { value: 'nomap', label: 'nomap (Rootless subordinate IDs)' },
-  { value: 'private', label: 'private (Standard user namespace)' },
-];
+export function capPresetOptions(): SelectOption[] {
+  return enumOptions('security.cap_preset', ENUM_LABELS['security.cap_preset']);
+}
 
-export const CAP_PRESET_OPTIONS: SelectOption[] = [
-  { value: 'default', label: 'Default (Standard rootless dev)' },
-  { value: 'none', label: 'None (Drop all capabilities)' },
-  { value: 'monitoring', label: 'Monitoring (Add SYS_PTRACE)' },
-  { value: 'admin', label: 'Admin (CAP_NET_ADMIN / SYS_ADMIN)' },
-];
+export function secretTypeOptions(): SelectOption[] {
+  return enumOptions('security.secrets.type', ENUM_LABELS['security.secrets.type']);
+}
 
-export const ON_STOP_OPTIONS: SelectOption[] = [
-  { value: 'keep', label: 'keep (Preserve container on stop)' },
-  { value: 'remove', label: 'remove (Destroy container on stop)' },
-];
+export function secretSourceOptions(): SelectOption[] {
+  return enumOptions('security.secrets.source', ENUM_LABELS['security.secrets.source']);
+}
 
-export const DBUS_PRESET_OPTIONS: SelectOption[] = [
-  { value: 'portal', label: 'portal (Desktop Portals & Notifications)' },
-  { value: 'gnome', label: 'gnome (GNOME Shell integration)' },
-  { value: 'kde', label: 'kde (KDE Plasma integration)' },
-  { value: 'flatpak', label: 'flatpak (Strict Flatpak compatibility)' },
-  { value: 'none', label: 'none (Custom rules only)' },
-];
+export function networkModeOptions(): SelectOption[] {
+  return enumOptions('network.mode', ENUM_LABELS['network.mode']);
+}
 
-export const GPU_OPTIONS: SelectOption[] = [
-  { value: 'auto', label: 'auto (Pass /dev/dri if present on host)' },
-  { value: 'nvidia', label: 'nvidia (NVIDIA Container Toolkit CDI)' },
-  { value: 'true', label: 'true (Require /dev/dri passthrough)' },
-  { value: 'false', label: 'false (Software rendering only)' },
-];
+export function onStopOptions(): SelectOption[] {
+  return enumOptions('lifecycle.on_stop', ENUM_LABELS['lifecycle.on_stop']);
+}
 
-export const CLONE_ON_OPTIONS: SelectOption[] = [
-  { value: 'host', label: 'host (shared, cached)' },
-  { value: 'container', label: 'container (isolated)' },
-];
+export function dbusPresetOptions(): SelectOption[] {
+  return enumOptions('dbus.preset', ENUM_LABELS['dbus.preset']);
+}
 
-export const SERVICE_RESTART_OPTIONS: SelectOption[] = [
-  { value: 'on-failure', label: 'on-failure' },
-  { value: 'always', label: 'always' },
-  { value: 'never', label: 'never' },
-];
+export function gpuOptions(): SelectOption[] {
+  return enumOptions('integration.gpu', ENUM_LABELS['integration.gpu']);
+}
 
-// Mirrors DEFAULT_ALLOWED_URI_SCHEMES in crates/podbox/src/config/types.rs:
-// what `xdg_open = true` opens. A stored empty list means this same default,
-// so the Studio only emits a scheme list once it differs from these.
-export const DEFAULT_XDG_OPEN_SCHEMES = ['http', 'https', 'mailto'];
-
-// A few known container schemes to offer one click away; anything can still
-// be typed by hand. `file` is deliberately absent: it opens local files on the
-// host for whatever a container page picks as its path.
-export const XDG_OPEN_SCHEME_SUGGESTIONS = ['nfs', 'smb', 'vscode', 'steam'];
-
-// ── caches (mirrors BUILTIN_CACHES in crates/podbox/src/config/types/cache.rs)
-
-export const CACHE_ORDER = [
-  'cargo',
-  'npm',
-  'pnpm',
-  'pip',
-  'uv',
-  'yarn',
-  'bun',
-  'composer',
-  'maven',
-  'gradle',
-  'ccache',
-  'go',
-  'rustup',
-  'mbx',
-];
-
-export const CACHE_DESCRIPTIONS: Record<string, string> = {
-  cargo: 'Rust crate registry + git checkouts',
-  npm: 'Node package cache',
-  pnpm: 'pnpm content-addressable store',
-  pip: 'Python wheel cache',
-  uv: 'uv package cache',
-  yarn: 'Yarn Classic + Berry caches',
-  bun: 'Bun install cache',
-  composer: 'PHP Composer cache',
-  maven: 'Maven local repository',
-  gradle: 'Gradle build caches',
-  ccache: 'C/C++ compiler cache',
-  go: 'Go module cache',
-  rustup: 'Rust toolchain installs',
-  mbx: 'Mr Boxington shared cache',
-};
+export function provisionOnFailureOptions(): SelectOption[] {
+  return enumOptions('provision.on_failure', ENUM_LABELS['provision.on_failure']);
+}
 
 // ── categories (tab metadata; icons stay in CategoryTabs.tsx) ─────────────
 
@@ -243,12 +318,7 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'proxies', label: '[dbus] [wayland]', name: 'Filters', blurb: 'D-Bus & Wayland' },
 ];
 
-// ── defaults (mirrors the useState initializers in useStudioState.ts) ──────
-// useState reads from here, so defaults live in exactly one place.
-//
-// The explicit annotation (rather than `as StudioValues`) is load-bearing:
-// StudioValues is derived from useState's return type, so referencing it
-// here would be circular and collapse all inference to `any`.
+// ── state shape ───────────────────────────────────────────────────────────
 
 export interface StudioDefaults {
   isFullscreen: boolean;
@@ -372,256 +442,270 @@ export const UI_ONLY_KEYS = [
   'showExportMenu',
 ] as const;
 
-export const STUDIO_DEFAULTS: StudioDefaults = {  // view state
-  isFullscreen: false,
-  activeCategory: 'image',
-  activeView: 'toml',
-  copied: false,
-  showExportMenu: false,
-  activePreset: 'custom',
-  // [image]
-  imageType: 'preset',
-  selectedPresetDistro: 'fedora:44',
-  customImageBase: 'ghcr.io/username/custom-env:latest',
-  imageName: 'dev',
-  imagePrebuiltRef: '',
-  pullRetry: 3,
-  pullRetryDelay: '5s',
-  packagesInstallList: ['git', 'fish', 'fastfetch'],
-  packagesRemoveList: [],
-  packageManager: 'auto',
-  // Empty on purpose: the engine appends the right per-distro cleanup
-  // (dnf/apt/pacman/…) to the install layer itself. A hardcoded clean
-  // command here would be redundant on Fedora and break other distros.
-  runCommands: [],
-  // [dotfiles]
-  dotfilesSource: '',
-  dotfilesTarget: '',
-  dotfilesCloneOn: 'host',
-  dotfilesInstall: '',
-  // [storage]
-  sharedCaches: [],
-  hostCaches: [],
-  // [container]
-  containerName: 'dev',
-  containerHome: '~/containers/dev',
-  containerShell: 'bash',
-  // Empty = unlimited. Limits are opt-in per container, not a base default.
-  containerMemory: '',
-  containerCpus: '',
-  containerSlice: 'podbox.slice',
-  containerCpuWeight: 200,
-  containerReloadCmd: '',
-  // One empty row so the host/guest pairing is discoverable; the emitter drops
-// rows with a blank side, so the placeholder never becomes a real mount.
-extraMounts: [{ host: '', guest: '', mode: 'z' }],
-  envVars: [],
-  envForward: [],
-  services: [],
-  // [security]
-  apparmor: '',
-  seccomp: 'default',
-  secLabelDisable: true,
-  noNewPrivileges: true,
-  readOnlyRootfs: false,
-  usernsMode: 'keep-id',
-  capPreset: 'default',
-  extraCapAddList: [],
-  // [network]
-  netMode: 'pasta',
-  netOffline: false,
-  portMappingsList: [],
-  // [integration]
-  // Everything here is opt-in: the engine default is off for all of these
-  // except gpu (auto-detect), so Studio only writes what you turn on.
-  intGitIdentity: false,
-  intWayland: false,
-  intAudio: false,
-  intGpu: 'auto',
-  intDbus: false,
-  intNotify: false,
-  intXdgOpen: false,
-  intXdgOpenSchemes: [],
-  intClipboard: false,
-  intSyncFonts: false,
-  intSyncIcons: false,
-  intSyncThemes: false,
-  intSshAgent: false,
-  intGpgAgent: false,
-  hostExecEnabled: false,
-  hostExecList: [],
-  // One empty row so the pattern is discoverable; the emitter drops blank
-  // rows, so the placeholder never becomes a real step.
-  provisionSteps: [],
-  hwKvm: false,
-  hwJoystick: false,
-  hwWebcam: false,
-  hwSerial: false,
-  hwUsb: false,
-  hwYubikey: false,
-  secrets: [],
-  xdgDocuments: 'off',
-  xdgDownloads: 'ro',
-  xdgPictures: 'off',
-  xdgMusic: 'off',
-  xdgVideos: 'off',
-  xdgDesktop: 'off',
-  xdgProjects: 'rw',
-  exportAppsList: [],
-  exportBinsList: [],
-  // [lifecycle]
-  lifeQuadlet: true,
-  lifeAutostart: false,
-  lifeOnStop: 'keep',
-  lifeAutoUpdate: true,
-  lifeAutoCheckpoint: false,
-  lifeIdleTimeout: 'off',
-  // [systemd]
-  sysRequires: '',
-  sysAfter: 'network-online.target',
-  // [dbus]
-  dbusPreset: 'portal',
-  dbusTalkList: [],
-  dbusOwnList: [],
-  // [wayland]
-  // podbox enables the firewall by default, so the Studio default matches and
-  // the key is only written when someone actually turns it off.
-  waylandFirewall: true,
-  waylandBlockedList: [],
+/**
+ * State defaults that mirror an engine default, by dotted schema path.
+ * Built from the schema data at values-construction time instead of being
+ * copied, so a default that changes in Rust changes here with it.
+ */
+const FROM_ENGINE: Partial<Record<keyof StudioDefaults, string>> = {
+  pullRetry: 'image.pull_retry',
+  pullRetryDelay: 'image.pull_retry_delay',
+  packagesRemoveList: 'image.packages.remove',
+  dotfilesTarget: 'dotfiles.target',
+  dotfilesCloneOn: 'dotfiles.clone_on',
+  containerShell: 'container.shell',
+  containerSlice: 'container.slice',
+  containerCpuWeight: 'container.cpu_weight',
+  secLabelDisable: 'security.security_label_disable',
+  noNewPrivileges: 'security.no_new_privileges',
+  capPreset: 'security.cap_preset',
+  netMode: 'network.mode',
+  intGpu: 'integration.gpu',
+  lifeIdleTimeout: 'lifecycle.idle_timeout',
+  lifeOnStop: 'lifecycle.on_stop',
+  waylandFirewall: 'wayland.firewall',
+  dbusPreset: 'dbus.preset',
 };
 
-// ── scalar fields (generic emit/parse) ─────────────────────────────────────
-// Custom shapes (mount lists, env maps, services, cache tables, section
-// gating) live in generateToml.ts / parseImport.ts next to the engine.
+// Memoized once: the value set is consulted on every render for key sets,
+// and rebuilding it (with its engine lookups) would be wasted work. Fresh
+// copies for resets/presets are made by spreading `studioDefaults()`.
+let cachedValues: StudioDefaults | null = null;
+
+export function studioDefaults(): StudioDefaults {
+  if (!cachedValues) cachedValues = initialStudioValues();
+  return cachedValues;
+}
+
+/**
+ * Fresh Studio values: UI-owned prefills (placeholder rows, the sample
+ * package list, pseudo tokens like `seccomp = "default"`) plus the engine
+ * defaults served by the schema data. A missing engine default is schema
+ * drift, so the whole Studio fails the check instead of running on a
+ * silently stale value.
+ */
+export function initialStudioValues(): StudioDefaults {
+  const base: StudioDefaults = {
+    // view state
+    isFullscreen: false,
+    activeCategory: 'image',
+    activeView: 'toml',
+    copied: false,
+    showExportMenu: false,
+    activePreset: 'custom',
+    // [image]
+    imageType: 'preset',
+    selectedPresetDistro: 'fedora:44',
+    customImageBase: 'ghcr.io/username/custom-env:latest',
+    imageName: 'dev',
+    imagePrebuiltRef: '',
+    pullRetry: 0,
+    pullRetryDelay: '',
+    packagesInstallList: ['git', 'fish', 'fastfetch'],
+    packagesRemoveList: [],
+    packageManager: 'auto',
+    // Empty on purpose: the engine appends the right per-distro cleanup
+    // (dnf/apt/pacman/…) to the install layer itself. A hardcoded clean
+    // command here would be redundant on Fedora and break other distros.
+    runCommands: [],
+    // [dotfiles]
+    dotfilesSource: '',
+    dotfilesTarget: '',
+    dotfilesCloneOn: 'host',
+    dotfilesInstall: '',
+    // [storage]
+    sharedCaches: [],
+    hostCaches: [],
+    // [container]
+    containerName: 'dev',
+    containerHome: '~/containers/dev',
+    containerShell: 'bash',
+    // Empty = unlimited. Limits are opt-in per container, not a base default.
+    containerMemory: '',
+    containerCpus: '',
+    containerSlice: 'podbox.slice',
+    containerCpuWeight: 200,
+    containerReloadCmd: '',
+    // One empty row so the host/guest pairing is discoverable; the emitter
+    // drops rows with a blank side, so the placeholder never becomes a real
+    // mount.
+    extraMounts: [{ host: '', guest: '', mode: 'z' }],
+    envVars: [],
+    envForward: [],
+    services: [],
+    // [security]
+    apparmor: '',
+    // "default" is the Studio's no-token (the engine leaves `seccomp` unset).
+    seccomp: 'default',
+    secLabelDisable: true,
+    noNewPrivileges: true,
+    readOnlyRootfs: false,
+    // "keep-id" is the Studio's no-token (rootless podman's own default).
+    usernsMode: 'keep-id',
+    capPreset: 'default',
+    extraCapAddList: [],
+    // [network]
+    netMode: 'pasta',
+    netOffline: false,
+    portMappingsList: [],
+    // [integration]
+    // Everything here is opt-in: the engine default is off for all of these
+    // except gpu (auto-detect), so Studio only writes what you turn on.
+    intGitIdentity: false,
+    intWayland: false,
+    intAudio: false,
+    intGpu: 'auto',
+    intDbus: false,
+    intNotify: false,
+    intXdgOpen: false,
+    intXdgOpenSchemes: [],
+    intClipboard: false,
+    intSyncFonts: false,
+    intSyncIcons: false,
+    intSyncThemes: false,
+    intSshAgent: false,
+    intGpgAgent: false,
+    hostExecEnabled: false,
+    hostExecList: [],
+    provisionSteps: [],
+    hwKvm: false,
+    hwJoystick: false,
+    hwWebcam: false,
+    hwSerial: false,
+    hwUsb: false,
+    hwYubikey: false,
+    secrets: [],
+    xdgDocuments: 'off',
+    xdgDownloads: 'ro',
+    xdgPictures: 'off',
+    xdgMusic: 'off',
+    xdgVideos: 'off',
+    xdgDesktop: 'off',
+    xdgProjects: 'rw',
+    exportAppsList: [],
+    exportBinsList: [],
+    // [lifecycle]
+    lifeQuadlet: true,
+    lifeAutostart: false,
+    lifeOnStop: 'keep',
+    lifeAutoUpdate: true,
+    lifeAutoCheckpoint: false,
+    lifeIdleTimeout: 'off',
+    // [systemd]
+    sysRequires: '',
+    sysAfter: 'network-online.target',
+    // [dbus]
+    dbusPreset: 'portal',
+    dbusTalkList: [],
+    dbusOwnList: [],
+    // [wayland]
+    waylandFirewall: true,
+    waylandBlockedList: [],
+  };
+  const defaults = engineSchema().defaults;
+  for (const [key, path] of Object.entries(FROM_ENGINE) as [keyof StudioDefaults, string][]) {
+    const engineValue = defaults[path];
+    if (engineValue === undefined || engineValue === null) {
+      throw new Error(`schema defaults are missing ${path} (drift between Studio and engine)`);
+    }
+    const current = base[key];
+    if (typeof engineValue !== typeof current) {
+      throw new Error(`engine default ${path} has type ${typeof engineValue}, expected ${typeof current}`);
+    }
+    (base as unknown as Record<string, unknown>)[key] = engineValue;
+  }
+  return base;
+}
+
+// ── scalar fields (generic parse) ──────────────────────────────────────────
+// TOML emission now happens in Rust (configShape.ts builds the Config JSON);
+// FIELDS drives the SettingsPalette index and the scalar import pass that
+// reads a parsed config back into state.
 
 export const FIELDS: FieldDef[] = [
   // [image]
-  { stateKey: 'imageName', tomlPath: 'image.name', kind: 'string', def: '', emit: 'always' },
-  { stateKey: 'imagePrebuiltRef', tomlPath: 'image.image', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'pullRetry', tomlPath: 'image.pull_retry', kind: 'number', def: 3, emit: 'non-default' },
-  { stateKey: 'pullRetryDelay', tomlPath: 'image.pull_retry_delay', kind: 'string', def: '5s', emit: 'non-default' },
+  { stateKey: 'imageName', tomlPath: 'image.name', kind: 'string' },
+  { stateKey: 'imagePrebuiltRef', tomlPath: 'image.image', kind: 'string' },
+  { stateKey: 'pullRetry', tomlPath: 'image.pull_retry', kind: 'number' },
+  { stateKey: 'pullRetryDelay', tomlPath: 'image.pull_retry_delay', kind: 'string' },
   // [image.packages]
-  { stateKey: 'packagesInstallList', tomlPath: 'image.packages.install', kind: 'string-list', def: [], emit: 'non-empty' },
-  { stateKey: 'packagesRemoveList', tomlPath: 'image.packages.remove', kind: 'string-list', def: [], emit: 'non-empty' },
-  { stateKey: 'packageManager', tomlPath: 'image.packages.manager', kind: 'select', def: 'auto', emit: 'non-default', options: PACKAGE_MANAGER_OPTIONS },
+  { stateKey: 'packagesInstallList', tomlPath: 'image.packages.install', kind: 'string-list' },
+  { stateKey: 'packagesRemoveList', tomlPath: 'image.packages.remove', kind: 'string-list' },
+  { stateKey: 'packageManager', tomlPath: 'image.packages.manager', kind: 'select' },
   // [container]
-  { stateKey: 'containerName', tomlPath: 'container.name', kind: 'string', def: '', emit: 'always' },
-  { stateKey: 'containerHome', tomlPath: 'container.home', kind: 'string', def: '', emit: 'non-empty' },
+  { stateKey: 'containerName', tomlPath: 'container.name', kind: 'string' },
+  { stateKey: 'containerHome', tomlPath: 'container.home', kind: 'string' },
   // 'bash' is podbox's own default, so it is never written out; a different
   // shell is an intentional override and gets emitted.
-  { stateKey: 'containerShell', tomlPath: 'container.shell', kind: 'string', def: 'bash', emit: 'non-default' },
-  { stateKey: 'containerMemory', tomlPath: 'container.memory', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'containerCpus', tomlPath: 'container.cpus', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'containerSlice', tomlPath: 'container.slice', kind: 'string', def: 'podbox.slice', emit: 'non-default' },
-  { stateKey: 'containerCpuWeight', tomlPath: 'container.cpu_weight', kind: 'number', def: 200, emit: 'non-default' },
-  { stateKey: 'containerReloadCmd', tomlPath: 'container.reload_cmd', kind: 'string', def: '', emit: 'non-empty' },
+  { stateKey: 'containerShell', tomlPath: 'container.shell', kind: 'string' },
+  { stateKey: 'containerMemory', tomlPath: 'container.memory', kind: 'string' },
+  { stateKey: 'containerCpus', tomlPath: 'container.cpus', kind: 'string' },
+  { stateKey: 'containerSlice', tomlPath: 'container.slice', kind: 'string' },
+  { stateKey: 'containerCpuWeight', tomlPath: 'container.cpu_weight', kind: 'number' },
+  { stateKey: 'containerReloadCmd', tomlPath: 'container.reload_cmd', kind: 'string' },
   // [dotfiles]
-  { stateKey: 'dotfilesSource', tomlPath: 'dotfiles.source', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'dotfilesTarget', tomlPath: 'dotfiles.target', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'dotfilesCloneOn', tomlPath: 'dotfiles.clone_on', kind: 'select', def: 'host', emit: 'non-default', options: CLONE_ON_OPTIONS },
-  { stateKey: 'dotfilesInstall', tomlPath: 'dotfiles.install', kind: 'string', def: '', emit: 'non-empty' },
+  { stateKey: 'dotfilesSource', tomlPath: 'dotfiles.source', kind: 'string' },
+  { stateKey: 'dotfilesTarget', tomlPath: 'dotfiles.target', kind: 'string' },
+  { stateKey: 'dotfilesCloneOn', tomlPath: 'dotfiles.clone_on', kind: 'select' },
+  { stateKey: 'dotfilesInstall', tomlPath: 'dotfiles.install', kind: 'string' },
   // [security]
-  { stateKey: 'apparmor', tomlPath: 'security.apparmor', kind: 'string', def: '', emit: 'non-empty' },
-  { stateKey: 'seccomp', tomlPath: 'security.seccomp', kind: 'string', def: 'default', emit: 'non-default' },
-  { stateKey: 'secLabelDisable', tomlPath: 'security.security_label_disable', kind: 'boolean', def: true, emit: 'is-false' },
-  { stateKey: 'noNewPrivileges', tomlPath: 'security.no_new_privileges', kind: 'boolean', def: true, emit: 'is-false' },
-  { stateKey: 'readOnlyRootfs', tomlPath: 'security.read_only_rootfs', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'usernsMode', tomlPath: 'security.userns', kind: 'select', def: 'keep-id', emit: 'non-default', options: USERNS_OPTIONS },
-  { stateKey: 'capPreset', tomlPath: 'security.cap_preset', kind: 'select', def: 'default', emit: 'non-default', options: CAP_PRESET_OPTIONS },
-  { stateKey: 'extraCapAddList', tomlPath: 'security.cap_add', kind: 'string-list', def: [], emit: 'non-empty' },
+  { stateKey: 'apparmor', tomlPath: 'security.apparmor', kind: 'string' },
+  { stateKey: 'seccomp', tomlPath: 'security.seccomp', kind: 'string' },
+  { stateKey: 'secLabelDisable', tomlPath: 'security.security_label_disable', kind: 'boolean' },
+  { stateKey: 'noNewPrivileges', tomlPath: 'security.no_new_privileges', kind: 'boolean' },
+  { stateKey: 'readOnlyRootfs', tomlPath: 'security.read_only_rootfs', kind: 'boolean' },
+  { stateKey: 'usernsMode', tomlPath: 'security.userns', kind: 'select' },
+  { stateKey: 'capPreset', tomlPath: 'security.cap_preset', kind: 'select' },
+  { stateKey: 'extraCapAddList', tomlPath: 'security.cap_add', kind: 'string-list' },
   // [network]
-  { stateKey: 'netMode', tomlPath: 'network.mode', kind: 'select', def: 'pasta', emit: 'non-default', options: NETWORK_MODE_OPTIONS },
-  { stateKey: 'netOffline', tomlPath: 'network.offline', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'portMappingsList', tomlPath: 'network.ports', kind: 'string-list', def: [], emit: 'non-empty' },
+  { stateKey: 'netMode', tomlPath: 'network.mode', kind: 'select' },
+  { stateKey: 'netOffline', tomlPath: 'network.offline', kind: 'boolean' },
+  { stateKey: 'portMappingsList', tomlPath: 'network.ports', kind: 'string-list' },
   // [integration]
-  { stateKey: 'intGitIdentity', tomlPath: 'integration.git_identity', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intWayland', tomlPath: 'integration.wayland', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intAudio', tomlPath: 'integration.audio', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intDbus', tomlPath: 'integration.dbus', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intNotify', tomlPath: 'integration.notify', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intXdgOpen', tomlPath: 'integration.xdg_open', kind: 'boolean', def: false, emit: 'is-true',
-    // The bool shorthand only while the allowlist is the engine default
-    // (an empty list means the default). A custom scheme list switches to
-    // the table form, emitted in generateToml.ts's custom `integration` case.
-    hidden: (s) => s.intXdgOpenSchemes.length > 0 && !DEFAULT_XDG_OPEN_SCHEMES.every((c, i) => s.intXdgOpenSchemes[i] === c) },
-  { stateKey: 'intClipboard', tomlPath: 'integration.clipboard', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intSyncFonts', tomlPath: 'integration.sync_fonts', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intSyncIcons', tomlPath: 'integration.sync_icons', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intSyncThemes', tomlPath: 'integration.sync_themes', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intSshAgent', tomlPath: 'integration.ssh_agent', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'intGpgAgent', tomlPath: 'integration.gpg_agent', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'intGitIdentity', tomlPath: 'integration.git_identity', kind: 'boolean' },
+  { stateKey: 'intWayland', tomlPath: 'integration.wayland', kind: 'boolean' },
+  { stateKey: 'intAudio', tomlPath: 'integration.audio', kind: 'boolean' },
+  { stateKey: 'intDbus', tomlPath: 'integration.dbus', kind: 'boolean' },
+  { stateKey: 'intNotify', tomlPath: 'integration.notify', kind: 'boolean' },
+  { stateKey: 'intXdgOpen', tomlPath: 'integration.xdg_open', kind: 'boolean' },
+  { stateKey: 'intClipboard', tomlPath: 'integration.clipboard', kind: 'boolean' },
+  { stateKey: 'intSyncFonts', tomlPath: 'integration.sync_fonts', kind: 'boolean' },
+  { stateKey: 'intSyncIcons', tomlPath: 'integration.sync_icons', kind: 'boolean' },
+  { stateKey: 'intSyncThemes', tomlPath: 'integration.sync_themes', kind: 'boolean' },
+  { stateKey: 'intSshAgent', tomlPath: 'integration.ssh_agent', kind: 'boolean' },
+  { stateKey: 'intGpgAgent', tomlPath: 'integration.gpg_agent', kind: 'boolean' },
   // [integration.hardware]
-  { stateKey: 'hwKvm', tomlPath: 'integration.hardware.kvm', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'hwJoystick', tomlPath: 'integration.hardware.joystick', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'hwWebcam', tomlPath: 'integration.hardware.webcam', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'hwSerial', tomlPath: 'integration.hardware.serial', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'hwUsb', tomlPath: 'integration.hardware.usb', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'hwYubikey', tomlPath: 'integration.hardware.yubikey', kind: 'boolean', def: false, emit: 'is-true' },
+  { stateKey: 'hwKvm', tomlPath: 'integration.hardware.kvm', kind: 'boolean' },
+  { stateKey: 'hwJoystick', tomlPath: 'integration.hardware.joystick', kind: 'boolean' },
+  { stateKey: 'hwWebcam', tomlPath: 'integration.hardware.webcam', kind: 'boolean' },
+  { stateKey: 'hwSerial', tomlPath: 'integration.hardware.serial', kind: 'boolean' },
+  { stateKey: 'hwUsb', tomlPath: 'integration.hardware.usb', kind: 'boolean' },
+  { stateKey: 'hwYubikey', tomlPath: 'integration.hardware.yubikey', kind: 'boolean' },
   // [integration.xdg_dirs]
-  { stateKey: 'xdgDocuments', tomlPath: 'integration.xdg_dirs.documents', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
-  { stateKey: 'xdgDownloads', tomlPath: 'integration.xdg_dirs.downloads', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
-  { stateKey: 'xdgPictures', tomlPath: 'integration.xdg_dirs.pictures', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
-  { stateKey: 'xdgMusic', tomlPath: 'integration.xdg_dirs.music', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
-  { stateKey: 'xdgVideos', tomlPath: 'integration.xdg_dirs.videos', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
-  { stateKey: 'xdgDesktop', tomlPath: 'integration.xdg_dirs.desktop', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
-  { stateKey: 'xdgProjects', tomlPath: 'integration.xdg_dirs.projects', kind: 'xdg-dir', def: 'off', emit: 'non-default' },
+  { stateKey: 'xdgDocuments', tomlPath: 'integration.xdg_dirs.documents', kind: 'xdg-dir' },
+  { stateKey: 'xdgDownloads', tomlPath: 'integration.xdg_dirs.downloads', kind: 'xdg-dir' },
+  { stateKey: 'xdgPictures', tomlPath: 'integration.xdg_dirs.pictures', kind: 'xdg-dir' },
+  { stateKey: 'xdgMusic', tomlPath: 'integration.xdg_dirs.music', kind: 'xdg-dir' },
+  { stateKey: 'xdgVideos', tomlPath: 'integration.xdg_dirs.videos', kind: 'xdg-dir' },
+  { stateKey: 'xdgDesktop', tomlPath: 'integration.xdg_dirs.desktop', kind: 'xdg-dir' },
+  { stateKey: 'xdgProjects', tomlPath: 'integration.xdg_dirs.projects', kind: 'xdg-dir' },
   // [integration.export]
-  { stateKey: 'exportAppsList', tomlPath: 'integration.export.apps', kind: 'string-list', def: [], emit: 'non-empty' },
-  { stateKey: 'exportBinsList', tomlPath: 'integration.export.bins', kind: 'string-list', def: [], emit: 'non-empty' },
+  { stateKey: 'exportAppsList', tomlPath: 'integration.export.apps', kind: 'string-list' },
+  { stateKey: 'exportBinsList', tomlPath: 'integration.export.bins', kind: 'string-list' },
   // [lifecycle]
-  { stateKey: 'lifeQuadlet', tomlPath: 'lifecycle.quadlet', kind: 'boolean', def: false, emit: 'non-default' },
-  { stateKey: 'lifeAutostart', tomlPath: 'lifecycle.autostart', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'lifeOnStop', tomlPath: 'lifecycle.on_stop', kind: 'select', def: 'keep', emit: 'non-default', options: ON_STOP_OPTIONS },
-  { stateKey: 'lifeAutoUpdate', tomlPath: 'lifecycle.auto_update', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'lifeAutoCheckpoint', tomlPath: 'lifecycle.auto_checkpoint', kind: 'boolean', def: false, emit: 'is-true' },
-  { stateKey: 'lifeIdleTimeout', tomlPath: 'lifecycle.idle_timeout', kind: 'string', def: 'off', emit: 'non-default' },
+  { stateKey: 'lifeQuadlet', tomlPath: 'lifecycle.quadlet', kind: 'boolean' },
+  { stateKey: 'lifeAutostart', tomlPath: 'lifecycle.autostart', kind: 'boolean' },
+  { stateKey: 'lifeOnStop', tomlPath: 'lifecycle.on_stop', kind: 'select' },
+  { stateKey: 'lifeAutoUpdate', tomlPath: 'lifecycle.auto_update', kind: 'boolean' },
+  { stateKey: 'lifeAutoCheckpoint', tomlPath: 'lifecycle.auto_checkpoint', kind: 'boolean' },
+  { stateKey: 'lifeIdleTimeout', tomlPath: 'lifecycle.idle_timeout', kind: 'string' },
   // [dbus]
-  { stateKey: 'dbusPreset', tomlPath: 'dbus.preset', kind: 'select', def: 'portal', emit: 'non-default', options: DBUS_PRESET_OPTIONS },
-  { stateKey: 'dbusTalkList', tomlPath: 'dbus.talk', kind: 'string-list', def: [], emit: 'non-empty' },
-  { stateKey: 'dbusOwnList', tomlPath: 'dbus.own', kind: 'string-list', def: [], emit: 'non-empty' },
+  { stateKey: 'dbusPreset', tomlPath: 'dbus.preset', kind: 'select' },
+  { stateKey: 'dbusTalkList', tomlPath: 'dbus.talk', kind: 'string-list' },
+  { stateKey: 'dbusOwnList', tomlPath: 'dbus.own', kind: 'string-list' },
   // [wayland]
-  { stateKey: 'waylandBlockedList', tomlPath: 'wayland.blocked_interfaces', kind: 'string-list', def: [], emit: 'non-empty' },
+  { stateKey: 'waylandBlockedList', tomlPath: 'wayland.blocked_interfaces', kind: 'string-list' },
 ];
-
-// ── generic engine primitives ─────────────────────────────────────────────
-
-export function tableOf(tomlPath: string): string {
-  return tomlPath.split('.').slice(0, -1).join('.');
-}
-
-export function keyOf(tomlPath: string): string {
-  return tomlPath.split('.').slice(-1)[0];
-}
-
-export function shouldEmit(field: FieldDef, value: unknown): boolean {
-  switch (field.emit ?? 'non-default') {
-    case 'always':
-      return true;
-    case 'non-empty':
-      return Array.isArray(value) ? value.length > 0 : value !== '' && value !== undefined && value !== null;
-    case 'non-default':
-      return Array.isArray(value) || Array.isArray(field.def)
-        ? JSON.stringify(value) !== JSON.stringify(field.def)
-        : value !== field.def;
-    case 'is-true':
-      return value === true;
-    case 'is-false':
-      return value === false;
-  }
-}
-
-export function formatScalar(kind: FieldKind, value: unknown): string {
-  if (kind === 'string-list') {
-    return `[${((value as string[]) ?? []).map((e) => tomlString(e)).join(', ')}]`;
-  }
-  if (kind === 'xdg-dir') {
-    // `true` is the read-only shorthand; the table form is the only way to ask
-    // for a writable bind (see `emit_xdg_dir` in the Rust codegen).
-    return value === 'rw' ? '{ enabled = true, read_write = true }' : 'true';
-  }
-  if (kind === 'boolean' || kind === 'number') return String(value);
-  return tomlString(String(value));
-}
 
 /** Read a dotted path from a parsed TOML document. */
 export function getPath(doc: Record<string, any>, tomlPath: string): unknown {

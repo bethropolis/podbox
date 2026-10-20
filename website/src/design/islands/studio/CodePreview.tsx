@@ -11,7 +11,7 @@ import {
 import type { StudioState } from './useStudioState';
 import { useOutputActions } from './useOutputActions';
 import { highlightDocument, type PreviewLang } from '../../highlight';
-import { diffLines } from './tomlLines';
+import { diffLines } from './diff';
 import { useHorizontalWheel } from './useHorizontalWheel';
 
 type UnitView = 'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor';

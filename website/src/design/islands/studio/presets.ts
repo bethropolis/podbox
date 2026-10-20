@@ -1,7 +1,7 @@
 // Preset catalogue: one file per preset, shared types in `./shared`.
 // Importers (`StudioHeader`, `check-studio-parity`) keep using this barrel.
 
-import { STUDIO_DEFAULTS, UI_ONLY_KEYS } from './schema';
+import { studioDefaults, UI_ONLY_KEYS } from './schema';
 import type { StudioValues } from './useStudioState';
 import { archGuiPreset } from './presets/arch-gui';
 import { flutterPreset } from './presets/flutter';
@@ -18,12 +18,12 @@ export const PRESETS: readonly PresetDef[] = [rustPreset, flutterPreset, archGui
 /**
  * Reset to a blank slate.
  *
- * Built from `STUDIO_DEFAULTS` so it cannot drift from what a fresh page load
+ * Built from `studioDefaults()` so it cannot drift from what a fresh page load
  * produces, minus the view state — resetting should not close a dropdown or
  * throw the user out of fullscreen.
  */
 export function defaultPatch(): Partial<StudioValues> {
-  const base = { ...STUDIO_DEFAULTS } as Record<string, unknown>;
+  const base = { ...studioDefaults() } as Record<string, unknown>;
   for (const key of UI_ONLY_KEYS) delete base[key];
   return { ...base, activePreset: 'custom' } as Partial<StudioValues>;
 }

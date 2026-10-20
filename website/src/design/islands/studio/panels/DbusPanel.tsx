@@ -7,7 +7,7 @@ import {
   StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { DBUS_PRESET_OPTIONS } from '../schema';
+import { dbusPresetOptions } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type DbusPanelProps = Pick<StudioState, 'dbusPreset' | 'dbusTalkList' | 'setDbusPreset' | 'setDbusTalkList' | 'intDbus'>;
@@ -44,7 +44,7 @@ export function DbusPanel({ st }: { st: DbusPanelProps }) {
       }
       value={dbusPreset}
       onChange={setDbusPreset}
-      options={DBUS_PRESET_OPTIONS}
+      options={dbusPresetOptions()}
     />
 
     <StudioTagInput

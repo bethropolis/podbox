@@ -4,7 +4,7 @@
 // drops fails the check instead of silently losing user data (presets,
 // Reset, import, share links and session restore all funnel through it).
 
-import { STUDIO_DEFAULTS, UI_ONLY_KEYS, type StudioDefaults } from './schema';
+import { studioDefaults, UI_ONLY_KEYS, type StudioDefaults } from './schema';
 
 export type StudioKey = keyof StudioDefaults;
 
@@ -29,7 +29,7 @@ const hasOwn = (obj: object, key: string): boolean =>
 
 /**
  * Merge `patch` over `state`, keeping only keys declared in
- * `STUDIO_DEFAULTS`. Unknown keys are ignored with a warning: they are
+ * `studioDefaults()`. Unknown keys are ignored with a warning: they are
  * always a bug (a renamed panel key, a stale saved session), never data.
  */
 export function studioReducer(state: StudioDefaults, action: StudioAction): StudioDefaults {
@@ -39,7 +39,7 @@ export function studioReducer(state: StudioDefaults, action: StudioAction): Stud
     case 'patch': {
       const next = { ...state };
       for (const [key, value] of Object.entries(action.patch)) {
-        if (hasOwn(STUDIO_DEFAULTS, key)) {
+        if (hasOwn(studioDefaults(), key)) {
           (next as Record<string, unknown>)[key] = value;
         } else {
           console.warn(`[studio] ignoring unknown state key in patch: ${key}`);
@@ -52,7 +52,7 @@ export function studioReducer(state: StudioDefaults, action: StudioAction): Stud
       // not close a dropdown or throw the user out of fullscreen.
       const next = { ...state };
       const uiOnly = new Set<string>(UI_ONLY_KEYS);
-      for (const [key, value] of Object.entries(STUDIO_DEFAULTS)) {
+      for (const [key, value] of Object.entries(studioDefaults())) {
         if (!uiOnly.has(key)) {
           (next as Record<string, unknown>)[key] = value;
         }
