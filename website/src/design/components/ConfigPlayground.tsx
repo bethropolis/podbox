@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TerminalCodeBlock } from './TerminalCodeBlock';
 import { StudioSwitch } from './StudioControls';
 import { StudioTooltip } from './StudioTooltip';
@@ -11,7 +11,13 @@ import {
 
 import { withBase } from '../base';
 import { encodeShare } from '../islands/studio/share';
-import { generatePlaygroundToml, generatePlaygroundQuadlet, type PlaygroundConfig } from './playground/generate';
+// Real emission: the wasm engine (the same Rust code the CLI runs) generates
+// both files from one Config object, so every control below is guaranteed to
+// land in the output — a TS replica here is how output keys drifted from the
+// schema in the first place.
+import { compileQuadletToml, configToToml, ensureEngine, validateToml } from '../islands/studio/engine';
+import type { PlaygroundState } from './playground/buildConfig';
+import { playgroundConfig } from './playground/buildConfig';
 
 interface ConfigPlaygroundProps {
   // Navigation is plain MPA links; no callback props cross the Astro boundary.
@@ -57,9 +63,33 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
   const [shareProjects, setShareProjects] = useState(true);
   const [packages, setPackages] = useState('neovim, ripgrep, git, fish');
   const [activeView, setActiveView] = useState<'toml' | 'quadlet'>('toml');
+  const [engineReady, setEngineReady] = useState(false);
 
-  const config: PlaygroundConfig = { name, distro, customImage, wayland, pipewire, gpu, dbusNotifications, shareProjects, packages, packagesRemove: [], run: [], env: {}, mounts: [], ports: [], network: 'bridge', memory: '', cpus: '' } as any;
-  const code = activeView === 'toml' ? generatePlaygroundToml(config) : generatePlaygroundQuadlet(config);
+  useEffect(() => {
+    let alive = true;
+    ensureEngine()
+      .then(() => {
+        if (alive) setEngineReady(true);
+      })
+      .catch((e) => {
+        console.error('playground engine failed to start', e);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const state: PlaygroundState = { name, distro, customImage, packages, wayland, pipewire, gpu, dbusNotifications, shareProjects };
+  // Until the engine is up (island hydration) the panes hold a visible
+  // placeholder instead of stale fabrications.
+  const LOADING = '# the real podbox engine is loading…';
+  const toml = engineReady ? (configToToml(playgroundConfig(state)) ?? LOADING) : LOADING;
+  // The engine also validates; a custom image with packages set trips its
+  // "cannot determine package manager" rule, which the old static renderer
+  // silently swallowed. Surface the first real error under the header.
+  const report = engineReady ? validateToml(toml) : null;
+  const engineError = report?.errors[0]?.message ?? null;
+  const code = activeView === 'toml' ? toml : (engineReady ? (compileQuadletToml(toml)?.container ?? LOADING) : LOADING);
 
   const tabs = [
     { id: 'toml' as const, label: 'podbox.toml', note: 'what you write', icon: FileCode2 },
@@ -237,6 +267,15 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
               {!linking && <ArrowRight className="w-3.5 h-3.5" />}
             </a>
           </div>
+
+          {/* Engine validation failure (e.g. a custom image with packages but
+              no knowable package manager) — one line, from the same validator
+              the CLI uses. */}
+          {engineError && (
+            <div className="shrink-0 px-5 sm:px-6 py-2 border-b border-[var(--border)] text-xs leading-relaxed text-[var(--accent-red)] bg-[var(--accent-red)]/5">
+              <span className="font-bold">not valid yet:</span> {engineError}
+            </div>
+          )}
 
           {/* File tabs */}
           <div className="shrink-0 flex items-end gap-1 px-3 sm:px-6 pt-3 border-b border-[var(--border)] overflow-x-auto scrollbar-none" role="tablist">
