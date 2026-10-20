@@ -13,7 +13,8 @@ use nix::unistd::Pid;
 
 use super::PING_INTERVAL;
 use super::actions::HostActions;
-use crate::config::IntegrationConfig;
+use super::cwd_map::CwdMap;
+use crate::config::{Config, HostExecCwd, IntegrationConfig};
 use crate::process::FdCapturingReader;
 use crate::protocol::{ExecStream, FrameRead, FrameReader, GuestMessage, HostMessage, write_frame};
 
@@ -480,12 +481,51 @@ impl HostExecV2Request {
     }
 }
 
+/// What a guest cwd request resolves to on the host, after the config's
+/// `integration.host_exec.cwd` policy and the container's bind mappings.
+enum GuestCwd {
+    /// Start the child in the mapped host directory.
+    Mapped(String),
+    /// Start in the host home: either the policy ignores the guest path
+    /// (the default) or a `map` guest path had no mapping and the policy
+    /// falls back. `warn` is the stderr note the guest sees through its
+    /// own descriptor in the fallback case.
+    HostHome { warn: Option<String> },
+    /// Run nothing: the policy refuses an unmappable guest path.
+    Refused,
+}
+
+/// Resolve the configured cwd behaviour for a V2 request.
+fn resolve_guest_cwd(cwd: &Option<String>, policy: HostExecCwd, cwd_map: &CwdMap) -> GuestCwd {
+    let Some(guest_path) = cwd else {
+        // No path carried: nothing to map or refuse, historical default.
+        return GuestCwd::HostHome { warn: None };
+    };
+    match policy {
+        HostExecCwd::Home => GuestCwd::HostHome { warn: None },
+        HostExecCwd::Map => match cwd_map.translate(guest_path) {
+            Some(host) => GuestCwd::Mapped(host),
+            None => GuestCwd::HostHome {
+                warn: Some(format!(
+                    "host-exec: guest working directory '{guest_path}' has no mapping to the \
+                     host; starting in the host home\n"
+                )),
+            },
+        },
+        HostExecCwd::Refuse => match cwd_map.translate(guest_path) {
+            Some(host) => GuestCwd::Mapped(host),
+            None => GuestCwd::Refused,
+        },
+    }
+}
+
 /// Handle a `HostExecV2` message: run the allowlisted command with the
 /// guest's descriptors as the child's stdio, relay signals to it while it
 /// runs, and report its exit.
 pub(super) fn handle_host_exec_v2(
     stream: &mut UnixStream,
-    config: &IntegrationConfig,
+    config: &Config,
+    cwd_map: &CwdMap,
     request: HostExecV2Request,
     fds: Vec<OwnedFd>,
 ) -> anyhow::Result<()> {
@@ -506,7 +546,20 @@ pub(super) fn handle_host_exec_v2(
             "not_supported",
         );
     }
-    let canonical_path = match resolve_host_exec_request(config, &cmd, &args) {
+    // The cwd policy is applied before anything runs: a refusal must not
+    // execute a command whose working directory the admin did not allow.
+    let guest_cwd = resolve_guest_cwd(&cwd, config.integration.host_exec.cwd, cwd_map);
+    if let GuestCwd::Refused = &guest_cwd {
+        let reason = match &cwd {
+            Some(path) => format!(
+                "host-exec: refusing to execute with guest working directory '{path}': \
+                 no known mapping to the host (integration.host_exec.cwd = \"refuse\")"
+            ),
+            None => "host-exec: refusing the request".to_string(),
+        };
+        return host_exec_v2_refused(stream, &reason, "not_allowed");
+    }
+    let canonical_path = match resolve_host_exec_request(&config.integration, &cmd, &args) {
         Ok(p) => p,
         Err(msg) => return host_exec_failed(stream, &msg),
     };
@@ -534,15 +587,36 @@ pub(super) fn handle_host_exec_v2(
     let [child_stdin, child_stdout, child_stderr] = ok_fds;
 
     // Only the allowlisted keys reach through; the child otherwise runs in
-    // the host daemon's own environment. `cwd` is carried but not processed
-    // yet: translating a container path needs the volume mappings.
-    if cwd.is_some() {
-        tracing::debug!("host-exec: guest cwd carried but not yet used");
-    }
+    // the host daemon's own environment. The cwd policy decides where the
+    // child starts: `home` (the default) starts in the host home; `map`
+    // starts it in the host directory the guest cwd is bound from, with a
+    // stderr warning (through the guest's own descriptor, so it reaches
+    // attached-stdio pipes and ptys alike) when the guest path has no
+    // mapping; `refuse` never got this far.
     let mut command = Command::new(&canonical_path);
     command.args(&args);
     for (key, value) in allowlisted_exec_env(&env) {
         command.env(key, value);
+    }
+    match guest_cwd {
+        GuestCwd::Mapped(host_dir) => {
+            tracing::info!("host-exec: starting child in mapped host cwd {host_dir:?}");
+            command.current_dir(host_dir);
+        }
+        GuestCwd::HostHome { warn } => {
+            // The fallback warning goes through the guest's own stderr
+            // descriptor, before any child output: no protocol frame is
+            // needed and both the pipe and pty session shapes deliver it.
+            if let Some(text) = warn {
+                // Writing through nix keeps the fd semantics explicit and
+                // avoids depending on `OwnedFd`'s io traits age.
+                nix::unistd::write(&child_stderr, text.as_bytes()).ok();
+            }
+            command.current_dir(cwd_map.host_home());
+        }
+        // Unreachable: a refusal returned above, and there is no path
+        // that resolves to `Refused` twice.
+        GuestCwd::Refused => {}
     }
     let child = command
         .stdin(Stdio::from(child_stdin))

@@ -64,7 +64,7 @@ accepted ones.
 | `clipboard_set` | `text` (at most 8 MiB; larger content gets an `error` reply and leaves the session open) |
 | `clipboard_get` | — (the host answers `error` when the selection exceeds 8 MiB) |
 | `host_exec` | `cmd`, `args` |
-| `host_exec_v2` | `cmd`, `args`, `env` (optional key/value pairs; only `TERM`, `LANG`, `COLORTERM` pass), `cwd` (optional; carried for a future phase, unused today), `tty` (optional; `true` is refused with a typed error for now) — the child's stdin/stdout/stderr arrive as three descriptors via `SCM_RIGHTS` on the same connection |
+| `host_exec_v2` | `cmd`, `args`, `env` (optional key/value pairs; only `TERM`, `LANG`, `COLORTERM` pass), `cwd` (optional guest working directory; interpreted per the configured [cwd handling](config.md#cwd-handling), defaulting to the host `$HOME`), `tty` (optional; `true` is refused with a typed error for now) — the child's stdin/stdout/stderr arrive as three descriptors via `SCM_RIGHTS` on the same connection |
 | `host_exec_signal` | `sig` (optional signal number to relay to a running fd-passing host-exec child) |
 | `register_session` | — (pidfd via `SCM_RIGHTS`) |
 | `busy` | — |

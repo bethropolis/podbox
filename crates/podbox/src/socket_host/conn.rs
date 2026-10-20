@@ -29,6 +29,7 @@ pub(crate) fn handle_connection(
     config: &Config,
     state: &Arc<SharedState>,
     actions: &dyn HostActions,
+    cwd_map: &super::CwdMap,
 ) -> anyhow::Result<()> {
     // Until `Hello`, a short read timeout enforces the handshake deadline.
     // Afterwards the connection pings at the normal interval.
@@ -306,7 +307,7 @@ pub(crate) fn handle_connection(
                 // The full field set is consumed by the handler; the
                 // descriptors already arrived with the frame.
                 let request = handlers::HostExecV2Request::from_message(cmd, args, env, cwd, tty);
-                handlers::handle_host_exec_v2(stream, &config.integration, request, attached_fds)?
+                handlers::handle_host_exec_v2(stream, config, cwd_map, request, attached_fds)?
             }
             GuestMessage::HostExecSignal { sig } => {
                 // Relay frames only mean something while a V2 child is
