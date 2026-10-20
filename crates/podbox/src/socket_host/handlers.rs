@@ -18,8 +18,9 @@ use crate::config::{Config, HostExecCwd, IntegrationConfig};
 use crate::process::FdCapturingReader;
 use crate::protocol::{ExecStream, FrameRead, FrameReader, GuestMessage, HostMessage, write_frame};
 
-/// How long a host-exec child may run before it is killed. Per-allowlist-entry
-/// timeouts would need a config key; until then one default covers every entry.
+/// How long a legacy (non fd-passing) host-exec child may run before it
+/// is killed. The fd-passing session instead honours the allowlist
+/// entry's own `timeout`, configured per command.
 const HOST_EXEC_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Total output (stdout + stderr) a streaming host-exec child may produce
@@ -642,7 +643,16 @@ pub(super) fn handle_host_exec_v2(
     // Spawn succeeded: the stdio descriptors are in the child now, and the
     // host's own copies are closed by `Stdio`'s drop after `spawn` — no
     // leaked fd holds the guest's pipes open past the child's lifetime.
-    run_child_with_signal_relay(stream, &mut child)
+    // The per-entry timeout kills only this child's group, and is reported
+    // as a signal death like any other kill; a session with no configured
+    // timeout is never time-limited here.
+    let timeout = config
+        .integration
+        .host_exec
+        .resolve(&cmd)
+        .and_then(|entry| entry.timeout_secs())
+        .map(Duration::from_secs);
+    run_child_with_signal_relay(stream, &mut child, timeout)
 }
 
 /// Refuse a `HostExecV2` request before anything runs: a typed `Error`
@@ -664,13 +674,20 @@ fn host_exec_v2_refused(stream: &mut UnixStream, reason: &str, code: &str) -> an
 /// reap the child in the gaps. On any disconnect or foreign frame with
 /// attached descriptors, stray descriptors are closed, and the child is
 /// killed and reaped so nothing outlives its session.
+///
+/// `timeout` is the allowlist entry's configured execution timeout: once
+/// it expires the child's process group is SIGKILLed and the death is
+/// reported like any signal death (`128 + 9`, signal 9). `None` — the
+/// default for entries without `timeout` — never time-limits the child.
 fn run_child_with_signal_relay(
     stream: &mut UnixStream,
     child: &mut std::process::Child,
+    timeout: Option<Duration>,
 ) -> anyhow::Result<()> {
     let pgid = Pid::from_raw(child.id().cast_signed());
     let mut reader = FrameReader::new();
     stream.set_read_timeout(Some(SIGNAL_RELAY_POLL))?;
+    let deadline = timeout.map(|t| std::time::Instant::now() + t);
 
     let mut exited: Option<std::process::ExitStatus> = None;
     while exited.is_none() {
@@ -705,7 +722,18 @@ fn run_child_with_signal_relay(
             {
                 match child.try_wait() {
                     Ok(Some(status)) => exited = Some(status),
-                    Ok(None) => {}
+                    Ok(None) => {
+                        // A child that exits inside the poll gap is
+                        // reaped normally: the deadline never kills a
+                        // command that finished on its own. Only a live
+                        // child past its deadline gets the kill.
+                        if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                            tracing::warn!(
+                                "host-exec: allowlist entry timeout expired; killing the child"
+                            );
+                            let _ = killpg(pgid, Signal::SIGKILL);
+                        }
+                    }
                     // A reap failure means the child is gone and unknown:
                     // fail loudly, the caller treats it as host drift.
                     Err(e) => {

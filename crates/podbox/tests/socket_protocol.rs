@@ -1163,6 +1163,93 @@ fn host_exec_signal_relay_reports_the_shell_convention_exit() {
     finish(c, h).unwrap();
 }
 
+/// A detailed entry's `timeout` bounds the child: a command still alive
+/// at expiry is SIGKILLed in its own process group, and the guest sees
+/// the same signal-death report a relayed kill produces.
+#[test]
+fn host_exec_v2_per_entry_timeout_kills_and_reports_signal_death() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("slow.sh");
+    std::fs::write(&script, "#!/bin/sh\nsleep 100\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut cfg = fds_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "slow".to_string(),
+            HostExecEntry::Detailed {
+                path: script.to_string_lossy().into_owned(),
+                filter: true,
+                shim: false,
+                timeout: Some(1),
+            },
+        );
+    let (mut c, h) = start(cfg, Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    send_v2_with_fds(
+        &mut c,
+        &v2("slow", vec![]),
+        &[pipe_pair().0, pipe_pair().1, pipe_pair().1],
+    );
+    match recv(&mut c) {
+        HostMessage::HostExecDone { exit_code, signal } => {
+            assert_eq!(exit_code, 137, "SIGKILL death reports 128+9");
+            assert_eq!(signal, Some(9));
+        }
+        other => panic!("expected HostExecDone, got {other:?}"),
+    }
+    finish(c, h).unwrap();
+}
+
+/// A command that finishes inside its `timeout` is reaped normally: the
+/// deadline is checked in the reap poll only, so a fast command is never
+/// raced into a kill.
+#[test]
+fn host_exec_v2_per_entry_timeout_spares_a_command_that_finishes_in_time() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("fast.sh");
+    std::fs::write(&script, "#!/bin/sh\ntrue\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut cfg = fds_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "fast".to_string(),
+            HostExecEntry::Detailed {
+                path: script.to_string_lossy().into_owned(),
+                filter: true,
+                shim: false,
+                timeout: Some(5),
+            },
+        );
+    let (mut c, h) = start(cfg, Arc::default());
+    send(&mut c, &hello_fds());
+    let _ = recv(&mut c);
+
+    send_v2_with_fds(
+        &mut c,
+        &v2("fast", vec![]),
+        &[pipe_pair().0, pipe_pair().1, pipe_pair().1],
+    );
+    assert!(matches!(
+        recv(&mut c),
+        HostMessage::HostExecDone { exit_code: 0, .. }
+    ));
+    finish(c, h).unwrap();
+}
+
 /// The env allowlist is the whole boundary: TERM reaches the child; an
 /// arbitrary variable and a forced `HOME` do not (the child keeps the
 /// host daemon's own `HOME`).
