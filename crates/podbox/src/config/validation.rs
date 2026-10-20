@@ -302,6 +302,14 @@ impl Config {
                         "integration.host_exec.allowlist.{alias}: path '{path}' is not absolute (must start with '/')"
                     ));
                 }
+                if let Some(secs) = entry.timeout_secs() {
+                    if secs < 1 {
+                        errors.push(format!(
+                            "integration.host_exec.allowlist.{alias}: timeout = {secs} is invalid \
+                             (allowed: whole seconds >= 1; omit the key for no timeout)"
+                        ));
+                    }
+                }
                 if alias.is_empty()
                     || alias.contains('/')
                     || alias.contains("..")

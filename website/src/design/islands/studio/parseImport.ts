@@ -63,9 +63,24 @@ function parseSecrets(rec: unknown): SecretItem[] | undefined {
 
 function parseAllowlist(rec: unknown): HostExecItem[] | undefined {
   if (!rec || typeof rec !== 'object') return undefined;
+  const num = (v: unknown): number | undefined =>
+    typeof v === 'number' && Number.isFinite(v) ? v : undefined;
   return Object.entries(rec as Record<string, unknown>)
-    .filter(([, v]) => typeof v === 'string')
-    .map(([alias, path]) => ({ alias, path: path as string }));
+    .map(([alias, v]) => {
+      // Simple `alias = "path"` or the detailed table form
+      // `{ path = "...", timeout = 30 }` the engine accepts.
+      if (typeof v === 'string') return { alias, path: v };
+      if (v && typeof v === 'object') {
+        const detail = v as Record<string, unknown>;
+        return {
+          alias,
+          path: typeof detail.path === 'string' ? detail.path : '',
+          timeout: num(detail.timeout),
+        };
+      }
+      return { alias, path: '', timeout: undefined };
+    })
+    .filter((e) => e.path !== '' || e.timeout !== undefined);
 }
 
 function parseServices(rec: unknown): ServiceItem[] | undefined {
@@ -213,6 +228,7 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
   const hostExec = integration.host_exec as any;
   if (hostExec && typeof hostExec === 'object') {
     if (bool(hostExec.enabled) !== undefined) patch.hostExecEnabled = hostExec.enabled;
+    if (typeof hostExec.cwd === 'string') patch.hostExecCwd = hostExec.cwd;
     const allow = parseAllowlist(hostExec.allowlist);
     if (allow) patch.hostExecList = allow;
   }

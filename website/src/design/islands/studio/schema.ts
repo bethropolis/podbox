@@ -130,6 +130,14 @@ export const ENUM_LABELS: Record<string, SelectLabelMeta> = {
     warn: { label: 'warn', sublabel: 'warn and continue' },
     abort: { label: 'abort', sublabel: 'stop on first failure' },
   },
+  'integration.host_exec.cwd': {
+    home: { label: 'home', sublabel: 'ignore the guest cwd (default)' },
+    map: {
+      label: 'map',
+      sublabel: 'translate through the container bind mappings',
+    },
+    refuse: { label: 'refuse', sublabel: 'error on an unusable cwd' },
+  },
 };
 
 // ── engine-served data, typed for the Studio ──────────────────────────────
@@ -388,6 +396,7 @@ export interface StudioDefaults {
   intXdgOpenSchemes: string[];
   intClipboard: boolean;
   intSyncFonts: boolean;
+
   intSyncIcons: boolean;
   intSyncThemes: boolean;
   intSshAgent: boolean;
@@ -395,6 +404,8 @@ export interface StudioDefaults {
   /** `[[provision]]` steps (top-level, ordered). */
   provisionSteps: ProvisionItem[];
   hostExecEnabled: boolean;
+  /** What the fd-passing session does with the guest cwd (`map`/`home`/`refuse`). */
+  hostExecCwd: string;
   hostExecList: HostExecItem[];
   // [integration.hardware] — host device passthrough
   hwKvm: boolean;
@@ -461,6 +472,7 @@ const FROM_ENGINE: Partial<Record<keyof StudioDefaults, string>> = {
   capPreset: 'security.cap_preset',
   netMode: 'network.mode',
   intGpu: 'integration.gpu',
+  hostExecCwd: 'integration.host_exec.cwd',
   lifeIdleTimeout: 'lifecycle.idle_timeout',
   lifeOnStop: 'lifecycle.on_stop',
   waylandFirewall: 'wayland.firewall',
@@ -566,6 +578,7 @@ export function initialStudioValues(): StudioDefaults {
     intSshAgent: false,
     intGpgAgent: false,
     hostExecEnabled: false,
+    hostExecCwd: 'home',
     hostExecList: [],
     provisionSteps: [],
     hwKvm: false,
@@ -669,6 +682,7 @@ export const FIELDS: FieldDef[] = [
   { stateKey: 'intNotify', tomlPath: 'integration.notify', kind: 'boolean' },
   { stateKey: 'intXdgOpen', tomlPath: 'integration.xdg_open', kind: 'boolean' },
   { stateKey: 'intClipboard', tomlPath: 'integration.clipboard', kind: 'boolean' },
+  { stateKey: 'hostExecCwd', tomlPath: 'integration.host_exec.cwd', kind: 'select' },
   { stateKey: 'intSyncFonts', tomlPath: 'integration.sync_fonts', kind: 'boolean' },
   { stateKey: 'intSyncIcons', tomlPath: 'integration.sync_icons', kind: 'boolean' },
   { stateKey: 'intSyncThemes', tomlPath: 'integration.sync_themes', kind: 'boolean' },

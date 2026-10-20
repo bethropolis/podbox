@@ -33,7 +33,7 @@ pub use schema_defs::{schema_defaults, schema_enums};
 pub use types::{
     BuiltinCachePath, BuiltinCaches, ContainerConfig, ContainerEnvConfig, CustomCacheConfig,
     DbusConfig, DbusPreset, DotfilesCloneOn, DotfilesConfig, ExportConfig, HardwareConfig,
-    HostCacheConfig, HostCachesConfig, HostExecConfig, HostExecEntry, ImageConfig,
+    HostCacheConfig, HostCachesConfig, HostExecConfig, HostExecCwd, HostExecEntry, ImageConfig,
     IntegrationConfig, LifecycleConfig, MountConfig, NetworkConfig, PackageConfig,
     ProvisionOnFailure, ProvisionStep, RunConfig, SecretEntry, SecretSource, SecretType,
     SecurityConfig, ServiceConfig, ServiceDetailConfig, SharedCachesConfig, StorageConfig,
