@@ -8,7 +8,7 @@ import {
   StudioTagInput,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { NETWORK_MODE_OPTIONS } from '../schema';
+import { networkModeOptions } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type NetworkPanelProps = Pick<StudioState, 'netMode' | 'netOffline' | 'portMappingsList' | 'setNetMode' | 'setNetOffline' | 'setPortMappingsList'>;
@@ -45,7 +45,7 @@ export function NetworkPanel({ st, errorMap }: { st: NetworkPanelProps; errorMap
       }
       value={netMode}
       onChange={setNetMode}
-      options={NETWORK_MODE_OPTIONS}
+      options={networkModeOptions()}
     />
 
     <StudioTagInput

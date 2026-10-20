@@ -15,6 +15,7 @@ use podbox::config::Config;
 use podbox::contract::{find_field_line, offset_to_line_col};
 use podbox::env::HostEnv;
 use podbox::error::PodboxError;
+use podbox::tomlscan;
 use podbox::xdg::ResolvedXdgDirs;
 
 #[derive(Serialize)]
@@ -58,56 +59,6 @@ pub struct CompileResponse {
     /// the preview environment, not a problem with the submitted config.
     pub containerfile: Option<String>,
     pub warnings: Vec<String>,
-}
-
-/// Scan a TOML document into a `dotted.path -> 1-based line` source map.
-///
-/// Covers `[table]` headers, `key =` assignments (qualified by their table),
-/// and `[[array]]` headers. Comment-only and blank lines are skipped. Used
-/// for error squiggles and field-to-line highlighting in Studio.
-fn field_lines_map(text: &str) -> std::collections::HashMap<String, usize> {
-    let mut map = std::collections::HashMap::new();
-    let mut current_table = String::new();
-    for (idx, raw) in text.lines().enumerate() {
-        let line_no = idx + 1;
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix("[[") {
-            if let Some(end) = rest.find("]]") {
-                let table = rest[..end].trim().to_string();
-                current_table.clone_from(&table);
-                map.entry(table).or_insert(line_no);
-            }
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix('[') {
-            if let Some(end) = rest.find(']') {
-                let table = rest[..end]
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string();
-                current_table.clone_from(&table);
-                map.entry(table).or_insert(line_no);
-            }
-            continue;
-        }
-        if let Some((lhs, _)) = trimmed.split_once('=') {
-            let key = lhs.trim().trim_matches('"').trim_matches('\'');
-            if key.is_empty() {
-                continue;
-            }
-            let dotted = if current_table.is_empty() {
-                key.to_string()
-            } else {
-                format!("{current_table}.{key}")
-            };
-            map.entry(dotted).or_insert(line_no);
-        }
-    }
-    map
 }
 
 /// Split an `anyhow` parse error into Studio-ready issues.
@@ -261,10 +212,12 @@ pub fn locate_field_in_toml(toml_str: &str, field_path: &str) -> JsValue {
 
 /// Scan a TOML document into a `dotted.path -> 1-based line` source map for
 /// field-to-line highlighting in Studio. One call per render; hover and
-/// click-to-edit resolve locally from the result.
+/// click-to-edit resolve locally from the result. Uses the same span-based
+/// scanner as the error lookup, so quoted keys, inline tables and `[[array]]`
+/// indices all resolve.
 #[wasm_bindgen]
 pub fn field_lines_in_toml(toml_str: &str) -> JsValue {
-    serde_wasm_bindgen::to_value(&field_lines_map(toml_str)).unwrap_or(JsValue::NULL)
+    serde_wasm_bindgen::to_value(&tomlscan::field_lines(toml_str)).unwrap_or(JsValue::NULL)
 }
 
 /// Parse a TOML definition into a plain JS object for Studio state import.
@@ -272,6 +225,49 @@ pub fn field_lines_in_toml(toml_str: &str) -> JsValue {
 pub fn parse_toml_to_json(toml_str: &str) -> Result<JsValue, JsError> {
     let config = Config::parse(toml_str).map_err(|e| JsError::new(&format!("{e:#}")))?;
     Ok(serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::NULL))
+}
+
+/// Per-field schema defaults for Studio prefill, keyed by dotted config path.
+///
+/// Hand-built in the config crate from the same defaults serde and the
+/// schema use; an absent path means "no engine default" (required keys,
+/// engine-derived values), so the Studio never invents a placeholder where
+/// Rust has none.
+#[wasm_bindgen]
+pub fn schema_defaults() -> JsValue {
+    serde_wasm_bindgen::to_value(&podbox::config::schema_defaults()).unwrap_or(JsValue::NULL)
+}
+
+/// Valid enum values per config path, straight from the strum derives.
+///
+/// The Studio builds its select options from this list and attaches labels
+/// in TypeScript; a variant added on the Rust side appears here and the
+/// parity check forces it a label instead of it being silently missing.
+#[wasm_bindgen]
+pub fn schema_enums() -> JsValue {
+    serde_wasm_bindgen::to_value(&podbox::config::schema_enums()).unwrap_or(JsValue::NULL)
+}
+
+/// Emit a `Config`-shaped JSON object as canonical TOML.
+///
+/// Same serializer `podbox init` writes through, so the Studio's preview and
+/// the engine's own files cannot disagree. Shaped like `serde` defaults:
+/// absent optional keys and default values stay out of the output, and
+/// invalid input (unknown fields, missing `image.base` / `container.name`)
+/// raises with the schema error rather than re-typing TS-side validation.
+#[wasm_bindgen]
+pub fn config_to_toml(config: JsValue) -> Result<String, JsError> {
+    let config: Config = match serde_wasm_bindgen::from_value(config) {
+        Ok(config) => config,
+        Err(e) => return Err(JsError::new(&format!("{e:#}"))),
+    };
+    write_config_toml(config).map_err(|e| JsError::new(&format!("{e:#}")))
+}
+
+/// Serialize an already-resolved `Config`; the wasm entry point wraps the
+/// error in `JsError`, the native tests keep the typed `anyhow`.
+fn write_config_toml(config: Config) -> anyhow::Result<String> {
+    podbox::config::toml_string(&config)
 }
 
 #[cfg(test)]
@@ -311,7 +307,7 @@ mod tests {
     #[test]
     fn field_map_covers_tables_and_keys() {
         let toml = "[container]\nname = \"x\"\n\n[network]\nmode = \"pasta\"\n";
-        let map = field_lines_map(toml);
+        let map = tomlscan::field_lines(toml);
         assert_eq!(map.get("container"), Some(&1));
         assert_eq!(map.get("container.name"), Some(&2));
         assert_eq!(map.get("network.mode"), Some(&5));
@@ -325,5 +321,88 @@ mod tests {
         assert!(podbox::codegen::quadlet::generate_host_service(name).contains("serve"));
         assert!(podbox::codegen::quadlet::generate_dbus_proxy_service(name, &config).is_some());
         assert!(podbox::codegen::quadlet::generate_compositor_service(name, &config).is_some());
+    }
+
+    // Native stand-in for `config_to_toml`: same serde types, but the input
+    // arrives as `serde_json` because `JsValue` panics off-wasm.
+    fn emit_json(json: serde_json::Value) -> anyhow::Result<String> {
+        write_config_toml(serde_json::from_value(json)?)
+    }
+
+    #[test]
+    fn config_to_toml_emits_a_minimal_config() {
+        // Same minimal shape the CLI writes: required keys only, every
+        // serde-defaulted value absent (the empty `[integration]`-style
+        // headers and `schema_version` are what serde emits there too).
+        let emitted = emit_json(serde_json::json!({
+            "image": {"base": "fedora:44", "name": "x"},
+            "container": {"name": "x", "home": "/home/user/c/x"},
+        }))
+        .expect("serializable");
+        assert!(emitted.contains("base = \"fedora:44\""));
+        assert!(emitted.contains("[container]"));
+        // Schema defaults stay out of the emitted file.
+        assert!(!emitted.contains("packages"));
+        assert!(!emitted.contains("pull_retry"));
+    }
+
+    #[test]
+    fn config_to_toml_rejects_unknown_fields() {
+        let json = serde_json::json!({
+            "image": {"base": "fedora:44", "name": "x"},
+            "container": {"name": "x", "home": "/home/user/c/x"},
+            "nonsense": 1,
+        });
+        assert!(
+            emit_json(json).is_err(),
+            "unknown fields are a schema error, never quietly dropped"
+        );
+    }
+
+    #[test]
+    fn schema_enums_lists_every_network_mode() {
+        let enums: serde_json::Value =
+            serde_json::to_value(podbox::config::schema_enums()).unwrap();
+        let network = enums
+            .get("network.mode")
+            .and_then(|v| v.as_array())
+            .expect("network.mode is an enum list");
+        for expected in ["host", "pasta", "slirp4netns", "private"] {
+            assert!(
+                network.iter().any(|v| v == &serde_json::json!(expected)),
+                "network.mode must list {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_defaults_omit_required_keys() {
+        let serde_defaults = serde_json::to_value(podbox::config::schema_defaults()).unwrap();
+        assert_eq!(
+            serde_defaults.get("container.name"),
+            None,
+            "required keys ship no placeholder"
+        );
+        assert_eq!(
+            serde_defaults.get("container.shell"),
+            Some(&serde_json::json!("bash"))
+        );
+    }
+
+    #[test]
+    fn schema_enums_list_storage_caches() {
+        let enums: serde_json::Value =
+            serde_json::to_value(podbox::config::schema_enums()).unwrap();
+        let shared = enums
+            .get("storage.shared_caches")
+            .and_then(|v| v.as_array())
+            .expect("caches exported");
+        assert!(shared.contains(&serde_json::json!("cargo")));
+        assert!(shared.contains(&serde_json::json!("mbx")));
+        assert_eq!(
+            enums.get("storage.host_caches"),
+            enums.get("storage.shared_caches"),
+            "the tick-list is the same for both cache tables"
+        );
     }
 }

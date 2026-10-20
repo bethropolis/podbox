@@ -163,6 +163,13 @@ pub fn builtin_cache_names() -> impl Iterator<Item = &'static str> {
     })
 }
 
+/// The `[storage.*_caches]` key names, in declaration order. Served to the
+/// Studio through the schema data so its tick-lists cannot drift from what
+/// the engine accepts.
+pub fn builtin_cache_list() -> impl Iterator<Item = &'static str> {
+    BUILTIN_CACHES.iter().map(|(name, _mounts)| *name)
+}
+
 /// Volume names used by a built-in cache, for grouped pruning.
 pub fn builtin_cache_mount_names(cache: &str) -> Option<Vec<&'static str>> {
     let paths = all_builtin_cache_paths();

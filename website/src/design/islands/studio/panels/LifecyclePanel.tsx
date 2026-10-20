@@ -8,7 +8,7 @@ import {
   StudioSwitch,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { ON_STOP_OPTIONS } from '../schema';
+import { onStopOptions } from '../schema';
 import { idleTimeoutFix } from '../quickFixes';
 import type { StudioState } from '../useStudioState';
 
@@ -101,7 +101,7 @@ export function LifecyclePanel({ st, errorMap }: { st: LifecyclePanelProps; erro
         }
         value={lifeOnStop}
         onChange={setLifeOnStop}
-        options={ON_STOP_OPTIONS}
+        options={onStopOptions()}
       />
     </div>
 

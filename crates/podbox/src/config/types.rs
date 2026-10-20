@@ -17,8 +17,8 @@ mod cache;
 mod runtime;
 pub use cache::{
     BuiltinCachePath, BuiltinCaches, CustomCacheConfig, HostCacheConfig, HostCachesConfig,
-    SharedCachesConfig, StorageConfig, all_builtin_cache_paths, builtin_cache_mount_names,
-    builtin_cache_names,
+    SharedCachesConfig, StorageConfig, all_builtin_cache_paths, builtin_cache_list,
+    builtin_cache_mount_names, builtin_cache_names,
 };
 pub use runtime::{NetworkConfig, SecretEntry, SecretSource, SecretType, SecurityConfig};
 
@@ -76,8 +76,11 @@ pub struct RunConfig {
     pub commands: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum DotfilesCloneOn {
     #[default]
     Host,
@@ -87,16 +90,31 @@ pub enum DotfilesCloneOn {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DotfilesConfig {
     pub source: String,
-    #[serde(default = "default_dotfiles_target")]
+    #[serde(
+        default = "default_dotfiles_target",
+        skip_serializing_if = "is_default_dotfiles_target"
+    )]
     pub target: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_dotfiles_clone_on")]
     pub clone_on: DotfilesCloneOn,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install: Option<String>,
 }
 
+/// Canonical `dotfiles.target` default; shared with the schema-defaults
+/// table so it cannot drift there.
+pub const DOTFILES_TARGET: &str = "~/.dotfiles";
+
 fn default_dotfiles_target() -> String {
-    "~/.dotfiles".into()
+    DOTFILES_TARGET.into()
+}
+
+fn is_default_dotfiles_target(v: &str) -> bool {
+    v == DOTFILES_TARGET
+}
+
+fn is_default_dotfiles_clone_on(v: &DotfilesCloneOn) -> bool {
+    *v == DotfilesCloneOn::default()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -132,7 +150,12 @@ pub struct ContainerConfig {
     pub services: BTreeMap<String, ServiceConfig>,
 }
 
+// Untagged so the short form serializes as a plain `name = "command"`
+// string and the detailed form as a table — exactly what the custom
+// reader accepts, and what the original (externally tagged) output
+// could not express in TOML.
 #[derive(Debug, Serialize, Clone)]
+#[serde(untagged)]
 pub enum ServiceConfig {
     Short(String),
     Detailed(ServiceDetailConfig),
@@ -165,10 +188,14 @@ impl<'de> Deserialize<'de> for ServiceConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ServiceDetailConfig {
     pub command: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_restart")]
     pub restart: ServiceRestart,
+}
+
+fn is_default_restart(restart: &ServiceRestart) -> bool {
+    *restart == ServiceRestart::default()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -496,11 +523,11 @@ pub struct IntegrationConfig {
     pub sync_icons: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub sync_themes: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_hardware")]
     pub hardware: HardwareConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dirs")]
     pub xdg_dirs: XdgDirConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_export")]
     pub export: ExportConfig,
 }
 
@@ -528,29 +555,42 @@ impl Default for IntegrationConfig {
     }
 }
 
+/// The `off` representations a directory may carry: the plain-false
+/// shorthand or the explicit disabled table.
+fn is_default_xdg_dir_value(value: &XdgDirValue) -> bool {
+    match value {
+        XdgDirValue::Simple(false) => true,
+        XdgDirValue::Detailed {
+            enabled,
+            read_write,
+        } => !enabled && !read_write,
+        _ => false,
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct XdgDirConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub documents: XdgDirValue,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub downloads: XdgDirValue,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub pictures: XdgDirValue,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub music: XdgDirValue,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub videos: XdgDirValue,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub desktop: XdgDirValue,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_xdg_dir_value")]
     pub projects: XdgDirValue,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct ExportConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apps: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bins: Vec<String>,
 }
 
@@ -558,8 +598,11 @@ fn default_provision_timeout() -> String {
     "5m".into()
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum ProvisionOnFailure {
     #[default]
     Warn,
@@ -570,29 +613,47 @@ pub enum ProvisionOnFailure {
 pub struct ProvisionStep {
     pub name: String,
     pub run: String,
-    #[serde(default = "default_provision_timeout")]
+    #[serde(
+        default = "default_provision_timeout",
+        skip_serializing_if = "is_default_provision_timeout"
+    )]
     pub timeout: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_provision_on_failure")]
     pub on_failure: ProvisionOnFailure,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub root: bool,
+}
+
+fn is_default_provision_timeout(v: &str) -> bool {
+    v == default_provision_timeout()
+}
+
+fn is_default_provision_on_failure(v: &ProvisionOnFailure) -> bool {
+    *v == ProvisionOnFailure::Warn
+}
+
+fn is_default_on_stop(on_stop: &OnStop) -> bool {
+    *on_stop == OnStop::Keep
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LifecycleConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub quadlet: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub autostart: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_on_stop")]
     pub on_stop: OnStop,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub auto_update: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub auto_checkpoint: bool,
-    #[serde(default = "crate::config::defaults::default_idle_timeout")]
+    #[serde(
+        default = "crate::config::defaults::default_idle_timeout",
+        skip_serializing_if = "crate::config::defaults::is_default_idle_timeout"
+    )]
     pub idle_timeout: String,
 }
 
@@ -611,9 +672,9 @@ impl Default for LifecycleConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct SystemdConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requires: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after: Vec<String>,
 }
 
@@ -621,7 +682,7 @@ pub struct SystemdConfig {
 pub struct WaylandConfig {
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub firewall: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_interfaces: Vec<String>,
 }
 
@@ -645,8 +706,11 @@ impl Default for WaylandConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum DbusPreset {
     Flatpak,
     Gnome,
@@ -657,13 +721,17 @@ pub enum DbusPreset {
     None,
 }
 
+fn is_default_dbus_preset(preset: &DbusPreset) -> bool {
+    *preset == DbusPreset::None
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct DbusConfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_dbus_preset")]
     pub preset: DbusPreset,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub talk: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub own: Vec<String>,
 }
 
@@ -716,4 +784,29 @@ pub struct HardwareConfig {
     pub kvm: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub usb: bool,
+}
+
+/// Table-level skips for sections the engine treats as absent when they
+/// carry only defaults, so written TOML shows a `[table]` only once the
+/// user configured something inside it.
+fn is_default_hardware(hardware: &HardwareConfig) -> bool {
+    *hardware == HardwareConfig::default()
+}
+
+fn is_default_xdg_dirs(xdg_dirs: &XdgDirConfig) -> bool {
+    [
+        &xdg_dirs.documents,
+        &xdg_dirs.downloads,
+        &xdg_dirs.pictures,
+        &xdg_dirs.music,
+        &xdg_dirs.videos,
+        &xdg_dirs.desktop,
+        &xdg_dirs.projects,
+    ]
+    .iter()
+    .all(|value| is_default_xdg_dir_value(value))
+}
+
+fn is_default_export(export: &ExportConfig) -> bool {
+    export.apps.is_empty() && export.bins.is_empty()
 }

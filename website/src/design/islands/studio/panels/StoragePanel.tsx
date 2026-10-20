@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import { STUDIO_FIELD } from '../../../components/StudioControls';
-import { CACHE_DESCRIPTIONS, CACHE_ORDER } from '../schema';
+import { CACHE_DESCRIPTIONS, cacheOrder } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type CacheMode = 'off' | 'shared' | 'host';
@@ -63,16 +63,16 @@ export function StoragePanel({ st }: { st: StoragePanelProps }) {
     const host = new Set(hostCaches.filter((c) => c !== name));
     if (mode === 'shared') shared.add(name);
     if (mode === 'host') host.add(name);
-    setSharedCaches(CACHE_ORDER.filter((c) => shared.has(c)));
-    setHostCaches(CACHE_ORDER.filter((c) => host.has(c)));
+    setSharedCaches(cacheOrder().filter((c) => shared.has(c)));
+    setHostCaches(cacheOrder().filter((c) => host.has(c)));
     // Turning a cache off moves it into the collapsed section — open it so
     // the row doesn't just vanish from under the cursor.
     if (mode === 'off') setShowAll(true);
   };
 
   const isOn = (name: string) => sharedCaches.includes(name) || hostCaches.includes(name);
-  const onCaches = CACHE_ORDER.filter(isOn);
-  const offCaches = CACHE_ORDER.filter((c) => !isOn(c));
+  const onCaches = cacheOrder().filter(isOn);
+  const offCaches = cacheOrder().filter((c) => !isOn(c));
   const enabled = sharedCaches.length + hostCaches.length;
 
   const row = (name: string) => {

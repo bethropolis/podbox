@@ -12,7 +12,7 @@ import {
 } from '../../../components/StudioControls';
 import { memoryFix, cpusFix } from '../quickFixes';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { SHELL_OPTIONS, SERVICE_RESTART_OPTIONS } from '../schema';
+import { SHELL_OPTIONS, serviceRestartOptions } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type ContainerPanelProps = Pick<StudioState, 'containerCpus' | 'containerCpuWeight' | 'containerHome' | 'containerMemory' | 'containerName' | 'containerShell' | 'containerSlice' | 'envForward' | 'envVars' | 'handleContainerNameChange' | 'services' | 'setContainerCpus' | 'setContainerCpuWeight' | 'setContainerHome' | 'setContainerMemory' | 'setContainerShell' | 'setContainerSlice' | 'setEnvForward' | 'setEnvVars' | 'setServices'>;
@@ -319,7 +319,7 @@ export function ContainerPanel({ st, errorMap }: { st: ContainerPanelProps; erro
             }}
             className={`${STUDIO_FIELD} px-2 cursor-pointer`}
           >
-            {SERVICE_RESTART_OPTIONS.map((opt) => (
+            {serviceRestartOptions().map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

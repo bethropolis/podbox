@@ -11,7 +11,7 @@ import {
   STUDIO_FIELD,
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
-import { IMAGE_PRESET_OPTIONS, PACKAGE_MANAGER_OPTIONS } from '../schema';
+import { IMAGE_PRESET_OPTIONS, packageManagerOptions } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type ImagePanelProps = Pick<StudioState, 'customImageBase' | 'imageType' | 'packageManager' | 'packagesInstallList' | 'packagesRemoveList' | 'pullRetry' | 'runCommands' | 'selectedPresetDistro' | 'setCustomImageBase' | 'setImageType' | 'setPackageManager' | 'setPackagesInstallList' | 'setPackagesRemoveList' | 'setPullRetry' | 'setRunCommands' | 'setSelectedPresetDistro'>;
@@ -156,7 +156,7 @@ export function ImagePanel({ st, errorMap }: { st: ImagePanelProps; errorMap?: R
       }
       value={packageManager}
       onChange={setPackageManager}
-      options={PACKAGE_MANAGER_OPTIONS}
+      options={packageManagerOptions()}
     />
 
     <StudioInput

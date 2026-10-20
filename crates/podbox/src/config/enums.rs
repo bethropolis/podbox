@@ -22,8 +22,11 @@ impl ImageSource {
 ///
 /// Replaces raw `&str` dispatch everywhere.  Always use the enum rather
 /// than hard-coding strings like `"dnf"` / `"apt"`.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum PackageManager {
     #[default]
     Dnf,
@@ -77,8 +80,11 @@ impl FromStr for PackageManager {
 /// keeps them lowercase), so existing files parse as before; typos now
 /// fail at parse time with the valid list instead of reaching validation
 /// or podman.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum NetworkMode {
     Host,
     Bridge,
@@ -109,8 +115,9 @@ impl std::fmt::Display for NetworkMode {
 }
 
 /// User-namespace mode for the container.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum::VariantNames)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum UsernsMode {
     KeepId,
     Nomap,
@@ -136,8 +143,11 @@ impl std::fmt::Display for UsernsMode {
 /// Restart policy for a `container.services` entry. Serializes to the
 /// same strings as before, so the services JSON the guest reads is
 /// unchanged.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum::VariantNames,
+)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum ServiceRestart {
     Never,
     #[default]
@@ -229,8 +239,11 @@ impl Serialize for GpuMode {
 /// Predefined capability profiles that bundle commonly-needed Linux
 /// capabilities.  The profile caps are always emitted; users can add
 /// extra capabilities via `security.cap_add`.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum CapPreset {
     /// No extra capabilities beyond Podman's defaults.
     None,
@@ -265,8 +278,11 @@ impl CapPreset {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug, Default, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, strum::VariantNames,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum OnStop {
     #[default]
     Keep,

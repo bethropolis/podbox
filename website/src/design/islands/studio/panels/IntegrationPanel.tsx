@@ -12,7 +12,7 @@ import {
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import {
-  GPU_OPTIONS,
+  gpuOptions,
   HOST_EXEC_SUGGESTIONS,
   DEFAULT_XDG_OPEN_SCHEMES,
   XDG_OPEN_SCHEME_SUGGESTIONS,
@@ -228,7 +228,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       }
       value={intGpu}
       onChange={setIntGpu}
-      options={GPU_OPTIONS}
+      options={gpuOptions()}
     />
   </div>
 

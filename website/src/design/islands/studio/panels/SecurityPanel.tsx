@@ -13,12 +13,7 @@ import {
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import type { SecretItem } from '../types';
-import {
-  CAP_PRESET_OPTIONS,
-  SECRET_SOURCE_OPTIONS,
-  SECRET_TYPE_OPTIONS,
-  USERNS_OPTIONS,
-} from '../schema';
+import { capPresetOptions, secretSourceOptions, secretTypeOptions, usernsOptions } from '../schema';
 import type { StudioState } from '../useStudioState';
 
 type SecurityPanelProps = Pick<StudioState, 'apparmor' | 'capPreset' | 'extraCapAddList' | 'noNewPrivileges' | 'readOnlyRootfs' | 'secLabelDisable' | 'seccomp' | 'secrets' | 'setApparmor' | 'setCapPreset' | 'setExtraCapAddList' | 'setNoNewPrivileges' | 'setReadOnlyRootfs' | 'setSecLabelDisable' | 'setSeccomp' | 'setSecrets' | 'setUsernsMode' | 'usernsMode'>;
@@ -111,7 +106,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
         }
         value={usernsMode}
         onChange={setUsernsMode}
-        options={USERNS_OPTIONS}
+        options={usernsOptions()}
       />
     </div>
   </div>
@@ -166,7 +161,7 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
       }
       value={capPreset}
       onChange={setCapPreset}
-      options={CAP_PRESET_OPTIONS}
+      options={capPresetOptions()}
     />
 
     <StudioTagInput
@@ -245,12 +240,12 @@ export function SecurityPanel({ st }: { st: SecurityPanelProps }) {
               <StudioSelect
                 value={sec.secretType}
                 onChange={(v) => update({ secretType: v as SecretItem['secretType'] })}
-                options={SECRET_TYPE_OPTIONS}
+                options={secretTypeOptions()}
               />
               <StudioSelect
                 value={sec.source}
                 onChange={(v) => update({ source: v as SecretItem['source'] })}
-                options={SECRET_SOURCE_OPTIONS}
+                options={secretSourceOptions()}
               />
               <input
                 type="text"

@@ -20,13 +20,11 @@ export interface ServiceItem {
   restart: string;
 }
 
-import type { SelectOption } from './schema';
-
 /** One `[[provision]]` step. */
 export interface ProvisionItem {
   name: string;
   run: string;
-  /** Duration: `30s`, `5m`, `1h`. Default `5m`. */
+  /** Duration: `30s`, `5m`, `1h`. Default `5m` (served by the schema data). */
   timeout: string;
   /** `warn` keeps going; `abort` stops the run. */
   onFailure: 'warn' | 'abort';
@@ -35,14 +33,6 @@ export interface ProvisionItem {
   /** Run as root inside the container. */
   root: boolean;
 }
-
-export const ON_FAILURE_OPTIONS: SelectOption[] = [
-  { value: 'warn', label: 'warn', sublabel: 'warn and continue' },
-  { value: 'abort', label: 'abort', sublabel: 'stop on first failure' },
-];
-
-/** `5m` is the engine default, so it is never emitted. */
-export const PROVISION_DEFAULT_TIMEOUT = '5m';
 
 /**
  * One `[security].secrets` entry.

@@ -1,28 +1,46 @@
-// Round-trip guard: every Studio preset (plus defaults) must generate TOML
-// that the real Rust engine accepts, and must compile to a Quadlet unit.
+// Studio↔engine parity guard.
 //
-// Catches Studio↔podbox schema drift: if generateToml.ts emits a field the
-// Rust parser rejects (or drops), this fails.
+// Every Studio preset (plus defaults) must generate TOML that the real Rust
+// engine accepts, compile to a Quadlet unit, and survive an import loop —
+// because the TOML now comes from the same Rust serializer the CLI writes
+// through, the remaining drift the check catches is in the state translation:
+// configShape.ts building a wired Config, parseImport.ts reading one back,
+// and the schema data wiring (defaults, enum variants, labels).
 //
 // Run: bun scripts/check-studio-parity.ts
 // (requires website/src/wasm built via ../scripts/build-wasm.sh)
-import init, { validate_toml, compile_quadlet } from "../src/wasm/podbox_wasm.js";
 import { parse as parseTomlText } from "smol-toml";
-import { generateStudioToml } from "../src/design/islands/studio/generateToml";
+import { validate_toml, compile_quadlet } from "../src/wasm/podbox_wasm";
+import {
+  ensureEngine,
+  engineSchema,
+  configToToml,
+} from "../src/design/islands/studio/engine";
 import { tomlToPatch } from "../src/design/islands/studio/parseImport";
 import { presetPatch } from "../src/design/islands/studio/presets";
-import { STUDIO_DEFAULTS } from "../src/design/islands/studio/schema";
+import {
+  CUSTOM_SCHEMA_PATHS,
+  ENUM_LABELS,
+  FIELDS,
+  initialStudioValues,
+} from "../src/design/islands/studio/schema";
+import { stateToConfig } from "../src/design/islands/studio/configShape";
 import { studioReducer } from "../src/design/islands/studio/reducer";
 import { cliCommand, quickStartCommand, shellQuote } from "../src/design/islands/studio/quickStart";
 import type { StudioValues } from "../src/design/islands/studio/useStudioState";
 
-await init();
+await ensureEngine();
 
-// Defaults live in the shared schema module (same object the UI boots
-// from), and every patch goes through the real UI reducer — the exact path
-// presets, Reset, import and share links take — so a key the reducer drops
-// fails here instead of silently losing user data.
-const defaults: StudioValues = { ...STUDIO_DEFAULTS };
+// Defaults live in the schema module (same object the UI boots from), and
+// every patch goes through the real UI reducer — the exact path presets,
+// Reset, import and share links take — so a key the reducer drops fails
+// here instead of silently losing user data.
+const defaults: StudioValues = { ...initialStudioValues() };
+
+const fail = (msg: string): never => {
+  console.error(msg);
+  process.exit(1);
+};
 
 const cases: Array<[string, Partial<StudioValues>]> = [
   ["defaults", {}],
@@ -93,7 +111,13 @@ const cases: Array<[string, Partial<StudioValues>]> = [
 let failed = 0;
 for (const [name, patch] of cases) {
   const values = studioReducer(defaults, { type: "patch", patch });
-  const toml = generateStudioToml(values);
+  // Studio state -> Config JSON -> canonical TOML, all in wasm.
+  const toml = configToToml(stateToConfig(values));
+  if (toml == null) {
+    console.error(`✗ ${name}: stateToConfig did not build a wired podbox Config (see log)`);
+    failed++;
+    continue;
+  }
   const v = validate_toml(toml) as {
     valid: boolean;
     errors: Array<{ field?: string; message: string }>;
@@ -101,7 +125,7 @@ for (const [name, patch] of cases) {
   };
   if (!v.valid) {
     console.error(
-      `✗ ${name}: TOML rejected by Rust engine:\n  - ${v.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  - ")}`,
+      `✗ ${name}: TOML rejected by Rust engine:\n  ${v.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  ")}`,
     );
     failed++;
     continue;
@@ -150,20 +174,31 @@ for (const [name, patch] of cases) {
     continue;
   }
   // Import loop: generated TOML -> state patch -> regenerated TOML must
-  // still validate (guards parseImport.ts against schema drift too).
+  // still validate AND be a fixed point (guards parseImport.ts and
+  // configShape.ts against schema drift too).
   const reimported = studioReducer(values, {
     type: "patch",
     patch: tomlToPatch(parseTomlText(toml) as Record<string, any>) as Record<string, unknown>,
   });
-  const toml2 = generateStudioToml(reimported);
+  const toml2 = configToToml(stateToConfig(reimported));
+  if (toml2 == null) {
+    console.error(`✗ ${name}: imported state did not rebuild a wired Config`);
+    failed++;
+    continue;
+  }
   const v2 = validate_toml(toml2) as {
     valid: boolean;
     errors: Array<{ field?: string; message: string }>;
   };
   if (!v2.valid) {
     console.error(
-      `✗ ${name}: re-imported TOML rejected:\n  - ${v2.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  - ")}`,
+      `✗ ${name}: re-imported TOML rejected:\n  ${v2.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  ")}`,
     );
+    failed++;
+    continue;
+  }
+  if (toml2 !== toml) {
+    console.error(`✗ ${name}: emission is not a fixed point of import\nbefore:\n${toml}\nafter:\n${toml2}`);
     failed++;
     continue;
   }
@@ -175,10 +210,72 @@ if (failed > 0) {
   process.exit(1);
 }
 
+// ── schema data drift ─────────────────────────────────────────────────────
+// The Rust side serves two tables; the Studio must know where every path
+// lands, and every enum option must carry a UI label.
+
+{
+  const engineData = engineSchema();
+  const { defaults: engineDefaults, enums: engineEnums } = engineData;
+  const fieldsPaths = new Set<string>(FIELDS.map((f) => f.tomlPath));
+  const customDefaults: readonly string[] = CUSTOM_SCHEMA_PATHS.defaults;
+  const unknownDefaults = Object.keys(engineDefaults).filter(
+    (p) => !fieldsPaths.has(p) && !customDefaults.includes(p),
+  );
+  if (unknownDefaults.length > 0) {
+    fail(
+      `schema-defaults: engine serves defaults the Studio does not wire: ${unknownDefaults.join(", ")}\n` +
+      `  Known custom-shaped paths: ${[...customDefaults].join(", ")} — extend configShape.ts and the wiring, not a label.`,
+    );
+  }
+  console.log(
+    `✓ schema-defaults: all ${Object.keys(engineDefaults).length} engine defaults land in the Studio wiring`,
+  );
+
+  const customEnums: readonly string[] = CUSTOM_SCHEMA_PATHS.enums;
+  const unknownEnums = Object.keys(engineEnums).filter(
+    (p) => !fieldsPaths.has(p) && !customEnums.includes(p),
+  );
+  if (unknownEnums.length > 0) {
+    fail(`schema-enums: engine serves enum(s) the Studio does not wire: ${unknownEnums.join(", ")}`);
+  }
+  // Every select-kind field must be backed by a served variant list — the
+  // Studio only shows what the engine accepts, never its own copy.
+  const selectFields = FIELDS.filter((f) => f.kind === "select");
+  const uncovered = selectFields.filter((f) => !Array.isArray(engineEnums[f.tomlPath]));
+  if (uncovered.length > 0) {
+    fail(
+      `schema-enums: select field(s) without served variants: ${uncovered.map((f) => f.tomlPath).join(", ")}\n` +
+      `  Serve them from schema_enums() in the config crate.`,
+    );
+  }
+  // Every variant must have UI metadata in the Studio's label tables; a new
+  // Rust variant fails here until it has a label instead of rendering raw.
+  const unlabeled: string[] = [];
+  for (const [path, variants] of Object.entries(engineEnums) as [string, string[]][]) {
+    const labels = ENUM_LABELS[path];
+    if (!labels) {
+      unlabeled.push(`${path} (no label table)`);
+      continue;
+    }
+    for (const variant of variants) {
+      if (!labels[variant]) unlabeled.push(`${path}.${variant}`);
+    }
+  }
+  if (unlabeled.length > 0) {
+    fail(`schema-enums: missing UI labels: ${unlabeled.join(", ")} — add them to ENUM_LABELS`);
+  }
+  console.log(
+    `✓ schema-enums: ${Object.keys(engineEnums).length} served lists cover all ${selectFields.length} select fields, all labeled`,
+  );
+}
+console.log("\nAll Studio presets round-trip through the Rust engine.");
+
 // Structured errors carry field targets for input highlighting.
 {
   const bad = { ...defaults, containerMemory: "bogus" };
-  const v = validate_toml(generateStudioToml(bad)) as {
+  const toml = configToToml(stateToConfig(bad)) ?? "";
+  const v = validate_toml(toml) as {
     valid: boolean;
     errors: Array<{ field?: string; message: string }>;
   };
@@ -193,7 +290,7 @@ if (failed > 0) {
 // render (no guest binary needed).
 {
   const values = { ...defaults, imagePrebuiltRef: "ghcr.io/bethropolis/podbox:cachy-latest" };
-  const toml = generateStudioToml(values);
+  const toml = configToToml(stateToConfig(values)) ?? "";
   const compiled = compile_quadlet(toml) as { containerfile: string | null };
   if (!compiled.containerfile?.includes("FROM")) {
     console.error("✗ prebuilt: expected a Containerfile overlay");
@@ -220,16 +317,18 @@ if (failed > 0) {
   console.log(`✓ dbus-preset: dbus.preset rejected, all options named`);
 }
 // xdg_open table form: a custom scheme allowlist must survive emission and
-// import in Studio-land. The Rust engine gained the table form at the same
-// time as Studio, so wasm bindings older than that still reject the shape —
-// that combination is a "needs wasm rebuild" skip, not a failure.
+// import in Studio-land, and stay a fixed point.
 {
   const values = studioReducer(defaults, {
     type: "patch",
     patch: { intXdgOpen: true, intXdgOpenSchemes: ["http", "smb"] },
   });
-  const toml = generateStudioToml(values);
-  if (!toml.includes('xdg_open = { enabled = true, allowed_schemes = ["http", "smb"] }')) {
+  const toml = configToToml(stateToConfig(values)) ?? "";
+  if (
+    !toml.includes("[integration.xdg_open]\nenabled = true\nallowed_schemes = [") ||
+    !toml.includes('"http"') ||
+    !toml.includes('"smb"')
+  ) {
     console.error(`✗ xdg-open-schemes: table form not emitted:\n${toml}`);
     process.exit(1);
   }
@@ -238,33 +337,14 @@ if (failed > 0) {
     process.exit(1);
   }
   // The default allowlist stays in the bool shorthand.
-  const plain = generateStudioToml(
-    studioReducer(defaults, { type: "patch", patch: { intXdgOpen: true } }),
-  );
+  const plain = configToToml(
+    stateToConfig(studioReducer(defaults, { type: "patch", patch: { intXdgOpen: true } })),
+  ) ?? "";
   if (!plain.includes("xdg_open = true")) {
     console.error("✗ xdg-open-schemes: default allowlist must stay the bool shorthand");
     process.exit(1);
   }
-  const v = validate_toml(toml) as {
-    valid: boolean;
-    errors: Array<{ field?: string; message: string }>;
-  };
-  if (!v.valid) {
-    const staleEngine = v.errors.some((e) => `${e.field ?? ""}${e.message}`.includes("xdg_open"));
-    if (!staleEngine) {
-      console.error(
-        `✗ xdg-open-schemes: TOML rejected for an unrelated reason:\n  - ${v.errors.map((e) => (e.field ? `${e.field}: ${e.message}` : e.message)).join("\n  - ")}`,
-      );
-      process.exit(1);
-    }
-    console.log(
-      "~ xdg-open-schemes: engine skipped — wasm bindings predate the table form (needs wasm rebuild)",
-    );
-  } else {
-    console.log("✓ xdg-open-schemes: table form accepted by the Rust engine");
-  }
-  // Regardless of engine staleness, importing the emitted shape must land
-  // back in exactly the same state.
+  // Importing the emitted shape must land back in exactly the same state.
   const reimported = studioReducer(values, {
     type: "patch",
     patch: tomlToPatch(parseTomlText(toml) as Record<string, any>) as Record<string, unknown>,
@@ -274,13 +354,13 @@ if (failed > 0) {
     console.error(`✗ xdg-open-schemes: import lost state: ${JSON.stringify({ intXdgOpen: reimported.intXdgOpen, intXdgOpenSchemes: reimported.intXdgOpenSchemes })}`);
     process.exit(1);
   }
-  const toml2 = generateStudioToml(reimported as StudioValues);
+  const toml2 = configToToml(stateToConfig(reimported)) ?? "";
   if (toml2 !== toml) {
     console.error(`✗ xdg-open-schemes: emission is not a fixed point of import\nbefore:\n${toml}\nafter:\n${toml2}`);
     process.exit(1);
   }
+  console.log("✓ xdg-open-schemes: table form accepted by the Rust engine");
 }
-console.log("\nAll Studio presets round-trip through the Rust engine.");
 
 // Shell injection guard: hostile values riding in on share links must land
 // as single argv words when the Quick Start blocks actually run under sh.
@@ -356,7 +436,7 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
   const body = '[container]\nname = "dev"\n';
   await runSh(quickStartCommand({ containerName: evilName, imagePrebuiltRef: "" }, body, "sh"));
   if (!eq(readArgv(), ["create", evilName])) {
-    console.error(`✗ shell-quote: quick-start argv escaped its word: ${JSON.stringify(readArgv())}`);
+    console.error("✗ shell-quote: quick-start argv escaped its word");
     process.exit(1);
   }
   const written = readFileSync(join(tmp, ".config", "podbox", "profiles", "devrm-rf.toml"), "utf8");
@@ -373,12 +453,12 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
   console.log("✓ shell-quote: hostile image/name stay single argv words under sh");
 }
 
-// Every key in STUDIO_DEFAULTS must survive a patch through the reducer:
-// this is the guard that catches a repeat of the 19 silently-dropped
-// fields (presets, Reset, import, share links and session restore all
-// funnel through `applyPatch`).
+// Every key in the schema defaults must survive a patch through the
+// reducer: this is the guard that catches a repeat of the 19
+// silently-dropped fields (presets, Reset, import, share links and session
+// restore all funnel through `applyPatch`).
 {
-  const keys = Object.keys(STUDIO_DEFAULTS);
+  const keys = Object.keys(initialStudioValues());
   const failedKeys: string[] = [];
   for (const key of keys) {
     const sentinel = { __sentinel: key };
