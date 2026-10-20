@@ -16,7 +16,9 @@ use strum::VariantNames;
 
 use super::defaults;
 use super::enums::{CapPreset, NetworkMode, OnStop, PackageManager, ServiceRestart, UsernsMode};
-use super::types::{DbusPreset, DotfilesCloneOn, ProvisionOnFailure, SecretSource, SecretType};
+use super::types::{
+    DbusPreset, DotfilesCloneOn, HostExecCwd, ProvisionOnFailure, SecretSource, SecretType,
+};
 
 /// Field defaults the Studio may prefill, keyed by dotted config path.
 ///
@@ -61,6 +63,12 @@ pub fn schema_defaults() -> Map<String, Value> {
     );
     // [integration]
     put("integration.gpu", json!("auto"));
+    // The engine default is `home`: without this key the guest cwd is
+    // ignored and the child starts in the host home.
+    put(
+        "integration.host_exec.cwd",
+        json!(super::types::HostExecCwd::Home),
+    );
     // [lifecycle]
     put(
         "lifecycle.idle_timeout",
@@ -103,6 +111,7 @@ pub fn schema_enums() -> Map<String, Value> {
     put("security.secrets.type", SecretType::VARIANTS);
     put("security.secrets.source", SecretSource::VARIANTS);
     put("container.services.restart", ServiceRestart::VARIANTS);
+    put("integration.host_exec.cwd", HostExecCwd::VARIANTS);
     // The `[storage.*_caches]` tick-lists: cache names in declaration
     // order, straight from `BUILTIN_CACHES`.
     let caches = crate::config::types::builtin_cache_list();

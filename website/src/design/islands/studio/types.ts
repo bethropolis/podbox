@@ -12,6 +12,8 @@ export interface EnvVarItem {
 export interface HostExecItem {
   alias: string;
   path: string;
+  /** Optional kill timeout in seconds; `undefined` = none. */
+  timeout?: number;
 }
 
 export interface ServiceItem {

@@ -106,6 +106,20 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       ],
     },
   ],
+  // [integration.host_exec]: the per-entry timeout rides the detailed
+  // allowlist table form (only when set), and a guest-cwd policy that
+  // differs from the engine default gets written.
+  [
+    "host-exec",
+    {
+      hostExecEnabled: true,
+      hostExecList: [
+        { alias: "git", path: "/usr/bin/git", timeout: undefined },
+        { alias: "compile", path: "/usr/local/bin/compile", timeout: 300 },
+      ],
+      hostExecCwd: "map",
+    },
+  ],
 ];
 
 let failed = 0;
@@ -315,6 +329,63 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
     process.exit(1);
   }
   console.log(`✓ dbus-preset: dbus.preset rejected, all options named`);
+}
+// host-exec cwd policy + per-entry timeout: the engine serves the default
+// (`home`) and the variant list, the Studio only writes the key when it
+// differs, and a timeout rides the detailed allowlist table form.
+{
+  const engineData = engineSchema();
+  const served = engineData.enums["integration.host_exec.cwd"];
+  if (!Array.isArray(served) || !["map", "home", "refuse"].every((v) => served.includes(v))) {
+    console.error(`✗ host-exec-cwd: engine schema does not serve the cwd variant list: ${JSON.stringify(served)}`);
+    process.exit(1);
+  }
+  if (engineData.defaults["integration.host_exec.cwd"] !== "home") {
+    console.error(`✗ host-exec-cwd: engine default is not "home": ${JSON.stringify(engineData.defaults["integration.host_exec.cwd"])}`);
+    process.exit(1);
+  }
+  const values = studioReducer(defaults, {
+    type: "patch",
+    patch: {
+      hostExecEnabled: true,
+      hostExecList: [
+        { alias: "git", path: "/usr/bin/git", timeout: undefined },
+        { alias: "compile", path: "/usr/local/bin/compile", timeout: 300 },
+      ],
+      hostExecCwd: "map",
+    },
+  });
+  const toml = configToToml(stateToConfig(values)) ?? "";
+  if (!toml.includes("cwd = \"map\"")) {
+    console.error(`✗ host-exec-cwd: map policy not emitted:\n${toml}`);
+    process.exit(1);
+  }
+  if (!toml.includes("timeout = 300") || toml.includes("timeout = 0")) {
+    console.error(`✗ host-exec-timeout: per-entry timeout not emitted:\n${toml}`);
+    process.exit(1);
+  }
+  // The engine default stays out of the TOML, matching the serde rule.
+  const plain = configToToml(
+    stateToConfig(
+      studioReducer(defaults, {
+        type: "patch",
+        patch: {
+          hostExecEnabled: true,
+          hostExecList: [{ alias: "git", path: "/usr/bin/git", timeout: undefined }],
+        },
+      }),
+    ),
+  ) ?? "";
+  if (plain.includes("cwd =")) {
+    console.error(`✗ host-exec-cwd: default policy leaked into the TOML:\n${plain}`);
+    process.exit(1);
+  }
+  if (plain.includes("timeout =")) {
+    console.error(`✗ host-exec-timeout: unset timeout leaked into the TOML:\n${plain}`);
+    process.exit(1);
+  }
+  console.log("✓ host-exec-cwd: map/refuse emitted, default kept out of the TOML");
+  console.log("✓ host-exec-timeout: detailed entry written only once a timeout is set");
 }
 // xdg_open table form: a custom scheme allowlist must survive emission and
 // import in Studio-land, and stay a fixed point.

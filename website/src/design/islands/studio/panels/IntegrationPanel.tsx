@@ -12,6 +12,7 @@ import {
 } from '../../../components/StudioControls';
 import { StudioTooltip } from '../../../components/StudioTooltip';
 import {
+  enumOptions,
   gpuOptions,
   HOST_EXEC_SUGGESTIONS,
   DEFAULT_XDG_OPEN_SCHEMES,
@@ -20,10 +21,10 @@ import {
 } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwUsb' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'intXdgOpenSchemes' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwUsb' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setIntXdgOpenSchemes' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
+type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecCwd' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwUsb' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'intXdgOpenSchemes' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecCwd' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwUsb' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setIntXdgOpenSchemes' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
 export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; errorMap?: Record<string, string> }) {
-  const { exportAppsList, exportBinsList, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwUsb, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, intXdgOpenSchemes, setExportAppsList, setExportBinsList, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwUsb, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setIntXdgOpenSchemes, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
+  const { exportAppsList, exportBinsList, hostExecCwd, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwUsb, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, intXdgOpenSchemes, setExportAppsList, setExportBinsList, setHostExecCwd, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwUsb, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setIntXdgOpenSchemes, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
   const err = (field: string) => errorMap?.[field];
   const XDG_DIRS = [
     { id: 'documents', label: 'Documents', mode: xdgDocuments, setter: setXdgDocuments },
@@ -579,6 +580,26 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
               placeholder="/usr/bin/..."
               className={`${STUDIO_FIELD} flex-1`}
             />
+            <input
+              type="number"
+              min={1}
+              value={e.timeout ?? ''}
+              aria-label={`Host exec ${idx + 1} timeout`}
+              onChange={(ev) => {
+                const updated = [...hostExecList];
+                const raw = ev.target.value;
+                if (raw === '') {
+                  updated[idx].timeout = undefined;
+                } else {
+                  const secs = Math.floor(Number(raw));
+                  updated[idx].timeout = Number.isFinite(secs) && secs >= 1 ? secs : undefined;
+                }
+                setHostExecList(updated);
+              }}
+              placeholder="timeout s"
+              title="Optional kill timeout in seconds; empty = no timeout"
+              className={`${STUDIO_FIELD} w-20 shrink-0`}
+            />
             <button
               type="button"
               onClick={() => setHostExecList(hostExecList.filter((_, i) => i !== idx))}
@@ -591,12 +612,27 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
         ))}
         <button
           type="button"
-          onClick={() => setHostExecList([...hostExecList, { alias: '', path: '' }])}
+          onClick={() => setHostExecList([...hostExecList, { alias: '', path: '', timeout: undefined }])}
           className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
         >
           <Plus className="w-3 h-3" />
           <span>Add Allowlist Entry</span>
         </button>
+        <StudioSelect
+          label={
+            <div className="flex items-center">
+              <span>Guest cwd</span>
+              <StudioTooltip
+                section="[integration.host_exec]"
+                title='cwd = "home" | "map" | "refuse"'
+                description="What a fd-passing command does with the container's working directory: ignore it (home), translate it through the container's bind mappings (map), or refuse an unusable path (refuse)."
+              />
+            </div>
+          }
+          value={hostExecCwd}
+          onChange={setHostExecCwd}
+          options={enumOptions('integration.host_exec.cwd')}
+        />
       </div>
     )}
   </div>

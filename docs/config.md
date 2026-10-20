@@ -380,7 +380,50 @@ storage — wider than `serial`, so enable it deliberately.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Allow container to execute commands on the host |
-| `allowlist` | table | (none) | Allowed commands as alias → path pairs. When set, only those commands may run; when absent, anything may run |
+| `allowlist` | table | (none) | Allowed commands as alias → path pairs. When set, only those commands may run; when absent, anything may run. Each value may also be a detailed table `{ path = "/usr/bin/…", filter = true, shim = true, timeout = 30 }` |
+| `cwd` | string | `"home"` | What the fd-passing session does with the guest working directory (see [cwd handling](#cwd-handling) below) |
+
+**cwd handling**
+
+The fd-passing session carries the shell's working directory in
+`HostExecV2.cwd`; `cwd` decides what the host does with it before the
+command runs. The policy applies to tty sessions the same way — an
+interactive session can be directed to its host project directory, or
+refused, exactly like a piped one:
+
+| Value | Behaviour |
+|-------|-----------|
+| `"home"` (default) | Ignore the guest path: the command starts in the host `$HOME` |
+| `"map"` | Translate the guest path through the container's known bind mappings — the home volume, enabled `[integration.xdg_dirs]`, `[storage.host_caches]` and `[container.mounts].extra` binds. A path with no mapping falls back to the host `$HOME` and prints a warning naming the unmapped guest path to stderr |
+| `"refuse"` | Refuse the request with a typed error naming the guest path; nothing is executed |
+
+Shared cache *volumes* (`[storage.shared_caches]`) are translated only if
+their host path is resolvable without talking to podman, which today means
+they are not translated; such directories fall back under `"map"`
+behaviour above.
+
+**Per-entry timeouts**
+
+```toml
+[integration.host_exec]
+enabled = true
+cwd = "map"
+
+[integration.host_exec.allowlist]
+git = "/usr/bin/git"
+
+[integration.host_exec.allowlist.compile]
+path = "/usr/local/bin/compile"
+timeout = 300
+```
+
+A configured `timeout` (whole seconds, ≥ 1) kills the command's process
+group and reports the death to the guest the way a signal death is always
+reported (`128 + signal`, with the signal named in the exit report). A
+fd-passing session with no configured timeout — and every legacy, non
+fd-passing session — keeps the historical behaviour. TTY sessions are
+never time-limited by it: an interactive child outliving its request is
+correct behaviour, not a leak.
 
 **Example — restrict to `git` and `systemctl`:**
 ```toml

@@ -222,9 +222,22 @@ export function stateToConfig(s: StudioValues): V {
   }
   if (s.hostExecEnabled) {
     const hostExec: V = { enabled: true };
+    // The cwd policy is runtime behaviour, but it is config: written only
+    // when it differs from the engine default (`home`).
+    if (s.hostExecCwd !== 'home') hostExec.cwd = s.hostExecCwd;
     const allowList: V = {};
     for (const e of s.hostExecList) {
-      if (e.alias.trim() && e.path.trim()) allowList[e.alias.trim()] = e.path.trim();
+      // A plain alias → path pair stays the simple form; only an entry with
+      // a timeout needs the detailed table form. (Other detail fields the
+      // engine supports are not Studio-editable yet.)
+      const alias = e.alias.trim();
+      const path = e.path.trim();
+      if (!alias || !path) continue;
+      if (e.timeout !== undefined) {
+        allowList[alias] = { path, timeout: e.timeout } as V;
+      } else {
+        allowList[alias] = path;
+      }
     }
     if (Object.keys(allowList).length > 0) hostExec.allowlist = allowList;
     integration.host_exec = hostExec;

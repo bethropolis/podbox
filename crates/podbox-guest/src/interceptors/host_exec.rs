@@ -83,12 +83,33 @@ pub fn run_as_command(cmd: &str, args: &[String]) {
 /// where closed) are attached to the frame, and the child's exit comes
 /// back as one `HostExecDone`. Nothing is buffered here — output bytes
 /// take the guest's own pipes, not the protocol.
+///
+/// With our stdout on a terminal the request instead allocates a pty and
+/// hands the host its slave end: the child keeps the terminal interaction
+/// a shell session expects, and the master stays open on this side until
+/// the exit report arrives.
 fn run_with_fds(stream: &mut UnixStream, cmd: &str, args: &[String]) -> i32 {
-    let triple = match stdio_triple() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("host-exec: {e}");
-            return 1;
+    let tty = {
+        use std::io::IsTerminal;
+        std::io::stdout().is_terminal()
+    };
+    let (triple, master) = if tty {
+        // The pty's slave carries the child's stdio; the master stays on
+        // this side of the session until the exit report arrives.
+        match tty_triple() {
+            Ok((triple, master)) => (triple, Some(master)),
+            Err(e) => {
+                eprintln!("host-exec: {e}");
+                return 1;
+            }
+        }
+    } else {
+        match stdio_triple() {
+            Ok(t) => (t, None),
+            Err(e) => {
+                eprintln!("host-exec: {e}");
+                return 1;
+            }
         }
     };
     let msg = GuestMessage::HostExecV2 {
@@ -100,7 +121,7 @@ fn run_with_fds(stream: &mut UnixStream, cmd: &str, args: &[String]) -> i32 {
         cwd: std::env::current_dir()
             .ok()
             .map(|p| p.to_string_lossy().into_owned()),
-        tty: false,
+        tty,
     };
     let mut wire = Vec::new();
     if write_frame(&mut wire, &msg).is_err() {
@@ -114,7 +135,12 @@ fn run_with_fds(stream: &mut UnixStream, cmd: &str, args: &[String]) -> i32 {
             return 1;
         }
     }
-    wait_for_done_with_signals(stream)
+    let code = wait_for_done_with_signals(stream);
+    // The master is what keeps the pty pair alive, so it must survive the
+    // whole wait above; dropping it only after the exit report hangs the
+    // terminal up behind a child that (rarely) still lingers.
+    drop(master);
+    code
 }
 
 /// Which of the child's stdio descriptors this process should hand over:
@@ -127,6 +153,60 @@ fn stdio_triple() -> std::io::Result<[OwnedFd; 3]> {
         dup_or_devnull(std::io::stdout().as_fd())?,
         dup_or_devnull(std::io::stderr().as_fd())?,
     ])
+}
+
+/// Allocate the pty a tty session runs in, and return its slave end
+/// three times (the child's stdin, stdout and stderr) plus the master
+/// the caller must keep open until the session ends. The caller's own
+/// terminal — this shim is only asked for a pty when its stdout is one —
+/// supplies the initial termios and window size, so the child starts
+/// with the interaction state and rows/columns the caller already sees.
+fn tty_triple() -> std::io::Result<([OwnedFd; 3], OwnedFd)> {
+    let mut master = None;
+    let triple = tty_triple_for(std::io::stdout(), &mut master)?;
+    let master = master.expect("the allocator always sets the master");
+    Ok((triple, master))
+}
+
+/// The allocator proper, parameterised over the terminal whose state the
+/// pty starts with and a slot capturing the master. `tty_triple` fixes
+/// them to our stdout; tests allocate with a pty of their own.
+///
+/// `TIOCGPTPEER` opens the slave relative to the master, so there is no
+/// naming race between `unlockpt` and the slave's open.
+fn tty_triple_for(
+    source: impl std::os::fd::AsFd,
+    master_slot: &mut Option<OwnedFd>,
+) -> std::io::Result<[OwnedFd; 3]> {
+    use rustix::pty::{OpenptFlags, ioctl_tiocgptpeer, openpt, unlockpt};
+
+    let master = openpt(
+        // NOCTTY: no terminal should be claimed for *this* process — only
+        // the host child, via its own session, gets the slave as ctty.
+        // CLOEXEC: the master belongs to the shim, not anything it runs.
+        OpenptFlags::RDWR | OpenptFlags::NOCTTY | OpenptFlags::CLOEXEC,
+    )?;
+    unlockpt(&master)?;
+    let slave = ioctl_tiocgptpeer(&master, OpenptFlags::RDWR)?;
+
+    // Termios and window size come from the source descriptor (a
+    // terminal on the interactive path by construction). Missing values
+    // SKIP silently: a pty with the driver defaults is usable, while
+    // failing the whole session over a row count is not. `tcgetattr`
+    // copies the termios wholesale from the source — INTR keys,
+    // processing state, echo — without reconstructing any of it here.
+    if let Ok(t) = rustix::termios::tcgetattr(source.as_fd()) {
+        rustix::termios::tcsetattr(&slave, rustix::termios::OptionalActions::Now, &t)?;
+    }
+    if let Ok(ws) = rustix::termios::tcgetwinsize(source.as_fd()) {
+        rustix::termios::tcsetwinsize(&slave, ws)?;
+    }
+
+    // One slave per stdio slot, as every request carries three fds.
+    let slave2 = nix::unistd::dup(&slave).map_err(std::io::Error::from)?;
+    let slave3 = nix::unistd::dup(&slave).map_err(std::io::Error::from)?;
+    *master_slot = Some(master);
+    Ok([slave, slave2, slave3])
 }
 
 fn dup_or_devnull(fd: BorrowedFd<'_>) -> std::io::Result<OwnedFd> {
@@ -421,6 +501,51 @@ mod tests {
         for n in raws {
             assert!(n >= 0);
         }
+    }
+
+    /// A pty pair built the same way the allocator builds one, so tests
+    /// can stand in for the caller's terminal without reaching for the
+    /// shim's real stdout.
+    #[cfg(test)]
+    fn test_pty() -> (OwnedFd, OwnedFd) {
+        use rustix::pty::{OpenptFlags, ioctl_tiocgptpeer, openpt, unlockpt};
+        let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+        unlockpt(&master).unwrap();
+        let slave = ioctl_tiocgptpeer(&master, OpenptFlags::RDWR).unwrap();
+        (master, slave)
+    }
+
+    /// The tty triple is three handles to one pty device — the request
+    /// may only ever carry one stdio device — and that device inherits
+    /// the caller's terminal geometry, since the drain/winsize copy is
+    /// how rows and columns reach the host child.
+    #[test]
+    fn tty_session_triple_is_one_device_with_the_caller_size() {
+        let (_source_master, source_slave) = test_pty();
+        let want = rustix::termios::Winsize {
+            ws_row: 80,
+            ws_col: 24,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        rustix::termios::tcsetwinsize(&source_slave, want).unwrap();
+
+        let mut master_slot = None;
+        let triple = tty_triple_for(&source_slave, &mut master_slot).unwrap();
+        assert!(master_slot.is_some(), "the allocator keeps the master");
+
+        // One device across the three stdio slots…
+        let rdevs: Vec<u64> = triple
+            .iter()
+            .map(|fd| nix::sys::stat::fstat(fd).unwrap().st_rdev)
+            .collect();
+        assert!(
+            rdevs.windows(2).all(|w| w[0] == w[1]),
+            "the slaves are not one device: {rdevs:?}"
+        );
+        // …carrying the caller's window size.
+        let got = rustix::termios::tcgetwinsize(&triple[0]).unwrap();
+        assert_eq!((got.ws_row, got.ws_col), (80, 24));
     }
 
     #[test]

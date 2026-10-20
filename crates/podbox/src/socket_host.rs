@@ -11,10 +11,12 @@ use crate::protocol::{HostMessage, write_frame};
 
 mod actions;
 mod conn;
+mod cwd_map;
 mod handlers;
 mod monitor;
 
 pub use actions::{HostActions, SystemActions};
+pub use cwd_map::CwdMap;
 
 use conn::handle_connection;
 use conn::peer_is_in_host_userns;
@@ -34,6 +36,14 @@ const MAX_CONCURRENT: usize = 4;
 /// slot for as long as its handler runs) must not starve host control
 /// traffic.
 const HOST_OVERFLOW: usize = 2;
+
+/// How many connections may be in flight at once: [`MAX_CONCURRENT`] for
+/// guest peers plus the host-side overflow. Kept together so the accept
+/// loop reads them as one admission budget.
+struct PeerLimits {
+    max: usize,
+    overflow: usize,
+}
 
 /// Max number of tracked terminal sessions (pidfd monitors).
 const MAX_SESSIONS: u32 = 64;
@@ -65,12 +75,14 @@ pub(crate) struct SharedState {
 
 /// Serve one guest connection with the real message loop and the given host
 /// actions. [`run`] uses the same loop with [`SystemActions`]. This entry point
-/// lets the protocol tests drive that loop over a socket pair with a fake.
+/// lets the protocol tests drive that loop over a socket pair with a fake; the
+/// cwd map is passed explicitly so tests can pin the container's mounts.
 pub fn serve_connection(
     stream: &mut UnixStream,
     config: &Config,
     container_name: &str,
     actions: &dyn HostActions,
+    cwd_map: &CwdMap,
 ) -> anyhow::Result<()> {
     let state = Arc::new(SharedState {
         session_count: AtomicU32::new(0),
@@ -78,7 +90,7 @@ pub fn serve_connection(
         idle_timeout_secs: parse_idle_timeout_secs(&config.lifecycle.idle_timeout),
         was_socket_activated: false,
     });
-    handle_connection(stream, config, &state, actions)
+    handle_connection(stream, config, &state, actions, cwd_map)
 }
 
 /// Whether a new connection may be accepted with `active` connections
@@ -101,8 +113,8 @@ fn accept_loop(
     state: &Arc<SharedState>,
     shutdown: &AtomicBool,
     classify_host_peer: &dyn Fn(&UnixStream) -> bool,
-    max: usize,
-    overflow: usize,
+    limits: PeerLimits,
+    cwd_map: &Arc<CwdMap>,
 ) -> anyhow::Result<()> {
     // Non-blocking + periodic tick so SIGTERM/SIGINT ends the accept loop
     // promptly instead of blocking in accept(2) until systemd's
@@ -126,7 +138,12 @@ fn accept_loop(
                 stream.set_nonblocking(false)?;
                 handles.retain_mut(|h| !h.is_finished());
 
-                if !connection_allowed(handles.len(), max, overflow, classify_host_peer(&stream)) {
+                if !connection_allowed(
+                    handles.len(),
+                    limits.max,
+                    limits.overflow,
+                    classify_host_peer(&stream),
+                ) {
                     // Say so, rather than dropping the peer silently. The guest
                     // retries on its own; a silent drop looks like a dead host.
                     tracing::warn!(
@@ -145,8 +162,11 @@ fn accept_loop(
 
                 let cfg = config.clone();
                 let state = Arc::clone(state);
+                let cwd_map = Arc::clone(cwd_map);
                 let handle = std::thread::spawn(move || {
-                    if let Err(e) = handle_connection(&mut stream, &cfg, &state, &SystemActions) {
+                    if let Err(e) =
+                        handle_connection(&mut stream, &cfg, &state, &SystemActions, &cwd_map)
+                    {
                         tracing::error!("error handling connection: {}", e);
                     }
                 });
@@ -196,6 +216,9 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
         }
     };
 
+    // The container → host cwd map the fd-passing session consults.
+    let cwd_map = Arc::new(CwdMap::for_daemon(&config));
+
     let state = Arc::new(SharedState {
         session_count: AtomicU32::new(0),
         container_name: container_name.to_string(),
@@ -209,8 +232,11 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
         &state,
         &shutdown,
         &peer_is_in_host_userns,
-        MAX_CONCURRENT,
-        HOST_OVERFLOW,
+        PeerLimits {
+            max: MAX_CONCURRENT,
+            overflow: HOST_OVERFLOW,
+        },
+        &cwd_map,
     )
 }
 
@@ -553,8 +579,20 @@ mod tests {
         };
 
         let shutdown_loop = Arc::clone(&shutdown);
+        let cwd = super::CwdMap::for_daemon(&config);
         let worker = std::thread::spawn(move || {
-            super::accept_loop(listener, &config, &state, &shutdown_loop, &classify, 1, 1)
+            super::accept_loop(
+                listener,
+                &config,
+                &state,
+                &shutdown_loop,
+                &classify,
+                super::PeerLimits {
+                    max: 1,
+                    overflow: 1,
+                },
+                &std::sync::Arc::new(cwd),
+            )
         });
 
         fn connect(path: &std::path::Path) -> UnixStream {

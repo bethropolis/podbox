@@ -279,12 +279,184 @@ fn host_exec_filter_false_allows_shell_metacharacters_conceptually() {
         path: "/usr/bin/git".into(),
         filter: false,
         shim: true,
+        timeout: None,
     };
     assert!(filtered.filter_enabled());
     assert!(!unfiltered.filter_enabled());
     // The actual bypass is in handle_host_exec: when filter_enabled() is false,
     // validate_host_exec_args is skipped. Verify the entry API correctly
     // distinguishes the two modes.
+}
+
+/// The `integration.host_exec.cwd` key parses in all three variants,
+/// defaults to `home` when omitted, and a wrong value is a parse error
+/// naming the key so a typo in the TOML is discoverable.
+#[test]
+fn host_exec_cwd_parses_and_rejects_unknown_values() {
+    use podbox::config::HostExecCwd;
+    let base = r#"
+[image]
+base = "fedora:41"
+name = "test"
+
+[container]
+name = "test"
+home = "~/containers/test"
+
+[integration.host_exec]
+enabled = true
+"#;
+    let allowlist = r#"
+[integration.host_exec.allowlist]
+git = "/usr/bin/git"
+"#;
+    let cfg = Config::parse(&(base.to_owned() + allowlist)).unwrap();
+    assert_eq!(cfg.integration.host_exec.cwd, HostExecCwd::Home);
+
+    // `cwd` must sit above the allowlist table: appending it after the
+    // `[...]` header would make it an allowlist key instead.
+    for (raw, expected) in [
+        ("map", HostExecCwd::Map),
+        ("home", HostExecCwd::Home),
+        ("refuse", HostExecCwd::Refuse),
+    ] {
+        let toml = base.to_owned() + "cwd = \"" + raw + "\"\n" + allowlist;
+        let cfg = Config::parse(&toml).unwrap();
+        assert_eq!(cfg.integration.host_exec.cwd, expected, "cwd = {raw:?}");
+    }
+
+    let result = Config::parse(&(base.to_owned() + "cwd = \"somewhere\"\n" + allowlist));
+    assert!(
+        result.is_err(),
+        "expected a parse error for cwd = \"somewhere\""
+    );
+    let err = format!("{:#}", result.unwrap_err());
+    assert!(err.contains("cwd"), "error should name the cwd key: {err}");
+}
+
+/// A per-entry `timeout` parses on the detailed form only, and the serde
+/// skip rules keep written TOML minimal: an omitted timeout stays out, a
+/// configured one round-trips.
+#[test]
+fn host_exec_timeout_parses_and_skip_defaults() {
+    // Simple entries never carry a timeout; detailed ones do.
+    let cfg = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "test"
+
+[container]
+name = "test"
+home = "~/containers/test"
+
+[integration.host_exec]
+enabled = true
+
+[integration.host_exec.allowlist]
+git = "/usr/bin/git"
+compile = { path = "/usr/local/bin/compile", timeout = 300 }
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        cfg.integration
+            .host_exec
+            .resolve("git")
+            .and_then(|e| e.timeout_secs()),
+        None,
+        "a simple entry has no timeout"
+    );
+    assert_eq!(
+        cfg.integration
+            .host_exec
+            .resolve("compile")
+            .and_then(|e| e.timeout_secs()),
+        Some(300)
+    );
+
+    // Writing the parsed config must keep default-side keys out: no
+    // `cwd` (default `home`) and no `timeout` where none was set.
+    let written = toml::to_string(&cfg).unwrap();
+    assert!(!written.contains("cwd ="), "{written}");
+    // The compile entry keeps its timeout, git stays the simple form.
+    assert!(written.contains(r#"timeout = 300"#), "{written}");
+    assert!(written.contains(r#"git = "/usr/bin/git""#), "{written}");
+
+    // With a non-default cwd policy the key survives the round trip.
+    let cfg_map = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "test"
+
+[container]
+name = "test"
+home = "~/containers/test"
+
+[integration.host_exec]
+enabled = true
+cwd = "map"
+
+[integration.host_exec.allowlist]
+git = "/usr/bin/git"
+"#,
+    )
+    .unwrap();
+    let written = toml::to_string(&cfg_map).unwrap();
+    assert!(written.contains("cwd = \"map\""), "{written}");
+
+    // A negative timeout is a TOML type error (unsigned integer).
+    let result = Config::parse(
+        r#"
+[image]
+base = "fedora:41"
+name = "test"
+
+[container]
+name = "test"
+home = "~/containers/test"
+
+[integration.host_exec]
+enabled = true
+
+[integration.host_exec.allowlist]
+git = { path = "/usr/bin/git", timeout = -1 }
+"#,
+    );
+    assert!(
+        result.is_err(),
+        "expected a parse error for negative timeout"
+    );
+}
+
+/// A configured timeout must be a whole number of seconds ≥ 1: zero is
+/// rejected by validation with the entry named.
+#[test]
+fn host_exec_timeout_zero_is_rejected() {
+    let toml = r#"
+[image]
+base = "fedora:41"
+name = "test"
+
+[container]
+name = "test"
+home = "~/containers/test"
+
+[integration.host_exec]
+enabled = true
+
+[integration.host_exec.allowlist]
+git = { path = "/usr/bin/git", timeout = 0 }
+"#;
+    let result = Config::parse(toml);
+    assert!(
+        result.is_err(),
+        "expected a validation error for timeout = 0"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("timeout"), "error should name timeout: {err}");
+    assert!(err.contains("git"), "error should name the entry: {err}");
 }
 
 /// Every shipped fixture and every bundled profile must still parse:
