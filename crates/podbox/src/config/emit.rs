@@ -241,6 +241,82 @@ wayland = true
     }
 
     #[test]
+    fn emits_sections_in_reading_order() {
+        // The written file reads like the setup itself: image, container,
+        // dotfiles, provision, storage, network, integration, dbus, wayland,
+        // security, lifecycle, systemd. Anything else lands sections where
+        // the reader has to jump back and forth ([[provision]] at the very
+        // bottom used to sit after tables it conceptually precedes).
+        let cfg = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
+name = "env"
+
+[container]
+name = "env"
+home = "~/env"
+
+[image.packages]
+install = ["git"]
+
+[container.mounts]
+extra = ["~/work:~/work:z"]
+
+[integration]
+wayland = true
+dbus = true
+
+[integration.xdg_dirs]
+projects = { enabled = true, read_write = true }
+
+[dbus]
+talk = ["org.example.Service"]
+
+[wayland]
+firewall = false
+
+[security]
+read_only_rootfs = true
+
+[lifecycle]
+quadlet = true
+
+[systemd]
+after = ["network-online.target"]
+
+[storage.shared_caches]
+cargo = true
+
+[network]
+mode = "host"
+
+[[provision]]
+name = "setup"
+run = "true"
+"#,
+        )
+        .unwrap();
+        let out = toml_string(&cfg).unwrap();
+        let order = |marker: &str| out.find(marker).unwrap_or(usize::MAX);
+        for (earlier, later) in [
+            ("[image.packages]", "[container.mounts]"),
+            ("[container.mounts]", "[[provision]]"),
+            ("[[provision]]", "[storage.shared_caches]"),
+            ("[storage.shared_caches]", "[network]"),
+            ("[network]", "[integration]"),
+            ("[integration.xdg_dirs]", "[dbus]"),
+            ("[security]", "[lifecycle]"),
+            ("[lifecycle]", "[systemd]"),
+        ] {
+            assert!(
+                order(earlier) < order(later),
+                "{earlier} must print before {later}:\n{out}"
+            );
+        }
+    }
+
+    #[test]
     fn xdg_dirs_detailed_roundtrips_inline() {
         // The detailed per-dir table serializes compactly under its parent,
         // as `projects = { enabled = true, read_write = true }`; the emitted

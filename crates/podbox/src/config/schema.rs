@@ -33,6 +33,10 @@ use super::types::{
     WaylandConfig,
 };
 
+/// Read like the setup itself: what the image is, where the container
+/// lives, what you bring in, how it's provisioned, what it shares, how it
+/// reaches the host, and finally what runs when. Serialization follows this
+/// field order, so the written TOML reads the same way.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -44,24 +48,24 @@ pub struct Config {
     pub container: ContainerConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dotfiles: Option<DotfilesConfig>,
-    #[serde(default, skip_serializing_if = "IntegrationConfig::is_default")]
-    pub integration: IntegrationConfig,
-    #[serde(default, skip_serializing_if = "LifecycleConfig::is_default")]
-    pub lifecycle: LifecycleConfig,
-    #[serde(default, skip_serializing_if = "SystemdConfig::is_default")]
-    pub systemd: SystemdConfig,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provision: Vec<ProvisionStep>,
+    #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
+    pub storage: StorageConfig,
     #[serde(default, skip_serializing_if = "NetworkConfig::is_default")]
     pub network: NetworkConfig,
+    #[serde(default, skip_serializing_if = "IntegrationConfig::is_default")]
+    pub integration: IntegrationConfig,
     #[serde(default, skip_serializing_if = "DbusConfig::is_default")]
     pub dbus: DbusConfig,
     #[serde(default, skip_serializing_if = "WaylandConfig::is_default")]
     pub wayland: WaylandConfig,
     #[serde(default, skip_serializing_if = "SecurityConfig::is_default")]
     pub security: SecurityConfig,
-    #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
-    pub storage: StorageConfig,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub provision: Vec<ProvisionStep>,
+    #[serde(default, skip_serializing_if = "LifecycleConfig::is_default")]
+    pub lifecycle: LifecycleConfig,
+    #[serde(default, skip_serializing_if = "SystemdConfig::is_default")]
+    pub systemd: SystemdConfig,
     /// Dotted leaf paths present in the definition file (after `extends`
     /// merging, so profile values count as user values). Image labels only
     /// fill fields the user never set; see `labels::apply_defaults`.
