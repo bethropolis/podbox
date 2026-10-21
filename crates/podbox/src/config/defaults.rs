@@ -78,3 +78,24 @@ pub fn is_default_idle_timeout(v: &str) -> bool {
 pub fn default_network_mode() -> NetworkMode {
     NetworkMode::Pasta
 }
+
+/// The Wayland interfaces the firewall refuses by screencopy/input-injection
+/// rules; written TOML only names them when the list was changed by hand.
+pub fn default_blocked_interfaces() -> Vec<String> {
+    vec![
+        "zwlr_screencopy_manager_v1".into(),
+        "ext_image_copy_capture_v1".into(),
+        "ext_foreign_toplevel_list_v1".into(),
+        "zwlr_virtual_pointer_manager_v1".into(),
+        "zwlr_virtual_pointer_unstable_v1".into(),
+        "zwp_virtual_keyboard_manager_v1".into(),
+        "zwp_input_method_v1".into(),
+        "zwp_input_method_v2".into(),
+        "ext_input_method_v1".into(),
+        "org_kde_kwin_fake_input".into(),
+    ]
+}
+
+pub fn is_default_blocklist(list: &[String]) -> bool {
+    *list == default_blocked_interfaces()
+}

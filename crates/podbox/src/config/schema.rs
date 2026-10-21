@@ -44,19 +44,19 @@ pub struct Config {
     pub container: ContainerConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dotfiles: Option<DotfilesConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "IntegrationConfig::is_default")]
     pub integration: IntegrationConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "LifecycleConfig::is_default")]
     pub lifecycle: LifecycleConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "SystemdConfig::is_default")]
     pub systemd: SystemdConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "NetworkConfig::is_default")]
     pub network: NetworkConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "DbusConfig::is_default")]
     pub dbus: DbusConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "WaylandConfig::is_default")]
     pub wayland: WaylandConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "SecurityConfig::is_default")]
     pub security: SecurityConfig,
     #[serde(default, skip_serializing_if = "StorageConfig::is_empty")]
     pub storage: StorageConfig,

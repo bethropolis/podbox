@@ -451,6 +451,10 @@ globs or parentheses.
 | `desktop` | bool | `false` | Mount host `~/Desktop` |
 | `projects` | bool | `false` | Mount host `~/Projects` |
 
+A directory can be mounted read-write with the detailed form, which is
+written compactly under its parent:
+`projects = { enabled = true, read_write = true }`.
+
 ### `[integration.export]`
 
 | Key | Type | Default | Description |
@@ -570,6 +574,9 @@ blocked_interfaces = [
 ```
 
 Setting `blocked_interfaces` replaces the default list entirely — no merging.
+The default list is also what a definition without `[wayland]` gets, so the
+firewall blocks the same global set whether or not the table appears in the
+file; it is written out only when you replace it.
 
 <details>
 <summary>Default block list</summary>
@@ -588,6 +595,12 @@ fake input (`org_kde_kwin_fake_input`).
 This is a **reference example** showing every available key with sane defaults.
 It is **not** a working config — most install lists, env vars, and mounts
 are placeholders. Pick only what you need; omitted keys use their defaults.
+
+Files `podbox` writes (create, init, the Studio) go further: a section that
+holds only default values is not written at all, so a minimal definition stays
+minimal — e.g. enabling nothing under `[integration]` produces no
+`[integration]` header, and the wayland firewall prints its block list only
+when you change it.
 
 ```toml
 # ── Image ──────────────────────────────────────────────

@@ -31,6 +31,11 @@ fn is_default_network_mode(mode: &NetworkMode) -> bool {
 }
 
 impl NetworkConfig {
+    /// True when the section is exactly what an absent `[network]` table
+    /// means; written TOML then omits the header entirely.
+    pub fn is_default(&self) -> bool {
+        is_default_network_mode(&self.mode) && !self.offline && self.ports.is_empty()
+    }
     pub fn effective_mode(&self) -> NetworkMode {
         if self.offline {
             NetworkMode::None
@@ -121,6 +126,22 @@ pub struct SecurityConfig {
     pub cap_add: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<SecretEntry>,
+}
+
+impl SecurityConfig {
+    /// True when the section is exactly what an absent `[security]` table
+    /// means; written TOML then omits the header entirely.
+    pub fn is_default(&self) -> bool {
+        self.apparmor.is_none()
+            && self.seccomp.is_none()
+            && self.security_label_disable
+            && self.no_new_privileges
+            && !self.read_only_rootfs
+            && self.userns.is_none()
+            && is_default_cap_preset(&self.cap_preset)
+            && self.cap_add.is_empty()
+            && self.secrets.is_empty()
+    }
 }
 
 fn is_default_cap_preset(v: &CapPreset) -> bool {

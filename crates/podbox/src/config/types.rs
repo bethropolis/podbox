@@ -602,6 +602,30 @@ impl Default for IntegrationConfig {
     }
 }
 
+impl IntegrationConfig {
+    /// True when the section is exactly what an absent `[integration]`
+    /// table means; written TOML then omits the header entirely.
+    pub fn is_default(&self) -> bool {
+        !self.git_identity
+            && !self.wayland
+            && !self.audio
+            && is_default_gpu(&self.gpu)
+            && !self.dbus
+            && !self.notify
+            && is_default_xdg_open(&self.xdg_open)
+            && !self.clipboard
+            && is_default_host_exec(&self.host_exec)
+            && !self.ssh_agent
+            && !self.gpg_agent
+            && !self.sync_fonts
+            && !self.sync_icons
+            && !self.sync_themes
+            && is_default_hardware(&self.hardware)
+            && is_default_xdg_dirs(&self.xdg_dirs)
+            && is_default_export(&self.export)
+    }
+}
+
 /// The `off` representations a directory may carry: the plain-false
 /// shorthand or the explicit disabled table.
 fn is_default_xdg_dir_value(value: &XdgDirValue) -> bool {
@@ -717,6 +741,19 @@ impl Default for LifecycleConfig {
     }
 }
 
+impl LifecycleConfig {
+    /// True when the section is exactly what an absent `[lifecycle]` table
+    /// means; written TOML then omits the header entirely.
+    pub fn is_default(&self) -> bool {
+        !self.quadlet
+            && !self.autostart
+            && is_default_on_stop(&self.on_stop)
+            && !self.auto_update
+            && !self.auto_checkpoint
+            && crate::config::defaults::is_default_idle_timeout(&self.idle_timeout)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct SystemdConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -725,11 +762,25 @@ pub struct SystemdConfig {
     pub after: Vec<String>,
 }
 
+impl SystemdConfig {
+    /// True when the section is exactly what an absent `[systemd]` table
+    /// means; written TOML then omits the header entirely.
+    pub fn is_default(&self) -> bool {
+        self.requires.is_empty() && self.after.is_empty()
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct WaylandConfig {
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub firewall: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Host Wayland interfaces the firewall refuses. In the absence of any
+    /// explicitly set list, these are screencopy/input-injection protocols a
+    /// container must not get for free.
+    #[serde(
+        default = "crate::config::defaults::default_blocked_interfaces",
+        skip_serializing_if = "crate::config::defaults::is_default_blocklist"
+    )]
     pub blocked_interfaces: Vec<String>,
 }
 
@@ -737,19 +788,17 @@ impl Default for WaylandConfig {
     fn default() -> Self {
         Self {
             firewall: true,
-            blocked_interfaces: vec![
-                "zwlr_screencopy_manager_v1".into(),
-                "ext_image_copy_capture_v1".into(),
-                "ext_foreign_toplevel_list_v1".into(),
-                "zwlr_virtual_pointer_manager_v1".into(),
-                "zwlr_virtual_pointer_unstable_v1".into(),
-                "zwp_virtual_keyboard_manager_v1".into(),
-                "zwp_input_method_v1".into(),
-                "zwp_input_method_v2".into(),
-                "ext_input_method_v1".into(),
-                "org_kde_kwin_fake_input".into(),
-            ],
+            blocked_interfaces: crate::config::defaults::default_blocked_interfaces(),
         }
+    }
+}
+
+impl WaylandConfig {
+    /// True when this config is exactly what an absent `[wayland]` table
+    /// means; the whole table can then stay out of written TOML.
+    pub fn is_default(&self) -> bool {
+        self.firewall
+            && self.blocked_interfaces == crate::config::defaults::default_blocked_interfaces()
     }
 }
 
@@ -783,6 +832,12 @@ pub struct DbusConfig {
 }
 
 impl DbusConfig {
+    /// True when the section is exactly what an absent `[dbus]` table
+    /// means; written TOML then omits the header entirely.
+    pub fn is_default(&self) -> bool {
+        is_default_dbus_preset(&self.preset) && self.talk.is_empty() && self.own.is_empty()
+    }
+
     pub fn effective_talk(&self) -> Vec<String> {
         let mut result = self.talk.clone();
         for svc in dbus_preset_talk(self.preset) {
