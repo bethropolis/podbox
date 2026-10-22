@@ -32,13 +32,27 @@ fi
 # Update workspace Cargo.toml
 sed -i -E "s/^version[[:space:]]*=[[:space:]]*\".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
 
+# The protocol crate publishes its own version and the wasm crate pins the
+# host CLI on major.minor; neither inherits the workspace version, so the
+# lock would still select 0.8.x and the pre-push clippy would refuse.
+sed -i -E "s/^version[[:space:]]*=[[:space:]]*\".*\"/version = \"$NEW_VERSION\"/" \
+    crates/podbox-protocol/Cargo.toml
+NEW_MM=$(echo "$NEW_VERSION" | cut -d. -f1-2)
+sed -i -E \
+    "s/(podbox = \{ package = \"podbox-cli\", path = \"[^\"]*\", version = \")0\.[^\"]*\"/\1$NEW_MM\"/" \
+    crates/podbox-wasm/Cargo.toml
+sed -i -E \
+    "s/(podbox-protocol[[:space:]]*= \{ path = \"[^\"]*\", version = \")0\.[^\"]*\"/\1$NEW_MM\"/" \
+    Cargo.toml
+cargo update -w --quiet
+
 # Update individual crate versions if they use workspace version
 # (they inherit from workspace.package, so only the workspace Cargo.toml needs updating)
 
 echo "Cargo.toml version updated to $NEW_VERSION"
 
 # Commit
-git add Cargo.toml
+git add Cargo.toml Cargo.lock crates/podbox-protocol/Cargo.toml crates/podbox-wasm/Cargo.toml
 git commit -m "chore: bump version to $NEW_VERSION"
 
 # Tag
