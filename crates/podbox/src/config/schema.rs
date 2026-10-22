@@ -71,6 +71,11 @@ pub struct Config {
     /// fill fields the user never set; see `labels::apply_defaults`.
     #[serde(skip)]
     pub explicit_keys: std::collections::HashSet<String>,
+    /// Diagnostics recorded while migrations and defaults reshaped the
+    /// definition (e.g. reviving a 0.8-era D-Bus intent). Printed with the
+    /// validation warnings and rendered by the Studio; never serialized.
+    #[serde(skip)]
+    pub parse_notices: Vec<String>,
 }
 
 impl Config {
@@ -170,16 +175,7 @@ impl Config {
     pub fn parse_with_warnings(content: &str) -> Result<(Config, Vec<String>)> {
         let value: toml::Value = toml::from_str(content)
             .with_context(|| "failed to parse definition file".to_string())?;
-        // A newer schema may add keys this version denies: report the
-        // upgrade hint, not a confusing "unknown field" error.
-        check_schema_version(&value)?;
-        let explicit_keys = explicit_leaf_paths(&value);
-        let mut config: Config = value
-            .try_into()
-            .with_context(|| "failed to parse definition file".to_string())?;
-        config.explicit_keys = explicit_keys;
-        config.run_migrations();
-        config.apply_defaults();
+        let config = Self::from_merged(value)?;
         let (warnings, result) = config.validate_with_warnings();
         result.map(|()| (config, warnings))
     }
@@ -191,15 +187,67 @@ impl Config {
     /// behaviour for tests/embedded.
     pub fn parse_with_source(path: &std::path::Path, content: &str) -> Result<Config> {
         let merged = crate::config::extends::resolve_extends_chain(path, content)?;
-        check_schema_version(&merged)?;
-        let explicit_keys = explicit_leaf_paths(&merged);
-        let mut config: Config = merged
+        let config = Self::from_merged(merged)?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    /// Deserialize, migrate and default a merged TOML document without
+    /// validating. The two entry points [`Self::parse_with_source`] (hard
+    /// validate) and [`Self::load_lenient`] (validate for cleanup) share this
+    /// so both see identical migrations and defaults.
+    fn from_merged(value: toml::Value) -> Result<Config> {
+        // A newer schema may add keys this version denies: report the
+        // upgrade hint, not a confusing "unknown field" error.
+        check_schema_version(&value)?;
+        let explicit_keys = explicit_leaf_paths(&value);
+        let mut config: Config = value
             .try_into()
-            .with_context(|| "failed to parse merged definition file".to_string())?;
+            .with_context(|| "failed to parse definition file".to_string())?;
         config.explicit_keys = explicit_keys;
         config.run_migrations();
         config.apply_defaults();
-        config.validate()?;
+        Ok(config)
+    }
+
+    /// Load for cleanup commands (`remove`): definition-neutral bookkeeping
+    /// that must work on a legacy definition the validator rejects. Only
+    /// *validation* failures are demoted to printed warnings — structural
+    /// failures (unreadable file, unknown keys, newer schema) still refuse,
+    /// because working around those could delete more than the container
+    /// this command names.
+    pub fn load_lenient(path: &std::path::Path) -> Result<Config> {
+        if !path.exists() {
+            return Err(PodboxError::DefinitionNotFound {
+                path: path.to_path_buf(),
+            }
+            .into());
+        }
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read definition file '{}'", path.display()))?;
+        let merged = crate::config::extends::resolve_extends_chain(path, &content)?;
+        let config = Self::from_merged(merged)?;
+        let (warnings, result) = config.validate_with_warnings();
+        // Nothing printed yet (this path never calls the auto-printing
+        // `validate`), so surface every diagnostic here: the parse warnings,
+        // and a demoted error verdict when the definition would not load
+        // under the strict rules. Printing is deliberate: a cleanup running
+        // against a knowingly-invalid definition must say so.
+        #[cfg(feature = "cli")]
+        for line in warnings {
+            crate::config::validation::note_parse_warning(line);
+        }
+        // wasm has no stderr anyway; the verdict simply stops being fatal.
+        #[cfg(not(feature = "cli"))]
+        let _ = warnings;
+        if let Err(err) = result {
+            #[cfg(feature = "cli")]
+            crate::config::validation::note_parse_warning(format!(
+                "not applying strict validation rules for removal: {err:#}"
+            ));
+            #[cfg(not(feature = "cli"))]
+            let _ = err;
+        }
         Ok(config)
     }
 
@@ -232,6 +280,26 @@ impl Config {
     }
 
     fn apply_defaults(&mut self) {
+        // 0.9.0 made the integrations opt-in. Definitions written by 0.8.x
+        // never say `integration.dbus` (the old emitter skipped the key while
+        // it defaulted on) but do carry `[dbus]` rules: the rules carry the
+        // old on-by-default intent, so an unstated switch keeps the bus on.
+        // An explicit `integration.dbus = false` next to rules stays a
+        // validation error — that is a genuine contradiction.
+        let dbus_rules = !self.dbus.talk.is_empty()
+            || !self.dbus.own.is_empty()
+            || self.dbus.preset != DbusPreset::None;
+        if !self.integration.dbus && dbus_rules && !self.explicit_keys.contains("integration.dbus")
+        {
+            self.integration.dbus = true;
+            self.parse_notices.push(
+                "dbus: [dbus] rules imply the bus is wanted, so 'integration.dbus' was enabled \
+                 (podbox ≤0.8 had it on by default). To keep the bus off, set \
+                 'integration.dbus = false' and remove the [dbus] rules."
+                    .to_string(),
+            );
+        }
+
         if self.integration.dbus
             && self.dbus.preset == DbusPreset::None
             && self.dbus.talk.is_empty()

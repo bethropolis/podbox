@@ -87,8 +87,11 @@ pub(crate) fn needs_config(cmd: &Command) -> ConfigNeed {
         // Arg-flagged modes that must not depend on shared resolution:
         // `--force` disables by name only, `--stale` removes containers
         // whose config is already gone, `--all` needs no target at all.
+        // A plain `remove` joins them: it deletes state that is known by
+        // name, so a definition the validator rejects must not block the
+        // removal — it resolves (and loads leniently) on its own.
         Command::Disable { force: true, .. }
-        | Command::Remove { stale: true, .. }
+        | Command::Remove { .. }
         | Command::Stop { all: true, .. } => ConfigNeed::None,
         Command::Config {
             config_cmd: ConfigCommand::Set { .. } | ConfigCommand::Validate { .. },
@@ -115,9 +118,6 @@ pub(crate) fn needs_config(cmd: &Command) -> ConfigNeed {
         } => ConfigNeed::Named(name.clone()),
         Command::Stop {
             name, all: false, ..
-        } => ConfigNeed::Named(name.clone()),
-        Command::Remove {
-            name, stale: false, ..
         } => ConfigNeed::Named(name.clone()),
         Command::Config {
             config_cmd: ConfigCommand::Get { .. },
@@ -475,6 +475,21 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
             stale: true, force, ..
         } => commands::lifecycle::run_remove_stale(dry, *force),
 
+        // A plain remove needs only the facts a definition carries (home,
+        // quadlet flag), not a valid definition: load leniently so legacy
+        // definitions that fail strict validation can still be deleted.
+        Command::Remove {
+            name: _,
+            all,
+            force,
+            remove_config,
+            stale: false,
+        } => {
+            let (config, name) = resolve::resolve_config_lenient(cli, target)
+                .map_err(ConfigResolveError::into_report)?;
+            commands::lifecycle::run_remove(&config, &name, dry, *all, *force, *remove_config)
+        }
+
         // `stop --all` needs no target: it enumerates running containers itself.
         Command::Stop { all: true, .. } => commands::lifecycle::run_stop_all(dry),
 
@@ -487,7 +502,6 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
         // Mirror arms: these (arg-flagged) modes go through shared
         // resolution instead, see `needs_config`.
         Command::Disable { force: false, .. }
-        | Command::Remove { stale: false, .. }
         | Command::Stop { all: false, .. }
         | Command::Config {
             config_cmd: ConfigCommand::Get { .. },
@@ -727,16 +741,6 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
             commands::export::run_export(&name, Some(&config), export_cmd, dry)?;
         }
 
-        Command::Remove {
-            name: _,
-            all,
-            force,
-            remove_config,
-            stale: false,
-        } => {
-            commands::lifecycle::run_remove(&config, &name, dry, *all, *force, *remove_config)?;
-        }
-
         Command::Update { no_restart, .. } => {
             commands::lifecycle::run_update(&config, &env, &xdg, &name, dry, *no_restart)?;
         }
@@ -807,7 +811,7 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
         | Command::Compositor { .. }
         | Command::FindDefinition { .. }
         | Command::Disable { force: true, .. }
-        | Command::Remove { stale: true, .. }
+        | Command::Remove { .. }
         | Command::Stop { all: true, .. }
         | Command::Config {
             config_cmd: ConfigCommand::Set { .. } | ConfigCommand::Validate { .. },

@@ -188,16 +188,47 @@ pub(crate) fn resolve_config(
     Ok((config, name))
 }
 
-/// Load the config a name chain resolved to, or walk a fresh user through
-/// the first-run wizard.
-fn load_by_lookup(
+/// [`resolve_config`] for cleanup commands (`remove` the container): resolve
+/// the file the same way, but load it leniently so a definition the
+/// validator rejects — a legacy file the D-Bus rule now flags, say — can
+/// still be deleted. Structural failures refuse exactly as before.
+pub(crate) fn resolve_config_lenient(
     cli: &Cli,
     target_name: Option<String>,
-) -> std::result::Result<Config, ConfigResolveError> {
+) -> std::result::Result<(Config, String), ConfigResolveError> {
+    let config = match &cli.config {
+        Some(path) => {
+            if !path.is_file() {
+                return Err(ConfigResolveError::Invalid {
+                    path: path.clone(),
+                    err: PodboxError::ConfigFileMissing { path: path.clone() }.into(),
+                    hint: false,
+                });
+            }
+            Config::load_lenient(path).map_err(|err| ConfigResolveError::Invalid {
+                path: path.clone(),
+                err,
+                hint: false,
+            })?
+        }
+        None => load_lenient_by_lookup(cli, target_name)?,
+    };
+
+    let name = config.container.name.clone();
+    Ok((config, name))
+}
+
+/// Resolve the file a name chain points to, walking a fresh user through
+/// the first-run wizard when nothing exists yet. Both load strategies
+/// ([`load_by_lookup`], [`load_lenient_by_lookup`]) share this.
+fn lookup_path_with_wizard(
+    cli: &Cli,
+    target_name: Option<String>,
+) -> std::result::Result<PathBuf, ConfigResolveError> {
     let mut retried_after_wizard = false;
-    let path = loop {
+    loop {
         match resolve_config_path(target_name.as_deref()) {
-            Ok(path) => break path,
+            Ok(path) => return Ok(path),
             Err(err @ ConfigResolveError::NotFound) if !retried_after_wizard => {
                 // No configs at all — welcome the user and offer the wizard
                 // (TTY only; scripts get the typed refusal instead of a
@@ -237,12 +268,33 @@ fn load_by_lookup(
             }
             Err(err) => return Err(err),
         }
-    };
+    }
+}
 
+fn load_by_lookup(
+    cli: &Cli,
+    target_name: Option<String>,
+) -> std::result::Result<Config, ConfigResolveError> {
+    let hinted = target_name.is_some();
+    let path = lookup_path_with_wizard(cli, target_name)?;
     Config::load(&path).map_err(|err| ConfigResolveError::Invalid {
         path,
         err,
-        hint: target_name.is_some(),
+        hint: hinted,
+    })
+}
+
+/// [`load_by_lookup`] through [`Config::load_lenient`].
+fn load_lenient_by_lookup(
+    cli: &Cli,
+    target_name: Option<String>,
+) -> std::result::Result<Config, ConfigResolveError> {
+    let hinted = target_name.is_some();
+    let path = lookup_path_with_wizard(cli, target_name)?;
+    Config::load_lenient(&path).map_err(|err| ConfigResolveError::Invalid {
+        path,
+        err,
+        hint: hinted,
     })
 }
 

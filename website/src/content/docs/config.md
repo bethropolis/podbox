@@ -321,7 +321,7 @@ stays off even when the image label says `true`.
 | `wayland` | bool | `false` | Share Wayland socket for GUI apps |
 | `audio` | bool | `false` | Share PipeWire/PulseAudio sockets |
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
-| `dbus` | bool | `false` | Enable D-Bus session bus access. Talk/own/preset rules without it are rejected |
+| `dbus` | bool | `false` | Enable D-Bus session bus access. Talk/own/preset rules without it are rejected; a rules set **without the switch stated** (a pre-0.9.0 file, where the bus defaulted on) revives it with a notice |
 | `notify` | bool | `false` | Desktop notification forwarding |
 | `xdg_open` | bool or table | `false` | URI opening via host (`xdg-open`). The bool form uses the default allowlist (`http`, `https`, `mailto`); the table form is `{ enabled = bool, allowed_schemes = [string, ...] }`, and naming schemes implies `enabled = true`. An empty stored list means the default list. Schemes must be RFC 3986 lowercase scheme tokens (letters, digits, `+`, `-`, `.`; e.g. `smb`, `mailto`, `steam`); invalid tokens are a parse error. **Widening this list lets container-supplied URIs reach host handlers for those schemes (file managers, editors, mail clients) — add only schemes you understand; see [guest.md](guest.md#xdg-open-scheme-allowlist)** |
 | `clipboard` | bool | `false` | Clipboard sharing |

@@ -187,7 +187,9 @@ dbus = true
 
 #[test]
 fn dbus_rules_without_dbus_enabled_are_rejected() {
-    // Talk rules with the bus off would be silently ignored — fail fast.
+    // The contradiction must be stated explicitly: a definition that says
+    // `integration.dbus = false` next to rules is dead config that would be
+    // silently ignored — fail fast.
     let toml = r#"
 [image]
 base = "fedora:41"
@@ -195,6 +197,8 @@ name = "env"
 [container]
 name = "env"
 home = "~/env"
+[integration]
+dbus = false
 [dbus]
 talk = ["org.freedesktop.Notifications"]
 "#;
@@ -209,22 +213,16 @@ name = "env"
 [container]
 name = "env"
 home = "~/env"
+[integration]
+dbus = false
 [dbus]
 preset = "portal"
 "#;
     let err = Config::parse(toml).unwrap_err().to_string();
     assert!(err.contains("integration.dbus"), "{err}");
 
-    // Explicit `preset = "none"` is a no-op, not dead config — allowed.
-    let toml = r#"
-[image]
-base = "fedora:41"
-name = "env"
-[container]
-name = "env"
-home = "~/env"
-[dbus]
-preset = "none"
-"#;
-    Config::parse(toml).unwrap();
+    // An UNSTATED switch is different: rules with no `integration.dbus` key
+    // are a pre-0.9.0 file whose bus defaulted on. The rules carry the old
+    // intent and revive the bus (see `apply_defaults`), which the test
+    // `dbus_rules_without_stated_switch_keep_the_bus_on` pins.
 }

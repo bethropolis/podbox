@@ -40,4 +40,6 @@ pub use types::{
     SystemdConfig, WaylandConfig, XdgDirConfig, XdgOpenConfig, all_builtin_cache_paths,
     builtin_cache_mount_names, builtin_cache_names,
 };
+#[cfg(feature = "cli")]
+pub use validation::set_parse_warnings_quiet;
 pub use validation::{is_valid_env_key, validate_container_name};

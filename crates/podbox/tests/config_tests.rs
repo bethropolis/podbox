@@ -513,3 +513,48 @@ fn hardware_usb_round_trip() {
     let on = Config::parse(&(base.to_owned() + "[integration.hardware]\nusb = true\n")).unwrap();
     assert!(on.integration.hardware.usb);
 }
+
+/// Definitions written by podbox 0.8.x carry `[dbus]` rules without an
+/// `integration.dbus` key (the old emitter skipped it while the bus was
+/// default-on). The rules carry the intent: the bus stays on, with a notice.
+#[test]
+fn dbus_rules_without_stated_switch_keep_the_bus_on() {
+    let base = "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n\n[dbus]\npreset = \"portal\"\n";
+    let cfg = Config::parse(base).expect("legacy dbus definition must parse");
+    assert!(cfg.integration.dbus);
+    assert!(
+        cfg.parse_notices
+            .iter()
+            .any(|notice| notice.contains("integration.dbus")),
+        "{:?}",
+        cfg.parse_notices
+    );
+
+    // The written form names the switch explicitly, so it re-reads the same.
+    let round_trip = Config::parse(&toml::to_string(&cfg).unwrap()).unwrap();
+    assert!(round_trip.integration.dbus);
+    assert!(
+        round_trip.parse_notices.is_empty(),
+        "{:?}",
+        round_trip.parse_notices
+    );
+}
+
+/// A preset explicitly set to `none` is an opt-out, not intent: no revival.
+#[test]
+fn dbus_preset_none_means_no_bus() {
+    let base = "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n\n[dbus]\npreset = \"none\"\n";
+    let cfg = Config::parse(base).unwrap();
+    assert!(!cfg.integration.dbus);
+    assert!(cfg.parse_notices.is_empty());
+}
+
+/// Stating the switch as false next to rules is a genuine contradiction and
+/// stays a hard error.
+#[test]
+fn dbus_explicitly_off_with_rules_is_rejected() {
+    let base = "[image]\nbase = \"fedora:41\"\nname = \"env\"\n[container]\nname = \"env\"\nhome = \"~/env\"\n\n[integration]\ndbus = false\n\n[dbus]\npreset = \"portal\"\n";
+    let err = Config::parse(base).unwrap_err();
+    let text = format!("{err:#}");
+    assert!(text.contains("integration.dbus"), "{text}");
+}

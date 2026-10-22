@@ -119,6 +119,11 @@ Each field is present when readable, absent otherwise:
 | Build | `podbox build NAME` | **Today** |
 | Remove | `podbox remove NAME` | **Today** |
 
+Removal runs on definitions that fail validation (a validation error is
+demoted to a warning); only structural breaks — unknown keys, a newer
+schema — refuse, because guessing around those is not safe for a
+destructive verb.
+
 ### Interactive commands
 
 `enter`, `exec`, `edit`, `logs -f` and `init -i` need a terminal. A GUI client

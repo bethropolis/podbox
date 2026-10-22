@@ -5,6 +5,59 @@ mod caches;
 use crate::config::Config;
 use crate::error::PodboxError;
 
+/// Parse-time diagnostics print once per process and can be silenced for
+/// commands that scan many definitions without acting on them (`list`,
+/// `stop --all`): the same deprecation line otherwise repeats once per
+/// definition per parse, and even twice for `list`, which loads each file
+/// on more than one path.
+#[cfg(feature = "cli")]
+mod printing {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static SHOWN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    static QUIET: AtomicBool = AtomicBool::new(false);
+
+    /// Silence [`super::Config::validate`]'s diagnostics until the call
+    /// site is done scanning. Only inspection commands set this; a command
+    /// that acts on the definition must hear the warnings.
+    pub fn set_quiet(quiet: bool) {
+        QUIET.store(quiet, Ordering::Relaxed);
+    }
+
+    /// Claim and print one diagnostic line: quietly skipped under
+    /// [`set_quiet`], and deduplicated by text so repeating a parse in the
+    /// same process does not n-repeat the same line.
+    pub fn note(message: impl Into<String>) {
+        if QUIET.load(Ordering::Relaxed) {
+            return;
+        }
+        let message = message.into();
+        let Ok(mut shown) = SHOWN.get_or_init(Mutex::default).lock() else {
+            return; // a poisoned set degrades to no printing, never to noise
+        };
+        if !shown.insert(message.clone()) {
+            return;
+        }
+        eprintln!("{message}");
+    }
+}
+
+/// [`printing::set_quiet`], for the command layer.
+#[cfg(feature = "cli")]
+pub fn set_parse_warnings_quiet(quiet: bool) {
+    printing::set_quiet(quiet);
+}
+
+/// Print one diagnostic through the once-per-process gate (used by both
+/// [`Config::validate`] and the lenient cleanup loader).
+#[cfg(feature = "cli")]
+pub(crate) fn note_parse_warning(message: impl Into<String>) {
+    printing::note(message);
+}
+
 impl Config {
     pub fn validate(&self) -> Result<()> {
         let validated = self.validate_with_warnings();
@@ -12,7 +65,7 @@ impl Config {
         // print macros panic on wasm targets, so only the CLI may print.
         #[cfg(feature = "cli")]
         for warning in &validated.0 {
-            eprintln!("{warning}");
+            note_parse_warning(warning.clone());
         }
         validated.1
     }
@@ -21,7 +74,10 @@ impl Config {
     /// Warnings are produced independently of the error outcome, matching
     /// the CLI (which prints them even when validation fails).
     pub fn validate_with_warnings(&self) -> (Vec<String>, Result<()>) {
-        let mut warnings: Vec<String> = Vec::new();
+        // Reshaping decisions (defaults, migrations) speak through the same
+        // warnings channel as validation, so every surface that shows
+        // diagnostics shows the notices too.
+        let mut warnings: Vec<String> = self.parse_notices.clone();
         let mut errors: Vec<String> = Vec::new();
 
         if self.image.base.trim().is_empty() {

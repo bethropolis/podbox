@@ -218,6 +218,9 @@ pub fn run_restart(config: &Config, name: &str, dry_run: bool) -> Result<()> {
 /// rest: it falls back to stopping by unit/podman directly, with a warning.
 /// Idle timeout already stops boxes routinely, so no confirmation prompt.
 pub fn run_stop_all(dry_run: bool) -> Result<()> {
+    // Scans every definition to find running boxes; parse warnings for the
+    // boxes it will not touch are noise here too.
+    podbox::config::set_parse_warnings_quiet(true);
     let mut stopped = 0u32;
     let mut failed = 0u32;
     for path in podbox::config::list_configs() {
@@ -435,8 +438,12 @@ pub fn run_remove(
     }
 
     // 1. Stop and remove the podman container (best-effort)
-    if let Err(e) = podbox::process::run_checked("podman", &podbox::process::args(&["stop", name]))
-    {
+    // `--ignore`: a container that was never created (or already gone) is
+    // not a failure here — removal proceeds to rm, which is also --ignore.
+    if let Err(e) = podbox::process::run_checked(
+        "podman",
+        &podbox::process::args(&["stop", "--ignore", name]),
+    ) {
         eprintln!("Warning: failed to stop container '{name}': {e}");
     }
     // `--ignore`: a container that was never created is not an error here.

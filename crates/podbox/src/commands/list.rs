@@ -21,6 +21,10 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
         return Err(podbox::contract::bail_ndjson("list"));
     }
     let configs = config::list_configs();
+    // Scanning definitions for display only: a parse warning (an extra
+    // history key, a revived D-Bus intent) is not what `list` outputs.
+    // `podbox doctor` / `config validate` are the advisory surfaces.
+    config::set_parse_warnings_quiet(true);
     let active_inner = config::read_active_context().and_then(|stem| {
         config::find_config_path(&stem)
             .and_then(|path| config::Config::load(&path).ok())
