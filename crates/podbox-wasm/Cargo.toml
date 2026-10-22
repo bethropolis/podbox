@@ -22,7 +22,7 @@ serde_json         = { workspace = true }
 toml               = { workspace = true }
 
 # The pure core only: no Linux CLI dependencies.
-podbox = { package = "podbox-cli", path = "../podbox", version = "0.8", default-features = false }
+podbox = { package = "podbox-cli", path = "../podbox", version = "0.9", default-features = false }
 
 [lints]
 workspace = true
