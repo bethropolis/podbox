@@ -605,8 +605,10 @@ export function initialStudioValues(): StudioDefaults {
     lifeAutoCheckpoint: false,
     lifeIdleTimeout: 'off',
     // [systemd]
+    // Empty: unit ordering is a deliberate edit, not something every box
+    // needs. The panel still offers keys and values for those who do.
     sysRequires: '',
-    sysAfter: 'network-online.target',
+    sysAfter: '',
     // [dbus]
     dbusPreset: 'portal',
     dbusTalkList: [],

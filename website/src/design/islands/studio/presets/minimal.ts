@@ -73,7 +73,6 @@ export const minimalPreset: PresetDef = {
     netOffline: true,
     portMappingsList: [],
     lifeAutostart: false,
-    lifeOnStop: 'remove',
     lifeAutoUpdate: false,
   },
 };
