@@ -35,6 +35,11 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      # sync-content.ts renders public/og-image.png from the cover SVG;
+      # ubuntu runners ship no librsvg, and skipping it silently 404s the
+      # og:image every scraper fetches.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq librsvg2-bin
+
       - run: bun install
         working-directory: website
 
