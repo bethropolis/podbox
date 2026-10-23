@@ -56,6 +56,7 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
   const [name, setName] = useState('dev-box');
   const [distro, setDistro] = useState<'fedora' | 'arch' | 'ubuntu' | 'debian' | 'custom'>('fedora');
   const [customImage, setCustomImage] = useState('ghcr.io/username/custom-env:latest');
+  const [customManager, setCustomManager] = useState('dnf');
   const [wayland, setWayland] = useState(true);
   const [pipewire, setPipewire] = useState(true);
   const [gpu, setGpu] = useState<'auto' | 'nvidia' | 'amd' | 'intel' | 'off'>('auto');
@@ -79,14 +80,25 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
     };
   }, []);
 
-  const state: PlaygroundState = { name, distro, customImage, packages, wayland, pipewire, gpu, dbusNotifications, shareProjects };
+  const state: PlaygroundState = {
+    name,
+    distro,
+    customImage,
+    customManager,
+    packages,
+    wayland,
+    pipewire,
+    gpu,
+    dbusNotifications,
+    shareProjects,
+  };
   // Until the engine is up (island hydration) the panes hold a visible
   // placeholder instead of stale fabrications.
   const LOADING = '# the real podbox engine is loading…';
   const toml = engineReady ? (configToToml(playgroundConfig(state)) ?? LOADING) : LOADING;
-  // The engine also validates; a custom image with packages set trips its
-  // "cannot determine package manager" rule, which the old static renderer
-  // silently swallowed. Surface the first real error under the header.
+  // The engine also validates; surface the first real error so the panes
+  // never show a config the CLI would refuse (e.g. packages on an image the
+  // engine cannot infer a manager for — custom picks one explicitly below).
   const report = engineReady ? validateToml(toml) : null;
   const engineError = report?.errors[0]?.message ?? null;
   const code = activeView === 'toml' ? toml : (engineReady ? (compileQuadletToml(toml)?.container ?? LOADING) : LOADING);
@@ -147,14 +159,33 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             </div>
 
             {distro === 'custom' && (
-              <input
-                type="text"
-                value={customImage}
-                aria-label="Custom image reference"
-                onChange={(e) => setCustomImage(e.target.value)}
-                placeholder="ghcr.io/org/custom:latest"
-                className={inputClass}
-              />
+              <>
+                <input
+                  type="text"
+                  value={customImage}
+                  aria-label="Custom image reference"
+                  onChange={(e) => setCustomImage(e.target.value)}
+                  placeholder="ghcr.io/org/custom:latest"
+                  className={inputClass}
+                />
+                {/* A distro button implies its package manager (the engine
+                    maps fedora→dnf, ubuntu→apt, …). A custom ref cannot be
+                    inferred, and without an explicit manager the engine
+                    refuses to guess — so the playground picks for you
+                    instead of stopping at the "cannot determine" error. */}
+                <select
+                  value={customManager}
+                  aria-label="Package manager for the custom image"
+                  onChange={(e) => setCustomManager(e.target.value)}
+                  className={inputClass}
+                >
+                  {['dnf', 'apt', 'pacman', 'apk', 'zypper'].map((m) => (
+                    <option key={m} value={m}>
+                      package manager: {m}
+                    </option>
+                  ))}
+                </select>
+              </>
             )}
           </div>
 
@@ -268,9 +299,8 @@ export function ConfigPlayground(_props: ConfigPlaygroundProps) {
             </a>
           </div>
 
-          {/* Engine validation failure (e.g. a custom image with packages but
-              no knowable package manager) — one line, from the same validator
-              the CLI uses. */}
+          {/* Engine validation failure — one line, from the same validator
+              the CLI uses, so the panes never fake a valid config. */}
           {engineError && (
             <div className="shrink-0 px-5 sm:px-6 py-2 border-b border-[var(--border)] text-xs leading-relaxed text-[var(--accent-red)] bg-[var(--accent-red)]/5">
               <span className="font-bold">not valid yet:</span> {engineError}

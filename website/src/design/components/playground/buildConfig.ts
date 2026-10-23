@@ -20,6 +20,8 @@ export interface PlaygroundState {
   name: string;
   distro: 'fedora' | 'arch' | 'ubuntu' | 'debian' | 'custom';
   customImage: string;
+  /** Explicit manager when the base cannot be inferred (custom refs). */
+  customManager: string;
   /** Comma-separated package list, editable as one string in the UI. */
   packages: string;
   wayland: boolean;
@@ -37,7 +39,13 @@ export function playgroundConfig(s: PlaygroundState): V {
     base: s.distro === 'custom' ? s.customImage : DISTRO_BASES[s.distro],
   };
   const install = s.packages.split(',').map((p) => p.trim()).filter(Boolean);
-  if (install.length > 0) image.packages = { install };
+  if (install.length > 0) {
+    image.packages = { install };
+    // A distro button implies its manager; a custom ref does not, and the
+    // engine refuses to guess. Name the manager so custom images with
+    // packages stay valid instead of tripping the inference error.
+    if (s.distro === 'custom') image.packages.manager = s.customManager;
+  }
 
   // gpu: `off` is the engine's bare false, `auto` rides along as the default
   // token (dropped by the serializer), real modes pass their string.
