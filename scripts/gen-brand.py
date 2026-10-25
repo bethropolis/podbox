@@ -13,9 +13,8 @@ prefers-color-scheme: dark. The site's own <PodboxLogo> component draws the
 same geometry with the live theme tokens instead.
 
 Usage: scripts/gen-brand.py
-Copy the favicon SVGs to website/public/ (they are served from the site root,
-not public/assets/), then re-render the rasters; see the comment at the bottom
-of this file.
+The favicon SVGs are also copied to website/public/ (they are served from the
+site root, not public/assets/); re-render the rasters with the commands below.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "assets"
+WEBSITE_PUBLIC = OUT.parent.parent / "website" / "public"
 
 # The mark, on a 512 grid. Shared with website/src/design/components/PodboxLogo.tsx.
 BOX = dict(x=56, y=56, w=400, h=400, rx=104, stroke=44)
@@ -188,6 +188,10 @@ def main() -> None:
     }.items():
         (OUT / name).write_text(fn(), encoding="utf-8")
         print(f"wrote {OUT / name}")
+        if name.startswith("favicon"):
+            WEBSITE_PUBLIC.mkdir(parents=True, exist_ok=True)
+            (WEBSITE_PUBLIC / name).write_text(fn(), encoding="utf-8")
+            print(f"wrote {WEBSITE_PUBLIC / name}")
 
 
 # Rasters (no extra tooling needed beyond a Chromium and ImageMagick):

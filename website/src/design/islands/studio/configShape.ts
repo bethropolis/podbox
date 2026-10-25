@@ -123,7 +123,7 @@ export function stateToConfig(s: StudioValues): V {
   if (
     s.dotfilesSource ||
     s.dotfilesInstall ||
-    s.dotfilesTarget !== engineDefault('dotfiles.target') ||
+    (s.dotfilesTarget && s.dotfilesTarget !== engineDefault('dotfiles.target')) ||
     s.dotfilesCloneOn !== 'host'
   ) {
     config.dotfiles = dotfiles;
