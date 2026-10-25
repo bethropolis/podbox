@@ -20,14 +20,12 @@ pub fn run_translate_path(
         stdout.write_all(b"\n")?;
         Ok(())
     };
-    let username = std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "root".to_string());
-    let home_in_container = if username == "root" {
-        "/root".to_string()
-    } else {
-        format!("/home/{username}")
-    };
+    let host_home = dirs::home_dir().unwrap_or_default();
+    let home_in_container = host_home
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| *name != "root")
+        .map_or_else(|| "/root".to_string(), |name| format!("/home/{name}"));
     let host_path = if Path::new(path_str).is_relative() {
         std::env::current_dir().map_or_else(|_| PathBuf::from(path_str), |d| d.join(path_str))
     } else {
@@ -57,7 +55,6 @@ pub fn run_translate_path(
             }
         }
 
-        let host_home = dirs::home_dir().unwrap_or_default();
         if let Ok(relative) = host_path.strip_prefix(&host_home) {
             let container_path = format!("{}/{}", home_in_container, relative.display());
             write_path(&container_path)?;
