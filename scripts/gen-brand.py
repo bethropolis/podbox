@@ -2,9 +2,9 @@
 """Generate the podbox brand assets in docs/assets/.
 
   podbox-mark.svg         the mark alone (outlined box + split pod)
-  favicon.svg             the mark as a solid tile, light (default)
-  favicon-light.svg       the same tile for light browser chrome
-  favicon-dark.svg        the same tile for dark browser chrome
+  favicon.svg             the same mark, light (default)
+  favicon-light.svg       the same mark for light browser chrome
+  favicon-dark.svg        the same mark for dark browser chrome
   podbox-logo.svg         mark + pixel wordmark lockup (README header, navbar)
   podbox-cover-image.svg  1200x600 social card (og:image source)
 
@@ -13,9 +13,9 @@ prefers-color-scheme: dark. The site's own <PodboxLogo> component draws the
 same geometry with the live theme tokens instead.
 
 Usage: scripts/gen-brand.py
-Then website/scripts/sync-content.ts copies docs/assets into the site.
-The raster copies (favicon.ico, podbox-logo.png) are rendered from these
-SVGs; see the comment at the bottom of this file.
+Copy the favicon SVGs to website/public/ (they are served from the site root,
+not public/assets/), then re-render the rasters; see the comment at the bottom
+of this file.
 """
 
 from __future__ import annotations
@@ -87,28 +87,30 @@ def mark_svg() -> str:
 
 
 FAVICON_COLOURS = {
-    # tile, pod: the light tile is the brand mauve with a pale pod. The dark
-    # pod is light too: a near-black pod made the icon look dim on a dark tab bar.
-    "light": dict(tile="#8839ef", pod="#eff1f5"),
-    "dark": dict(tile="#7a6aa8", pod="#a6adc8"),
+    # The favicon is the logo's own mark, so it takes the mark palette: Latte
+    # in light chrome, Mocha in dark. There is no tile — the outlined box is
+    # the logo, and a solid plate behind it made the tab icon look like a
+    # different brand.
+    "light": LIGHT,
+    "dark": DARK,
 }
 
 
 def favicon_svg(theme: str) -> str:
-    # Solid tile: an outline turns to mush at 16px, a filled shape does not.
-    # One file per theme, selected by the page's <link media>. Chrome ignores
+    # Same geometry as podbox-mark.svg and <PodboxLogo>, not a redrawn glyph.
+    # One file per theme, selected by the page's <link media>: Chrome ignores
     # prefers-color-scheme inside SVG favicons, so it is not used here.
     top, bottom = pod_paths()
-    c = FAVICON_COLOURS[theme]
+    d = FAVICON_COLOURS[theme]
+    b = BOX
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">'
-        f'<rect x="16" y="16" width="480" height="480" rx="120" fill="{c["tile"]}"/>'
-        # The pod is drawn larger here than in the outlined mark; at 16px the
-        # tile's own edge already says "box".
-        f'<g transform="translate(256 256) scale(1.3) translate(-256 -256)">'
-        f'<path d="{top}" fill="{c["pod"]}"/><path d="{bottom}" fill="{c["pod"]}" opacity=".72"/></g>'
+        f'<rect x="{b["x"]}" y="{b["y"]}" width="{b["w"]}" height="{b["h"]}" rx="{b["rx"]}" '
+        f'fill="none" stroke="{d["mauve"]}" stroke-width="{b["stroke"]}"/>'
+        f'<path d="{top}" fill="{d["mauve"]}"/><path d="{bottom}" fill="{d["lavender"]}"/>'
         "</svg>\n"
     )
+
 
 
 # The navbar lockup: the mark beside the pixel wordmark, as in the original
@@ -189,10 +191,12 @@ def main() -> None:
 
 
 # Rasters (no extra tooling needed beyond a Chromium and ImageMagick):
-#   chrome --headless --screenshot=tile.png --window-size=512,512 \
-#     --default-background-color=00000000 docs/assets/favicon.svg
-#   magick tile.png -resize 180x180 website/public/podbox-logo.png
-#   magick tile.png -define icon:auto-resize=48,32,16 website/public/favicon.ico
+#   rsvg-convert -w 512 -h 512 docs/assets/favicon-light.svg -o /tmp/tile.png
+#   magick /tmp/tile.png -define icon:auto-resize=48,32,16 website/public/favicon.ico
+#   # apple-touch-icon: iOS does not composite transparency, so give the mark
+#   # the brand tile as its background.
+#   rsvg-convert -w 180 -h 180 -b '#8839ef' docs/assets/favicon-light.svg \
+#     -o website/public/podbox-logo.png
 
 if __name__ == "__main__":
     main()

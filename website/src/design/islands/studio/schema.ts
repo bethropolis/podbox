@@ -462,7 +462,10 @@ const FROM_ENGINE: Partial<Record<keyof StudioDefaults, string>> = {
   pullRetry: 'image.pull_retry',
   pullRetryDelay: 'image.pull_retry_delay',
   packagesRemoveList: 'image.packages.remove',
-  dotfilesTarget: 'dotfiles.target',
+  // dotfiles.target is deliberately absent: the Studio leaves it blank so an
+  // unconfigured box does not look like it has dotfiles. The blank means the
+  // engine default, which configShape() reads through engineDefault() and the
+  // schema-defaults parity check still covers.
   dotfilesCloneOn: 'dotfiles.clone_on',
   containerShell: 'container.shell',
   containerSlice: 'container.slice',
