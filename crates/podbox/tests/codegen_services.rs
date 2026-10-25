@@ -156,6 +156,27 @@ fn compositor_service_structure() {
     assert!(unit.contains("[Install]"));
     assert!(unit.contains("WantedBy=myenv.service"));
 }
+
+#[test]
+fn x11_service_structure() {
+    let mut config = load_config("full.toml");
+    config.integration.x11 = true;
+    let unit = quadlet::generate_x11_service(
+        &config,
+        "/usr/local/bin/xwayland-satellite",
+        "%t/podbox/myenv-wayland.sock",
+    );
+    assert!(unit.contains("Description=podbox X11 bridge (xwayland-satellite) -- myenv"));
+    assert!(unit.contains("PartOf=myenv.service"));
+    assert!(unit.contains("After=myenv-compositor.service"));
+    assert!(unit.contains("Type=notify"));
+    assert!(unit.contains("ExecStart=/usr/local/bin/xwayland-satellite :0"));
+    assert!(unit.contains("Environment=WAYLAND_DISPLAY=%t/podbox/myenv-wayland.sock"));
+    assert!(unit.contains("PrivateTmp=yes"));
+    assert!(unit.contains("PrivateNetwork=yes"));
+    assert!(unit.contains("BindPaths=%t/podbox/myenv-x11:/tmp/.X11-unix"));
+    assert!(unit.contains("WantedBy=myenv.service"));
+}
 #[test]
 fn host_service_structure() {
     let unit = quadlet::generate_host_service("myenv");

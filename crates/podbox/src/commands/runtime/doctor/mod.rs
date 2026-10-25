@@ -105,6 +105,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     collect!(host::check_mount_propagation());
     collect!(host::check_graph_driver());
     collect!(integration::check_wayland(config, env, fix));
+    collect!(integration::check_x11(config, env));
     collect!(integration::check_xdg_user_dir());
     collect!(host::check_sub_ids(env));
     collect!(host::check_embedded_guest());

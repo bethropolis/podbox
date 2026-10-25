@@ -342,6 +342,18 @@ impl Config {
             );
         }
 
+        if self.integration.x11 && !self.integration.wayland {
+            errors.push(
+                "integration.x11: x11 needs wayland (the satellite is a Wayland client)".into(),
+            );
+        }
+        if self.integration.x11 && self.network.effective_mode() == crate::config::NetworkMode::Host
+        {
+            errors.push(
+                "integration.x11: x11 cannot use network.mode = \"host\" because DISPLAY=:0 could reach the host X server's abstract socket".into(),
+            );
+        }
+
         for (i, port) in self.network.ports.iter().enumerate() {
             if !port.contains(':') {
                 errors.push(format!(

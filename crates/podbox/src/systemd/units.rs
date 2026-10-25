@@ -68,6 +68,7 @@ pub fn reset_failed(name: &str) -> Result<()> {
         format!("{name}-host.service"),
         format!("{name}-proxy.service"),
         format!("{name}-compositor.service"),
+        format!("{name}-x11.service"),
     ];
     for unit in &unit_names {
         let mut cmd = Command::new("systemctl");
@@ -115,6 +116,17 @@ pub fn stop_compositor(name: &str) -> Result<()> {
     }
     let mut cmd = Command::new("systemctl");
     cmd.args(["--user", "stop", &format!("{name}-compositor.service")]);
+    let _ = cmd.status();
+    Ok(())
+}
+
+/// Stop the optional X11 bridge service if it exists.
+pub fn stop_x11(name: &str) -> Result<()> {
+    if !is_available() {
+        return Ok(());
+    }
+    let mut cmd = Command::new("systemctl");
+    cmd.args(["--user", "stop", &format!("{name}-x11.service")]);
     let _ = cmd.status();
     Ok(())
 }

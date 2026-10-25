@@ -49,6 +49,7 @@ export interface CompileResult {
   dbus_proxy_service: string | null;
   /** Wayland firewall unit; null when the proxy is disabled in config. */
   compositor_service: string | null;
+    x11_service: string | null;
   containerfile: string | null;
   warnings: string[];
 }

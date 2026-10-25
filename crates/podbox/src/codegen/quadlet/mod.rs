@@ -10,10 +10,16 @@ mod devices;
 mod services;
 pub(crate) mod value;
 
+/// Return the Wayland socket path consumed by native clients and companion
+/// services for a given host display.
+pub fn wayland_socket_path(config: &Config, display: &str, name: &str) -> String {
+    container::wayland_socket_path(config, display, name)
+}
+
 pub use devices::{emit_hardware_devices, emit_secrets};
 pub use services::{
     generate_build, generate_compositor_service, generate_dbus_proxy_service,
-    generate_host_service, generate_socket,
+    generate_host_service, generate_socket, generate_x11_service,
 };
 
 use crate::config::Config;

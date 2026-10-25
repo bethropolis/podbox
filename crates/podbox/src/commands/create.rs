@@ -10,6 +10,7 @@ use podbox::error::PodboxError;
 
 /// Build image, install Quadlet, and start the container.
 fn finish_create(cfg: &Config, _caller_name: &str, dry_run: bool, no_start: bool) -> Result<()> {
+    podbox::quadlet_install::preflight::resolve_x11_dependencies(cfg)?;
     // The caller's name can be a file name or `--name`; the box itself is
     // installed under `container.name`, so that is what starts and exports.
     let container_name = cfg.runtime_name();

@@ -54,6 +54,10 @@ pub(super) fn emit_unit(
             &format!("{name}-compositor.service"),
         );
     }
+    if config.integration.x11 {
+        value::push_raw(lines, warnings, "Wants", &format!("{name}-x11.service"));
+        value::push_raw(lines, warnings, "After", &format!("{name}-x11.service"));
+    }
     lines.push("StartLimitBurst=5".into());
     lines.push("StartLimitIntervalSec=30s".into());
     lines.push(String::new());
@@ -293,20 +297,25 @@ pub(super) fn emit_volumes(
             value::push_env(lines, warnings, "WAYLAND_DISPLAY", display);
             lines.push("Environment=MOZ_ENABLE_WAYLAND=1".into());
             match value::raw(display) {
-                Ok(escaped) => {
-                    if config.wayland.firewall {
-                        value::push_composed(
-                            lines,
-                            format!("Volume=%t/podbox/{name}-wayland.sock:%t/{escaped}:ro"),
-                        );
-                    } else {
-                        value::push_composed(lines, format!("Volume=%t/{escaped}:%t/{escaped}:ro"));
-                    }
-                }
+                Ok(escaped) => value::push_composed(
+                    lines,
+                    format!(
+                        "Volume={}:%t/{escaped}:ro",
+                        wayland_socket_path(config, display, name),
+                    ),
+                ),
                 Err(e) => warnings.push(format!("skipping Wayland Volume= line: {e}")),
             }
             lines.push(String::new());
         }
+    }
+
+    if config.integration.x11 {
+        value::push_composed(
+            lines,
+            format!("Volume=%t/podbox/{name}-x11:/tmp/.X11-unix:ro"),
+        );
+        lines.push(String::new());
     }
 
     // Audio (PipeWire + PulseAudio)
@@ -440,6 +449,12 @@ pub(super) fn emit_env(
         lines.push(String::new());
     }
 
+    // X11 display, like other derived values, is overridden by explicit
+    // [container.env] entries below.
+    if config.integration.x11 && !config.container.env.values.contains_key("DISPLAY") {
+        lines.push("Environment=DISPLAY=:0".into());
+    }
+
     // Extra user env, layered over engine-derived defaults (SHELL and
     // friends — see ContainerConfig::effective_env). Explicit wins.
     // Names are validated up front (`config::is_valid_env_key`), so every
@@ -459,6 +474,14 @@ pub(super) fn emit_env(
     }
     value::push_env(lines, warnings, "PODBOX_CONTAINER", name);
     lines.push(String::new());
+}
+
+pub(crate) fn wayland_socket_path(config: &Config, display: &str, name: &str) -> String {
+    if config.use_wayland_proxy() {
+        format!("%t/podbox/{name}-wayland.sock")
+    } else {
+        format!("%t/{display}")
+    }
 }
 
 pub(super) fn emit_auto_update(lines: &mut Vec<String>, config: &Config) {

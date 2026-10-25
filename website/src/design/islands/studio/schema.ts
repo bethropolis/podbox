@@ -340,7 +340,7 @@ export interface StudioDefaults {
     | 'proxies'
     | 'dotfiles'
     | 'storage';
-  activeView: 'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor';
+  activeView: 'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor' | 'x11';
   copied: boolean;
   showExportMenu: boolean;
   activePreset: string;
@@ -387,6 +387,7 @@ export interface StudioDefaults {
   portMappingsList: string[];
   intGitIdentity: boolean;
   intWayland: boolean;
+  intX11: boolean;
   intAudio: boolean;
   intGpu: string;
   intDbus: boolean;
@@ -568,6 +569,7 @@ export function initialStudioValues(): StudioDefaults {
     // except gpu (auto-detect), so Studio only writes what you turn on.
     intGitIdentity: false,
     intWayland: false,
+    intX11: false,
     intAudio: false,
     intGpu: 'auto',
     intDbus: false,
@@ -682,6 +684,7 @@ export const FIELDS: FieldDef[] = [
   // [integration]
   { stateKey: 'intGitIdentity', tomlPath: 'integration.git_identity', kind: 'boolean' },
   { stateKey: 'intWayland', tomlPath: 'integration.wayland', kind: 'boolean' },
+  { stateKey: 'intX11', tomlPath: 'integration.x11', kind: 'boolean' },
   { stateKey: 'intAudio', tomlPath: 'integration.audio', kind: 'boolean' },
   { stateKey: 'intDbus', tomlPath: 'integration.dbus', kind: 'boolean' },
   { stateKey: 'intNotify', tomlPath: 'integration.notify', kind: 'boolean' },

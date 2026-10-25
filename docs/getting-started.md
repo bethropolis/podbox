@@ -66,6 +66,9 @@ podbox needs three things:
 
 Optionally, install `xdg-dbus-proxy` to get filtered D-Bus access instead of an open session bus.
 
+For X11 applications, also install the host dependencies `xwayland-satellite`
+and `Xwayland`. Enable them per container with `integration.x11 = true`.
+
 If any of that is missing, `podbox doctor` will tell you.
 
 ## Two Ways to Create a Container

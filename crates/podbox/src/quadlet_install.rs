@@ -114,6 +114,7 @@ fn restore_prior_units(prior: &[PriorFile]) -> usize {
 /// Install systemd service and socket files for a container.
 pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: bool) -> Result<()> {
     let name = &config.container.name;
+    let x11_dependencies = preflight::resolve_x11_dependencies(config)?;
     let ver = podman_version().unwrap_or(PodmanVersion {
         major: 5,
         minor: 5,
@@ -129,6 +130,19 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     let host_service_content = quadlet::generate_host_service(name);
     let dbus_proxy_content = quadlet::generate_dbus_proxy_service(name, config);
     let compositor_service_content = quadlet::generate_compositor_service(name, config);
+    let x11_service_content = if let Some(deps) = &x11_dependencies {
+        let display = env
+            .wayland_display
+            .as_deref()
+            .context("x11 requires an active WAYLAND_DISPLAY on the host")?;
+        Some(quadlet::generate_x11_service(
+            config,
+            &deps.satellite.to_string_lossy(),
+            &quadlet::wayland_socket_path(config, display, name),
+        ))
+    } else {
+        None
+    };
 
     let build_content = if !config.image.source().is_prebuilt() {
         Some(quadlet::generate_build(config, &containerfile_path))
@@ -159,6 +173,11 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             println!();
             println!("=== {name}-compositor.service ===");
             println!("{comp}");
+        }
+        if let Some(ref x11) = x11_service_content {
+            println!();
+            println!("=== {name}-x11.service ===");
+            println!("{x11}");
         }
         return Ok(());
     }
@@ -246,6 +265,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
             &host_service_content,
             dbus_proxy_content.as_deref(),
             compositor_service_content.as_deref(),
+            x11_service_content.as_deref(),
             config.use_wayland_proxy(),
         )?;
         Ok(())
@@ -290,6 +310,7 @@ pub fn uninstall(name: &str) -> Result<()> {
             format!("{name}-host.service"),
             format!("{name}-proxy.service"),
             format!("{name}-compositor.service"),
+            format!("{name}-x11.service"),
         ];
         let mut args: Vec<std::ffi::OsString> = vec!["--user".into(), "disable".into()];
         args.extend(unit_names.iter().map(std::ffi::OsString::from));

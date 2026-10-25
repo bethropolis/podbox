@@ -7,6 +7,33 @@ use anyhow::{Context, Result};
 
 use crate::config::Config;
 
+pub struct X11Dependencies {
+    pub satellite: std::path::PathBuf,
+    pub xwayland: std::path::PathBuf,
+}
+
+pub fn resolve_x11_dependencies(config: &Config) -> Result<Option<X11Dependencies>> {
+    if !config.integration.x11 {
+        return Ok(None);
+    }
+
+    let satellite = which::which("xwayland-satellite").map_err(|_| {
+        anyhow::anyhow!(
+            "x11 requires xwayland-satellite on the host. Install it with: Arch: pacman -S xwayland-satellite; Fedora: dnf install xwayland-satellite; Alpine edge: apk add xwayland-satellite; openSUSE: zypper in xwayland-satellite; Debian/Ubuntu: cargo install xwayland-satellite or use the upstream release binary"
+        )
+    })?;
+    let xwayland = which::which("Xwayland").map_err(|_| {
+        anyhow::anyhow!(
+            "x11 requires Xwayland on the host. Install the Xwayland package for your distribution and ensure Xwayland is on PATH"
+        )
+    })?;
+
+    Ok(Some(X11Dependencies {
+        satellite,
+        xwayland,
+    }))
+}
+
 /// Validate that mount paths referenced in extra mounts exist on the host.
 pub(crate) fn preflight_check(config: &Config, ctx: &crate::ui::Ctx) -> Result<()> {
     let name = &config.container.name;

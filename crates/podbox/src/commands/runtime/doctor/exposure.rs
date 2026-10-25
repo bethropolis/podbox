@@ -29,6 +29,12 @@ pub(crate) fn print_exposure_summary(config: &Config) {
 
     // Integration / host-level first
     line("Wayland (GUI)", on(config.integration.wayland));
+    if config.integration.x11 {
+        line(
+            "X11",
+            "per-container xwayland-satellite (isolated X server; X clients in this container see each other)".to_string(),
+        );
+    }
     line("Audio (PipeWire)", on(config.integration.audio));
     line("GPU", format!("{:?}", config.integration.gpu));
     line(

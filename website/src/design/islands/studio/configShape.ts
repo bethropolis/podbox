@@ -188,6 +188,7 @@ export function stateToConfig(s: StudioValues): V {
   const integration: V = {
     git_identity: s.intGitIdentity,
     wayland: s.intWayland,
+    x11: s.intX11,
     audio: s.intAudio,
     dbus: s.intDbus,
     notify: s.intNotify,

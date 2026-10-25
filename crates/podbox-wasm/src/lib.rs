@@ -52,6 +52,8 @@ pub struct CompileResponse {
     pub dbus_proxy_service: Option<String>,
     /// Wayland firewall unit. `None` when the proxy is disabled in config.
     pub compositor_service: Option<String>,
+    /// X11 bridge unit. `None` when X11 is disabled in config.
+    pub x11_service: Option<String>,
     /// Rendered Containerfile. Always present: prebuilt images get the short
     /// overlay, and a custom `base` gets the full recipe with the `podbox-guest`
     /// layer marked as a placeholder (this wasm build embeds no guest binary).
@@ -185,6 +187,13 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
     let host_service = podbox::codegen::quadlet::generate_host_service(name);
     let dbus_proxy_service = podbox::codegen::quadlet::generate_dbus_proxy_service(name, &config);
     let compositor_service = podbox::codegen::quadlet::generate_compositor_service(name, &config);
+    let x11_service = config.integration.x11.then(|| {
+        podbox::codegen::quadlet::generate_x11_service(
+            &config,
+            "/usr/bin/xwayland-satellite",
+            &podbox::codegen::quadlet::wayland_socket_path(&config, "wayland-0", name),
+        )
+    });
 
     let response = CompileResponse {
         container,
@@ -193,6 +202,7 @@ pub fn compile_quadlet(toml_str: &str) -> Result<JsValue, JsError> {
         host_service,
         dbus_proxy_service,
         compositor_service,
+        x11_service,
         containerfile: Some(containerfile),
         warnings,
     };

@@ -44,7 +44,7 @@ const KNOWN_CATEGORIES = [
   'image', 'container', 'security', 'network', 'integration',
   'lifecycle', 'proxies', 'dotfiles', 'storage',
 ] as const;
-const KNOWN_VIEWS = ['toml', 'quadlet', 'containerfile', 'host', 'proxy', 'compositor'] as const;
+const KNOWN_VIEWS = ['toml', 'quadlet', 'containerfile', 'host', 'proxy', 'compositor', 'x11'] as const;
 
 function loadSavedUI(): {
   activeCategory?: (typeof KNOWN_CATEGORIES)[number];

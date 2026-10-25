@@ -15,6 +15,26 @@ fn quadlet_container_has_userns_custom() {
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
     assert!(q.contains("UserNS=nomap"));
 }
+
+#[test]
+fn quadlet_x11_wiring_is_optional_and_explicit_env_wins() {
+    let mut config = load_config("full.toml");
+    config.integration.x11 = true;
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(q.contains("Wants=myenv-x11.service"));
+    assert!(q.contains("After=myenv-x11.service"));
+    assert!(q.contains("Environment=DISPLAY=:0"));
+    assert!(q.contains("Volume=%t/podbox/myenv-x11:/tmp/.X11-unix:ro"));
+
+    config
+        .container
+        .env
+        .values
+        .insert("DISPLAY".into(), ":7".into());
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("Environment=DISPLAY=:0"));
+    assert!(q.contains("Environment=DISPLAY=:7"));
+}
 #[test]
 fn quadlet_disables_podman_default_network_dependency() {
     let config = load_config("minimal.toml");

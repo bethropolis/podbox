@@ -1,5 +1,5 @@
 //! Companion unit generators: `.build`, `.socket`, D-Bus proxy,
-//! Wayland firewall, and host socket server.
+//! Wayland firewall, X11 bridge, and host socket server.
 //!
 //! Extracted verbatim from `quadlet.rs`; see `super` for the `.container`
 //! entry point.
@@ -163,6 +163,26 @@ RestartSec=1s
 WantedBy={name}.service
 "#,
     ))
+}
+
+/// Generate the host-side xwayland-satellite bridge.
+pub fn generate_x11_service(config: &Config, satellite_path: &str, wayland_socket: &str) -> String {
+    let name = &config.container.name;
+    let after = if config.use_wayland_proxy() {
+        format!("After={name}-compositor.service\n")
+    } else {
+        String::new()
+    };
+    let satellite_path = value::word(satellite_path).expect("resolved satellite path is valid");
+    // `%t` is an intentional systemd specifier in the derived socket path;
+    // preserve it after escaping any other user-controlled characters.
+    let wayland_socket = value::raw(wayland_socket)
+        .expect("resolved Wayland socket is valid")
+        .replace("%%t", "%t");
+
+    format!(
+        "[Unit]\nDescription=podbox X11 bridge (xwayland-satellite) -- {name}\nPartOf={name}.service\n{after}\n[Service]\nType=notify\nNotifyAccess=all\nExecStartPre=/usr/bin/mkdir -p %t/podbox/{name}-x11\nExecStart={satellite_path} :0\nEnvironment=WAYLAND_DISPLAY={wayland_socket}\nPrivateTmp=yes\nPrivateNetwork=yes\nBindPaths=%t/podbox/{name}-x11:/tmp/.X11-unix\nRestart=on-failure\nRestartSec=2s\n\n[Install]\nWantedBy={name}.service\n"
+    )
 }
 
 /// Generate the companion host socket server `.service` unit.

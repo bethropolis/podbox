@@ -24,6 +24,7 @@ pub fn run_build(
     no_diff: bool,
     output: podbox::cli::OutputFormat,
 ) -> Result<()> {
+    podbox::quadlet_install::preflight::resolve_x11_dependencies(config)?;
     if rebuild && config.lifecycle.auto_checkpoint {
         checkpoint_previous(config, &config.container.name, dry_run)?;
     }

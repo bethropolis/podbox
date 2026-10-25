@@ -210,6 +210,9 @@ the rest.
 <summary>Contributor notes</summary>
 
 - **Pure codegen:** `codegen::*` functions are pure — data in, string out.
+- **X11 companion:** when `[integration].x11 = true`, codegen emits an optional
+  host-side `xwayland-satellite` unit that connects to the same Wayland socket
+  as native GUI applications and exposes an isolated X socket directory.
   No I/O, no env reads.
 - **Boundary separation:** I/O lives in the thin modules (`commands/`,
   `build/`, `quadlet_install/`, `socket_host/`, `export/`, `systemd/`).
