@@ -84,7 +84,40 @@ fn integration_defaults_to_opt_in() {
 
     assert!(!cfg.integration.git_identity);
     assert!(!cfg.integration.wayland);
+    assert!(!cfg.integration.x11);
     assert!(!cfg.integration.audio);
+}
+
+#[test]
+fn x11_requires_wayland_and_rejects_host_networking() {
+    let base = r#"
+[image]
+base = "fedora:41"
+name = "test"
+
+[container]
+name = "test"
+home = "~/containers/test"
+
+[integration]
+x11 = true
+"#;
+    let errors = Config::parse(base).expect_err("x11 without Wayland must fail");
+    assert!(errors.to_string().contains("x11 needs wayland"));
+
+    let host = format!("{base}\nwayland = true\n\n[network]\nmode = \"host\"\n");
+    let errors = Config::parse(&host).expect_err("x11 with host networking must fail");
+    assert!(
+        errors
+            .to_string()
+            .contains("host X server's abstract socket"),
+        "unexpected validation error: {errors}"
+    );
+
+    let offline = format!("{base}\nwayland = true\n\n[network]\noffline = true\n");
+    let config = Config::parse(&offline).unwrap();
+    assert!(config.integration.x11);
+    assert!(config.network.offline);
 }
 
 #[test]

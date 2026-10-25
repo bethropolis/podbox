@@ -124,6 +124,7 @@ export function StudioPage(_props: StudioPageProps) {
   const hostService = compiled?.host_service ?? null;
   const proxyService = compiled?.dbus_proxy_service ?? null;
   const compositorService = compiled?.compositor_service ?? null;
+  const x11Service = compiled?.x11_service ?? null;
   const warnings = [...(validation?.warnings ?? []), ...(compiled?.warnings ?? [])];
   const engine = compiled ? 'rust' : 'ts';
   const errorMap = validation?.errorMap ?? {};
@@ -337,6 +338,7 @@ export function StudioPage(_props: StudioPageProps) {
               hostService={hostService}
               proxyService={proxyService}
               compositorService={compositorService}
+              x11Service={x11Service}
               engine={engine}
               errorLines={errorLines}
               lineFields={lineFields}

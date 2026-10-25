@@ -547,6 +547,8 @@ pub struct IntegrationConfig {
     #[serde(default, skip_serializing_if = "is_false")]
     pub wayland: bool,
     #[serde(default, skip_serializing_if = "is_false")]
+    pub x11: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
     pub audio: bool,
     #[serde(default, skip_serializing_if = "is_default_gpu")]
     pub gpu: GpuMode,
@@ -583,6 +585,7 @@ impl Default for IntegrationConfig {
         IntegrationConfig {
             git_identity: false,
             wayland: false,
+            x11: false,
             audio: false,
             gpu: GpuMode::Auto,
             dbus: false,
@@ -608,6 +611,7 @@ impl IntegrationConfig {
     pub fn is_default(&self) -> bool {
         !self.git_identity
             && !self.wayland
+            && !self.x11
             && !self.audio
             && is_default_gpu(&self.gpu)
             && !self.dbus

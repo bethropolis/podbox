@@ -86,6 +86,21 @@ podbox enable                            # regenerate Quadlets (idempotent)
 podbox stop && podbox start
 ```
 
+## X11 apps don't start
+
+For X11 support, enable Wayland and install both host dependencies:
+`xwayland-satellite` and `Xwayland`. Then run:
+
+```bash
+podbox doctor
+systemctl --user status <name>-x11.service
+```
+
+If the satellite is missing, install it with your distribution's package
+manager or `cargo install xwayland-satellite` where no package is available,
+then rerun `podbox enable`. The X11 bridge is per-container; X11 clients in a
+container share its display, but the bridge does not use the host X socket.
+
 ## Interceptors not working
 
 `notify-send`, `xdg-open`, clipboard, and host-exec all go through the

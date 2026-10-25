@@ -96,6 +96,7 @@ Derived variables (engine-set from the rest of the config, no TOML needed):
 | Variable | Derived from | Example |
 |----------|--------------|---------|
 | `SHELL` | `container.shell` (`fish` → `/usr/bin/fish`, `bash` → `/bin/bash`, `zsh` → `/bin/zsh`, full paths verbatim) | `shell = "fish"` ⇒ `SHELL=/usr/bin/fish` |
+| `DISPLAY` | `integration.x11` | `x11 = true` ⇒ `DISPLAY=:0` |
 
 ```toml
 [container]
@@ -319,6 +320,7 @@ stays off even when the image label says `true`.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `wayland` | bool | `false` | Share Wayland socket for GUI apps |
+| `x11` | bool | `false` | Run X11 apps through a per-container `xwayland-satellite` bridge; requires `wayland = true` |
 | `audio` | bool | `false` | Share PipeWire/PulseAudio sockets |
 | `gpu` | string/bool | `"auto"` | GPU passthrough (`true`, `false`, `"auto"`, `"nvidia"`) |
 | `dbus` | bool | `false` | Enable D-Bus session bus access. Talk/own/preset rules without it are rejected; a rules set **without the switch stated** (a pre-0.9.0 file, where the bus defaulted on) revives it with a notice |
@@ -332,6 +334,26 @@ stays off even when the image label says `true`.
 | `git_identity` | bool | `false` | Bridge host Git identity and `safe.directory` into the container. Needs `git` in the image — podbox never installs it, so this is a no-op without it |
 | `host_exec` | table | `{ enabled = false }` | Host command execution (see [`[integration.host_exec]`](#integrationhost_exec) below) |
 | `ssh_agent` | bool | `false` | Forward SSH agent socket (`$SSH_AUTH_SOCK`). Requires Podman ≥ 5.6 |
+
+### X11 applications
+
+With `x11 = true`, podbox runs one host-side `xwayland-satellite` service for
+the container and mounts only that service's X socket directory. Install both
+`xwayland-satellite` and `Xwayland` on the host; podbox does not add either to
+the image. The service uses the same Wayland socket as native container GUI
+applications, so `x11` requires `wayland = true` and is compatible with
+`network.offline = true`.
+
+`network.mode = "host"` is rejected with X11 enabled. Host networking would
+expose the host network namespace's abstract X socket, allowing `DISPLAY=:0`
+to connect to the host X server instead of this container's isolated server.
+
+All X11 clients inside one container share that container's X server and can
+observe each other's windows and input. They cannot access X servers belonging
+to other containers or the host through this bridge. X selections are bridged
+to the Wayland clipboard while an X11 window is focused; this is independent
+of `integration.clipboard`, which controls only the podbox clipboard
+interceptor.
 
 ### `GpuMode` values
 

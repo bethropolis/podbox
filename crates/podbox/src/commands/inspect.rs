@@ -31,11 +31,29 @@ pub fn run_inspect(
             if all || show_quadlet {
                 let q = quadlet::generate_container(config, env, xdg);
                 let s = quadlet::generate_socket(config);
+                let x11 = if config.integration.x11 {
+                    let deps =
+                        podbox::quadlet_install::preflight::resolve_x11_dependencies(config)?;
+                    let display = env.wayland_display.as_deref().ok_or_else(|| {
+                        anyhow::anyhow!("x11 requires an active WAYLAND_DISPLAY on the host")
+                    })?;
+                    Some(quadlet::generate_x11_service(
+                        config,
+                        &deps
+                            .expect("x11 dependency resolution returned no dependencies")
+                            .satellite
+                            .to_string_lossy(),
+                        &quadlet::wayland_socket_path(config, display, &config.container.name),
+                    ))
+                } else {
+                    None
+                };
                 out.insert(
                     "quadlet".into(),
                     json!({
                         "container": q,
                         "socket": s,
+                        "x11_service": x11,
                     }),
                 );
             }
@@ -98,6 +116,26 @@ pub fn run_inspect(
                 println!("--- Quadlet (.socket) ---");
                 let s = quadlet::generate_socket(config);
                 println!("{s}");
+                if config.integration.x11 {
+                    let deps =
+                        podbox::quadlet_install::preflight::resolve_x11_dependencies(config)?;
+                    let display = env.wayland_display.as_deref().ok_or_else(|| {
+                        anyhow::anyhow!("x11 requires an active WAYLAND_DISPLAY on the host")
+                    })?;
+                    println!();
+                    println!("--- Quadlet ({}-x11.service) ---", config.container.name);
+                    println!(
+                        "{}",
+                        quadlet::generate_x11_service(
+                            config,
+                            &deps
+                                .expect("x11 dependency resolution returned no dependencies")
+                                .satellite
+                                .to_string_lossy(),
+                            &quadlet::wayland_socket_path(config, display, &config.container.name),
+                        )
+                    );
+                }
             }
             if all || show_env {
                 println!("--- Environment ---");

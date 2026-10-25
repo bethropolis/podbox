@@ -8,6 +8,7 @@ pub use status::UnitStatus;
 pub use units::{
     daemon_reload, enable_linger, enable_now_socket, is_available, is_unit_enabled, is_unit_failed,
     reset_failed, restart_unit, start_unit, stop_compositor, stop_socket_and_host, stop_unit,
+    stop_x11,
 };
 
 use std::time::{Duration, Instant};

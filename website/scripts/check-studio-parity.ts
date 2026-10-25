@@ -73,6 +73,7 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       hwUsb: true,
     },
   ],
+  ["x11", { intWayland: true, intX11: true }],
   // [[provision]]: array-of-tables, defaults omitted, abort + root + env
   // emitted only when they differ from the engine default.
   [
@@ -144,7 +145,7 @@ for (const [name, patch] of cases) {
     failed++;
     continue;
   }
-  let compiled: { container: string; containerfile: string | null; warnings: string[] };
+  let compiled: { container: string; containerfile: string | null; warnings: string[]; x11_service?: string | null };
   try {
     compiled = compile_quadlet(toml) as { container: string; containerfile: string | null; warnings: string[] };
   } catch (e) {
@@ -156,6 +157,18 @@ for (const [name, patch] of cases) {
     console.error(`✗ ${name}: compiled unit missing container section`);
     failed++;
     continue;
+  }
+  if (name === "x11") {
+    if (!compiled.container.includes("Wants=dev-x11.service") || !compiled.container.includes("Environment=DISPLAY=:0")) {
+      console.error(`✗ ${name}: container is missing X11 wiring`);
+      failed++;
+      continue;
+    }
+    if (!compiled.x11_service?.includes("ExecStart=/usr/bin/xwayland-satellite :0")) {
+      console.error(`✗ ${name}: compiled X11 service is missing`);
+      failed++;
+      continue;
+    }
   }
   // Every config yields a Containerfile. A custom base renders the full
   // recipe with the guest layer marked as a placeholder (wasm embeds no

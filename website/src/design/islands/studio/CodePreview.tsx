@@ -14,7 +14,7 @@ import { highlightDocument, type PreviewLang } from '../../highlight';
 import { diffLines } from './diff';
 import { useHorizontalWheel } from './useHorizontalWheel';
 
-type UnitView = 'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor';
+type UnitView = 'toml' | 'quadlet' | 'containerfile' | 'host' | 'proxy' | 'compositor' | 'x11';
 
 interface CodePreviewProps {
   st: Pick<StudioState, 'activeView' | 'setActiveView' | 'containerName' | 'copied' | 'isFullscreen'>;
@@ -24,6 +24,7 @@ interface CodePreviewProps {
   hostService: string | null;
   proxyService: string | null;
   compositorService: string | null;
+  x11Service: string | null;
   engine: 'rust' | 'ts';
   /** 1-based TOML line -> message, for error squiggles. */
   errorLines?: Record<number, string>;
@@ -46,7 +47,7 @@ interface CodePreviewProps {
   mobileHidden?: boolean;
 }
 
-export function CodePreview({ st, toml, quadlet, containerfile, hostService, proxyService, compositorService, engine, errorLines, lineFields, hoverLine, focusLine, onFocusLineConsumed, onLineClick, baselineToml, baselineLabel, onDraftValidate, onApplyToml, mobileHidden = false }: CodePreviewProps) {
+export function CodePreview({ st, toml, quadlet, containerfile, hostService, proxyService, compositorService, x11Service, engine, errorLines, lineFields, hoverLine, focusLine, onFocusLineConsumed, onLineClick, baselineToml, baselineLabel, onDraftValidate, onApplyToml, mobileHidden = false }: CodePreviewProps) {
   const { activeView, setActiveView, containerName, copied, isFullscreen } = st;
   // The engine always renders a Containerfile: prebuilt images get the short
   // overlay, custom bases the full recipe whose guest layer carries an inline
@@ -59,6 +60,7 @@ export function CodePreview({ st, toml, quadlet, containerfile, hostService, pro
     { view: 'host', label: `${containerName || 'podbox'}-host.service`, title: 'host socket server', code: hostService },
     { view: 'proxy', label: 'proxy.service', title: 'D-Bus proxy', code: proxyService },
     { view: 'compositor', label: 'compositor.service', title: 'Wayland firewall', code: compositorService },
+    { view: 'x11', label: 'x11.service', title: 'X11 bridge', code: x11Service },
     { view: 'containerfile', label: 'Containerfile', title: 'Containerfile', code: showContainerfile ? (containerfile ?? '') : null },
   ];
   const visible = units.filter((u) => u.code != null);

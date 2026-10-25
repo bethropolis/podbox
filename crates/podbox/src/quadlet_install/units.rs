@@ -24,6 +24,7 @@ pub fn custom_unit_filenames(name: &str) -> Vec<String> {
         format!("{name}-host.service"),
         format!("{name}-proxy.service"),
         format!("{name}-compositor.service"),
+        format!("{name}-x11.service"),
     ]
 }
 
@@ -36,6 +37,7 @@ fn write_custom_units(
     host_service_content: &str,
     dbus_proxy_content: Option<&str>,
     compositor_service_content: Option<&str>,
+    x11_service_content: Option<&str>,
 ) -> Result<()> {
     let files = custom_unit_filenames(name);
     std::fs::create_dir_all(sdir)?;
@@ -46,6 +48,11 @@ fn write_custom_units(
     }
     if let Some(comp) = compositor_service_content {
         crate::fsutil::write_atomic(&sdir.join(&files[3]), comp.as_bytes())?;
+    }
+    if let Some(x11) = x11_service_content {
+        crate::fsutil::write_atomic(&sdir.join(&files[4]), x11.as_bytes())?;
+    } else {
+        let _ = std::fs::remove_file(sdir.join(&files[4]));
     }
     write_clean_stop_dropin(name, sdir)?;
     Ok(())
@@ -68,6 +75,7 @@ fn write_clean_stop_dropin(name: &str, sdir: &Path) -> Result<()> {
 }
 
 /// Activate custom units after Quadlet files are in place.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn finalize_units(
     name: &str,
     sdir: &Path,
@@ -75,6 +83,7 @@ pub(crate) fn finalize_units(
     host_service_content: &str,
     dbus_proxy_content: Option<&str>,
     compositor_service_content: Option<&str>,
+    x11_service_content: Option<&str>,
     use_wayland_proxy: bool,
 ) -> Result<()> {
     write_custom_units(
@@ -84,6 +93,7 @@ pub(crate) fn finalize_units(
         host_service_content,
         dbus_proxy_content,
         compositor_service_content,
+        x11_service_content,
     )?;
     println!("Systemd units installed to {}", sdir.display());
 
@@ -93,6 +103,7 @@ pub(crate) fn finalize_units(
     if use_wayland_proxy {
         systemd::stop_compositor(name)?;
     }
+    systemd::stop_x11(name)?;
     systemd::enable_now_socket(name)?;
     Ok(())
 }
@@ -244,6 +255,7 @@ mod tests {
                 "dev-host.service",
                 "dev-proxy.service",
                 "dev-compositor.service",
+                "dev-x11.service",
             ]
         );
     }
@@ -253,7 +265,16 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("podbox-units-{}-{}", std::process::id(), "written"));
         let _ = std::fs::remove_dir_all(&dir);
-        write_custom_units("dev", &dir, "sock", "host", Some("proxy"), Some("comp")).unwrap();
+        write_custom_units(
+            "dev",
+            &dir,
+            "sock",
+            "host",
+            Some("proxy"),
+            Some("comp"),
+            Some("x11"),
+        )
+        .unwrap();
 
         let removable = custom_unit_filenames("dev");
         for file in &removable {

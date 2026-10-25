@@ -13,6 +13,7 @@ mod host_exec;
 mod secrets;
 mod tools;
 mod wayland;
+mod x11;
 
 pub(crate) use cleanup::{check_dead_exports, check_desktop_entries, check_stale_sockets};
 pub(crate) use hardware::check_hardware;
@@ -20,3 +21,4 @@ pub(crate) use host_exec::check_host_exec;
 pub(crate) use secrets::check_secrets;
 pub(crate) use tools::{check_toolchain, check_xdg_user_dir};
 pub(crate) use wayland::check_wayland;
+pub(crate) use x11::check_x11;

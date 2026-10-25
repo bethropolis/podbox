@@ -21,10 +21,10 @@ import {
 } from '../schema';
 import type { StudioState } from '../useStudioState';
 
-type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecCwd' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwUsb' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intXdgOpen' | 'intXdgOpenSchemes' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecCwd' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwUsb' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntXdgOpen' | 'setIntXdgOpenSchemes' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
+type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecCwd' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwUsb' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intX11' | 'intXdgOpen' | 'intXdgOpenSchemes' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecCwd' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwUsb' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntX11' | 'setIntXdgOpen' | 'setIntXdgOpenSchemes' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
 export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; errorMap?: Record<string, string> }) {
-  const { exportAppsList, exportBinsList, hostExecCwd, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwUsb, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intXdgOpen, intXdgOpenSchemes, setExportAppsList, setExportBinsList, setHostExecCwd, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwUsb, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntXdgOpen, setIntXdgOpenSchemes, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
+  const { exportAppsList, exportBinsList, hostExecCwd, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwUsb, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intX11, intXdgOpen, intXdgOpenSchemes, setExportAppsList, setExportBinsList, setHostExecCwd, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwUsb, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntX11, setIntXdgOpen, setIntXdgOpenSchemes, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
   const err = (field: string) => errorMap?.[field];
   const XDG_DIRS = [
     { id: 'documents', label: 'Documents', mode: xdgDocuments, setter: setXdgDocuments },
@@ -67,6 +67,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
   // config, so offer the switch right here rather than a banner.
   const needsDbus = !!err('dbus');
   const needsWayland = !!err('wayland');
+  const needsX11Wayland = !!err('integration.x11');
   return (
 <div className="space-y-5 animate-fadeIn">
   <div className="pb-3 border-b border-[var(--border)]">
@@ -81,10 +82,10 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
     </p>
   </div>
 
-  {(needsDbus || needsWayland) && (
+  {(needsDbus || needsWayland || needsX11Wayland) && (
     <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-[var(--accent-red)]">
       <span>
-        {needsDbus ? '[dbus] rules need D-Bus on' : '[wayland] rules need Wayland on'}
+        {needsDbus ? '[dbus] rules need D-Bus on' : needsX11Wayland ? '[integration.x11] needs Wayland on' : '[wayland] rules need Wayland on'}
       </span>
       <span className="text-[var(--text-muted)]">→</span>
       {needsDbus && (
@@ -97,6 +98,15 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
         </button>
       )}
       {needsWayland && (
+        <button
+          type="button"
+          onClick={() => setIntWayland(true)}
+          className="px-1.5 py-px rounded-[2px] border border-[var(--accent-green)]/40 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/10 transition-colors cursor-pointer"
+        >
+          enable Wayland
+        </button>
+      )}
+      {needsX11Wayland && !needsWayland && (
         <button
           type="button"
           onClick={() => setIntWayland(true)}
@@ -125,6 +135,24 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
         </div>
       }
       description="GUI apps on your desktop"
+    />
+
+    <StudioSwitch
+      id="int-x11"
+      checked={intX11}
+      onChange={setIntX11}
+      label={
+        <div className="flex items-center">
+          <span>X11 via Xwayland Satellite</span>
+          <StudioTooltip
+            section="[integration]"
+            title="x11 = true"
+            description="Runs X11 apps through an isolated per-container X server. Requires Wayland and xwayland-satellite on the host."
+            quadlet="Environment=DISPLAY=:0"
+          />
+        </div>
+      }
+      description="Legacy X11 apps on your desktop"
     />
 
     <StudioSwitch

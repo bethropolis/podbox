@@ -14,6 +14,7 @@ These unit files are generated per container:
 | `<name>-host.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Host socket server (custom) |
 | `<name>-proxy.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | D-Bus proxy (conditional, custom) |
 | `<name>-compositor.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Wayland firewall proxy (conditional, custom) |
+| `<name>-x11.service` | `~/.config/systemd/user/` | `~/.config/systemd/user/` | Per-container X11 bridge (conditional, custom) |
 
 ## `.build` file
 
@@ -46,6 +47,8 @@ These unit files are generated per container:
 | `After` | `<name>-proxy.service` | Proxy starts first (conditional) |
 | `Requires` | `<name>-compositor.service` | Wayland firewall (conditional on Wayland proxy) |
 | `After` | `<name>-compositor.service` | Compositor starts first (conditional) |
+| `Wants` | `<name>-x11.service` | Optional X11 bridge (conditional on `integration.x11`) |
+| `After` | `<name>-x11.service` | X11 bridge is started before the container (conditional) |
 | `Requires` | User-defined from `[systemd].requires` | Custom dependencies |
 | `After` | User-defined from `[systemd].after` | Custom ordering |
 | `StartLimitBurst` | `5` | Max restarts in interval |
@@ -89,6 +92,7 @@ These unit files are generated per container:
 | `HOST_GID` | `%G` (systemd) | Host GID |
 | `PATH` | `/run/podbox/bin:...` | Interceptor directory prepended |
 | `WAYLAND_DISPLAY` | From host env | Wayland display (conditional) |
+| `DISPLAY` | `:0` | X11 display (conditional on `integration.x11`; explicit `[container.env] DISPLAY` wins) |
 | `XDG_RUNTIME_DIR` | `%t` | Always set when Wayland is enabled |
 | `MOZ_ENABLE_WAYLAND` | `1` | Wayland-native Firefox/Thunderbird (conditional) |
 | `PIPEWIRE_RUNTIME_DIR` | `%t` | PipeWire runtime dir (conditional) |
@@ -125,6 +129,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | `%t/podbox/<name>.sock` | `%t/podbox/<name>.sock` | (none) | Always (host-guest socket) |
 | `/dev/bus/usb` | `/dev/bus/usb` | (none, never `:z`) | `integration.hardware.usb = true` (optional mount: skipped when the host has no USB bus) |
 | Extra mounts | Per config | Per config | From `[container.mounts].extra` |
+| `%t/podbox/<name>-x11` | `/tmp/.X11-unix` | `ro` | `integration.x11 = true` |
 
 ### `PodmanArgs=`
 
@@ -180,6 +185,29 @@ Generated when `[dbus]` talk/own rules are configured. See [dbus-proxy.md](dbus-
 
 Generated when `wayland.firewall = true` (default). Runs `podbox compositor <name>` to filter
 Wayland protocol access.
+
+### `<name>-x11.service` (xwayland-satellite)
+
+Generated when `integration.x11 = true`. The host-side satellite connects to
+the same filtered or direct Wayland socket used by the container and exposes
+an isolated `:0` X socket directory:
+
+```ini
+[Unit]
+Wants=<name>-x11.service
+After=<name>-x11.service
+
+[Service]
+Type=notify
+ExecStart=<xwayland-satellite> :0
+Environment=WAYLAND_DISPLAY=<derived Wayland socket>
+PrivateTmp=yes
+PrivateNetwork=yes
+BindPaths=%t/podbox/<name>-x11:/tmp/.X11-unix
+```
+
+The companion unit is optional at runtime: the container can start if the
+satellite is unavailable, but X11 applications will not work.
 
 ## Podman Version Targeting
 
