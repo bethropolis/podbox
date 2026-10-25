@@ -126,7 +126,9 @@ pub fn stop_x11(name: &str) -> Result<()> {
         return Ok(());
     }
     let mut cmd = Command::new("systemctl");
-    cmd.args(["--user", "stop", &format!("{name}-x11.service")]);
+    cmd.args(["--user", "stop", &format!("{name}-x11.service")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     let _ = cmd.status();
     Ok(())
 }
