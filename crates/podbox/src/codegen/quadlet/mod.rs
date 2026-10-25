@@ -73,7 +73,7 @@ pub fn generate_container_with_warnings(
     );
     container::emit_env(&mut lines, config, name, env, &mut warnings);
     devices::emit_gpu(&mut lines, config, env, &mut warnings);
-    devices::emit_hardware_devices(&mut lines, config, &mut warnings);
+    devices::emit_hardware_devices(&mut lines, config, env, &mut warnings);
     devices::emit_secrets(&mut lines, config, &mut warnings);
     container::emit_auto_update(&mut lines, config);
     container::emit_podman_args(&mut lines, config, &mut warnings);

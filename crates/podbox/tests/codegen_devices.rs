@@ -156,9 +156,29 @@ fn quadlet_hardware_usb_is_a_hotplug_aware_bind_mount() {
     let mut config = config.clone();
     config.integration.hardware.usb = true;
     let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
-    assert!(q.contains("Volume=-/dev/bus/usb:/dev/bus/usb"));
+    assert!(q.contains("Volume=/dev/bus/usb:/dev/bus/usb"));
     assert!(!q.contains("/dev/bus/usb:z"));
     assert!(!q.contains("AddDevice=/dev/bus/usb"));
+}
+
+#[test]
+fn quadlet_hardware_usb_is_omitted_without_a_host_usb_bus() {
+    let config = load_config("full.toml");
+    let mut config = config.clone();
+    config.integration.hardware.usb = true;
+    let mut env = default_env();
+    env.host_has_usb_bus = false;
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(!q.contains("/dev/bus/usb"));
+}
+
+#[test]
+fn quadlet_volume_sources_never_use_optional_prefix() {
+    let config = load_config("full.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    for line in q.lines().filter(|line| line.starts_with("Volume=")) {
+        assert!(!line["Volume=".len()..].starts_with('-'), "{line}");
+    }
 }
 #[test]
 fn quadlet_hardware_usb_absent_by_default() {

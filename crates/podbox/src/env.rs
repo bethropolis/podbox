@@ -21,6 +21,7 @@ pub struct HostEnv {
     pub gpu_has_dri: bool,
     pub gpu_has_nvidia: bool,
     pub gpu_has_nvidia_uvm: bool,
+    pub host_has_usb_bus: bool,
     /// An NVIDIA CDI spec exists on the host (`nvidia-ctk cdi generate`
     /// output under `/etc/cdi` or `/var/run/cdi`). Codegen then passes the
     /// GPU through by CDI device ID instead of enumerating device nodes,
@@ -69,6 +70,7 @@ impl HostEnv {
             gpu_has_dri: true,
             gpu_has_nvidia: false,
             gpu_has_nvidia_uvm: false,
+            host_has_usb_bus: true,
             nvidia_cdi_present: false,
             host_has_localtime: true,
             host_has_timezone_file: false,
@@ -140,6 +142,7 @@ pub fn resolve() -> Result<HostEnv> {
     let gpu_has_dri = Path::new("/dev/dri").exists();
     let gpu_has_nvidia = Path::new("/dev/nvidiactl").exists();
     let gpu_has_nvidia_uvm = Path::new("/dev/nvidia-uvm").exists();
+    let host_has_usb_bus = Path::new("/dev/bus/usb").exists();
     let nvidia_cdi_present =
         cdi_specs_present_in(&[Path::new("/etc/cdi"), Path::new("/var/run/cdi")]);
 
@@ -193,6 +196,7 @@ pub fn resolve() -> Result<HostEnv> {
         gpu_has_dri,
         gpu_has_nvidia,
         gpu_has_nvidia_uvm,
+        host_has_usb_bus,
         nvidia_cdi_present,
         host_has_localtime,
         host_has_timezone_file,

@@ -71,6 +71,7 @@ pub(super) fn emit_gpu(
 pub fn emit_hardware_devices(
     lines: &mut Vec<String>,
     config: &Config,
+    env: &HostEnv,
     _warnings: &mut Vec<String>,
 ) {
     let hw = &config.integration.hardware;
@@ -112,15 +113,14 @@ pub fn emit_hardware_devices(
         emitted = true;
     }
 
-    if hw.usb {
+    if hw.usb && env.host_has_usb_bus {
         // Raw USB devices (adb, fastboot, flashers, SDR): a bind mount,
         // not AddDevice. Nodes appear per plug and re-enumeration, so
         // start-time enumeration would miss later devices; the bind mount
         // is hotplug-aware the way the host is (rootless podman applies
-        // no device-cgroup filter). The `-` prefix skips the mount on a
-        // host with no USB bus instead of failing to start. Never `:z`
-        // or `:Z`: relabeling would retag the host's device nodes.
-        lines.push("Volume=-/dev/bus/usb:/dev/bus/usb".into());
+        // no device-cgroup filter). Never `:z` or `:Z`: relabeling would
+        // retag the host's device nodes.
+        lines.push("Volume=/dev/bus/usb:/dev/bus/usb".into());
         emitted = true;
     }
 

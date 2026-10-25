@@ -116,6 +116,7 @@ pub fn default_env() -> HostEnv {
         gpu_has_dri: false,
         gpu_has_nvidia: false,
         gpu_has_nvidia_uvm: false,
+        host_has_usb_bus: true,
         nvidia_cdi_present: false,
         host_has_localtime: false,
         host_has_timezone_file: false,
