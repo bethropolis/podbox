@@ -63,7 +63,8 @@ pub fn run(cmd: &[String]) -> ! {
     if let Some((uid, gid)) = drop.as_ref().map(|(u, g, _)| (*u, *g)) {
         let user = drop.as_ref().map(|(_, _, u)| u.clone()).unwrap_or_default();
         if let Err(e) = drop_privileges(&user, uid, gid) {
-            eprintln!("podbox-guest: refusing to run the user shell: {e}");
+            let _ = e;
+            eprintln!("podbox-guest: refusing to run the user shell");
             std::process::exit(1);
         }
     }
@@ -272,7 +273,7 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
     {
         // Reuse the numeric id: drop the squatter so the useradd below can
         // claim the UID. Logged, since this deletes an image-shipped account.
-        eprintln!("podbox-guest: uid {uid} belongs to {existing}; removing it to reuse the id");
+        eprintln!("podbox-guest: removing a conflicting image account to reuse the runtime id");
         let _ = std::process::Command::new("userdel")
             .arg("-r")
             .arg(existing)
@@ -316,9 +317,8 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
                 .status();
             if status.is_err() || !status.unwrap().success() {
                 eprintln!(
-                    "podbox-guest: cannot move {user} from {}:{} to {uid}:{gid}; \
-                     the shell may show 'I have no name!'",
-                    existing.uid, existing.gid
+                    "podbox-guest: cannot reconcile the runtime account; the shell may show \
+                     'I have no name!'"
                 );
             }
         }

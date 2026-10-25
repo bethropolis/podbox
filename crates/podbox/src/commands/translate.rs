@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -13,6 +14,12 @@ pub fn run_translate_path(
     to_host: bool,
     path_str: &str,
 ) -> Result<()> {
+    let write_path = |path: &str| -> Result<()> {
+        let mut stdout = std::io::stdout().lock();
+        stdout.write_all(path.as_bytes())?;
+        stdout.write_all(b"\n")?;
+        Ok(())
+    };
     let username = std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "root".to_string());
@@ -45,7 +52,7 @@ pub fn run_translate_path(
             if let Ok(relative) = host_path.strip_prefix(host_dir) {
                 let container_path =
                     format!("{}/{}/{}", home_in_container, dir_name, relative.display());
-                println!("{container_path}");
+                write_path(&container_path)?;
                 return Ok(());
             }
         }
@@ -53,11 +60,11 @@ pub fn run_translate_path(
         let host_home = dirs::home_dir().unwrap_or_default();
         if let Ok(relative) = host_path.strip_prefix(&host_home) {
             let container_path = format!("{}/{}", home_in_container, relative.display());
-            println!("{container_path}");
+            write_path(&container_path)?;
             return Ok(());
         }
 
-        println!("{path_str}");
+        write_path(path_str)?;
     }
 
     if to_host {

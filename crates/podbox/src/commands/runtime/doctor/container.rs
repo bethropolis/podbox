@@ -461,14 +461,14 @@ mod tests {
     #[test]
     fn passwd_entry_passes_when_getent_prints() {
         let c = passwd_entry_check("bet:x:1000:1000:Bet:/home/bet:/bin/bash\n");
-        assert_eq!(c.status, "pass", "{c:?}");
+        assert_eq!(c.status, "pass");
     }
 
     #[test]
     fn missing_passwd_entry_warns() {
         let c = passwd_entry_check("   \n");
-        assert_eq!(c.status, "warn", "{c:?}");
-        assert!(c.message.contains("I have no name!"), "{c:?}");
+        assert_eq!(c.status, "warn");
+        assert!(c.message.contains("I have no name!"));
     }
 
     #[test]

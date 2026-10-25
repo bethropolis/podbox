@@ -28,17 +28,32 @@ jobs:
     steps:
       - name: Resolve tag
         id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          WORKFLOW_RUN_TAG: ${{ github.event.workflow_run.head_branch }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          fi
-          cat "$GITHUB_OUTPUT"
+          case "$EVENT_NAME" in
+            release) TAG="$RELEASE_TAG" ;;
+            workflow_run) TAG="$WORKFLOW_RUN_TAG" ;;
+            workflow_dispatch)
+              TAG="${INPUT_TAG:-$REF_NAME}"
+              ;;
+            *)
+              echo "unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          case "$TAG" in
+            v[0-9]*) ;;
+            *)
+              echo "refusing to publish an invalid release tag" >&2
+              exit 1
+              ;;
+          esac
+          printf 'tag=%s\n' "$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Skip prereleases (workflow_run / dispatch)
         if: contains(steps.tag.outputs.tag, '-')

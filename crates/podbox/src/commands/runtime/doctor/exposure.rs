@@ -119,20 +119,14 @@ pub(crate) fn print_exposure_summary(config: &Config) {
     if config.security.secrets.is_empty() {
         line("Secrets", "none".to_string());
     } else {
-        line(
-            "Secrets",
-            format!("{} declared", config.security.secrets.len()),
-        );
+        line("Secrets", "declared".to_string());
         for secret in &config.security.secrets {
             match secret {
-                podbox::config::SecretEntry::Simple(name) => {
-                    println!("    • {name} (env → {name}, podman)");
+                podbox::config::SecretEntry::Simple(_) => {
+                    println!("    • declared secret (env, podman)");
                 }
                 podbox::config::SecretEntry::Detailed {
-                    name,
                     secret_type,
-                    target,
-                    mode,
                     source,
                     ..
                 } => {
@@ -140,14 +134,7 @@ pub(crate) fn print_exposure_summary(config: &Config) {
                         podbox::config::SecretSource::Podman => "podman",
                         podbox::config::SecretSource::Systemd => "systemd",
                     };
-                    let tgt = target.as_deref().unwrap_or(name);
-                    let extra = match secret_type {
-                        podbox::config::SecretType::Mount => {
-                            format!(", mode {}", mode.as_deref().unwrap_or("0400"))
-                        }
-                        _ => String::new(),
-                    };
-                    println!("    • {name} ({secret_type:?} → {tgt}{extra}, {src})");
+                    println!("    • declared {secret_type:?} secret ({src})");
                 }
             }
         }

