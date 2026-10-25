@@ -55,5 +55,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/podbox-*.tar.gz
+            dist/podbox*.deb
+            dist/podbox*.rpm
             dist/checksums.txt
           generate_release_notes: true

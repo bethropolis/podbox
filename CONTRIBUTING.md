@@ -11,7 +11,7 @@ detail.
 version CI uses:
 
 ```bash
-mise install          # Rust 1.98, mbx, bgrun, bun, just, hk, shellcheck, wasm-pack
+mise install          # Rust 1.98, mbx, bgrun, bun, just, hk, shellcheck, wasm-pack, goreleaser
 hk install            # git hooks: clippy + version check on push
 ```
 
@@ -134,8 +134,16 @@ Tags follow `v<major>.<minor>.<patch>`. The pre-push hook warns when
 
 Pushing a tag runs `.github/workflows/release.yml` with GoReleaser:
 1. Host binaries for x86_64 and aarch64, glibc and musl.
-2. Container images (Fedora multi-arch, CachyOS, dev) on ghcr.io.
-3. Archives with checksums, the `podbox-bin` AUR package and the Homebrew cask.
+2. Debian and RPM packages with a `podman` dependency.
+3. Container images (Fedora multi-arch, CachyOS, dev) on ghcr.io.
+4. Archives with checksums, the source `podbox` and binary `podbox-bin` AUR
+  packages, and the Homebrew cask.
+
+To build the Debian and RPM packages locally without publishing anything:
+
+```bash
+goreleaser release --snapshot --clean --skip=publish,docker,aur,homebrew
+```
 
 After a successful non-prerelease release, `publish-crates.yml` publishes
 `podbox-protocol`, `podbox-cli` and `podbox-guest` to crates.io. The website

@@ -15,6 +15,8 @@ hk = "2.5.0"
 shellcheck = "0.11.0"
 # Task runner for the Justfile (check/lint/test/build).
 just = "1.58.0"
+# Local release snapshots and package validation.
+goreleaser = "2.19.0"
 
 [tasks.check]
 alias = "c"
