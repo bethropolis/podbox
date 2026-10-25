@@ -3,7 +3,8 @@
   "config": "[image]\nbase = \"fedora:41\"\nname = \"myenv\"\n",
   "quadlet": {
     "container": "[Container]\nImage=localhost/podbox-myenv:latest\n",
-    "socket": "[Socket]\nListenStream=%t/podbox/myenv.sock\n"
+    "socket": "[Socket]\nListenStream=%t/podbox/myenv.sock\n",
+    "x11_service": null
   },
   "env": {
     "container_name": "myenv",
