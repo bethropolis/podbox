@@ -11,13 +11,13 @@ detail.
 version CI uses:
 
 ```bash
-mise install          # bun, just, hk, shellcheck, wasm-pack (from mise.toml)
+mise install          # Rust 1.98, mbx, bgrun, bun, just, hk, shellcheck, wasm-pack
 hk install            # git hooks: clippy + version check on push
 ```
 
-Rust comes from [rustup](https://rustup.rs), which reads `rust-toolchain.toml`
-and installs the pinned toolchain with clippy and rustfmt on first use. Add
-the musl target so the embedded guest is built static, as in releases:
+Rust is managed by mise using the version in `rust-toolchain.toml`, with
+clippy, rustfmt, and the Mr. Boxington compiler cache enabled. Add the musl
+target so the embedded guest is built static, as in releases:
 
 ```bash
 rustup target add x86_64-unknown-linux-musl     # aarch64-unknown-linux-musl on arm64
@@ -52,7 +52,7 @@ website/             Astro site: landing page, docs, Studio
 ```bash
 cargo build -p podbox-cli                 # debug host CLI, guest embedded
 cargo build --release -p podbox-cli       # what users get
-just guest                                # guest binary alone (musl)
+mise run guest                            # guest binary alone (musl)
 ```
 
 `crates/podbox/build.rs` builds `podbox-guest` and embeds it with
@@ -63,7 +63,8 @@ just guest                                # guest binary alone (musl)
 Run these before opening a PR. CI runs the same set.
 
 ```bash
-just check                # clippy -D warnings + all tests
+mise run check             # clippy -D warnings + all tests
+# Just remains available: just check, just build, just test, just lint, ...
 cargo fmt --check
 hk check                  # fmt, shellcheck, whitespace, large files, private keys
 cargo check -p podbox-cli --lib --no-default-features --target wasm32-unknown-unknown

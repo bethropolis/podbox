@@ -1,4 +1,10 @@
 [tools]
+# Rust toolchain and compiler cache. Mr. Boxington wraps the active Cargo/rustc
+# without changing the commands used by the project.
+rust = { version = "1.98", mr_boxington = true }
+"mr-boxington" = "latest"
+# Background development servers and long-running local jobs.
+"github:bethropolis/bgrun" = "latest"
 # Builds the podbox-wasm Studio bindings (scripts/build-wasm.sh).
 "github:wasm-bindgen/wasm-pack" = "0.15.0"
 # Website toolchain (bun scripts, astro build, tsc typecheck).
@@ -9,3 +15,37 @@ hk = "2.5.0"
 shellcheck = "0.11.0"
 # Task runner for the Justfile (check/lint/test/build).
 just = "1.58.0"
+
+[tasks.check]
+alias = "c"
+depends = ["lint", "test"]
+
+[tasks.lint]
+alias = "l"
+run = "cargo clippy --all-targets -- -D warnings"
+
+[tasks.test]
+alias = "t"
+run = "cargo test --all-targets"
+
+[tasks.build]
+alias = "b"
+run = "cargo build --all-targets"
+
+[tasks.release]
+run = [
+	"cargo build --release --all-targets",
+	"cargo build --release -p podbox-guest --target x86_64-unknown-linux-musl",
+]
+
+[tasks.guest]
+run = "cargo build --release -p podbox-guest --target x86_64-unknown-linux-musl"
+
+[tasks.cycle]
+depends = ["check", "guest", "release"]
+run = [
+	"echo '---'",
+	"echo 'Release artifacts:'",
+	"ls -lh target/release/podbox",
+	"ls -lh target/x86_64-unknown-linux-musl/release/podbox-guest",
+]
