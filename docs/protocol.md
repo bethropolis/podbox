@@ -141,6 +141,15 @@ terminal's termios and window size onto the slave, and keeps the master
 open until the session's exit report arrives — dropping it hangs the
 terminal up.
 
+While the session runs, the guest shim relays bytes in both directions:
+its stdin into the master, and the master onto its stdout. It also puts
+its own terminal into raw mode for the duration, because the child's pty
+already carries the original termios and therefore owns line editing and
+echo; it restores the caller's termios when the child exits. The guest
+closes its own slave copies once the descriptors have been sent, so the
+relay reaches end-of-file when the child exits rather than waiting for
+the shim itself to return.
+
 The host runs the child as the new session's leader: `setsid` gives it
 a process group of its own (the same group `host_exec_signal` targets),
 and `TIOCSCTTY` on the inherited stdin makes the pty its controlling
@@ -154,6 +163,6 @@ allowlist and argument filter apply the same way, output flows through
 the descriptors rather than the protocol, and the exit arrives as one
 `host_exec_done`. The per-entry `timeout` (below) never applies to a
 tty session: an interactive child outliving its request is correct
-behaviour, not a leak. Window-size changes are one-way: the session
-starts with the geometry the guest's terminal had, and later resizes
-by either side are not propagated.
+behaviour, not a leak. A window-size change in the guest terminal is
+copied onto the pty and its `SIGWINCH` relayed, so full-screen programs
+track resizes in either direction.
