@@ -367,14 +367,72 @@ const PATH_MARKER_START: &str = "__podbox_path__";
 const PATH_MARKER_END: &str = "__podbox_path_end__";
 
 /// Extract the probed PATH from shell output: the text between the markers.
-/// Falls back to the whole trimmed output when markers are absent.
-fn extract_probed_path(output: &str) -> &str {
-    if let Some((_, rest)) = output.split_once(PATH_MARKER_START)
-        && let Some((path, _)) = rest.split_once(PATH_MARKER_END)
-    {
-        return path.trim();
+///
+/// Returns `None` when either marker is missing. Interactive shells may
+/// print banners (fastfetch, MOTD) to stdout, so we trust *only* what sits
+/// between our own markers; an unmarked result is garbage, not a PATH.
+fn extract_probed_path(output: &str) -> Option<&str> {
+    let (_, rest) = output.split_once(PATH_MARKER_START)?;
+    let (path, _) = rest.split_once(PATH_MARKER_END)?;
+    Some(path.trim())
+}
+
+/// Validate that a candidate string is a sane colon-separated PATH: non-empty,
+/// and every entry is absolute and free of whitespace/control characters.
+fn is_valid_path(p: &str) -> bool {
+    if p.is_empty() {
+        return false;
     }
-    output.trim()
+    p.split(':').all(|entry| {
+        !entry.is_empty()
+            && entry.starts_with('/')
+            && !entry.chars().any(char::is_whitespace)
+            && !entry.chars().any(char::is_control)
+    })
+}
+
+/// Build the probe command for a given shell. Keeping the markers out of the
+/// variable name is the whole point: `$PATH__podbox_path_end__` would be read
+/// as a single (unset) variable in fish/bash/zsh. Fish stores PATH as a list,
+/// so it gets joined explicitly.
+fn path_probe(shell: &std::path::Path) -> String {
+    let is_fish = shell
+        .file_name()
+        .is_some_and(|n| n == std::ffi::OsStr::new("fish"));
+    if is_fish {
+        format!("printf '%s%s%s' {PATH_MARKER_START} (string join : $PATH) {PATH_MARKER_END}")
+    } else {
+        format!("printf '%s%s%s' {PATH_MARKER_START} \"$PATH\" {PATH_MARKER_END}")
+    }
+}
+
+/// System directories that must always be reachable even if a probe missed them.
+const SYSTEM_PATH_DEFAULTS: &[&str] = &[
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+];
+
+/// Merge probed PATH entries with the system defaults, deduplicating while
+/// preserving order (probed entries first, defaults appended).
+fn merge_system_path(probed: &str) -> String {
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut out: Vec<&str> = Vec::new();
+    for entry in probed
+        .split(':')
+        .chain(SYSTEM_PATH_DEFAULTS.iter().copied())
+    {
+        if entry.is_empty() {
+            continue;
+        }
+        if seen.insert(entry) {
+            out.push(entry);
+        }
+    }
+    out.join(":")
 }
 
 /// Persistent PATH cache: freshness window and sanity cap.
@@ -384,6 +442,10 @@ const PATH_CACHE_MAX_LEN: usize = 16 * 1024;
 fn path_cache_file(home: &str) -> PathBuf {
     PathBuf::from(home).join(".cache/podbox/path")
 }
+
+/// Cache format version. Bumped so caches written by older guests (which may
+/// contain a poisoned PATH) are ignored and re-probed.
+const PATH_CACHE_FORMAT: &str = "2";
 
 fn unix_now_secs() -> Option<u64> {
     std::time::SystemTime::now()
@@ -396,10 +458,14 @@ fn unix_now_secs() -> Option<u64> {
 /// and sane content. Anything else returns `None` (re-probe).
 fn read_path_cache(home: &str, now_secs: u64) -> Option<String> {
     let content = std::fs::read_to_string(path_cache_file(home)).ok()?;
-    let mut parts = content.splitn(3, '\n');
+    let mut parts = content.splitn(4, '\n');
+    let format = parts.next()?;
     let version = parts.next()?;
     let stamp: u64 = parts.next()?.trim().parse().ok()?;
     let path = parts.next()?.trim_end_matches('\n');
+    if format != PATH_CACHE_FORMAT {
+        return None;
+    }
     if version != crate::VERSION {
         return None;
     }
@@ -409,6 +475,7 @@ fn read_path_cache(home: &str, now_secs: u64) -> Option<String> {
     if path.is_empty()
         || path.len() > PATH_CACHE_MAX_LEN
         || path.bytes().any(|b| b == 0 || b == b'\n' || b == b'\r')
+        || !is_valid_path(path)
     {
         return None;
     }
@@ -418,11 +485,20 @@ fn read_path_cache(home: &str, now_secs: u64) -> Option<String> {
 /// Persist a probed PATH for future boots. Best-effort: failures are silent
 /// (worst case is today's behavior — probe every boot).
 fn write_path_cache(home: &str, uid: u32, gid: u32, path: &str, now_secs: u64) {
+    if !is_valid_path(path) {
+        return;
+    }
     let file = path_cache_file(home);
     if let Some(parent) = file.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let content = format!("{}\n{}\n{}", crate::VERSION, now_secs, path);
+    let content = format!(
+        "{}\n{}\n{}\n{}",
+        PATH_CACHE_FORMAT,
+        crate::VERSION,
+        now_secs,
+        path
+    );
     if std::fs::write(&file, &content).is_ok() {
         let _ = std::os::unix::fs::chown(&file, Some(uid), Some(gid));
     }
@@ -456,7 +532,10 @@ fn resolve_user_path() {
     if let Some(now) = unix_now_secs()
         && let Some(cached) = read_path_cache(&home, now)
     {
-        let _ = std::fs::write("/run/podbox/path", &cached);
+        // Merge system defaults before publishing; a failed probe leaves the
+        // current PATH untouched (we simply don't write here on failure).
+        let merged = merge_system_path(&cached);
+        let _ = std::fs::write("/run/podbox/path", &merged);
         return;
     }
 
@@ -489,7 +568,11 @@ fn resolve_user_path() {
         if !shell.exists() {
             continue;
         }
-        let probe = format!("echo \"{PATH_MARKER_START}$PATH{PATH_MARKER_END}\"");
+        // Interactive (-ic) on purpose: user configs (fish config.fish, .bashrc)
+        // may extend PATH only in interactive mode. Those configs may also print
+        // banners/MOTD to stdout — that is exactly why we use markers and
+        // validate the result instead of trusting raw output.
+        let probe = path_probe(shell);
         let mut cmd = Command::new(shell);
         cmd.args(["-ic", &probe])
             .uid(uid)
@@ -504,8 +587,10 @@ fn resolve_user_path() {
             && output.status.success()
         {
             let resolved = String::from_utf8_lossy(&output.stdout);
-            let trimmed = extract_probed_path(&resolved);
-            if trimmed.len() > best_path.len() {
+            if let Some(trimmed) = extract_probed_path(&resolved)
+                && is_valid_path(trimmed)
+                && trimmed.len() > best_path.len()
+            {
                 best_path = trimmed.to_string();
             }
         }
@@ -515,7 +600,8 @@ fn resolve_user_path() {
         return;
     }
 
-    let _ = std::fs::write(PathBuf::from("/run/podbox/path"), &best_path);
+    let merged = merge_system_path(&best_path);
+    let _ = std::fs::write(PathBuf::from("/run/podbox/path"), &merged);
     if let Some(now) = unix_now_secs() {
         write_path_cache(&home, uid, gid, &best_path, now);
     }
@@ -708,20 +794,54 @@ mod tests {
     #[test]
     fn extract_probed_path_strips_motd_noise() {
         let noisy = "\x1b[100m   \x1b[m\nfastfetch art here\n__podbox_path__/usr/bin:/bin__podbox_path_end__\n";
-        assert_eq!(extract_probed_path(noisy), "/usr/bin:/bin");
+        assert_eq!(extract_probed_path(noisy), Some("/usr/bin:/bin"));
     }
 
     #[test]
-    fn extract_probed_path_falls_back_without_markers() {
-        assert_eq!(extract_probed_path("  /usr/bin:/bin\n"), "/usr/bin:/bin");
+    fn extract_probed_path_rejects_missing_markers() {
+        assert_eq!(extract_probed_path("  /usr/bin:/bin\n"), None);
     }
 
     #[test]
     fn extract_probed_path_empty_when_markers_empty() {
         assert_eq!(
             extract_probed_path("noise__podbox_path____podbox_path_end__tail"),
-            ""
+            Some("")
         );
+        assert!(!is_valid_path(""));
+    }
+
+    #[test]
+    fn extract_probed_path_rejects_start_without_end() {
+        assert_eq!(extract_probed_path("banner\n__podbox_path__"), None);
+    }
+
+    #[test]
+    fn path_probe_fish_contains_string_join() {
+        let fish = std::path::Path::new("/usr/bin/fish");
+        let p = path_probe(fish);
+        assert!(p.contains("string join :"));
+        assert!(!p.contains("$PATH__podbox"));
+        assert!(!p.contains("$PATH_"));
+    }
+
+    #[test]
+    fn path_probe_bash_uses_quoted_path() {
+        let bash = std::path::Path::new("/bin/bash");
+        let p = path_probe(bash);
+        assert!(p.contains("\"$PATH\""));
+        assert!(!p.contains("$PATH__podbox"));
+        assert!(!p.contains("$PATH_"));
+    }
+
+    #[test]
+    fn is_valid_path_accepts_and_rejects() {
+        assert!(is_valid_path("/usr/bin:/bin"));
+        assert!(!is_valid_path("/a::/b"));
+        assert!(!is_valid_path("/usr/bin:/bin with space"));
+        assert!(!is_valid_path("/usr/bin\n:/bin"));
+        assert!(!is_valid_path("relative:/bin"));
+        assert!(!is_valid_path("fastfetch banner"));
     }
 
     fn cache_dir(name: &str) -> PathBuf {
@@ -745,6 +865,40 @@ mod tests {
     }
 
     #[test]
+    fn path_cache_ignores_invalid_and_old_format() {
+        let home = cache_dir("invalid");
+        let home_str = home.to_string_lossy().to_string();
+        // Invalid cached value (banner, not a PATH).
+        let file = home.join(".cache/podbox/path");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &file,
+            format!(
+                "{}\n{}\n{}\n{}",
+                PATH_CACHE_FORMAT,
+                crate::VERSION,
+                1_700_000_000_u64,
+                "fastfetch banner"
+            ),
+        )
+        .unwrap();
+        assert_eq!(read_path_cache(&home_str, 1_700_000_000 + 1), None);
+        // Old format (3 lines, no format header).
+        std::fs::write(
+            &file,
+            format!(
+                "{}\n{}\n{}",
+                crate::VERSION,
+                1_700_000_000_u64,
+                "/usr/bin:/bin"
+            ),
+        )
+        .unwrap();
+        assert_eq!(read_path_cache(&home_str, 1_700_000_000 + 1), None);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
     fn path_cache_rejects_stale_version_and_age() {
         let home = cache_dir("stale");
         let home_str = home.to_string_lossy().to_string();
@@ -763,7 +917,7 @@ mod tests {
             None
         );
         // Empty and overlong content.
-        write_path_cache(&home_str, 1000, 1000, "", 1_700_000_000);
+        std::fs::write(home.join(".cache/podbox/path"), "").unwrap();
         assert_eq!(read_path_cache(&home_str, 1_700_000_000 + 1), None);
         let _ = std::fs::remove_dir_all(&home);
     }
