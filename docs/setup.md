@@ -112,7 +112,7 @@ stale. Tweak `timeout` and nothing happens.
 | `pending` | Declared in config, no stamp yet |
 | `applied` | Stamp hash matches the current step |
 | `stale` | Stamp exists but the hash differs — run `provision sync` |
-| `orphaned` | Stamp on disk, no step with that name in config. Reported only |
+| `orphaned` | Stamp on disk, no step with that name in config. `provision status` reports it; `provision sync` prunes it (nothing can reference it, and re-adding the step makes it pending again) |
 | `unknown` | Stamps couldn't be read |
 
 Stamps live in `~/.local/state/podbox/provision/<name>.stamp` **inside the

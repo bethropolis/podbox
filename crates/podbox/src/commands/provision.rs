@@ -396,6 +396,29 @@ fn execute(
     Ok(())
 }
 
+/// Names of stamps whose step no longer exists in the config.
+fn orphan_names(states: &[(String, ProvisionState, Option<u64>)]) -> Vec<String> {
+    states
+        .iter()
+        .filter(|(_, s, _)| *s == ProvisionState::Orphaned)
+        .map(|(n, _, _)| n.clone())
+        .collect()
+}
+
+/// Remove stamps that no declared step can ever reference. An orphan only
+/// exists because its step was renamed or deleted, so pruning it is lossless:
+/// re-adding the step makes it pending again and it simply runs. Returns the
+/// number of stamps removed.
+fn prune_orphans(config: &Config, states: &[(String, ProvisionState, Option<u64>)]) -> usize {
+    let mut removed = 0usize;
+    for name in orphan_names(states) {
+        if std::fs::remove_file(stamp_path(config, &name)).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// `provision sync`: ensure running, then run pending/stale (or forced) steps.
 pub fn sync(
     config: &Config,
@@ -412,9 +435,19 @@ pub fn sync(
     }
     if dry_run {
         let states = classify(config);
+        let orphans = orphan_names(&states);
+        if !orphans.is_empty() {
+            println!(
+                "Would prune {} orphaned stamp(s): {}",
+                orphans.len(),
+                orphans.join(", ")
+            );
+        }
         let steps = plan(config, &states, only, force)?;
         if steps.is_empty() {
-            println!("Nothing to do: all steps applied.");
+            if orphans.is_empty() {
+                println!("Nothing to do: all steps applied.");
+            }
             return Ok(());
         }
         println!("Would run {} step(s):", steps.len());
@@ -430,9 +463,15 @@ pub fn sync(
         crate::commands::DEFAULT_START_TIMEOUT_SECS,
     )?;
     let states = classify(config);
+    let pruned = prune_orphans(config, &states);
+    if pruned > 0 {
+        println!("Pruned {pruned} orphaned provision stamp(s).");
+    }
     let steps = plan(config, &states, only, force)?;
     if steps.is_empty() {
-        println!("Nothing to do: all steps applied.");
+        if pruned == 0 {
+            println!("Nothing to do: all steps applied.");
+        }
         return Ok(());
     }
     execute(config, env, &steps, false, true)
@@ -567,6 +606,58 @@ mod tests {
         assert_eq!(parse_provision_timeout_secs("off"), 0);
         assert_eq!(parse_provision_timeout_secs(""), 0);
         assert_eq!(parse_provision_timeout_secs("5"), 0);
+    }
+
+    /// Orphans are stamps whose step no longer exists in the config: nothing
+    /// can reference them, so sync prunes them instead of teaching people to
+    /// ignore `provision status`. Live stamps survive untouched.
+    #[test]
+    fn orphaned_stamps_are_pruned_and_live_ones_survive() {
+        let home = tempfile::tempdir().expect("temp home");
+        let cfg_toml = r#"
+[image]
+base = "fedora:44"
+name = "x"
+[container]
+name = "x"
+home = "~/x"
+[[provision]]
+name = "a"
+run = "echo a"
+"#;
+        let mut cfg = Config::parse(cfg_toml).unwrap();
+        cfg.container.home = home.path().to_path_buf();
+        let dir = provision_dir(&cfg);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A parseable stamp for a step the config no longer declares.
+        std::fs::write(
+            dir.join("gone.stamp"),
+            format!(
+                "{STAMP_VERSION} {} 1\n",
+                step_hash(&step("gone", "echo gone"))
+            ),
+        )
+        .unwrap();
+        // The live step's stamp must stay.
+        std::fs::write(
+            dir.join("a.stamp"),
+            format!("{STAMP_VERSION} {} 1\n", step_hash(&step("a", "echo a"))),
+        )
+        .unwrap();
+
+        let states = classify(&cfg);
+        assert_eq!(orphan_names(&states), vec!["gone".to_string()]);
+        assert_eq!(prune_orphans(&cfg, &states), 1);
+        assert!(
+            !dir.join("gone.stamp").exists(),
+            "orphan stamp must be removed"
+        );
+        assert!(dir.join("a.stamp").exists(), "live stamp must survive");
+
+        // Nothing left to prune on a second pass.
+        let states = classify(&cfg);
+        assert!(orphan_names(&states).is_empty());
+        assert_eq!(prune_orphans(&cfg, &states), 0);
     }
 
     #[test]

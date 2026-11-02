@@ -115,6 +115,14 @@ fn finish_create(cfg: &Config, _caller_name: &str, dry_run: bool, no_start: bool
     }
 
     if !dry_run {
+        // `create` retargets the active context so the follow-up commands
+        // (`podbox enter`, bare `podbox logs`) work with no name. Say so:
+        // `.active` is shared state, and a silent switch surprised users
+        // who kept several boxes on one host.
+        let previous = config::read_active_context();
+        if let Some(line) = context_announcement(previous.as_deref(), container_name) {
+            println!("{line}");
+        }
         let _ = config::write_active_context(container_name);
         let _ = podbox::history::record(
             container_name,
@@ -509,9 +517,33 @@ pub fn run_create(
     Ok(())
 }
 
+/// The line `create` prints when it retargets the active context, or `None`
+/// when the context already pointed at the box (no news).
+fn context_announcement(previous: Option<&str>, next: &str) -> Option<String> {
+    if previous == Some(next) {
+        return None;
+    }
+    let was = previous.unwrap_or("(none)");
+    Some(format!("Active context is now '{next}' (was '{was}')."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn context_switch_is_announced_only_when_it_changes() {
+        assert_eq!(
+            context_announcement(None, "dev").as_deref(),
+            Some("Active context is now 'dev' (was '(none)').")
+        );
+        assert_eq!(
+            context_announcement(Some("cachy"), "dev").as_deref(),
+            Some("Active context is now 'dev' (was 'cachy').")
+        );
+        // Already the active box: nothing to say.
+        assert!(context_announcement(Some("dev"), "dev").is_none());
+    }
 
     fn write_config(dir: &Path, file: &str, runtime: &str) -> PathBuf {
         let mut cfg = Config::embedded();

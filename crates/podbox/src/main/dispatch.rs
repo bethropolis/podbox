@@ -187,7 +187,7 @@ pub(crate) fn command_output_format(cmd: &Command) -> Option<OutputFormat> {
             config_cmd:
                 ConfigCommand::Get { output, .. }
                 | ConfigCommand::Set { output, .. }
-                | ConfigCommand::Validate { output },
+                | ConfigCommand::Validate { output, .. },
         }
         | Command::Export {
             export_cmd: ExportCommand::List { output },
@@ -420,12 +420,14 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
             commands::config::run_set(&path, key, value, dry, *output)
         }
         Command::Config {
-            config_cmd: ConfigCommand::Validate { output },
+            config_cmd: ConfigCommand::Validate { name, output },
         } => {
+            let target = name.as_deref().or(cli.container.as_deref());
             let path = match &cli.config {
                 Some(p) => p.clone(),
-                None => resolve::resolve_config_path(cli.container.as_deref())
-                    .map_err(ConfigResolveError::into_report)?,
+                None => {
+                    resolve::resolve_config_path(target).map_err(ConfigResolveError::into_report)?
+                }
             };
             commands::config::run_validate(&path, *output)
         }

@@ -46,6 +46,10 @@ pub fn run_logs(
         if follow {
             args.push("-f".into());
         }
+        // `-t` prints RFC3339 timestamps in the host's timezone (podman
+        // honors TZ), matching journalctl's local-time output so the two
+        // paths `run_logs` chooses between read the same.
+        args.push("-t".into());
         args.push("--tail".into());
         args.push(lines.to_string().into());
         if let Some(s) = &since {

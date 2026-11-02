@@ -543,6 +543,9 @@ pub enum ConfigCommand {
     },
     /// Validate the configuration file, reporting errors with line numbers.
     Validate {
+        /// Container to validate (defaults to the active context).
+        #[arg(value_name = "NAME")]
+        name: Option<String>,
         /// Output format (text or json).
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output: OutputFormat,

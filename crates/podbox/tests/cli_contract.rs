@@ -889,6 +889,59 @@ fn config_validate_reports_lines() {
     assert!(v["errors"][0]["line"].is_number());
 }
 
+/// `config validate` takes an optional NAME: the named definition, else the
+/// active context, else the single/auto-detected config. A name with no
+/// definition exits 3 (`container_missing`), never falls back to another box.
+#[test]
+fn config_validate_accepts_a_positional_name() {
+    let sb = Sandbox::new(&["alpha", "beta"]);
+    // Positional name picks that definition.
+    let out = sb
+        .cmd()
+        .args(["config", "validate", "alpha"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("valid"));
+
+    // A bad named definition fails on its own merits.
+    let mut text = std::fs::read_to_string(sb.dir.join("podbox").join("beta.toml")).unwrap();
+    text = text.replace("[container]\n", "[container]\nmemory = \"bogus\"\n");
+    std::fs::write(sb.dir.join("podbox").join("beta.toml"), &text).unwrap();
+    let out = sb
+        .cmd()
+        .args(["config", "validate", "beta", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "invalid config must fail");
+    let v: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
+        .expect("stdout must stay a single JSON document");
+    assert_eq!(v["schema"], 1);
+    assert_eq!(v["valid"], false);
+    assert_eq!(v["errors"][0]["field"], "container.memory");
+
+    // No definition under that name: exit 3, and no silent fallback.
+    let out = sb
+        .cmd()
+        .args(["config", "validate", "nosuch"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(3), "missing config exits 3");
+
+    // The active context is the fallback when no name is given.
+    let out = sb.cmd().args(["use", "beta"]).output().unwrap();
+    assert!(out.status.success());
+    let out = sb.cmd().args(["config", "validate"]).output().unwrap();
+    assert!(
+        !out.status.success(),
+        "the active (invalid) context is what gets validated"
+    );
+}
+
 /// Contract P4: `create --yes --dry-run` never prompts and derives names.
 #[test]
 fn create_yes_dry_run() {
