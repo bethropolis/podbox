@@ -105,6 +105,7 @@ pub fn load_config(name: &str) -> Config {
 pub fn default_env() -> HostEnv {
     HostEnv {
         uid: 1000,
+        gid: 1000,
         username: "testuser".into(),
         home_dir: PathBuf::from("/home/testuser"),
         xdg_runtime_dir: PathBuf::from("/run/user/1000"),

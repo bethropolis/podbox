@@ -208,6 +208,7 @@ fn quadlet_prebuilt_uses_registry_image() {
     let config = load_config("prebuilt.toml");
     let env = HostEnv {
         uid: 1000,
+        gid: 1000,
         username: "testuser".into(),
         home_dir: PathBuf::from("/home/testuser"),
         xdg_runtime_dir: PathBuf::from("/run/user/1000"),
@@ -259,6 +260,7 @@ fn quadlet_custom_uses_build_ref() {
     let cfg = load_config("full.toml");
     let env = HostEnv {
         uid: 1000,
+        gid: 1000,
         username: "testuser".into(),
         home_dir: PathBuf::from("/home/testuser"),
         xdg_runtime_dir: PathBuf::from("/run/user/1000"),
@@ -313,6 +315,7 @@ fn quadlet_has_environment_home() {
     let config = load_config("full.toml");
     let env = podbox::env::HostEnv {
         uid: 1000,
+        gid: 1000,
         username: "testuser".into(),
         home_dir: PathBuf::from("/home/testuser"),
         xdg_runtime_dir: PathBuf::from("/run/user/1000"),

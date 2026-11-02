@@ -1,9 +1,10 @@
 //! Guest sandbox entrypoint: the single `run()` flow plus `setup_user`.
 //! One cohesive concern (documented exemption, per the modularization guide 1/8).
+use std::collections::HashSet;
 use std::ffi::CString;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use nix::unistd::{Gid, Uid, initgroups, setgid, setuid};
@@ -224,6 +225,76 @@ fn create_user(user: &str, uid: u32, gid: u32, home_dir: &Path) {
     }
 }
 
+/// Mount points at or below `dir`, parsed from a /proc/self/mountinfo dump.
+///
+/// Read-only host shares (fonts, icons, themes) are bind mounts under the
+/// home: their ownership belongs to the host, not to this box, so the
+/// ownership sweep skips them wholesale instead of chowning host state.
+fn mountpoints_from(content: &str, dir: &Path) -> HashSet<PathBuf> {
+    let mut out = HashSet::new();
+    for line in content.lines() {
+        // mountinfo layout: "id parent major:minor root mountpoint
+        // options... - fstype source superopts" — field 5 is the mount
+        // point, and everything after the "-" separator is irrelevant here.
+        if let Some(mountpoint) = line.split_whitespace().nth(4)
+            && Path::new(mountpoint).starts_with(dir)
+        {
+            out.insert(PathBuf::from(mountpoint));
+        }
+    }
+    out
+}
+
+/// Whether a home entry's (uid, gid) differ from the runtime user's. Pure,
+/// so the rule stays testable without a real filesystem.
+fn needs_repair(entry: (u32, u32), runtime: (u32, u32)) -> bool {
+    entry != runtime
+}
+
+/// Chown every foreign-owned entry under `root` to `uid:gid`.
+///
+/// A box that once ran under a different userns mapping (or an image
+/// skeleton, or a root-run first shell) leaves foreign-owned entries in the
+/// home, and every later write into them fails: mise cannot create
+/// `~/.cache`, fish cannot write its history. This repairs the whole home,
+/// on every start, because it is cheap and idempotent.
+///
+/// Two deliberate omissions: symlinks are skipped entirely (a link's own
+/// ownership is irrelevant to writes through it, and chowning *through* one
+/// could hit a host path), and bind mounts are never entered or touched —
+/// host-owned read-only shares must stay host-owned. The home root itself
+/// is left alone: podbox created it, and rewriting a volume mount point's
+/// ownership is the host's business, not a repair this box should attempt.
+fn repair_home_ownership(root: &Path, uid: u32, gid: u32) -> usize {
+    let mounts = std::fs::read_to_string("/proc/self/mountinfo")
+        .map(|c| mountpoints_from(&c, root))
+        .unwrap_or_default();
+    let mut repaired = 0usize;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // `symlink_metadata`, not `metadata`: never follow links out of
+            // the home while probing, and skip link ownership itself.
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if needs_repair((meta.uid(), meta.gid()), (uid, gid))
+                && std::os::unix::fs::chown(&path, Some(uid), Some(gid)).is_ok()
+            {
+                repaired += 1;
+            }
+            if meta.is_dir() && !mounts.contains(&path) {
+                stack.push(path);
+            }
+        }
+    }
+    repaired
+}
+
 /// Create a system user matching the host UID/GID, set up passwordless sudo,
 /// and ensure runtime directories are owned by the user.
 ///
@@ -425,27 +496,23 @@ fn setup_user(user: &str, uid: u32, gid: u32) {
         .args(["700", &dconf_dir.to_string_lossy()])
         .status();
 
-    // 8. XDG data dirs must be owned by the container user.  Distro image
-    //    skeletons or a root-run first shell (e.g. fish) leave
-    //    ~/.local/share/fish root-owned, which breaks user writes such as
-    //    fish history.  Chown non-recursively and only when mis-owned:
-    //    subdirs like icons/themes/fonts are read-only host bind mounts and
-    //    must never be touched.
+    // 8. XDG data dirs must exist (distro skeletons do not ship them), then
+    //    the whole home is swept for foreign ownership.  Anything mis-owned
+    //    — a leftover from an earlier userns mapping, an image skeleton, a
+    //    root-run first shell — breaks user writes (mise cannot create
+    //    ~/.cache, fish cannot write its history).  The sweep is idempotent
+    //    and silent when clean; read-only host bind mounts keep the host's
+    //    ownership.
     let local_dir = home_dir.join(".local");
     let share_dir = local_dir.join("share");
     for dir in [&local_dir, &share_dir, &share_dir.join("fish")] {
         let _ = std::fs::create_dir_all(dir);
     }
-    for dir in [&local_dir, &share_dir, &share_dir.join("fish")] {
-        let needs_fix = match std::fs::metadata(dir) {
-            Ok(m) => m.uid() != uid || m.gid() != gid,
-            Err(_) => true,
-        };
-        if needs_fix {
-            let _ = std::process::Command::new("chown")
-                .args([&owner, dir.to_str().unwrap_or_default()])
-                .status();
-        }
+    let repaired = repair_home_ownership(&home_dir, uid, gid);
+    if repaired > 0 {
+        eprintln!(
+            "podbox-guest: home: repaired ownership of {repaired} entry(ies) left by an earlier userns mapping"
+        );
     }
 
     // 9. Mark setup complete so subsequent execs in the same container
@@ -495,5 +562,38 @@ mod tests {
         }
         // Non-root cannot assume uid 0: the drop must report, never proceed.
         assert!(drop_privileges("root", 0, 0).is_err());
+    }
+
+    #[test]
+    fn mountinfo_mount_points_are_always_field_five() {
+        // Real shapes: optional fields sit between the options and the "-"
+        // separator, so the mount point stays at index 4 either way.
+        let content = "36 35 98:0 / / rw,relatime shared:1 - ext4 /dev/root rw\n\
+                       45 35 0:61 / /home/bet/containers/android rw,relatime master:1 - ext4 /dev/sdb1 rw\n\
+                       46 45 0:62 / /home/bet/containers/android/.fonts ro,relatime master:2 - ext4 /dev/sdb2 ro\n\
+                       47 45 0:63 / /etc/hosts rw,relatime - ext4 /dev/sdb3 rw\n";
+        let home = Path::new("/home/bet/containers/android");
+        let mounts = mountpoints_from(content, home);
+        // The home volume and the read-only shares under it: skip both.
+        assert!(mounts.contains(home), "{mounts:?}");
+        assert!(
+            mounts.contains(Path::new("/home/bet/containers/android/.fonts")),
+            "{mounts:?}"
+        );
+        // Outside the home is not ours to skip.
+        assert!(!mounts.contains(Path::new("/etc/hosts")), "{mounts:?}");
+        // A mountinfo line without optional fields parses the same.
+        let minimal = "25 1 0:22 / /home/bet/containers/android rw - ext4 /dev/sda4 rw\n";
+        assert!(mountpoints_from(minimal, home).contains(home));
+    }
+
+    #[test]
+    fn ownership_repair_rule_needs_both_ids_to_match() {
+        // The runtime user owns what it owns.
+        assert!(!needs_repair((1000, 1000), (1000, 1000)));
+        // The poisoning case from a different userns mapping.
+        assert!(needs_repair((100_000, 100_000), (1000, 1000)));
+        // A foreign gid alone still breaks writes.
+        assert!(needs_repair((1000, 100_001), (1000, 1000)));
     }
 }

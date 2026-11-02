@@ -67,7 +67,7 @@ fn group_for(check_name: &str) -> &'static str {
         | "embedded guest binary"
         | "config layout" => "Host",
         "Quadlet files" | "orphaned snapshot" | "memory" | "guest version" | "protocol"
-        | "guest user" | "guest locale" => "Container",
+        | "guest user" | "home ownership" | "guest locale" => "Container",
         _ => "Integration",
     }
 }
@@ -118,6 +118,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     collect!(container::check_memory(config, fix));
     collect!(container::check_guest_version(config));
     collect!(container::check_guest_user(config));
+    collect!(container::check_home_ownership(config, env));
     collect!(container::check_guest_locale(config));
     collect!(container::check_guest_socket(config));
     collect!(integration::check_toolchain());

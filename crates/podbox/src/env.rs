@@ -5,11 +5,14 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "cli")]
 use anyhow::Result;
 #[cfg(feature = "cli")]
-use nix::unistd::getuid;
+use nix::unistd::{getgid, getuid};
 
 /// Resolved host environment for socket and path detection.
 pub struct HostEnv {
     pub uid: u32,
+    /// Primary group of the host user, paired with `uid` for ownership
+    /// checks (the doctor's home-ownership check compares both).
+    pub gid: u32,
     pub username: String,
     pub home_dir: PathBuf,
     pub xdg_runtime_dir: PathBuf,
@@ -59,6 +62,7 @@ impl HostEnv {
     pub fn mock_preview() -> Self {
         Self {
             uid: 1000,
+            gid: 1000,
             username: "user".into(),
             home_dir: PathBuf::from("/home/user"),
             xdg_runtime_dir: PathBuf::from("/run/user/1000"),
@@ -113,6 +117,7 @@ pub fn build_context_dir(name: &str) -> PathBuf {
 #[cfg(feature = "cli")]
 pub fn resolve() -> Result<HostEnv> {
     let uid = getuid().as_raw();
+    let gid = getgid().as_raw();
     let username = env::var("USER")
         .or_else(|_| env::var("LOGNAME"))
         .ok()
@@ -185,6 +190,7 @@ pub fn resolve() -> Result<HostEnv> {
 
     Ok(HostEnv {
         uid,
+        gid,
         username,
         home_dir: home.clone(),
         xdg_runtime_dir,

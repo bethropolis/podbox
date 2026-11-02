@@ -3,7 +3,11 @@
 //!
 //! Extracted verbatim from `doctor.rs`; see `super` for the check surface.
 
+use std::os::unix::fs::MetadataExt as _;
+use std::path::{Path, PathBuf};
+
 use podbox::config::Config;
+use podbox::env::HostEnv;
 
 use super::Check;
 use super::fix::{confirm_fix, rewrite_memory_raw};
@@ -348,6 +352,86 @@ fn passwd_entry_check(stdout: &str) -> Check {
     }
 }
 
+/// Home ownership: entries under the container home the host user does not
+/// own.
+///
+/// A box that once ran under a different userns mapping leaves foreign-owned
+/// entries behind (typically `~/.cache`, created by an in-ns root), and
+/// every write into them then fails *inside* the box — mise cannot create
+/// `~/.cache/mise`, which surfaces as an unexplained provision failure
+/// rather than a permission error. The guest sweeps and repairs these at
+/// the next start (`podbox-guest` logs one line); this check makes the
+/// state visible from the host, with the container stopped.
+///
+/// Walks with the same rules as the guest sweep: symlinks are skipped
+/// entirely, bind mounts under the home (read-only host shares) are never
+/// entered, and the home root itself is not judged — it is a volume the
+/// host owns.
+pub(crate) fn check_home_ownership(config: &Config, env: &HostEnv) -> Vec<Check> {
+    let home = &config.container.home;
+    let mut foreign: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+
+    let mounts = std::fs::read_to_string("/proc/self/mountinfo")
+        .map(|content| {
+            content
+                .lines()
+                .filter_map(|line| line.split_whitespace().nth(4))
+                .filter(|p| Path::new(p).starts_with(home.as_os_str()))
+                .map(PathBuf::from)
+                .collect::<std::collections::HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    let mut stack = vec![home.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.uid() != env.uid || meta.gid() != env.gid {
+                foreign.push(path.display().to_string());
+            } else {
+                scanned += 1;
+            }
+            if meta.is_dir() && !mounts.contains(&path) {
+                stack.push(path);
+            }
+        }
+    }
+
+    if foreign.is_empty() {
+        return vec![Check::new(
+            "home ownership",
+            "pass",
+            format!(
+                "{} entries under {} owned by {}",
+                scanned,
+                home.display(),
+                env.username
+            ),
+        )];
+    }
+    let listed: Vec<String> = foreign.iter().take(5).cloned().collect();
+    vec![Check::new(
+        "home ownership",
+        "warn",
+        format!(
+            "{} entry(ies) under {} not owned by {} (e.g. {}) — left by an earlier \
+             userns mapping; writes into them fail inside the box. The guest repairs \
+             them at the next start, or fix ownership from the host.",
+            foreign.len(),
+            home.display(),
+            env.username,
+            listed.join("; ")
+        ),
+    )]
+}
+
 /// Locale handling (068): the image must generate the host `LANG`, or every
 /// program prints `setlocale` warnings.
 pub(crate) fn check_guest_locale(config: &Config) -> Vec<Check> {
@@ -492,6 +576,42 @@ mod tests {
         assert_eq!(locale_key("C.UTF-8"), "c");
         // Distinct base locales must not collapse into each other.
         assert_ne!(locale_key("de_DE.utf8"), locale_key("en_US.utf8"));
+    }
+
+    /// A home whose entries the host user owns is clean — the common case,
+    /// reported as a pass so the check is visible rather than silent.
+    #[test]
+    fn home_ownership_passes_when_everything_is_the_user_s() {
+        let home = tempfile::tempdir().expect("temp home");
+        std::fs::create_dir_all(home.path().join(".local/share/fish")).unwrap();
+        std::fs::write(home.path().join(".bashrc"), b"# fish").unwrap();
+        std::fs::write(home.path().join(".local/share/fish/fish_history"), b"").unwrap();
+
+        let mut cfg = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
+name = "x"
+[container]
+name = "x"
+home = "~/x"
+"#,
+        )
+        .unwrap();
+        cfg.container.home = home.path().to_path_buf();
+        let mut env = HostEnv::mock_preview();
+        env.uid = nix::unistd::getuid().as_raw();
+        env.gid = nix::unistd::getgid().as_raw();
+
+        let checks = check_home_ownership(&cfg, &env);
+        assert_eq!(checks.len(), 1, "{checks:?}");
+        assert_eq!(checks[0].status, "pass", "{:?}", checks[0]);
+        // .bashrc, .local, .local/share, .local/share/fish, fish_history.
+        assert!(
+            checks[0].message.contains("5 entries"),
+            "{}",
+            checks[0].message
+        );
     }
 
     #[test]

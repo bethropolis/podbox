@@ -118,8 +118,13 @@ Host UID 1000 maps to container UID 999 (`UserNS=keep-id`, shifted by 1).
 
 - Never `chown` a bind-mounted dir from inside the container — it changes
   ownership on the host too.
-- Files owned by `nobody`? The mount predates the UID mapping. Stop the
-  container, fix ownership on the host, start again.
+- Foreign-owned entries inside the home (usually `~/.cache`, left by a run
+  under a different userns mapping) break writes: mise cannot create its
+  cache, fish cannot write history. The guest repairs them automatically on
+  the next start — one `podbox-guest: home: repaired ownership of N`
+  entry(ies)` line in the logs — and `podbox doctor` reports the state
+  before you start. Read-only host shares (fonts, icons, themes) keep the
+  host's ownership and are never touched by the repair.
 
 ## SSH agent not forwarding
 
