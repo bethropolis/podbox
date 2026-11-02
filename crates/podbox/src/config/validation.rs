@@ -59,6 +59,85 @@ pub(crate) fn note_parse_warning(message: impl Into<String>) {
 }
 
 impl Config {
+    /// Host-side paths this definition names, checked for existence only.
+    ///
+    /// A missing binary or directory fails later with no pointer back to the
+    /// config: a host-exec shim errors when invoked, and a host cache whose
+    /// directory is absent is skipped at runtime. Both are worth knowing at
+    /// validation time.
+    ///
+    /// Deliberately *warnings*, never errors: definitions are portable, and
+    /// this host may simply not have the path yet. `podbox doctor` reports
+    /// the same facts as FAILs for the host a command is about to run on.
+    /// Ecosystem facts (does this package exist in the base's repos, does
+    /// this tool version exist) are intentionally not here: answering them
+    /// needs network access and per-ecosystem knowledge that would make
+    /// validation non-deterministic.
+    #[cfg(feature = "cli")]
+    fn host_path_warnings(&self) -> Vec<String> {
+        let mut out = Vec::new();
+
+        // host-exec: every allowlist entry points at a host binary.
+        if self.integration.host_exec.enabled
+            && let Some(map) = &self.integration.host_exec.allowlist
+        {
+            let mut sorted: Vec<_> = map.iter().collect();
+            sorted.sort_by_key(|(k, _)| *k);
+            for (alias, entry) in sorted {
+                let path = entry.path();
+                if is_absolute_path(path) && !std::path::Path::new(path).exists() {
+                    out.push(format!(
+                        "integration.host_exec.allowlist.{alias}: host binary '{path}' does not exist — \
+                         the '{alias}' shim fails until it is installed"
+                    ));
+                }
+            }
+        }
+
+        // Host caches: the built-ins share their relative path on both
+        // sides; customs carry an explicit host path.
+        let host_caches = &self.storage.host_caches;
+        for p in host_caches.enabled_paths() {
+            let host_path = crate::config::fs::expand_tilde(p.container_path);
+            if !host_path.exists() {
+                out.push(format!(
+                    "storage.host_caches.{}: host directory '{}' does not exist — \
+                     the cache is skipped at runtime",
+                    p.cache,
+                    host_path.display()
+                ));
+            }
+        }
+        for cache in &host_caches.custom {
+            let host_path = crate::config::fs::expand_tilde(&cache.host_path);
+            if !host_path.exists() {
+                out.push(format!(
+                    "storage.host_caches.custom.{}: host directory '{}' does not exist — \
+                     the cache is skipped at runtime",
+                    cache.name,
+                    host_path.display()
+                ));
+            }
+        }
+
+        // Dotfiles from the host must exist to be copied in.
+        if let Some(dotfiles) = &self.dotfiles
+            && let Some(dir) = dotfiles.source.strip_prefix("host:")
+            && !dir.trim().is_empty()
+        {
+            let path = crate::config::fs::expand_tilde(dir);
+            if !path.exists() {
+                out.push(format!(
+                    "dotfiles.source: host directory '{}' does not exist — \
+                     nothing will be copied into the home",
+                    path.display()
+                ));
+            }
+        }
+
+        out
+    }
+
     pub fn validate(&self) -> Result<()> {
         let validated = self.validate_with_warnings();
         // The wasm/Studio path uses `validate_with_warnings` directly: the
@@ -283,6 +362,10 @@ impl Config {
         }
         errors.extend(validate_provision(&self.provision));
         errors.extend(caches::validate_caches(self));
+        // Host-fact checks belong to the CLI only: the Studio (wasm) has no
+        // host to ask, and every path would read as "missing" there.
+        #[cfg(feature = "cli")]
+        warnings.extend(self.host_path_warnings());
         for (i, pattern) in self.container.env.forward.iter().enumerate() {
             // A trailing `*` marks a prefix forward (`FOO_*`); the key
             // itself must still be a valid env name.
@@ -1010,6 +1093,61 @@ mod numeric_duration_tests {
 mod env_key_tests {
     use super::is_valid_env_key;
     use crate::config::Config;
+
+    /// Host-path warnings fire on missing paths, and never turn into
+    /// errors: a portable definition must still validate on a host that
+    /// lacks the binary or directory.
+    #[test]
+    fn missing_host_paths_warn_without_failing() {
+        let cfg = Config::parse(
+            &(base()
+                + "[integration.host_exec]\nenabled = true\n\
+                  [integration.host_exec.allowlist]\n\
+                  ghost = \"/nonexistent/bin/ghost\"\n\
+                  [[storage.host_caches.custom]]\n\
+                  name = \"zap\"\nhost_path = \"/nonexistent/zap\"\ncontainer_path = \"~/.cache/zap\"\n\
+                  [dotfiles]\nsource = \"host:/nonexistent/dots\"\n"),
+        )
+        .unwrap();
+        let (warnings, verdict) = cfg.validate_with_warnings();
+        assert!(
+            verdict.is_ok(),
+            "host facts must not fail validation: {verdict:?}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("ghost") && w.contains("/nonexistent/bin/ghost")),
+            "{warnings:?}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("storage.host_caches.custom.zap")),
+            "{warnings:?}"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("dotfiles.source")),
+            "{warnings:?}"
+        );
+    }
+
+    /// Paths that do exist stay silent: the common case must not nag.
+    #[test]
+    fn present_host_paths_are_silent() {
+        let cfg = Config::parse(
+            &(base()
+                + "[integration.host_exec]\nenabled = true\n\
+                  [integration.host_exec.allowlist]\n\
+                  sh = \"/bin/sh\"\n"),
+        )
+        .unwrap();
+        let (warnings, _) = cfg.validate_with_warnings();
+        assert!(
+            !warnings.iter().any(|w| w.contains("host_exec")),
+            "an existing binary must not warn: {warnings:?}"
+        );
+    }
 
     fn base() -> String {
         "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
