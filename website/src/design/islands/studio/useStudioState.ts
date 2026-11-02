@@ -123,6 +123,13 @@ export function useStudioState() {
   const set = <K extends StudioKey>(key: K, value: StudioDefaults[K]) =>
     dispatch({ type: 'set', key, value });
 
+  /** Replace all configuration with `patch`, then keep view state. Import and
+   * shared links use this so an imported config wins entirely — anything it
+   * doesn't mention returns to its default instead of lingering. */
+  const replace = (patch: Record<string, any>) => {
+    dispatch({ type: 'replace', patch });
+  };
+
   const applyPatch = (patch: Record<string, any>) => {
     dispatch({ type: 'patch', patch });
   };
@@ -224,7 +231,7 @@ export function useStudioState() {
     setHasRestoredSession(false);
   };
 
-  return { ...state, ...setters, set, handleContainerNameChange, applyPatch, values, hasRestoredSession, clearSavedSession };
+  return { ...state, ...setters, set, handleContainerNameChange, applyPatch, replace, values, hasRestoredSession, clearSavedSession };
 }
 
 export type StudioState = ReturnType<typeof useStudioState>;

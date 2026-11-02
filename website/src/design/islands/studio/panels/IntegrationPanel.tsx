@@ -40,6 +40,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
   // detailed table form, so the mode has to be explicit in the TOML.
   const cycleXdg = (mode: XdgDirMode) =>
     mode === 'off' ? 'ro' : mode === 'ro' ? 'rw' : 'off';
+
   // What can actually be exported is what the image contains, and the Studio
   // already knows that: `[image] packages.install`. Suggest those first (in
   // the order you listed them), then fall back to the curated list for
@@ -583,7 +584,7 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
     {hostExecEnabled && (
       <div className="space-y-2">
         {hostExecList.map((e, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+          <div key={idx} className="flex flex-wrap items-center gap-2">
             <input
               type="text"
               value={e.alias}
@@ -640,7 +641,9 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
         ))}
         <button
           type="button"
-          onClick={() => setHostExecList([...hostExecList, { alias: '', path: '', timeout: undefined }])}
+          onClick={() =>
+            setHostExecList([...hostExecList, { alias: '', path: '', timeout: undefined }])
+          }
           className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
         >
           <Plus className="w-3 h-3" />

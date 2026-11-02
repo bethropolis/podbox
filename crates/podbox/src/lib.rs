@@ -19,6 +19,7 @@ pub mod fsutil;
 pub mod guest;
 pub mod profiles;
 pub mod protocol;
+pub mod publish;
 pub mod tomlscan;
 pub mod xdg;
 

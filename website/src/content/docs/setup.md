@@ -69,10 +69,40 @@ root = false
 |-----|------|---------|-------------|
 | `name` | string | *required* | Unique per container. `^[a-z0-9][a-z0-9_-]{0,63}$`. `dotfiles` is reserved |
 | `run` | string | *required* | Shell script, executed with `sh -c`. Single-line `"..."` or multi-line `"""..."""` |
+| `verify` | string | — | Postcondition, executed after `run` exits 0 with the same user, workdir, env and timeout. Must exit 0 too, or the step counts as failed. See [Postconditions](#postconditions) |
 | `timeout` | string | `"5m"` | Duration: `30s`, `5m`, `1h`. Must be > 0 |
 | `on_failure` | string | `"warn"` | `"warn"` prints and continues; `"abort"` stops the run |
 | `env` | table | `{}` | Extra variables for this step. Keys can't start with `PODBOX_` |
 | `root` | bool | `false` | Run the step as root inside the container |
+
+### Postconditions
+
+Exit codes are a contract, and not every tool honors it. Some report
+partial failure — "installed, except the one package you named" — with
+exit 0, and a step that shells out to such a tool looks like it worked:
+it stamps itself applied, and the missing piece surfaces much later as a
+confusing error somewhere else.
+
+`verify` is a second command that must succeed after `run` does, so a step
+passes on the state the system is actually in rather than on what a tool
+claimed:
+
+```toml
+[[provision]]
+name = "node-toolchain"
+run = "mise use -g node@lts"
+verify = "node --version"
+```
+
+Write it as a question the system can answer — a command whose exit code
+means yes/no (`grep -q`, `test -f`, `<tool> --version`) — never a scrape of
+output text, since text is not a contract. Any tool with a queryable end
+state works: podbox learns nothing tool-specific, and steps that cannot
+cheaply self-check keep the exit-code-only semantics they always had.
+
+`verify` is hashed with the step, so tightening the check marks the step
+stale and re-runs it. Its failure names the step and shows the check's own
+output; without one, a step whose `run` lied looks identical to success.
 
 At most 64 steps. Order is declared order; steps run sequentially with no
 dependency graph.
@@ -112,7 +142,7 @@ stale. Tweak `timeout` and nothing happens.
 | `pending` | Declared in config, no stamp yet |
 | `applied` | Stamp hash matches the current step |
 | `stale` | Stamp exists but the hash differs — run `provision sync` |
-| `orphaned` | Stamp on disk, no step with that name in config. Reported only |
+| `orphaned` | Stamp on disk, no step with that name in config. `provision status` reports it; `provision sync` prunes it (nothing can reference it, and re-adding the step makes it pending again) |
 | `unknown` | Stamps couldn't be read |
 
 Stamps live in `~/.local/state/podbox/provision/<name>.stamp` **inside the

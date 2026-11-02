@@ -505,6 +505,67 @@ pub enum Command {
         force: bool,
     },
 
+    /// Publish one or more podbox definitions as prebuilt OCI images to a
+    /// registry (GHCR by default). Reads `images.toml` (or discovers
+    /// `envs/*.toml` / `podbox.toml`), builds each image, tags it, and
+    /// pushes it, skipping images whose inputs haven't changed.
+    #[command(display_order = 65)]
+    Publish {
+        /// Image keys to publish (from the manifest). Omit to publish all.
+        keys: Vec<String>,
+        /// Use this manifest (default: discovery).
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+        /// Repo root; manifest and config paths resolve from here.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Registry host (default: ghcr.io, or the manifest's `registry`).
+        #[arg(long)]
+        registry: Option<String>,
+        /// Push results to the registry (default: safe `--no-push`).
+        #[arg(long)]
+        push: bool,
+        /// Do not push (default).
+        #[arg(long)]
+        no_push: bool,
+        /// Ignore the up-to-date shortcut and rebuild everything.
+        #[arg(long)]
+        force: bool,
+        /// Print the plan only. No network, no build, no registry reads.
+        #[arg(long, conflicts_with = "dry_run")]
+        list: bool,
+        /// Build engine: `buildx` or `podman`.
+        #[arg(long, value_enum)]
+        engine: Option<PublishEngine>,
+        /// Fill the context from `GITHUB_*` variables.
+        #[arg(long)]
+        ci: Option<String>,
+        /// Registry owner (overrides `--ci github`).
+        #[arg(long)]
+        owner: Option<String>,
+        /// Registry repo (overrides `--ci github`).
+        #[arg(long)]
+        repo: Option<String>,
+        /// Commit SHA (overrides `--ci github`).
+        #[arg(long)]
+        sha: Option<String>,
+        /// Ref name (overrides `--ci github`).
+        #[arg(long)]
+        ref_name: Option<String>,
+        /// Ref type: `branch` or `tag` (overrides `--ci github`).
+        #[arg(long)]
+        ref_type: Option<String>,
+        /// Event name (overrides `--ci github`).
+        #[arg(long)]
+        event: Option<String>,
+        /// Default branch (overrides `--ci github`).
+        #[arg(long)]
+        default_branch: Option<String>,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+    },
+
     /// Read and change container configuration without hand-editing TOML.
     #[command(display_order = 76)]
     Config {
@@ -707,4 +768,12 @@ pub enum SnapshotCommand {
         #[arg(long, default_value_t = 5)]
         keep: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum PublishEngine {
+    /// Docker Buildx (CI default; registry cache).
+    Buildx,
+    /// Podman (local default).
+    Podman,
 }

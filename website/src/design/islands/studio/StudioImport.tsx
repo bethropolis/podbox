@@ -7,7 +7,7 @@ import { useWasm } from './useWasm';
 import type { StudioState } from './useStudioState';
 
 interface StudioImportProps {
-  st: Pick<StudioState, 'applyPatch'>;
+  st: Pick<StudioState, 'applyPatch' | 'replace'>;
   onClose: () => void;
 }
 
@@ -28,10 +28,12 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
     // older schemas land in current state with one semantics everywhere.
     // (The canonical shape drops the legacy Studio-only `image.preset` key;
     // its base ref survives, so imports land in custom-image mode.)
+    // Import replaces existing state entirely: anything the imported config
+    // doesn't mention returns to its default instead of lingering.
     if (wasmReady) {
       const parsed = parseToml(text);
       if (parsed && typeof parsed === 'object') {
-        st.applyPatch(tomlToPatch(parsed as Record<string, any>));
+        st.replace(tomlToPatch(parsed as Record<string, any>));
         onClose();
         return;
       }
@@ -43,7 +45,7 @@ export function StudioImport({ st, onClose }: StudioImportProps) {
     }
     try {
       const doc = parse(text);
-      st.applyPatch(tomlToPatch(doc as Record<string, any>));
+      st.replace(tomlToPatch(doc as Record<string, any>));
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not parse TOML.');

@@ -25,13 +25,11 @@ cli = [
     "dep:clap",
     "dep:clap_complete",
     "dep:dialoguer",
-    "dep:hex",
     "dep:indexmap",
     "dep:nix",
     "dep:notify-rust",
     "dep:owo-colors",
     "dep:rustix",
-    "dep:sha2",
     "dep:shell-words",
     "dep:signal-hook",
     "dep:tracing-journald",
@@ -58,8 +56,9 @@ nix             = { workspace = true, optional = true }
 rustix          = { workspace = true, optional = true }
 signal-hook     = { workspace = true, optional = true }
 dialoguer       = { workspace = true, optional = true }
-sha2            = { workspace = true, optional = true }
-hex             = { workspace = true, optional = true }
+sha2            = { workspace = true }
+hex             = { workspace = true }
+tempfile        = { workspace = true }
 url             = { workspace = true, optional = true }
 strum           = { workspace = true }
 toml_edit       = { workspace = true }

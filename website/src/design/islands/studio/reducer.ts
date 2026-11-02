@@ -22,6 +22,7 @@ export function setterName(key: StudioKey): SetterName<StudioKey> {
 export type StudioAction =
   | { type: 'set'; key: StudioKey; value: StudioDefaults[StudioKey] }
   | { type: 'patch'; patch: Record<string, unknown> }
+  | { type: 'replace'; patch: Record<string, unknown> }
   | { type: 'reset' };
 
 const hasOwn = (obj: object, key: string): boolean =>
@@ -43,6 +44,28 @@ export function studioReducer(state: StudioDefaults, action: StudioAction): Stud
           (next as Record<string, unknown>)[key] = value;
         } else {
           console.warn(`[studio] ignoring unknown state key in patch: ${key}`);
+        }
+      }
+      return next;
+    }
+    case 'replace': {
+      // Import / shared-link entry point: the imported config wins entirely.
+      // Reset every config key to its default first, then apply the patch —
+      // anything the imported config doesn't mention returns to default
+      // (nothing lingers, e.g. a host_exec entry dropped from the import is
+      // gone rather than left behind). View state is kept.
+      const next = { ...state };
+      const uiOnly = new Set<string>(UI_ONLY_KEYS);
+      for (const [key, value] of Object.entries(studioDefaults())) {
+        if (!uiOnly.has(key)) {
+          (next as Record<string, unknown>)[key] = value;
+        }
+      }
+      for (const [key, value] of Object.entries(action.patch)) {
+        if (hasOwn(studioDefaults(), key)) {
+          (next as Record<string, unknown>)[key] = value;
+        } else {
+          console.warn(`[studio] ignoring unknown state key in replace: ${key}`);
         }
       }
       return next;

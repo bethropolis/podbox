@@ -231,8 +231,7 @@ export function stateToConfig(s: StudioValues): V {
     const allowList: V = {};
     for (const e of s.hostExecList) {
       // A plain alias → path pair stays the simple form; only an entry with
-      // a timeout needs the detailed table form. (Other detail fields the
-      // engine supports are not Studio-editable yet.)
+      // a timeout needs the detailed table form.
       const alias = e.alias.trim();
       const path = e.path.trim();
       if (!alias || !path) continue;

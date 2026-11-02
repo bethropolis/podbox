@@ -252,7 +252,13 @@ function findMultilineOpener(line: string): { delim: TripleDelim; index: number 
   while ((m = re.exec(line))) {
     const tok = m[0];
     if (tok !== '"""' && tok !== "'''") continue; // string/comment consumed
-    if (findCloser(line.slice(m.index + 3), tok as TripleDelim) !== -1) continue; // complete
+    const closerOffset = findCloser(line.slice(m.index + 3), tok as TripleDelim);
+    if (closerOffset !== -1) {
+      // Complete on this line — skip past the closer so the regex doesn't
+      // re-see it as a fresh opener (e.g. `key = '''...''' more = stuff`).
+      re.lastIndex = m.index + 3 + closerOffset + 3;
+      continue;
+    }
     return { delim: tok as TripleDelim, index: m.index };
   }
   return null;

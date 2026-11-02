@@ -136,14 +136,35 @@ function parseProvisionSteps(rec: unknown): ProvisionItem[] | undefined {
   });
 }
 
+/** `parse_toml_to_json` hands Rust `BTreeMap`s back as JS `Map`s. `Object
+ * entries`/property reads can't see Map entries, so any allowlist, env table,
+ * cache table, or other map-shaped TOML table silently collapses to nothing.
+ * Convert nested Maps to plain objects so the import pipeline sees them on
+ * the wasm path exactly as it does on the smol-toml fallback path. */
+function toPlain(v: unknown): unknown {
+  if (v instanceof Map) {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of v.entries()) out[String(k)] = toPlain(val);
+    return out;
+  }
+  if (Array.isArray(v)) return v.map(toPlain);
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) out[k] = toPlain(val);
+    return out;
+  }
+  return v;
+}
+
 export function tomlToPatch(doc: Record<string, any>): Patch {
+  const root = toPlain(doc) as Record<string, any>;
   const patch: Record<string, any> = { activePreset: 'custom' };
   const sec = (name: string): Record<string, any> =>
-    doc?.[name] && typeof doc[name] === 'object' ? doc[name] : {};
+    root?.[name] && typeof root[name] === 'object' ? root[name] : {};
 
   // Generic scalars: every FIELDS entry reads its TOML path.
   for (const f of FIELDS) {
-    const coerced = coerceScalar(f.kind, getPath(doc, f.tomlPath));
+    const coerced = coerceScalar(f.kind, getPath(root, f.tomlPath));
     if (coerced !== undefined) patch[f.stateKey] = coerced;
   }
 
@@ -218,7 +239,7 @@ export function tomlToPatch(doc: Record<string, any>): Patch {
   const hostCaches = parseCacheFlags(storage.host_caches);
   if (hostCaches) patch.hostCaches = hostCaches;
 
-  const provision = parseProvisionSteps((doc as Record<string, any>).provision);
+  const provision = parseProvisionSteps((root as Record<string, any>).provision);
   if (provision) patch.provisionSteps = provision;
 
   const integration = sec('integration');

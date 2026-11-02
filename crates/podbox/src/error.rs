@@ -84,6 +84,62 @@ pub enum PodboxError {
         "this build of podbox has no embedded guest binary and can only manage prebuilt images -- use a release binary or a source build with the podbox-guest workspace present to build custom images"
     )]
     GuestBinaryUnavailable,
+
+    /// Publish: no manifest found.
+    #[error("no images.toml, envs/*.toml or podbox.toml found in '{dir}'")]
+    ManifestMissing { dir: String },
+
+    /// Publish: manifest parse/validation error.
+    #[error("manifest invalid: {details}")]
+    ManifestInvalid { details: String },
+
+    /// Publish: definition loading error.
+    #[error("publish definition load failed for '{key}': {details}")]
+    PublishDefinitionLoad { key: String, details: String },
+
+    /// Publish: image key not found in manifest.
+    #[error("image '{key}' not found in manifest")]
+    ImageMissing { key: String },
+
+    /// Publish: tags expand to nothing for this context.
+    #[error("image '{key}' expands to no tags in this context ({context})")]
+    NoTags { key: String, context: String },
+
+    /// Publish: prebuilt definition with nothing to layer.
+    #[error("image '{key}' is not buildable: prebuilt image with no packages or run commands")]
+    NotBuildable { key: String },
+
+    /// Publish: engine not available.
+    #[error("publish engine '{engine}' not available")]
+    EngineUnavailable { engine: String },
+
+    /// Publish: base image digest could not be resolved.
+    #[error("cannot resolve base image digest for '{image}'")]
+    BaseUnresolved { image: String },
+
+    /// Publish: build failed.
+    #[error("publish build failed for '{key}': {details}")]
+    PublishBuildFailed { key: String, details: String },
+
+    /// Publish: registry rejected credentials.
+    #[error("registry authentication failed for '{registry}'")]
+    AuthFailed { registry: String },
+
+    /// Publish: push failed for another reason.
+    #[error("publish push failed for '{key}': {details}")]
+    PublishPushFailed { key: String, details: String },
+
+    /// Publish: missing context field.
+    #[error("publish context missing field '{0}'")]
+    MissingContextField(&'static str),
+
+    /// Publish: missing environment variable.
+    #[error("publish context missing environment variable '{0}'")]
+    MissingEnv(&'static str),
+
+    /// Publish: invalid environment variable.
+    #[error("publish context invalid environment variable '{0}': {1}")]
+    InvalidEnv(&'static str, &'static str),
 }
 
 impl PodboxError {
@@ -116,6 +172,20 @@ impl PodboxError {
             Self::ConfirmationRequired => "confirmation_required",
             Self::InvalidName { .. } => "invalid_name",
             Self::GuestBinaryUnavailable => "guest_binary_unavailable",
+            Self::ManifestMissing { .. } => "manifest_missing",
+            Self::ManifestInvalid { .. } => "manifest_invalid",
+            Self::PublishDefinitionLoad { .. } => "publish_definition_load",
+            Self::ImageMissing { .. } => "image_missing",
+            Self::NoTags { .. } => "no_tags",
+            Self::NotBuildable { .. } => "not_buildable",
+            Self::EngineUnavailable { .. } => "engine_unavailable",
+            Self::BaseUnresolved { .. } => "base_unresolved",
+            Self::PublishBuildFailed { .. } => "build_failed",
+            Self::AuthFailed { .. } => "auth_failed",
+            Self::PublishPushFailed { .. } => "push_failed",
+            Self::MissingContextField { .. } => "publish_context_missing",
+            Self::MissingEnv { .. } => "publish_env_missing",
+            Self::InvalidEnv { .. } => "publish_env_invalid",
         }
     }
 

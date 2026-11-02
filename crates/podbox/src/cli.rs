@@ -46,7 +46,7 @@ mod command;
 
 pub use command::{
     CacheCommand, Command, ConfigCommand, DotfilesCommand, ExportCommand, ExportTarget,
-    ProfileCommand, ProvisionCommand, SnapshotCommand,
+    ProfileCommand, ProvisionCommand, PublishEngine, SnapshotCommand,
 };
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

@@ -86,7 +86,7 @@ export function StudioPage(_props: StudioPageProps) {
     if (!wasmReady) return;
     const parsed = parseToml(shared.toml);
     if (parsed && typeof parsed === 'object') {
-      st.applyPatch(tomlToPatch(parsed as Record<string, any>));
+      st.replace(tomlToPatch(parsed as Record<string, any>));
       setShareNotice('Loaded shared configuration');
     } else {
       window.location.replace(window.location.pathname);

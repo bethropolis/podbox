@@ -25,7 +25,7 @@ use super::resolve::{self, ConfigResolveError};
 use crate::commands;
 use podbox::cli::{
     CacheCommand, Cli, Command, ConfigCommand, DotfilesCommand, ExportCommand, OutputFormat,
-    ProvisionCommand, SnapshotCommand,
+    ProvisionCommand, PublishEngine, SnapshotCommand,
 };
 use podbox::config;
 use podbox::ui;
@@ -82,8 +82,8 @@ pub(crate) fn needs_config(cmd: &Command) -> ConfigNeed {
         | Command::Serve { .. }
         | Command::Compositor { .. }
         | Command::FindDefinition { .. }
-        | Command::Doctor { .. } => ConfigNeed::None,
-
+        | Command::Doctor { .. }
+        | Command::Publish { .. } => ConfigNeed::None,
         // Arg-flagged modes that must not depend on shared resolution:
         // `--force` disables by name only, `--stale` removes containers
         // whose config is already gone, `--all` needs no target at all.
@@ -197,8 +197,8 @@ pub(crate) fn command_output_format(cmd: &Command) -> Option<OutputFormat> {
         }
         | Command::Snapshot {
             snapshot_cmd: SnapshotCommand::List { output, .. },
-        } => *output,
-
+        }
+        | Command::Publish { output, .. } => *output,
         // Text-only commands. Grouped per variant so a new output format on
         // any of them is a deliberate decision, not a default.
         Command::Cache { .. }
@@ -500,6 +500,92 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
             fix,
             output,
         } => dispatch_doctor(ctx, cli, target, *fix, *output),
+
+        Command::Publish { .. } => {
+            let opts = podbox::publish::commands::PublishOpts {
+                keys: match &cli.command {
+                    Command::Publish { keys, .. } => keys.clone(),
+                    _ => unreachable!(),
+                },
+                manifest: match &cli.command {
+                    Command::Publish { manifest, .. } => manifest.clone(),
+                    _ => unreachable!(),
+                },
+                dir: match &cli.command {
+                    Command::Publish { dir, .. } => dir.clone(),
+                    _ => unreachable!(),
+                },
+                registry: match &cli.command {
+                    Command::Publish { registry, .. } => registry.clone(),
+                    _ => unreachable!(),
+                },
+                push: match &cli.command {
+                    Command::Publish { push, .. } => *push,
+                    _ => unreachable!(),
+                },
+                no_push: match &cli.command {
+                    Command::Publish { no_push, .. } => *no_push,
+                    _ => unreachable!(),
+                },
+                force: match &cli.command {
+                    Command::Publish { force, .. } => *force,
+                    _ => unreachable!(),
+                },
+                list: match &cli.command {
+                    Command::Publish { list, .. } => *list,
+                    _ => unreachable!(),
+                },
+                dry_run: dry,
+                engine: match &cli.command {
+                    Command::Publish { engine, .. } => engine.as_ref().map(|e| match e {
+                        PublishEngine::Buildx => "buildx".into(),
+                        PublishEngine::Podman => "podman".into(),
+                    }),
+                    _ => unreachable!(),
+                },
+                ci: match &cli.command {
+                    Command::Publish { ci, .. } => ci.clone(),
+                    _ => unreachable!(),
+                },
+                owner: match &cli.command {
+                    Command::Publish { owner, .. } => owner.clone(),
+                    _ => unreachable!(),
+                },
+                repo: match &cli.command {
+                    Command::Publish { repo, .. } => repo.clone(),
+                    _ => unreachable!(),
+                },
+                sha: match &cli.command {
+                    Command::Publish { sha, .. } => sha.clone(),
+                    _ => unreachable!(),
+                },
+                ref_name: match &cli.command {
+                    Command::Publish { ref_name, .. } => ref_name.clone(),
+                    _ => unreachable!(),
+                },
+                ref_type: match &cli.command {
+                    Command::Publish { ref_type, .. } => ref_type.clone(),
+                    _ => unreachable!(),
+                },
+                event: match &cli.command {
+                    Command::Publish { event, .. } => event.clone(),
+                    _ => unreachable!(),
+                },
+                default_branch: match &cli.command {
+                    Command::Publish { default_branch, .. } => default_branch.clone(),
+                    _ => unreachable!(),
+                },
+                output: match &cli.command {
+                    Command::Publish { output, .. } => match *output {
+                        OutputFormat::Text => podbox::publish::commands::OutputFormat::Text,
+                        OutputFormat::Json => podbox::publish::commands::OutputFormat::Json,
+                        OutputFormat::Ndjson => podbox::publish::commands::OutputFormat::Ndjson,
+                    },
+                    _ => unreachable!(),
+                },
+            };
+            podbox::publish::commands::run(opts)
+        }
 
         // Mirror arms: these (arg-flagged) modes go through shared
         // resolution instead, see `needs_config`.
@@ -817,7 +903,8 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
         | Command::Stop { all: true, .. }
         | Command::Config {
             config_cmd: ConfigCommand::Set { .. } | ConfigCommand::Validate { .. },
-        } => {}
+        }
+        | Command::Publish { .. } => {}
     }
 
     Ok(())

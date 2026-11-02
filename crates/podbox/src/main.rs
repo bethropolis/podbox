@@ -114,6 +114,22 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
             PodboxError::InvalidName { .. } => ExitCode::from(64),
             PodboxError::ChildExit(code) => ExitCode::from(u8::try_from(*code).unwrap_or(1)),
             PodboxError::PullFailed { .. } | PodboxError::TagFailed { .. } => ExitCode::from(6),
+            // Publish errors.
+            PodboxError::ManifestMissing { .. }
+            | PodboxError::ManifestInvalid { .. }
+            | PodboxError::PublishDefinitionLoad { .. } => ExitCode::from(2),
+            PodboxError::ImageMissing { .. } => ExitCode::from(3),
+            PodboxError::NoTags { .. } | PodboxError::NotBuildable { .. } => ExitCode::from(1),
+            PodboxError::EngineUnavailable { engine, .. } => {
+                if engine == "podman" {
+                    ExitCode::from(5)
+                } else {
+                    ExitCode::from(1)
+                }
+            }
+            PodboxError::BaseUnresolved { .. }
+            | PodboxError::AuthFailed { .. }
+            | PodboxError::PublishPushFailed { .. } => ExitCode::from(6),
             _ => ExitCode::FAILURE,
         }
     } else {

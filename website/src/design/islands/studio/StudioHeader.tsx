@@ -26,7 +26,7 @@ import { StudioImport } from './StudioImport';
 import { cliCommand, quickStartCommand } from './quickStart';
 import { encodeShare } from './share';
 
-interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession' | 'values' | 'imagePrebuiltRef'>; toml: string; quadlet: string; containerfile: string | null; }
+interface StudioHeaderProps { st: Pick<StudioState, 'activePreset' | 'applyPatch' | 'replace' | 'containerName' | 'isFullscreen' | 'setIsFullscreen' | 'activeView' | 'copied' | 'setCopied' | 'setShowExportMenu' | 'showExportMenu' | 'hasRestoredSession' | 'clearSavedSession' | 'values' | 'imagePrebuiltRef'>; toml: string; quadlet: string; containerfile: string | null; }
 
 export function StudioHeader({ st, toml, quadlet, containerfile }: StudioHeaderProps) {
   const { activePreset, containerName, isFullscreen, setIsFullscreen, setShowExportMenu, showExportMenu, hasRestoredSession, imagePrebuiltRef } = st;
