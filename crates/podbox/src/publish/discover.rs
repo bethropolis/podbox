@@ -60,9 +60,9 @@ pub fn discover(entries: &[PathBuf], dir: &Path) -> Result<Discovery, ManifestMi
     let env_files: Vec<&PathBuf> = entries
         .iter()
         .filter(|p| {
-            p.parent().map_or(false, |parent| {
-                parent.file_name().map_or(false, |n| n == ENV_DIR)
-            }) && p.extension().map_or(false, |e| e == "toml")
+            p.parent()
+                .is_some_and(|parent| parent.file_name().is_some_and(|n| n == ENV_DIR))
+                && p.extension().is_some_and(|e| e == "toml")
         })
         .collect();
     if !env_files.is_empty() {
@@ -72,7 +72,7 @@ pub fn discover(entries: &[PathBuf], dir: &Path) -> Result<Discovery, ManifestMi
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let config = format!("{ENV_DIR}/{}.toml", stem);
+            let config = format!("{ENV_DIR}/{stem}.toml");
             images.insert(
                 stem.clone(),
                 ImageEntry {

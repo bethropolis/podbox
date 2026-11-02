@@ -70,7 +70,7 @@ mod tests {
         assert_ne!(base, compute_build_key(CF, "g", "v", "b2", &[], &[])); // base digest
         assert_ne!(base, compute_build_key(CF, "g2", "v", "b", &[], &[])); // guest
         assert_ne!(base, compute_build_key(CF, "g", "v2", "b", &[], &[])); // version
-        assert_ne!(base, compute_build_key(CF2(), "g", "v", "b", &[], &[])); // containerfile
+        assert_ne!(base, compute_build_key(cf2(), "g", "v", "b", &[], &[])); // containerfile
         assert_ne!(
             base,
             compute_build_key(CF, "g", "v", "b", &["linux/amd64".into()], &[])
@@ -96,7 +96,7 @@ mod tests {
         assert_ne!(k1, k2);
     }
 
-    fn CF2() -> &'static str {
+    fn cf2() -> &'static str {
         "FROM fedora:45\nRUN dnf install -y git\n"
     }
 }

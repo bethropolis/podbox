@@ -4,7 +4,7 @@
 //! Behind a trait so tests can fake it.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::error::PodboxError;
@@ -19,11 +19,11 @@ pub trait Engine: Send + Sync {
         &self,
         image: &PlanImage,
         tag: &str,
-        context_dir: &PathBuf,
+        context_dir: &Path,
         labels: &BTreeMap<String, String>,
     ) -> Result<(), PodboxError>;
     /// Push a single tag.
-    fn push(&self, image: &PlanImage, tag: &str) -> Result<(), PodboxError>;
+    fn push(&self, image: &PlanImage, tag: &str, context_dir: &Path) -> Result<(), PodboxError>;
 }
 
 /// Auto-select an engine: `buildx` when `--ci github` is requested, else
@@ -35,7 +35,7 @@ pub fn select_engine(prefer_ci: bool) -> Result<Box<dyn Engine>, PodboxError> {
     if Command::new("podman")
         .arg("--version")
         .output()
-        .map_or(false, |o| o.status.success())
+        .is_ok_and(|o| o.status.success())
     {
         return Ok(Box::new(PodmanEngine));
     }
@@ -46,7 +46,7 @@ pub fn select_engine(prefer_ci: bool) -> Result<Box<dyn Engine>, PodboxError> {
 pub struct PodmanEngine;
 
 impl Engine for PodmanEngine {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "podman"
     }
 
@@ -54,7 +54,7 @@ impl Engine for PodmanEngine {
         &self,
         _image: &PlanImage,
         tag: &str,
-        context_dir: &PathBuf,
+        context_dir: &Path,
         labels: &BTreeMap<String, String>,
     ) -> Result<(), PodboxError> {
         let mut args = vec![
@@ -68,12 +68,12 @@ impl Engine for PodmanEngine {
             args.push("--label".into());
             args.push(format!("{k}={v}").into());
         }
-        args.push(context_dir.clone().into());
+        args.push(context_dir.to_owned().into());
         run_checked("podman", &args)?;
         Ok(())
     }
 
-    fn push(&self, _image: &PlanImage, _tag: &str) -> Result<(), PodboxError> {
+    fn push(&self, _image: &PlanImage, _tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
         run_checked("podman", &["push".into(), _tag.into()])?;
         Ok(())
     }
@@ -83,7 +83,7 @@ impl Engine for PodmanEngine {
 pub struct BuildxEngine;
 
 impl Engine for BuildxEngine {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "buildx"
     }
 
@@ -91,7 +91,7 @@ impl Engine for BuildxEngine {
         &self,
         _image: &PlanImage,
         tag: &str,
-        context_dir: &PathBuf,
+        context_dir: &Path,
         labels: &BTreeMap<String, String>,
     ) -> Result<(), PodboxError> {
         let mut args = vec![
@@ -106,12 +106,12 @@ impl Engine for BuildxEngine {
             args.push("--label".into());
             args.push(format!("{k}={v}").into());
         }
-        args.push(context_dir.clone().into());
+        args.push(context_dir.to_owned().into());
         run_checked("docker", &args)?;
         Ok(())
     }
 
-    fn push(&self, _image: &PlanImage, _tag: &str) -> Result<(), PodboxError> {
+    fn push(&self, _image: &PlanImage, _tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
         // buildx push is folded into build with --push; this is a no-op
         // hook kept for interface symmetry (tags are pushed at build time
         // when --push is set).

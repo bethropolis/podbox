@@ -86,11 +86,7 @@ pub fn expand_tags(tokens: &[TagToken], context: &TagContext) -> Result<Vec<Stri
             TagToken::Sha => Some(format!("sha-{}", context.sha7)),
             TagToken::Semver => {
                 if context.ref_type == RefType::Tag {
-                    if let Some(v) = semver_version(&context.ref_name) {
-                        Some(v)
-                    } else {
-                        None
-                    }
+                    semver_version(&context.ref_name)
                 } else {
                     None
                 }
@@ -265,7 +261,7 @@ mod tests {
         let tokens = parse_tags(&["latest".into(), "sha".into(), "branch".into()]).unwrap();
         let c = ctx("my-feature!", "abc1234", "20260102", Some("main"));
         let tags = expand_tags(&tokens, &c).unwrap();
-        assert_eq!(tags, vec!["sha-abc1234", "my-feature-".into()]);
+        assert_eq!(tags, vec!["sha-abc1234", "my-feature-"]);
         // latest omitted: not default branch
     }
 

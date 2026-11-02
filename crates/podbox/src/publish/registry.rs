@@ -34,7 +34,7 @@ pub trait Registry: Send + Sync {
 pub struct SkopeoRegistry;
 
 impl Registry for SkopeoRegistry {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "skopeo"
     }
 

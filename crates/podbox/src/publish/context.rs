@@ -107,9 +107,10 @@ pub fn context_from_flags(
 pub fn context_from_github_env(now: SystemTime) -> Result<PublishContext, PodboxError> {
     let repository = std::env::var("GITHUB_REPOSITORY")
         .map_err(|_| PodboxError::MissingEnv("GITHUB_REPOSITORY"))?;
-    let (owner, repo) = repository
-        .split_once('/')
-        .ok_or_else(|| PodboxError::InvalidEnv("GITHUB_REPOSITORY", "expected owner/repo"))?;
+    let (owner, repo) = repository.split_once('/').ok_or(PodboxError::InvalidEnv(
+        "GITHUB_REPOSITORY",
+        "expected owner/repo",
+    ))?;
 
     let sha = std::env::var("GITHUB_SHA").map_err(|_| PodboxError::MissingEnv("GITHUB_SHA"))?;
     let ref_name = std::env::var("GITHUB_REF_NAME").unwrap_or_else(|_| "HEAD".into());

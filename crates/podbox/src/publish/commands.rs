@@ -156,7 +156,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
 
         // Compute build key.
         let containerfile = generate_containerfile(config)?;
-        let guest_hash_str = guest_hash(crate::guest::PODBOX_GUEST.as_deref().unwrap_or(&[]));
+        let guest_hash_str = guest_hash(crate::guest::PODBOX_GUEST.unwrap_or(&[]));
         let integration_labels = integration_label_pairs(config);
         let build_key = compute_build_key(
             &containerfile,
@@ -216,8 +216,8 @@ pub fn run(opts: PublishOpts) -> Result<()> {
                     for tag in &tags {
                         let full_tag = format!("{}:{}", image.ref_str, tag);
                         engine
-                            .push(image, &full_tag)
-                            .with_context(|| format!("failed to retag '{}'", full_tag))?;
+                            .push(image, &full_tag, Path::new(""))
+                            .with_context(|| format!("failed to retag '{full_tag}'"))?;
                     }
                 }
                 events.push(ImageEvent {
@@ -298,7 +298,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         if push {
             for tag in &image.tags {
                 let full_tag = format!("{}:{}", image.ref_str, tag);
-                if let Err(e) = engine.push(image, &full_tag) {
+                if let Err(e) = engine.push(image, &full_tag, &context_dir) {
                     failed += 1;
                     events.push(ImageEvent {
                         key: image.key.clone(),
@@ -358,7 +358,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         }
         OutputFormat::Text => {
             if failed > 0 {
-                eprintln!("{} image(s) failed", failed);
+                eprintln!("{failed} image(s) failed");
             }
         }
     }
@@ -488,7 +488,7 @@ fn emit_context(_config: &Config, containerfile: &str) -> Result<PathBuf, Podbox
             details: e.to_string(),
         }
     })?;
-    if let Some(guest) = crate::guest::PODBOX_GUEST.as_deref() {
+    if let Some(guest) = crate::guest::PODBOX_GUEST {
         std::fs::write(dir.path().join("podbox-guest"), guest).map_err(|e| {
             PodboxError::PublishBuildFailed {
                 key: "unknown".into(),

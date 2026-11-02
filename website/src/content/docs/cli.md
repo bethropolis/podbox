@@ -18,6 +18,7 @@ description: podbox CLI reference — every command grouped by workflow, contain
 | Dotfiles | `dotfiles sync`, `dotfiles status` |
 | Provision | `provision sync`, `provision status` |
 | Storage | `cache list`, `cache prune` |
+| Publish | `publish` |
 
 `serve`, `compositor`, `__complete-names`, and `internal-stdin-watchdog`
 are hidden systemd plumbing — callable, but not for daily use.
@@ -77,6 +78,8 @@ Read commands take `--output json` and print nothing else on stdout:
 - `status`: `{"name","status","installed"}`
 - `snapshot list`: `{"snapshots": [{"tag","created","image"}]}`
 - `history`: `{"history": [{"timestamp","name","action","detail"}]}`
+- `publish`: `{"ok":true,"images":[...],"pushed":N,"skipped":N,"failed":N}` (`--output json`)
+  or one compact `{"event":"image",...}` per line plus `{"event":"done",...}` (`--output ndjson`).
 
 Status values: `running | stopped | failed | unbuilt`. `installed` says
 whether Quadlet files exist for an unbuilt container.

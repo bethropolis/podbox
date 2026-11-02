@@ -18,6 +18,7 @@ impl Labels {
         Self::default()
     }
 
+    #[must_use]
     pub fn insert(mut self, k: &str, v: &str) -> Self {
         self.map.insert(k.into(), v.into());
         self
@@ -124,7 +125,7 @@ fn add_integration_labels(map: &mut BTreeMap<String, String>, integration: &Inte
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{GpuMode, XdgDirValue};
+    use crate::config::{ExportConfig, GpuMode, HardwareConfig, HostExecConfig, XdgDirValue};
 
     fn context() -> crate::publish::context::PublishContext {
         crate::publish::context::PublishContext {
@@ -154,13 +155,13 @@ mod tests {
                 allowed_schemes: vec![],
             },
             clipboard: true,
-            host_exec: Default::default(),
+            host_exec: HostExecConfig::default(),
             ssh_agent: false,
             gpg_agent: false,
             sync_fonts: false,
             sync_icons: true,
             sync_themes: false,
-            hardware: Default::default(),
+            hardware: HardwareConfig::default(),
             xdg_dirs: crate::config::XdgDirConfig {
                 documents: XdgDirValue::Simple(true),
                 downloads: XdgDirValue::Simple(false),
@@ -170,7 +171,7 @@ mod tests {
                 desktop: XdgDirValue::Simple(false),
                 projects: XdgDirValue::Simple(true),
             },
-            export: Default::default(),
+            export: ExportConfig::default(),
         }
     }
 
@@ -197,7 +198,7 @@ mod tests {
         let labels = build_labels(&context(), &integration(), "sha256:deadbeef");
         let keys: Vec<&str> = labels.map.keys().map(|s| s.as_str()).collect();
         let mut sorted: Vec<&str> = keys.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(keys, sorted);
     }
 }

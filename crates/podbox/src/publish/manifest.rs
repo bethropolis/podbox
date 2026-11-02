@@ -100,8 +100,10 @@ impl Manifest {
             .get("schema_version")
             .and_then(toml::Value::as_integer)
         {
-            if seen as u32 > MANIFEST_SCHEMA_VERSION {
-                return Err(ManifestError::SchemaTooNew(seen as u32));
+            if seen > i64::from(MANIFEST_SCHEMA_VERSION) {
+                return Err(ManifestError::SchemaTooNew(
+                    u32::try_from(seen).unwrap_or(u32::MAX),
+                ));
             }
         }
 
