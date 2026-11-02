@@ -2,6 +2,9 @@ version: 2
 
 project_name: podbox
 
+source:
+  enabled: true
+
 before:
   hooks:
     - rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu aarch64-unknown-linux-musl
