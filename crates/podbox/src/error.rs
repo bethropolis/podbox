@@ -130,7 +130,9 @@ pub enum PodboxError {
     PublishPushFailed { key: String, details: String },
 
     /// Publish: missing context field.
-    #[error("publish context missing field '{0}'")]
+    #[error(
+        "publish context missing field '{0}' — pass --{0} to set it, or use --ci github to fill from GITHUB_* variables"
+    )]
     MissingContextField(&'static str),
 
     /// Publish: missing environment variable.
