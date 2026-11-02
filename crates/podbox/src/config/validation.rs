@@ -949,6 +949,13 @@ fn validate_provision(steps: &[crate::config::types::ProvisionStep]) -> Vec<Stri
         if step.run.trim().is_empty() {
             errors.push(format!("{prefix}.run: must not be empty"));
         }
+        // A present-but-empty verify would silently pass (`sh -c ""` exits
+        // 0), which reads as a check that always agrees.
+        if step.verify.as_ref().is_some_and(|v| v.trim().is_empty()) {
+            errors.push(format!(
+                "{prefix}.verify: must not be empty when set (drop the key for no postcondition)"
+            ));
+        }
         if parse_provision_timeout_secs(&step.timeout) == 0 {
             errors.push(format!(
                 "{prefix}.timeout: '{}' is invalid (expected e.g. '30s', '5m', '1h', > 0)",

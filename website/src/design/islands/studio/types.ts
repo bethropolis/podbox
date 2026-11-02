@@ -26,6 +26,8 @@ export interface ServiceItem {
 export interface ProvisionItem {
   name: string;
   run: string;
+  /** Postcondition: must exit 0 after `run` does, or the step counts as failed. Absent = none. */
+  verify?: string;
   /** Duration: `30s`, `5m`, `1h`. Default `5m` (served by the schema data). */
   timeout: string;
   /** `warn` keeps going; `abort` stops the run. */

@@ -83,6 +83,7 @@ const cases: Array<[string, Partial<StudioValues>]> = [
         {
           name: "rust-toolchain",
           run: "mise use -g rust@stable",
+          verify: "cargo --version",
           timeout: "5m",
           onFailure: "warn",
           envList: [],

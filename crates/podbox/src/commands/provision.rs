@@ -60,7 +60,8 @@ fn stamp_path(config: &Config, name: &str) -> PathBuf {
 /// Hash covering what changes the provisioned result.
 ///
 /// `timeout` and `on_failure` are excluded (they change how, not what).
-/// `run` is hashed raw; env is sorted by key for determinism.
+/// `run` is hashed raw; env is sorted by key for determinism. `verify` is
+/// part of the result: a tightened postcondition must re-run the step.
 pub fn step_hash(step: &ProvisionStep) -> String {
     let mut input = String::new();
     input.push_str(HASH_DOMAIN);
@@ -68,6 +69,8 @@ pub fn step_hash(step: &ProvisionStep) -> String {
     input.push_str(&step.name);
     input.push('\n');
     input.push_str(&step.run);
+    input.push('\n');
+    input.push_str(step.verify.as_deref().unwrap_or(""));
     input.push('\n');
     input.push_str(if step.root { "1" } else { "0" });
     input.push('\n');
@@ -239,15 +242,14 @@ fn distro(config: &Config) -> String {
         .to_string()
 }
 
-/// Run one step via `podman exec`, streaming output live.
-///
-/// stdin is `/dev/null`, no TTY. Returns Ok(()) on exit 0, Err otherwise
-/// (non-zero exit or timeout both count as failure).
-fn run_step(config: &Config, env: &HostEnv, step: &ProvisionStep, dry_run: bool) -> Result<()> {
-    use podbox::config::validation::parse_provision_timeout_secs;
-
-    let secs = parse_provision_timeout_secs(&step.timeout);
-    let timeout = std::time::Duration::from_secs(if secs == 0 { 300 } else { secs });
+/// Build the `podman exec` argv for one script inside the container: same
+/// user, workdir, environment and container as the step's `run`.
+fn step_exec_args(
+    config: &Config,
+    env: &HostEnv,
+    step: &ProvisionStep,
+    script: &str,
+) -> Vec<std::ffi::OsString> {
     let guest_home = format!("/home/{}", env.username);
 
     let mut args: Vec<std::ffi::OsString> = vec!["exec".into()];
@@ -300,31 +302,80 @@ fn run_step(config: &Config, env: &HostEnv, step: &ProvisionStep, dry_run: bool)
     args.push(config.container.name.clone().into());
     args.push("sh".into());
     args.push("-c".into());
-    args.push(step.run.clone().into());
+    args.push(script.into());
+    args
+}
 
+/// The step's timeout, with the documented 5-minute default when the value
+/// does not parse.
+fn step_timeout(step: &ProvisionStep) -> std::time::Duration {
+    use podbox::config::validation::parse_provision_timeout_secs;
+    let secs = parse_provision_timeout_secs(&step.timeout);
+    std::time::Duration::from_secs(if secs == 0 { 300 } else { secs })
+}
+
+/// Execute one already-built argv under `timeout`, streaming output live.
+///
+/// stdin is `/dev/null`, no TTY; stdout/stderr are inherited so output
+/// streams as it happens. Returns Err on a non-zero exit or expiry.
+fn exec_script(args: &[std::ffi::OsString], timeout: std::time::Duration) -> Result<()> {
+    let mut cmd = std::process::Command::new("podman");
+    cmd.args(args);
+    cmd.stdin(Stdio::null());
+    // Timeout kills the podman client; the in-container child may linger.
+    let status = podbox::process::spawn_interactive_timeout_with_stdio(&mut cmd, timeout)
+        .with_context(|| "failed to run provision command in the container")?;
+    if !status.success() {
+        anyhow::bail!("command failed with {status}");
+    }
+    Ok(())
+}
+
+/// Run one step via `podman exec`, streaming output live, then its
+/// postcondition when the step declares one.
+///
+/// `verify` runs with the same user, workdir, environment and timeout as
+/// `run`, right after it exits 0. It catches tools that report partial
+/// failure with a success exit code — `android sdk install` prints
+/// "package not found" and still exits 0 — by asking the system what state
+/// it is actually in. Ok(()) only when both hold.
+fn run_step(config: &Config, env: &HostEnv, step: &ProvisionStep, dry_run: bool) -> Result<()> {
+    let timeout = step_timeout(step);
+    let run_args = step_exec_args(config, env, step, &step.run);
     if dry_run {
-        println!(
-            "podman {}",
-            args.iter()
-                .map(|a| a.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        print_exec_line(&run_args);
+        if let Some(verify) = &step.verify {
+            println!("  then verify:");
+            print_exec_line(&step_exec_args(config, env, step, verify));
+        }
         return Ok(());
     }
 
     println!("==> provision: {}", step.name);
-    let mut cmd = std::process::Command::new("podman");
-    cmd.args(&args);
-    cmd.stdin(Stdio::null());
-    // Inherit stdout/stderr so output streams live. Timeout kills the
-    // podman client; warn that the in-container child may linger.
-    let status = podbox::process::spawn_interactive_timeout_with_stdio(&mut cmd, timeout)
-        .with_context(|| format!("failed to run provision step '{}'", step.name))?;
-    if !status.success() {
-        anyhow::bail!("provision step '{}' failed with {status}", step.name);
+    exec_script(&run_args, timeout)
+        .map_err(|e| anyhow::anyhow!("provision step '{}' failed with {e:#}", step.name))?;
+    if let Some(verify) = &step.verify {
+        let verify_args = step_exec_args(config, env, step, verify);
+        exec_script(&verify_args, timeout).map_err(|e| {
+            anyhow::anyhow!(
+                "verify for step '{}' failed with {e:#} — \
+                 `run` exited 0 but its postcondition did not hold",
+                step.name
+            )
+        })?;
     }
     Ok(())
+}
+
+/// One `podman ...` line, for dry-run plans.
+fn print_exec_line(args: &[std::ffi::OsString]) {
+    println!(
+        "podman {}",
+        args.iter()
+            .map(|a| a.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
 }
 
 fn write_stamp(config: &Config, step: &ProvisionStep, dry_run: bool) -> Result<()> {
@@ -554,6 +605,7 @@ mod tests {
         ProvisionStep {
             name: name.into(),
             run: run.into(),
+            verify: None,
             timeout: "5m".into(),
             on_failure: podbox::config::types::ProvisionOnFailure::Warn,
             env: BTreeMap::new(),
@@ -586,6 +638,71 @@ mod tests {
         let mut changed_root = first.clone();
         changed_root.root = true;
         assert_ne!(step_hash(&first), step_hash(&changed_root));
+        // verify is part of the result: tightening the postcondition must
+        // re-run the step, not keep a stamp for the weaker check.
+        let mut with_verify = first.clone();
+        with_verify.verify = Some("adb --version".into());
+        assert_ne!(step_hash(&first), step_hash(&with_verify));
+        let mut verify_again = with_verify.clone();
+        verify_again.verify = Some("fastboot --version".into());
+        assert_ne!(step_hash(&with_verify), step_hash(&verify_again));
+    }
+
+    /// An empty `verify` is refused: `sh -c ""` exits 0, so a blank
+    /// postcondition would read as a check that always agrees.
+    #[test]
+    fn empty_verify_is_refused() {
+        // Parsing validates eagerly, so the blank postcondition refuses.
+        let err = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
+name = "x"
+[container]
+name = "x"
+home = "~/x"
+[[provision]]
+name = "a"
+run = "echo a"
+verify = "   "
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("verify"), "{err}");
+    }
+
+    /// The postcondition rides the same argv shape as the step: one
+    /// `podman exec -c` line, same user, workdir and environment.
+    #[test]
+    fn verify_rides_the_same_exec_shape() {
+        let cfg_toml = r#"
+[image]
+base = "fedora:44"
+name = "x"
+[container]
+name = "x"
+home = "~/x"
+[[provision]]
+name = "a"
+run = "android sdk install platform-tools"
+verify = "android sdk list --installed | grep -q platform-tools"
+"#;
+        let cfg = Config::parse(cfg_toml).unwrap();
+        let states = classify(&cfg);
+        let steps = plan(&cfg, &states, &[], false).unwrap();
+        let verify = steps[0].verify.as_deref().expect("verify parsed");
+        let args = step_exec_args(&cfg, &HostEnv::mock_preview(), &steps[0], verify);
+        let joined: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(joined.contains(&"exec".to_string()), "{joined:?}");
+        assert!(joined.contains(&"-c".to_string()), "{joined:?}");
+        assert!(joined.contains(&verify.to_string()), "{joined:?}");
+        // Same workdir as the step itself.
+        let run_args = step_exec_args(&cfg, &HostEnv::mock_preview(), &steps[0], &steps[0].run);
+        assert_eq!(args[1..4], run_args[1..4], "same user and workdir");
     }
 
     #[test]

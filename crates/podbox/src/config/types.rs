@@ -688,6 +688,15 @@ pub enum ProvisionOnFailure {
 pub struct ProvisionStep {
     pub name: String,
     pub run: String,
+    /// Postcondition, run after `run` exits 0: it must exit 0 too or the
+    /// step counts as failed. Catches tools that report partial failure
+    /// with a success exit code — `android sdk install platform-tools`
+    /// prints "package not found" and still exits 0 — by asking the
+    /// system what state it is actually in.
+    ///
+    /// Hashed with the step (like `run`), so editing the check re-runs it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify: Option<String>,
     #[serde(
         default = "default_provision_timeout",
         skip_serializing_if = "is_default_provision_timeout"

@@ -134,6 +134,8 @@ export function stateToConfig(s: StudioValues): V {
     .filter((p) => p.name.trim() && p.run.trim())
     .map((p) => {
       const step: V = { name: p.name.trim(), run: p.run.trim(), timeout: p.timeout, on_failure: p.onFailure };
+      // Blank verifies would parse but always pass; absent means none.
+      if (p.verify?.trim()) step.verify = p.verify.trim();
       const envPairs: V = {};
       for (const e of p.envList) {
         if (e.key.trim()) envPairs[e.key.trim()] = e.value;

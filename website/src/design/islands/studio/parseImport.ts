@@ -127,6 +127,7 @@ function parseProvisionSteps(rec: unknown): ProvisionItem[] | undefined {
     return [{
       name,
       run,
+      verify: str(t.verify),
       timeout: str(t.timeout) ?? provisionTimeout(),
       onFailure: t.on_failure === 'abort' ? 'abort' : 'warn',
       envList: parseEnv(t.env) ?? [],

@@ -221,6 +221,7 @@ export function ProvisionSteps({
             const runPreview = step.run.trim();
             const badges: string[] = [];
             if (step.onFailure === 'abort') badges.push('abort');
+            if (step.verify?.trim()) badges.push('verify');
             if (step.root) badges.push('root');
             if (step.timeout.trim() && step.timeout.trim() !== provisionTimeout()) {
               badges.push(step.timeout.trim());
@@ -357,6 +358,49 @@ export function ProvisionSteps({
                       {errorMap?.[`provision[${idx}].run`] && (
                         <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
                           {errorMap[`provision[${idx}].run`]}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 w-full">
+                      <div className="text-xs font-medium text-[var(--text-subtext)] flex items-center flex-wrap gap-1">
+                        <div className="flex items-center">
+                          <span>Verify</span>
+                          <StudioTooltip
+                            section="[[provision]]"
+                            title='verify = "node --version"'
+                            description="Optional postcondition: runs right after Run exits 0, with the same user, workdir and timeout, and must exit 0 too. Catches tools that report partial failure with a success exit code. Write it as a question the system can answer (--version, test -f, grep -q), never a scrape of output text."
+                          />
+                        </div>
+                        <span className="text-[11px] text-[var(--text-subtext)]/70 font-sans">
+                          optional — leave empty for exit-code-only steps
+                        </span>
+                      </div>
+                      <textarea
+                        value={step.verify ?? ''}
+                        onChange={(e) =>
+                          patch(idx, {
+                            // Empty stays undefined: a blank verify parses
+                            // but always passes, so the engine refuses it.
+                            verify: e.target.value === '' ? undefined : e.target.value,
+                          })
+                        }
+                        placeholder="node --version"
+                        id={`studio-input-provision-${idx}-verify`}
+                        rows={1}
+                        spellCheck={false}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        className={`${STUDIO_FIELD} w-full font-mono text-xs resize-y min-h-[34px] leading-relaxed ${
+                          errorMap?.[`provision[${idx}].verify`]
+                            ? '!border-[var(--accent-red)]'
+                            : ''
+                        }`}
+                      />
+                      {errorMap?.[`provision[${idx}].verify`] && (
+                        <p className="text-[11px] text-[var(--accent-red)] font-mono mt-1">
+                          {errorMap[`provision[${idx}].verify`]}
                         </p>
                       )}
                     </div>
