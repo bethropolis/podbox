@@ -552,6 +552,12 @@ your own file and fail as circular.
 | `podbox provision sync [<name>]` | Run pending or stale provisioning steps |
 | `podbox provision status [<name>]` | Show the state of each provisioning step |
 
+### Publishing
+
+| Command | Description |
+|---------|-------------|
+| `podbox publish [<key>...]` | Build definitions from `images.toml` (or `envs/*.toml` / `podbox.toml`) into prebuilt OCI images and push them to a registry (GHCR by default). Skips images whose inputs haven't changed. Supports `--manifest`, `--dir`, `--registry`, `--push`/`--no-push`, `--force`, `--list`, `--dry-run`, `--engine buildx|podman`, `--ci github`, and `--output text|json|ndjson`. |
+
 All commands support `--dry-run` to preview without side effects.
 
 ## Next Steps
