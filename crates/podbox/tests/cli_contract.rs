@@ -374,13 +374,19 @@ fn list_columns_align_without_trailing_space() {
     }
 }
 
-/// Stale sockets collapse into ONE grouped warning naming every leftover
-/// path, instead of one check per socket flooding the summary.
+/// Stale sockets are grouped per owner — this box's leftovers are separated
+/// from other boxes' noise — and, the regression, a socket for an
+/// integration the box still enables is live, however `<box>-<kind>` looks.
 #[test]
-fn doctor_groups_stale_sockets_into_one_check() {
+fn doctor_scopes_stale_sockets_by_owner() {
     let sb = Sandbox::new(&["alpha"]);
     let sock_dir = sb.dir.join("runtime").join("podbox");
     std::fs::create_dir_all(&sock_dir).unwrap();
+    // alpha's fixture enables wayland and dbus: its sockets are live.
+    std::fs::write(sock_dir.join("alpha-wayland.sock"), "").unwrap();
+    std::fs::write(sock_dir.join("alpha-dbus.sock"), "").unwrap();
+    std::fs::write(sock_dir.join("alpha.sock"), "").unwrap();
+    // ghost boxes have no config at all.
     std::fs::write(sock_dir.join("ghost-wayland.sock"), "").unwrap();
     std::fs::write(sock_dir.join("ghost-dbus.sock"), "").unwrap();
 
@@ -393,11 +399,15 @@ fn doctor_groups_stale_sockets_into_one_check() {
     assert_eq!(
         warn_lines.len(),
         1,
-        "stale sockets must be a single grouped check, got: {warn_lines:?}"
+        "only the other boxes' sockets are stale, as one grouped line: {warn_lines:?}"
     );
     let line = warn_lines[0];
-    assert!(line.contains("ghost-wayland.sock"));
-    assert!(line.contains("ghost-dbus.sock"));
+    assert!(line.contains("ghost-wayland.sock"), "{line}");
+    assert!(line.contains("ghost-dbus.sock"), "{line}");
+    // Live sockets must not be flagged.
+    assert!(!line.contains("alpha-wayland.sock"), "{line}");
+    assert!(!line.contains("alpha-dbus.sock"), "{line}");
+    assert!(!line.contains("alpha.sock"), "{line}");
 
     // JSON contract unchanged: still an array of grouped checks.
     let out = sb
@@ -411,7 +421,11 @@ fn doctor_groups_stale_sockets_into_one_check() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|c| c["name"] == "stale sockets")
+        .filter(|c| {
+            c["name"]
+                .as_str()
+                .is_some_and(|n| n.starts_with("stale sockets"))
+        })
         .collect();
     assert_eq!(stale.len(), 1);
     assert_eq!(stale[0]["status"], "warn");

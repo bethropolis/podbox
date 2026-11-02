@@ -3,12 +3,90 @@
 
 use std::path::Path;
 
+use podbox::config::Config;
+
 use super::super::Check;
 use super::super::fix::confirm_fix;
 
-pub(crate) fn check_stale_sockets(fix: bool) -> Vec<Check> {
+/// True when a socket file belongs to `name`: `<name>.sock` or
+/// `<name>-<integration>.sock`.
+fn socket_owned_by(name: &str, path: &Path) -> bool {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|stem| {
+            let (owner, _) = socket_owner(stem);
+            owner == name
+        })
+}
+
+/// Which container a socket file belongs to, and which integration it
+/// serves (`None` for the host guest socket `<name>.sock`).
+///
+/// An exact config-named stem wins, so a box legitimately called
+/// `foo-wayland` is not mistaken for `foo`'s wayland socket.
+fn socket_owner(stem: &str) -> (String, Option<&'static str>) {
+    socket_owner_with(stem, |s| podbox::config::find_config_path(s).is_some())
+}
+
+/// [`socket_owner`] with the config-existence check injected, so the naming
+/// rule stays testable without touching the real config directory.
+fn socket_owner_with(
+    stem: &str,
+    config_exists: impl Fn(&str) -> bool,
+) -> (String, Option<&'static str>) {
+    if config_exists(stem) {
+        return (stem.to_string(), None);
+    }
+    for suffix in ["-wayland", "-dbus"] {
+        if let Some(owner) = stem.strip_suffix(suffix) {
+            return (owner.to_string(), Some(suffix));
+        }
+    }
+    (stem.to_string(), None)
+}
+
+/// Does this definition still serve a socket of `kind`? Pure: the two
+/// integration switches the socket kinds map to.
+fn integration_enabled(cfg: &Config, kind: &str) -> bool {
+    match kind {
+        "-wayland" => cfg.integration.wayland,
+        _ => cfg.integration.dbus,
+    }
+}
+
+/// True when a socket serves an integration its owner's config no longer
+/// enables, or the owner's config is gone entirely.
+///
+/// Matching the whole stem against a config name flagged every
+/// *integration* socket (`dev-dbus.sock`, `dev-wayland.sock`) as stale,
+/// including the live ones of a running box: the stem is `<box>-<kind>`,
+/// and no config is ever named that. The owner is the stem minus the kind,
+/// and liveness comes from the config's own integration switches.
+fn socket_is_stale(owner: &str, kind: Option<&str>) -> bool {
+    let Some(path) = podbox::config::find_config_path(owner) else {
+        return true; // the box itself is gone
+    };
+    let Some(kind) = kind else {
+        return false; // host guest socket of a box that still exists
+    };
+    // Lenient load, warnings quiet: this scan must stay silent even when a
+    // definition on disk is one the strict validator would reject.
+    podbox::config::set_parse_warnings_quiet(true);
+    let Ok(cfg) = podbox::config::Config::load_lenient(&path) else {
+        return false; // cannot tell; never flag
+    };
+    socket_kind_stale(&cfg, kind)
+}
+
+/// Staleness once the owner's definition is loaded: its integration switch
+/// is off.
+fn socket_kind_stale(cfg: &Config, kind: &str) -> bool {
+    !integration_enabled(cfg, kind)
+}
+
+pub(crate) fn check_stale_sockets(config: &Config, fix: bool) -> Vec<Check> {
     let mut out = Vec::new();
-    // ── Stale sockets (one grouped check; per-socket lines would flood the
+    // ── Stale sockets (grouped per owner; per-socket lines would flood the
     // summary and inflate the pass/fail ratio) ──
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         let sock_dir = Path::new(&runtime_dir).join("podbox");
@@ -17,11 +95,13 @@ pub(crate) fn check_stale_sockets(fix: bool) -> Vec<Check> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "sock")
-                    && let Some(name) = path.file_stem().and_then(|s| s.to_str())
-                    && !name.is_empty()
-                    && podbox::config::find_config_path(name).is_none()
+                    && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                    && !stem.is_empty()
                 {
-                    stale.push(path);
+                    let (owner, kind) = socket_owner(stem);
+                    if socket_is_stale(&owner, kind) {
+                        stale.push(path);
+                    }
                 }
             }
         }
@@ -53,16 +133,40 @@ pub(crate) fn check_stale_sockets(fix: bool) -> Vec<Check> {
                     ));
                 }
             } else {
-                let listed: Vec<String> = stale.iter().map(|p| p.display().to_string()).collect();
-                out.push(Check::new(
-                    "stale sockets",
-                    "warn",
-                    format!(
-                        "{} with no config (run `podbox doctor --fix` to remove): {}",
-                        stale.len(),
-                        listed.join("; ")
-                    ),
-                ));
+                // Split by owner: leftovers from *this* box mean it dropped
+                // an integration (wayland off, say), which is actionable;
+                // other boxes' sockets are noise while diagnosing this one.
+                let box_name = &config.container.name;
+                let (mine, others): (Vec<_>, Vec<_>) = stale
+                    .into_iter()
+                    .partition(|p| socket_owned_by(box_name, p));
+                if !mine.is_empty() {
+                    let listed: Vec<String> =
+                        mine.iter().map(|p| p.display().to_string()).collect();
+                    out.push(Check::new(
+                        "stale sockets",
+                        "warn",
+                        format!(
+                            "{} from a setting '{box_name}' no longer uses \
+                             (run `podbox doctor --fix` to remove): {}",
+                            mine.len(),
+                            listed.join("; ")
+                        ),
+                    ));
+                }
+                if !others.is_empty() {
+                    let listed: Vec<String> =
+                        others.iter().map(|p| p.display().to_string()).collect();
+                    out.push(Check::new(
+                        "stale sockets (other boxes)",
+                        "warn",
+                        format!(
+                            "{} with no config (run `podbox doctor --fix` to remove): {}",
+                            others.len(),
+                            listed.join("; ")
+                        ),
+                    ));
+                }
             }
         }
     }
@@ -262,6 +366,64 @@ fn desktop_entry_issues(content: &str, validate: Option<&str>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use podbox::config::Config;
+
+    fn base() -> Config {
+        Config::parse(
+            r#"
+[image]
+base = "fedora:41"
+name = "env"
+[container]
+name = "env"
+home = "~/env"
+"#,
+        )
+        .expect("minimal config parses")
+    }
+
+    #[test]
+    fn socket_names_split_into_box_and_kind() {
+        // No config named after the full stem: `<box>-<kind>` splits.
+        assert_eq!(
+            socket_owner_with("dev-wayland", |_| false),
+            ("dev".to_string(), Some("-wayland"))
+        );
+        assert_eq!(
+            socket_owner_with("arch-dbus", |_| false),
+            ("arch".to_string(), Some("-dbus"))
+        );
+        // The host guest socket: no suffix, the stem is the box.
+        assert_eq!(
+            socket_owner_with("dev", |_| false),
+            ("dev".to_string(), None)
+        );
+        // A box genuinely named `foo-wayland` keeps its host socket: the
+        // exact match wins over the suffix split.
+        assert_eq!(
+            socket_owner_with("foo-wayland", |s| s == "foo-wayland"),
+            ("foo-wayland".to_string(), None)
+        );
+    }
+
+    /// The regression: a socket for an integration the box still enables is
+    /// live, however stale-looking its `<box>-<kind>` file name is.
+    #[test]
+    fn live_integration_sockets_are_never_stale() {
+        let mut cfg = base();
+        cfg.integration.wayland = true;
+        assert!(integration_enabled(&cfg, "-wayland"));
+        assert!(!socket_kind_stale(&cfg, "-wayland"));
+        cfg.integration.wayland = false;
+        assert!(!integration_enabled(&cfg, "-wayland"));
+        assert!(socket_kind_stale(&cfg, "-wayland"));
+
+        let mut cfg = base();
+        cfg.integration.dbus = true;
+        assert!(!socket_kind_stale(&cfg, "-dbus"));
+        cfg.integration.dbus = false;
+        assert!(socket_kind_stale(&cfg, "-dbus"));
+    }
 
     #[test]
     fn clean_entry_has_no_issues() {

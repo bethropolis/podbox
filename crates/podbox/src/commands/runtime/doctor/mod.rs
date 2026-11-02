@@ -122,7 +122,7 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     collect!(container::check_guest_locale(config));
     collect!(container::check_guest_socket(config));
     collect!(integration::check_toolchain());
-    collect!(integration::check_stale_sockets(fix));
+    collect!(integration::check_stale_sockets(config, fix));
     collect!(container::check_orphaned_snapshots());
     collect!(integration::check_dead_exports(fix));
     collect!(integration::check_desktop_entries());

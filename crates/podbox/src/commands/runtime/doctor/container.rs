@@ -77,6 +77,26 @@ pub(crate) fn check_memory(config: &Config, fix: bool) -> Vec<Check> {
     }
 }
 
+/// The guest version reported inside a running container: the daemon's
+/// `/run/podbox/guest-version` file first, its `PODBOX_GUEST_VERSION`
+/// environment variable as a fallback. `None` when neither answers.
+fn guest_version_in_container(name: &str) -> Option<String> {
+    for probe in [
+        vec!["exec", name, "cat", "/run/podbox/guest-version"],
+        vec!["exec", name, "printenv", "PODBOX_GUEST_VERSION"],
+    ] {
+        if let Ok(output) = std::process::Command::new("podman").args(&probe).output()
+            && output.status.success()
+        {
+            let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
 pub(crate) fn check_guest_version(config: &Config) -> Vec<Check> {
     let mut out = Vec::new();
     // ── guest version / protocol (dual-purpose PODBOX_GUEST_VERSION) ──
@@ -88,35 +108,11 @@ pub(crate) fn check_guest_version(config: &Config) -> Vec<Check> {
         let mut guest_ver: Option<String> = None;
         let mut guest_proto: Option<String> = None;
 
-        // 1) If container is running, try podman exec cat /run/podbox/guest-version
+        // 1) If container is running, ask it directly.
         let is_running = podbox::podman::query_state(name)
             .is_ok_and(|s| s == podbox::podman::ContainerState::Running);
         if is_running {
-            if let Ok(output) = std::process::Command::new("podman")
-                .args(["exec", name, "cat", "/run/podbox/guest-version"])
-                .output()
-            {
-                if output.status.success() {
-                    let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !v.is_empty() {
-                        guest_ver = Some(v);
-                    }
-                }
-            }
-            // Try env as well
-            if guest_ver.is_none() {
-                if let Ok(output) = std::process::Command::new("podman")
-                    .args(["exec", name, "printenv", "PODBOX_GUEST_VERSION"])
-                    .output()
-                {
-                    if output.status.success() {
-                        let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                        if !v.is_empty() {
-                            guest_ver = Some(v);
-                        }
-                    }
-                }
-            }
+            guest_ver = guest_version_in_container(name);
         }
 
         // 2) Fallback to image labels (works even when not running)
@@ -268,48 +264,6 @@ pub(crate) fn check_orphaned_snapshots() -> Vec<Check> {
         }
     }
     out
-}
-
-/// Handshake with the container's guest daemon as a pseudo-guest and ask
-/// for `Info`: the closest thing to "the guest daemon is alive" that works
-/// from the host. Also used by the doctor's guest-socket check.
-pub(crate) fn query_guest_info_via_socket(name: &str) -> anyhow::Result<(String, u32)> {
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("/run/user/1000"));
-    let sock_path = runtime_dir.join("podbox").join(format!("{name}.sock"));
-    if !sock_path.exists() {
-        anyhow::bail!("socket not found");
-    }
-    let mut stream = std::os::unix::net::UnixStream::connect(&sock_path)?;
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
-    stream.set_write_timeout(Some(std::time::Duration::from_secs(2)))?;
-    // Handshake as a pseudo-guest
-    let hello = podbox::protocol::GuestMessage::Hello {
-        protocol_version: podbox::protocol::PROTOCOL_VERSION,
-        guest_version: podbox::VERSION.to_string(),
-        container: name.to_string(),
-        capabilities: vec![],
-    };
-    podbox::protocol::write_frame(&mut stream, &hello)?;
-    let Some(bytes) = podbox::protocol::read_frame(&mut stream)? else {
-        anyhow::bail!("no hello ack");
-    };
-    let _ack: podbox::protocol::HostMessage = serde_json::from_slice(&bytes)?;
-    // Now query
-    let get = podbox::protocol::HostMessage::GetInfo;
-    podbox::protocol::write_frame(&mut stream, &get)?;
-    let Some(bytes2) = podbox::protocol::read_frame(&mut stream)? else {
-        anyhow::bail!("no info reply");
-    };
-    let msg: podbox::protocol::GuestMessage = serde_json::from_slice(&bytes2)?;
-    match msg {
-        podbox::protocol::GuestMessage::Info {
-            guest_version,
-            protocol_version,
-        } => Ok((guest_version, protocol_version)),
-        other => anyhow::bail!("unexpected reply: {other:?}"),
-    }
 }
 
 fn is_running(name: &str) -> bool {
@@ -483,8 +437,40 @@ fn locale_key(locale: &str) -> String {
     base.to_string()
 }
 
+/// Guest daemon liveness, decided from facts instead of a protocol replay.
+///
+/// The daemon writes `/run/podbox/guest-version` as it starts, so that file
+/// *is* the liveness signal. A handshake probe cannot work from the host:
+/// the host socket is served by `podbox serve`, which understands only
+/// guest→host messages, so it can never answer a host→guest `GetInfo` — the
+/// old probe failed on every container and leaked a raw serde error.
+fn guest_daemon_check(running: bool, version: Option<&str>, unit: &str) -> Check {
+    match (running, version) {
+        (true, Some(v)) => Check::new(
+            "guest socket",
+            "pass",
+            format!("guest daemon reachable via {unit} (guest {v})"),
+        ),
+        (false, _) => Check::new(
+            "guest socket",
+            "warn",
+            format!(
+                "{unit} is active but the container is not running — start it with `podbox start`"
+            ),
+        ),
+        (true, None) => Check::new(
+            "guest socket",
+            "warn",
+            format!(
+                "{unit} is active but the guest daemon is not running inside the container — \
+                 notifications, clipboard and xdg-open silently fail; check `podbox logs`"
+            ),
+        ),
+    }
+}
+
 /// Guest socket (001): the `{name}.socket` unit must be active, and the
-/// guest daemon behind it must answer a test `Hello`. Without this, the
+/// guest daemon inside the container must be running. Without this, the
 /// interceptors (notify-send, clipboard, xdg-open) silently do nothing.
 pub(crate) fn check_guest_socket(config: &Config) -> Vec<Check> {
     let name = &config.container.name;
@@ -500,15 +486,21 @@ pub(crate) fn check_guest_socket(config: &Config) -> Vec<Check> {
         &podbox::process::args(&["--user", "is-active", &unit]),
     )
     .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "active");
-    match unit_state_check(active, &unit) {
-        Some(c) => vec![c],
-        None => vec![hello_probe_check(
-            query_guest_info_via_socket(name).map_err(|e| e.to_string()),
-        )],
+    if let Some(down) = unit_state_check(active, &unit) {
+        return vec![down];
     }
+    let running = is_running(name);
+    // The version file is the daemon's own startup receipt; asking a
+    // stopped container for it would only report the wrong failure.
+    let version = if running {
+        guest_version_in_container(name)
+    } else {
+        None
+    };
+    vec![guest_daemon_check(running, version.as_deref(), &unit)]
 }
 
-/// `None` = unit active, probe can decide; `Some` = unit is down.
+/// `None` = unit active, the daemon check decides; `Some` = unit is down.
 fn unit_state_check(active: bool, unit: &str) -> Option<Check> {
     if active {
         None
@@ -520,21 +512,6 @@ fn unit_state_check(active: bool, unit: &str) -> Option<Check> {
                 "{unit} is not active — notifications, clipboard and xdg-open silently fail; start the box with `podbox start`"
             ),
         ))
-    }
-}
-
-fn hello_probe_check(probe: Result<(String, u32), String>) -> Check {
-    match probe {
-        Ok((gv, proto)) => Check::new(
-            "guest socket",
-            "pass",
-            format!("test hello ok (guest {gv}, protocol v{proto})"),
-        ),
-        Err(e) => Check::new(
-            "guest socket",
-            "warn",
-            format!("unit active but the test hello failed: {e}"),
-        ),
     }
 }
 
@@ -578,6 +555,18 @@ mod tests {
         assert_ne!(locale_key("de_DE.utf8"), locale_key("en_US.utf8"));
     }
 
+    #[test]
+    fn inactive_socket_warns() {
+        let c = unit_state_check(false, "alpha.socket").unwrap();
+        assert_eq!(c.status, "warn", "{c:?}");
+        assert!(c.message.contains("alpha.socket"), "{c:?}");
+    }
+
+    #[test]
+    fn active_socket_leaves_probe_to_decide() {
+        assert!(unit_state_check(true, "alpha.socket").is_none());
+    }
+
     /// A home whose entries the host user owns is clean — the common case,
     /// reported as a pass so the check is visible rather than silent.
     #[test]
@@ -615,23 +604,18 @@ home = "~/x"
     }
 
     #[test]
-    fn inactive_socket_warns() {
-        let c = unit_state_check(false, "alpha.socket").unwrap();
-        assert_eq!(c.status, "warn", "{c:?}");
-        assert!(c.message.contains("alpha.socket"), "{c:?}");
-    }
-
-    #[test]
-    fn active_socket_leaves_probe_to_decide() {
-        assert!(unit_state_check(true, "alpha.socket").is_none());
-    }
-
-    #[test]
-    fn hello_probe_pass_and_fail() {
-        let ok = hello_probe_check(Ok(("0.9.0".into(), 1)));
-        assert_eq!(ok.status, "pass", "{ok:?}");
-        let dead = hello_probe_check(Err("connection refused".into()));
+    fn guest_daemon_liveness_reads_the_version_file() {
+        // The file is the daemon's startup receipt: present means alive.
+        let up = guest_daemon_check(true, Some("v0.9.1"), "alpha.socket");
+        assert_eq!(up.status, "pass", "{up:?}");
+        assert!(up.message.contains("v0.9.1"), "{up:?}");
+        // Active socket, container up, no file: the daemon never started.
+        let dead = guest_daemon_check(true, None, "alpha.socket");
         assert_eq!(dead.status, "warn", "{dead:?}");
-        assert!(dead.message.contains("connection refused"), "{dead:?}");
+        assert!(dead.message.contains("podbox logs"), "{dead:?}");
+        // Container stopped: say that, not a daemon failure.
+        let stopped = guest_daemon_check(false, None, "alpha.socket");
+        assert_eq!(stopped.status, "warn", "{stopped:?}");
+        assert!(stopped.message.contains("podbox start"), "{stopped:?}");
     }
 }

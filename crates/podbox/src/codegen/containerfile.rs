@@ -122,6 +122,14 @@ pub fn generate_prebuilt_overlay(
     if guest_available {
         lines.push("COPY podbox-guest /usr/local/bin/podbox-guest".into());
         lines.push("RUN chmod +x /usr/local/bin/podbox-guest".into());
+        // The overlay replaced the registry-baked guest, so the labels
+        // inherited from the base now describe the wrong binary: re-stamp
+        // them with what this image actually carries.
+        lines.push(format!("LABEL podbox.guest_version={}", crate::VERSION));
+        lines.push(format!(
+            "LABEL podbox.protocol_version={}",
+            crate::protocol::PROTOCOL_VERSION
+        ));
         lines.push(String::new());
     }
     lines.push(format!("ENV PODBOX_CONTAINER={}", config.container.name));
@@ -375,6 +383,15 @@ impl ContainerfileBuilder {
 
         lines.push(format!("ENV PODBOX_CONTAINER={}", self.container_name));
         lines.push(format!("ENV PODBOX_HOST_VERSION={}", crate::VERSION));
+        // Doctor reads these labels to report the guest/protocol a locally
+        // built image carries, exactly as it does for registry images. Without
+        // them it can only warn "unknown guest protocol — rebuild", which is
+        // a false alarm for a fresh build.
+        lines.push(format!("LABEL podbox.guest_version={}", crate::VERSION));
+        lines.push(format!(
+            "LABEL podbox.protocol_version={}",
+            crate::protocol::PROTOCOL_VERSION
+        ));
         lines.push(String::new());
 
         lines.push(format!(
@@ -603,5 +620,52 @@ mod tests {
         assert!(cf.contains("COPY podbox-guest /usr/local/bin/podbox-guest"));
         assert!(cf.contains("RUN chmod +x /usr/local/bin/podbox-guest"));
         assert!(!cf.contains(GUEST_PLACEHOLDER));
+    }
+
+    /// Locally built images must carry the same guest/protocol labels the
+    /// registry images do, or `doctor` reports a phantom version mismatch
+    /// on every fresh build.
+    #[test]
+    fn custom_build_stamps_protocol_labels() {
+        let env = HostEnv::mock_preview();
+        let cf = generate_custom_with(
+            &crate::config::Config::embedded(),
+            "podbox-guest",
+            true,
+            &env,
+        );
+        assert!(
+            cf.contains(&format!("LABEL podbox.guest_version={}", crate::VERSION)),
+            "{cf}"
+        );
+        assert!(
+            cf.contains(&format!(
+                "LABEL podbox.protocol_version={}",
+                crate::protocol::PROTOCOL_VERSION
+            )),
+            "{cf}"
+        );
+    }
+
+    /// An overlay that lays the host guest over a registry image must
+    /// re-stamp the labels: the inherited ones describe the replaced
+    /// registry guest.
+    #[test]
+    fn prebuilt_overlay_restamps_labels_when_the_guest_is_layered() {
+        let mut config = crate::config::Config::embedded();
+        config.image.base = "ghcr.io/bethropolis/podbox:cachy-latest".into();
+        config.image.packages.install = vec!["btop".into()];
+        let overlay =
+            generate_prebuilt_overlay(&config, "ghcr.io/bethropolis/podbox:cachy-latest", true)
+                .expect("packages force an overlay");
+        assert!(
+            overlay.contains(&format!("LABEL podbox.guest_version={}", crate::VERSION)),
+            "{overlay}"
+        );
+        // Without a host guest to layer, the registry labels stay truthful.
+        let keep =
+            generate_prebuilt_overlay(&config, "ghcr.io/bethropolis/podbox:cachy-latest", false)
+                .expect("same overlay");
+        assert!(!keep.contains("LABEL podbox.guest_version"), "{keep}");
     }
 }
