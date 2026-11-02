@@ -57,6 +57,7 @@ pub const CONTRACT_FEATURES: &[&str] = &[
     "export_list",
     "restart",
     "config",
+    "publish",
     "watch",
     "build_ndjson",
 ];
