@@ -59,8 +59,8 @@ Two settings have no per-command override:
 | 2 | definition file missing / unreadable: includes `find-definition NAME` miss, and an explicit `--config PATH` that does not exist (`config_missing`) |
 | 3 | container/config not found for the requested operation (`container_missing`) |
 | 4 | build failure or podman inspect failure |
-| 5 | podman not installed |
-| 6 | image pull/tag failure |
+| 5 | podman not installed, or no registry probe tool for `publish` (`registry_probe_unavailable`) |
+| 6 | image pull/tag failure, or a `publish` registry probe/push failure |
 | 64 | invalid name: a container, profile or snapshot tag that fails the name rule (`invalid_name`). Clap argument-parse errors still exit 2 |
 | child's status | `enter`, `run` and `logs` exit with the child process's own status; 128+n when it was killed by signal n. No JSON envelope (these take no `--output`) |
 

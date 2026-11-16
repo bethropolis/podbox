@@ -128,8 +128,10 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
                 }
             }
             PodboxError::BaseUnresolved { .. }
+            | PodboxError::RegistryProbeFailed { .. }
             | PodboxError::AuthFailed { .. }
             | PodboxError::PublishPushFailed { .. } => ExitCode::from(6),
+            PodboxError::RegistryProbeUnavailable => ExitCode::from(5),
             _ => ExitCode::FAILURE,
         }
     } else {

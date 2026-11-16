@@ -208,8 +208,8 @@ Exit codes are part of the contract. **Today**
 | 2 | Definition file missing or unreadable, including an explicit `--config` path that does not exist (`config_missing`) |
 | 3 | Container or config not found (`container_missing`) |
 | 4 | Build failure or inspect failure |
-| 5 | podman not installed |
-| 6 | Image pull or tag failure |
+| 5 | podman not installed (`podman_missing`), or no registry probe tool for `publish` (`registry_probe_unavailable`) |
+| 6 | Image pull or tag failure, or a `publish` registry probe or push failure (`registry_probe_failed`, `push_failed`) |
 | 64 | Invalid name: a container, profile or snapshot tag that fails the name rule (`invalid_name`). Clap argument-parse errors still exit 2 |
 | child's status | `enter`, `run`, `logs`: the child's own exit status, or 128+n for signal n (`child_exit`) |
 

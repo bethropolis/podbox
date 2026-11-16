@@ -113,9 +113,19 @@ pub enum PodboxError {
     #[error("publish engine '{engine}' not available")]
     EngineUnavailable { engine: String },
 
-    /// Publish: base image digest could not be resolved.
+    /// Publish: base image digest could not be resolved (the image is not in
+    /// the registry and not available locally either).
     #[error("cannot resolve base image digest for '{image}'")]
     BaseUnresolved { image: String },
+
+    /// Publish: the registry probe ran but failed for a reason other than a
+    /// missing image (bad reference, auth, registry error, unparseable reply).
+    #[error("registry probe failed for '{reference}': {details}")]
+    RegistryProbeFailed { reference: String, details: String },
+
+    /// Publish: neither `skopeo` nor `podman` is installed to probe with.
+    #[error("registry probe unavailable: install skopeo (or podman) to resolve base image digests")]
+    RegistryProbeUnavailable,
 
     /// Publish: build failed.
     #[error("publish build failed for '{key}': {details}")]
@@ -182,6 +192,8 @@ impl PodboxError {
             Self::NotBuildable { .. } => "not_buildable",
             Self::EngineUnavailable { .. } => "engine_unavailable",
             Self::BaseUnresolved { .. } => "base_unresolved",
+            Self::RegistryProbeFailed { .. } => "registry_probe_failed",
+            Self::RegistryProbeUnavailable => "registry_probe_unavailable",
             Self::PublishBuildFailed { .. } => "build_failed",
             Self::AuthFailed { .. } => "auth_failed",
             Self::PublishPushFailed { .. } => "push_failed",

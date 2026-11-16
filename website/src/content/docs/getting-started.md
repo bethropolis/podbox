@@ -560,6 +560,12 @@ your own file and fail as circular.
 
 All commands support `--dry-run` to preview without side effects.
 
+`podbox publish` resolves base image digests by reading the registry: install
+`skopeo` (tested with 1.24.1; `--config` must accept tag and digest refs) or
+use `podman`, which is the fallback. With neither probe tool installed it
+exits 5 (`registry_probe_unavailable`); a probe failure other than a missing
+image exits 6 (`registry_probe_failed`).
+
 ## Next Steps
 
 - [Configuration Reference](config.md) — all TOML keys, defaults, and examples
