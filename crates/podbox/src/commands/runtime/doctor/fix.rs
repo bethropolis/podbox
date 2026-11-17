@@ -53,7 +53,7 @@ pub fn try_fix_bare_memory_for_target(target_name: Option<&str>, fix: bool) -> R
             None => return Ok(false),
         },
     };
-    let path = match podbox::config::find_config_path(&name) {
+    let path = match podbox::config::find_by_runtime_name(&name) {
         Some(p) => p,
         None => return Ok(false),
     };

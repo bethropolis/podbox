@@ -25,7 +25,7 @@ fn socket_owned_by(name: &str, path: &Path) -> bool {
 /// An exact config-named stem wins, so a box legitimately called
 /// `foo-wayland` is not mistaken for `foo`'s wayland socket.
 fn socket_owner(stem: &str) -> (String, Option<&'static str>) {
-    socket_owner_with(stem, |s| podbox::config::find_config_path(s).is_some())
+    socket_owner_with(stem, |s| podbox::config::find_by_runtime_name(s).is_some())
 }
 
 /// [`socket_owner`] with the config-existence check injected, so the naming
@@ -63,7 +63,7 @@ fn integration_enabled(cfg: &Config, kind: &str) -> bool {
 /// and no config is ever named that. The owner is the stem minus the kind,
 /// and liveness comes from the config's own integration switches.
 fn socket_is_stale(owner: &str, kind: Option<&str>) -> bool {
-    let Some(path) = podbox::config::find_config_path(owner) else {
+    let Some(path) = podbox::config::find_by_runtime_name(owner) else {
         return true; // the box itself is gone
     };
     let Some(kind) = kind else {
@@ -191,7 +191,7 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
                             let args = shell_words::split(rest).unwrap_or_default();
                             let pos = args.iter().position(|a| a == "-C" || a == "--container");
                             if let Some(name) = pos.and_then(|p| args.get(p + 1))
-                                && podbox::config::find_config_path(name).is_none()
+                                && podbox::config::find_by_runtime_name(name).is_none()
                             {
                                 dead.push((entry.path(), name.clone()));
                             }
@@ -214,7 +214,7 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
                         let args = shell_words::split(&content).unwrap_or_default();
                         let pos = args.iter().position(|a| a == "-C" || a == "--container");
                         if let Some(name) = pos.and_then(|p| args.get(p + 1))
-                            && podbox::config::find_config_path(name).is_none()
+                            && podbox::config::find_by_runtime_name(name).is_none()
                         {
                             dead.push((path, name.clone()));
                         }
