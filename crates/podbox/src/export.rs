@@ -125,7 +125,32 @@ pub fn ensure_exports(config: &Config, name: &str) {
 
 /// Find a `.desktop` file in the container by searching XDG dirs,
 /// falling back to user-installed locations.
+/// Validate a binary name before it reaches a host path or an argv.
+fn validate_bin_name(bin: &str) -> Result<(), PodboxError> {
+    if bin.is_empty() || bin.contains('/') || bin.contains("..") {
+        return Err(PodboxError::ExportFailed {
+            details: format!("invalid bin name: '{bin}'"),
+        }
+        .into());
+    }
+    Ok(())
+}
+
+/// POSIX single-quote escaping: inside single quotes only `'` needs special
+/// handling, and `$`, backticks and backslashes stay inert.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Recognize both the current single-quoted shim and the legacy double-quoted
+/// form, so older shims can still be unexported.
+fn shim_has_container(content: &str, container_name: &str) -> bool {
+    content.contains(&format!("--container {}", shell_quote(container_name)))
+        || content.contains(&format!("--container \"{container_name}\""))
+}
+
 pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
+    validate_bin_name(bin)?;
     let bin_dir = dirs::home_dir()
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
@@ -133,10 +158,10 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
 
     let exe = stable_exe();
     let shim = format!(
-        "#!/bin/sh\nexec {} --container \"{}\" exec \"{}\" \"$@\"\n",
-        exe,
-        container_name.replace('"', "\\\""),
-        bin.replace('"', "\\\"")
+        "#!/bin/sh\nexec {} --container {} exec -- {} \"$@\"\n",
+        shell_quote(&exe),
+        shell_quote(container_name),
+        shell_quote(bin)
     );
 
     let shim_path = bin_dir.join(bin);
@@ -179,19 +204,13 @@ pub fn unexport_app(container_name: &str, app: &str) -> Result<()> {
 /// Only removes shims that reference this container, never a same-named
 /// host binary. Errors when no such shim exists.
 pub fn unexport_bin(container_name: &str, bin: &str) -> Result<()> {
-    if bin.is_empty() || bin.contains('/') || bin.contains("..") {
-        return Err(PodboxError::ExportFailed {
-            details: format!("invalid bin name: '{bin}'"),
-        }
-        .into());
-    }
+    validate_bin_name(bin)?;
     let path = dirs::home_dir()
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"))
         .join(bin);
-    let marker = format!("--container \"{container_name}\"");
     let owned = std::fs::read_to_string(&path)
-        .map(|content| content.contains(&marker))
+        .map(|content| shim_has_container(&content, container_name))
         .unwrap_or(false);
     if !owned {
         return Err(PodboxError::ExportFailed {
@@ -251,7 +270,6 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
 
     // Remove shims that reference this container
-    let marker = format!("--container \"{container_name}\"");
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
             if let Ok(mut file) = std::fs::File::open(entry.path()) {
@@ -259,7 +277,7 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
                 let mut chunk = vec![0u8; 4096];
                 if let Ok(bytes_read) = file.read(&mut chunk) {
                     let content = String::from_utf8_lossy(&chunk[..bytes_read]);
-                    if content.contains(&marker) {
+                    if shim_has_container(&content, container_name) {
                         let _ = std::fs::remove_file(entry.path());
                     }
                 }
@@ -369,7 +387,6 @@ fn exported_shim_names(container_name: &str) -> std::collections::BTreeSet<Strin
     let bin_dir = dirs::home_dir()
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
-    let marker = format!("--container \"{container_name}\"");
     let mut out = std::collections::BTreeSet::new();
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
@@ -379,7 +396,7 @@ fn exported_shim_names(container_name: &str) -> std::collections::BTreeSet<Strin
                 let mut chunk = vec![0u8; 4096];
                 if let Ok(bytes_read) = file.read(&mut chunk) {
                     let content = String::from_utf8_lossy(&chunk[..bytes_read]);
-                    if content.contains(&marker) {
+                    if shim_has_container(&content, container_name) {
                         out.insert(entry.file_name().to_string_lossy().into_owned());
                     }
                 }
@@ -468,6 +485,43 @@ pub fn print_inventory_text(container_name: &str, inv: &ExportInventory) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_quote_keeps_metacharacters_inert() {
+        assert_eq!(shell_quote("box"), "'box'");
+        assert_eq!(shell_quote("a b"), "'a b'");
+        assert_eq!(shell_quote("a'b"), "'a'\\''b'");
+        assert_eq!(shell_quote("$(id)`whoami`\\$x"), "'$(id)`whoami`\\$x'");
+    }
+
+    #[test]
+    fn export_bin_rejects_path_traversal() {
+        for bad in ["", "../.bashrc", "sub/bin", "a..b", "/etc/passwd"] {
+            let err = match validate_bin_name(bad) {
+                Ok(()) => panic!("'{bad}' must be rejected"),
+                Err(err) => err,
+            };
+            assert!(err.to_string().contains("invalid bin name"));
+        }
+        assert!(validate_bin_name("firefox").is_ok());
+        assert!(validate_bin_name("-weird").is_ok());
+    }
+
+    #[test]
+    fn legacy_and_quoted_shims_are_recognized() {
+        assert!(shim_has_container(
+            "#!/bin/sh\nexec podbox --container \"box\" exec \"firefox\" \"$@\"\n",
+            "box"
+        ));
+        assert!(shim_has_container(
+            "#!/bin/sh\nexec 'podbox' --container 'box' exec -- 'firefox' \"$@\"\n",
+            "box"
+        ));
+        assert!(!shim_has_container(
+            "#!/bin/sh\nexec podbox --container 'other' exec -- 'firefox' \"$@\"\n",
+            "box"
+        ));
+    }
 
     #[test]
     fn stable_exe_falls_back_for_dev_builds() {
@@ -570,13 +624,12 @@ mod tests {
             .collect();
         apps.sort();
 
-        let marker = format!("--container \"{}\"", "box");
         let mut bins: Vec<String> = std::fs::read_dir(&bin_dir)
             .unwrap()
             .flatten()
             .filter(|e| {
                 std::fs::read_to_string(e.path())
-                    .map(|c| c.contains(&marker))
+                    .map(|c| shim_has_container(&c, "box"))
                     .unwrap_or(false)
             })
             .map(|e| e.file_name().to_string_lossy().into_owned())
