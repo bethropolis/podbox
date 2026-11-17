@@ -389,7 +389,12 @@ pub(crate) fn check_home_ownership(config: &Config, env: &HostEnv) -> Vec<Check>
 /// Locale handling (068): the image must generate the host `LANG`, or every
 /// program prints `setlocale` warnings.
 pub(crate) fn check_guest_locale(config: &Config) -> Vec<Check> {
-    let lang = std::env::var("LANG").unwrap_or_default().trim().to_string();
+    let lang = podbox::env::resolve()
+        .ok()
+        .and_then(|env| env.host_locale)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     if lang.is_empty() || lang == "C" || lang == "POSIX" {
         return Vec::new();
     }

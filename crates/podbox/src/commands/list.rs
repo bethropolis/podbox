@@ -79,14 +79,16 @@ pub fn run_list(output: OutputFormat) -> Result<()> {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let name = config::Config::load(&config_path)
-            .map(|cfg| cfg.container.name)
-            .unwrap_or_else(|_| stem.clone());
+        let loaded = config::Config::load(&config_path).ok();
+        let name = loaded
+            .as_ref()
+            .map(|cfg| cfg.container.name.clone())
+            .unwrap_or(stem);
 
         // Colored cells are padded around their *plain* text (see
         // [`pad_around`]) so ANSI escapes never skew the column widths.
         let (dot, label) = status_parts(&name);
-        let (auto_plain, auto_cell) = autostart_parts(&config_path);
+        let (auto_plain, auto_cell) = autostart_parts(loaded.as_ref());
         let (active_plain, active_cell) = active_parts(&name, &active_inner);
 
         let mut row = format!(
@@ -156,16 +158,16 @@ fn status_parts(name: &str) -> (String, &'static str) {
 }
 
 /// Autostart cell as (plain text, rendered form).
-fn autostart_parts(config_path: &std::path::Path) -> (String, String) {
-    match config::Config::load(config_path) {
-        Ok(cfg) if cfg.lifecycle.autostart => (
+fn autostart_parts(loaded: Option<&config::Config>) -> (String, String) {
+    match loaded {
+        Some(cfg) if cfg.lifecycle.autostart => (
             "yes".into(),
             "yes"
                 .if_supports_color(Stream::Stdout, |s| s.green())
                 .to_string(),
         ),
-        Ok(_) => ("no".into(), "no".into()),
-        Err(_) => (
+        Some(_) => ("no".into(), "no".into()),
+        None => (
             "err".into(),
             "err"
                 .if_supports_color(Stream::Stdout, |s| s.red())

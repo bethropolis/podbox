@@ -173,6 +173,16 @@ pub(crate) fn check_stale_sockets(config: &Config, fix: bool) -> Vec<Check> {
     out
 }
 
+/// Read at most the first `limit` bytes of a shim/launcher; a scan of every
+/// file in `~/.local/bin` must not slurp a multi-gigabyte file into memory.
+fn read_prefix(path: &Path, limit: usize) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; limit];
+    let n = file.read(&mut buf).ok()?;
+    String::from_utf8(buf[..n].to_vec()).ok()
+}
+
 pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
     let mut out = Vec::new();
     // ── Dead export shims (desktop files + bin shims, one grouped check) ──
@@ -185,7 +195,7 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
                 if (fname_str.starts_with("podbox-") || fname_str.starts_with("podmgr-"))
                     && fname_str.ends_with(".desktop")
                 {
-                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    if let Some(content) = read_prefix(&entry.path(), 4096) {
                         if let Some(exec_line) = content.lines().find(|l| l.starts_with("Exec=")) {
                             let rest = exec_line.strip_prefix("Exec=").unwrap_or("");
                             let args = shell_words::split(rest).unwrap_or_default();
@@ -209,7 +219,7 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
                 if path.is_dir() {
                     continue;
                 }
-                if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Some(content) = read_prefix(&path, 4096) {
                     if content.contains("--container") || content.contains("-C ") {
                         let args = shell_words::split(&content).unwrap_or_default();
                         let pos = args.iter().position(|a| a == "-C" || a == "--container");

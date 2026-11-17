@@ -85,7 +85,11 @@ fn wl_string_at(msg: &[u8], off: usize) -> Option<&str> {
     if len < 2 {
         return None;
     }
-    let bytes = msg.get(off + 4..off + 4 + len - 1)?;
+    // `len` comes from the wire and can be huge; checked arithmetic keeps
+    // malformed messages from wrapping (especially on 32-bit targets).
+    let start = off.checked_add(4)?;
+    let end = start.checked_add(len.checked_sub(1)?)?;
+    let bytes = msg.get(start..end)?;
     std::str::from_utf8(bytes).ok()
 }
 
@@ -160,4 +164,16 @@ pub(crate) fn forbidden_bind(
         return Some(format!("bind to blocked interface {iface}"));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hostile_string_length_is_rejected_without_panicking() {
+        let mut msg = vec![0u8; 12];
+        msg[0..4].copy_from_slice(&u32::MAX.to_ne_bytes());
+        assert!(wl_string_at(&msg, 0).is_none());
+    }
 }

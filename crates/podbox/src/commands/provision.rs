@@ -145,22 +145,8 @@ pub fn classify(config: &Config) -> Vec<(String, ProvisionState, Option<u64>)> {
             BTreeMap::new()
         }
     };
-    // Malformed stamp files were dropped above; treat them as pending
-    // (they need a run). Detect by re-reading names: any `.stamp` file
-    // whose content failed to parse counts as pending, not applied.
-    let malformed: HashSet<String> = std::fs::read_dir(&dir)
-        .ok()
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .filter_map(|e| {
-                    let fname = e.file_name().to_string_lossy().into_owned();
-                    fname.strip_suffix(".stamp").map(|s| s.to_string())
-                })
-                .filter(|n| !stamps.contains_key(n))
-                .collect()
-        })
-        .unwrap_or_default();
-    let _ = malformed;
+    // Unparseable stamps are absent from `stamps` and therefore already
+    // reported as Pending below — no second directory scan is needed.
 
     for step in &config.provision {
         let current = step_hash(step);
@@ -550,17 +536,15 @@ pub fn run_for_create(config: &Config, env: &HostEnv, dry_run: bool) -> Result<(
 
 /// `provision status`: one row per step plus orphans.
 pub fn status(config: &Config, output: podbox::cli::OutputFormat, check: bool) -> Result<()> {
-    if config.provision.is_empty() {
-        // Still report orphans when the config dropped all steps.
-        let rows = classify(config);
-        if rows.is_empty() {
-            anyhow::bail!(
-                "no [[provision]] steps configured for '{}'",
-                config.container.name
-            );
-        }
-    }
+    // One classification: still report orphans when the config dropped all
+    // steps, but don't walk the stamp directory twice.
     let rows = classify(config);
+    if config.provision.is_empty() && rows.is_empty() {
+        anyhow::bail!(
+            "no [[provision]] steps configured for '{}'",
+            config.container.name
+        );
+    }
     match output {
         podbox::cli::OutputFormat::Json => {
             let out: Vec<StatusRow> = rows
