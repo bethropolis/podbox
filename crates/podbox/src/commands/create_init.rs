@@ -4,6 +4,8 @@
 //! Extracted verbatim from `commands/create.rs`; re-exported from
 //! `create` so `commands::create::run_init` keeps resolving.
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 
 use podbox::codegen::distros;
@@ -16,6 +18,17 @@ use super::create::{derive_container_name, detect_package_manager, read_profile_
 /// generates cannot drift apart.
 fn toml_string(config: &Config) -> Result<String> {
     podbox::config::toml_string(config)
+}
+
+/// Apply a (possibly new) name to a profile config. A renamed box needs a
+/// fresh home or two boxes from the same profile would share it.
+fn apply_profile_name(cfg: &mut Config, container_name: &str) {
+    let renamed = container_name != cfg.container.name;
+    cfg.container.name.clone_from(&container_name.to_owned());
+    cfg.image.name.clone_from(&container_name.to_owned());
+    if renamed {
+        cfg.container.home = config::default_home(container_name);
+    }
 }
 
 /// Initialize a new container config.
@@ -70,11 +83,20 @@ pub fn run_init(
 
     if let Some(p) = profile {
         let profile_content = read_profile_content(p)?;
-        let mut cfg = Config::parse(&profile_content)?;
+        // Resolve `extends` relative to a real file when the profile came
+        // from disk; bundled profiles are self-contained.
+        let profile_path = if p.contains('/') || p.contains('\\') {
+            Some(PathBuf::from(p))
+        } else {
+            config::find_config_path(p)
+        };
+        let mut cfg = match profile_path {
+            Some(path) => Config::parse_with_source(&path, &profile_content)?,
+            None => Config::parse(&profile_content)?,
+        };
         podbox::wizard::apply_shell_defaults(&mut cfg, &shell_info);
         let container_name = name.unwrap_or(&cfg.container.name).to_string();
-        cfg.container.name.clone_from(&container_name);
-        cfg.image.name.clone_from(&container_name);
+        apply_profile_name(&mut cfg, &container_name);
         let toml_str = toml_string(&cfg)?;
         let config_dir = config::profiles_dir();
         let config_path = config_dir.join(format!("{container_name}.toml"));
@@ -158,4 +180,34 @@ pub fn run_init(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renaming_a_profile_also_moves_its_home() {
+        let mut cfg = Config::parse(
+            "[image]\nbase = \"fedora:41\"\nname = \"fedora\"\n\
+             [container]\nname = \"fedora\"\nhome = \"~/containers/fedora\"\n",
+        )
+        .unwrap();
+        apply_profile_name(&mut cfg, "work");
+        assert_eq!(cfg.container.name, "work");
+        assert_eq!(cfg.image.name, "work");
+        assert_eq!(cfg.container.home, config::default_home("work"));
+        assert_ne!(cfg.container.home, config::default_home("fedora"));
+    }
+
+    #[test]
+    fn keeping_the_profile_name_keeps_its_home() {
+        let mut cfg = Config::parse(
+            "[image]\nbase = \"fedora:41\"\nname = \"fedora\"\n\
+             [container]\nname = \"fedora\"\nhome = \"~/custom/fedora\"\n",
+        )
+        .unwrap();
+        apply_profile_name(&mut cfg, "fedora");
+        assert_eq!(cfg.container.home, config::expand_tilde("~/custom/fedora"));
+    }
 }

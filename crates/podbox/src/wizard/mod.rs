@@ -101,7 +101,7 @@ pub fn run_wizard(
 
     // Phase 5: Review
     summary::print_summary(&config, &name);
-    let toml_str = toml::to_string_pretty(&config)
+    let toml_str = crate::config::toml_string(&config)
         .map_err(|e| anyhow::anyhow!("failed to serialize config: {e}"))?;
     let confirmed = summary::preview_and_confirm(&toml_str);
 
