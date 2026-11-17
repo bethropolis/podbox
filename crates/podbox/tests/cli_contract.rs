@@ -382,10 +382,11 @@ fn doctor_scopes_stale_sockets_by_owner() {
     let sb = Sandbox::new(&["alpha"]);
     let sock_dir = sb.dir.join("runtime").join("podbox");
     std::fs::create_dir_all(&sock_dir).unwrap();
-    // alpha's fixture enables wayland and dbus: its sockets are live.
-    std::fs::write(sock_dir.join("alpha-wayland.sock"), "").unwrap();
-    std::fs::write(sock_dir.join("alpha-dbus.sock"), "").unwrap();
-    std::fs::write(sock_dir.join("alpha.sock"), "").unwrap();
+    // The fixture's runtime name is `myenv` (not the `alpha.toml` stem),
+    // and it enables wayland and dbus: its sockets are live.
+    std::fs::write(sock_dir.join("myenv-wayland.sock"), "").unwrap();
+    std::fs::write(sock_dir.join("myenv-dbus.sock"), "").unwrap();
+    std::fs::write(sock_dir.join("myenv.sock"), "").unwrap();
     // ghost boxes have no config at all.
     std::fs::write(sock_dir.join("ghost-wayland.sock"), "").unwrap();
     std::fs::write(sock_dir.join("ghost-dbus.sock"), "").unwrap();
@@ -405,9 +406,9 @@ fn doctor_scopes_stale_sockets_by_owner() {
     assert!(line.contains("ghost-wayland.sock"), "{line}");
     assert!(line.contains("ghost-dbus.sock"), "{line}");
     // Live sockets must not be flagged.
-    assert!(!line.contains("alpha-wayland.sock"), "{line}");
-    assert!(!line.contains("alpha-dbus.sock"), "{line}");
-    assert!(!line.contains("alpha.sock"), "{line}");
+    assert!(!line.contains("myenv-wayland.sock"), "{line}");
+    assert!(!line.contains("myenv-dbus.sock"), "{line}");
+    assert!(!line.contains("myenv.sock"), "{line}");
 
     // JSON contract unchanged: still an array of grouped checks.
     let out = sb

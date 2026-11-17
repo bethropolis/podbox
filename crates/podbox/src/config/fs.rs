@@ -233,6 +233,12 @@ pub fn find_by_runtime_name(runtime: &str) -> Option<PathBuf> {
     find_by_runtime_in(&list_configs(), runtime)
 }
 
+/// Resolve a user-supplied config name: accept a file stem (the `-C` lookup
+/// users know) or a runtime `container.name` when the two differ.
+pub fn find_by_runtime_or_stem(name: &str) -> Option<PathBuf> {
+    find_config_path(name).or_else(|| find_by_runtime_name(name))
+}
+
 /// [`find_by_runtime_name`] over an explicit list of config paths.
 pub(crate) fn find_by_runtime_in(paths: &[PathBuf], runtime: &str) -> Option<PathBuf> {
     paths

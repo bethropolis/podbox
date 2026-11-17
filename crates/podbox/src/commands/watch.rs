@@ -74,7 +74,7 @@ fn resolve_targets(only: Option<String>, config_path: Option<PathBuf>) -> Result
     }
     match only {
         Some(name) => {
-            let path = podbox::config::find_by_runtime_name(&name)
+            let path = podbox::config::find_by_runtime_or_stem(&name)
                 .ok_or_else(|| podbox::error::PodboxError::ContainerMissing(name.clone()))?;
             let cfg = podbox::config::Config::load(&path)?;
             Ok(vec![cfg.container.name])

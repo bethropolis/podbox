@@ -30,7 +30,7 @@ pub(crate) fn check_memory(config: &Config, fix: bool) -> Vec<Check> {
         let t = mem.trim();
         if podbox::config::validation::is_bare_memory_digits(t) {
             let suggested = format!("{t}G");
-            if let Some(path) = podbox::config::find_by_runtime_name(&config.container.name) {
+            if let Some(path) = podbox::config::find_by_runtime_or_stem(&config.container.name) {
                 let path_str = path.display().to_string();
                 if fix
                     && confirm_fix(&format!(

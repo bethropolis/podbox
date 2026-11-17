@@ -455,7 +455,7 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
         Command::Serve { name } => commands::serve::run_serve(cli.config.as_ref(), name, dry),
 
         Command::Compositor { name } => {
-            let config_path = podbox::config::find_by_runtime_name(name)
+            let config_path = podbox::config::find_by_runtime_or_stem(name)
                 .ok_or_else(|| podbox::config::missing_config_error(name))?;
             let config = podbox::config::Config::load(&config_path)?;
             podbox::compositor::run_compositor(&config, name)
