@@ -32,15 +32,20 @@ pub const DEFAULT_START_TIMEOUT_SECS: u64 = 30;
 
 /// Start a container if it isn't already running.
 ///
-/// Delegates the "systemd if available, else podman" decision to
-/// [`runner::Runtime`]: friendly systemd diagnostics on failure, `podman
-/// start` plus a wait loop for standalone containers.
+/// Delegates the runtime choice to [`runner::Runtime`]: systemd only when the
+/// box is Quadlet-managed (a standalone `quadlet = false` container has no
+/// `<name>.service`), plain `podman start` plus a wait loop otherwise.
 pub fn ensure_running(name: &str, dry_run: bool, timeout_secs: u64) -> Result<()> {
     match query_state(name)? {
         ContainerState::Running => Ok(()),
         ContainerState::Stopped | ContainerState::Missing => {
+            let runtime = podbox::config::find_by_runtime_name(name)
+                .and_then(|path| podbox::config::Config::load(&path).ok())
+                .map_or_else(runner::Runtime::for_system, |cfg| {
+                    runner::Runtime::for_config(&cfg)
+                });
             let ctx = crate::ctx::Ctx { dry_run };
-            runner::Runtime::for_system().start_and_wait(&ctx, name, timeout_secs)
+            runtime.start_and_wait(&ctx, name, timeout_secs)
         }
     }
 }

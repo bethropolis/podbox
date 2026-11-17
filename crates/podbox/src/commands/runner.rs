@@ -176,3 +176,19 @@ fn wait_for_running(name: &str, timeout_secs: u64) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn standalone_config_never_selects_systemd() {
+        let cfg = podbox::config::Config::parse(
+            "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
+             [container]\nname = \"env\"\nhome = \"~/env\"\n\
+             [lifecycle]\nquadlet = false\n",
+        )
+        .unwrap();
+        assert!(matches!(Runtime::for_config(&cfg), Runtime::Podman));
+    }
+}
