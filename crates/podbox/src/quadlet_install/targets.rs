@@ -174,7 +174,7 @@ fn under_home(dest: &str, username: &str) -> Option<String> {
 }
 
 /// Expand `~/` and `%h/` against the real host home for source-type checks.
-fn expand_host_source(path: &str) -> PathBuf {
+pub(crate) fn expand_host_source(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         return dirs_home().join(rest);
     }

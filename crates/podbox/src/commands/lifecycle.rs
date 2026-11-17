@@ -99,7 +99,12 @@ pub fn run_enable(
         }
     }
 
-    podbox::quadlet_install::install(config, env, xdg, dry_run)?;
+    podbox::quadlet_install::install_with_ctx(
+        config,
+        env,
+        xdg,
+        &podbox::ui::Ctx::new(yes, false, dry_run),
+    )?;
     if !dry_run {
         let _ = podbox::history::record(&config.container.name, "enable", "");
         println!("\nRun `podbox shell` to start and enter the container.");

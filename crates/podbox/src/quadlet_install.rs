@@ -113,6 +113,23 @@ fn restore_prior_units(prior: &[PriorFile]) -> usize {
 
 /// Install systemd service and socket files for a container.
 pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: bool) -> Result<()> {
+    install_with_ctx(
+        config,
+        env,
+        xdg,
+        &crate::ui::Ctx::new(false, false, dry_run),
+    )
+}
+
+/// Same as [`install`], with the caller's confirmation context (`--yes`
+/// skips preflight prompts in unattended installs).
+pub fn install_with_ctx(
+    config: &Config,
+    env: &HostEnv,
+    xdg: &ResolvedXdgDirs,
+    ctx: &crate::ui::Ctx,
+) -> Result<()> {
+    let dry_run = ctx.dry_run;
     let name = &config.container.name;
     let x11_dependencies = preflight::resolve_x11_dependencies(config)?;
     let ver = podman_version().unwrap_or(PodmanVersion {
@@ -216,7 +233,7 @@ pub fn install(config: &Config, env: &HostEnv, xdg: &ResolvedXdgDirs, dry_run: b
     // Pre-flight validation. Confirmation state mirrors the install call:
     // dry runs print instead of validating ahead, and callers that carry
     // `--yes` use it to skip prompts inside the preflight.
-    preflight_check(config, &crate::ui::Ctx::new(false, false, dry_run))?;
+    preflight_check(config, ctx)?;
 
     // Ensure home and runtime dirs exist
     std::fs::create_dir_all(&config.container.home).with_context(|| {

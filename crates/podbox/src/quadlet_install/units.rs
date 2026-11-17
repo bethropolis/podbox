@@ -43,16 +43,19 @@ fn write_custom_units(
     std::fs::create_dir_all(sdir)?;
     crate::fsutil::write_atomic(&sdir.join(&files[0]), socket_content.as_bytes())?;
     crate::fsutil::write_atomic(&sdir.join(&files[1]), host_service_content.as_bytes())?;
-    if let Some(proxy) = dbus_proxy_content {
-        crate::fsutil::write_atomic(&sdir.join(&files[2]), proxy.as_bytes())?;
-    }
-    if let Some(comp) = compositor_service_content {
-        crate::fsutil::write_atomic(&sdir.join(&files[3]), comp.as_bytes())?;
-    }
-    if let Some(x11) = x11_service_content {
-        crate::fsutil::write_atomic(&sdir.join(&files[4]), x11.as_bytes())?;
-    } else {
-        let _ = std::fs::remove_file(sdir.join(&files[4]));
+    // Optional units are removed when their feature is disabled, otherwise
+    // stale units keep starting after D-Bus, the firewall or X11 is turned
+    // off and reinstalled.
+    for (content, file) in [
+        (dbus_proxy_content, &files[2]),
+        (compositor_service_content, &files[3]),
+        (x11_service_content, &files[4]),
+    ] {
+        if let Some(content) = content {
+            crate::fsutil::write_atomic(&sdir.join(file), content.as_bytes())?;
+        } else {
+            let _ = std::fs::remove_file(sdir.join(file));
+        }
     }
     write_clean_stop_dropin(name, sdir)?;
     Ok(())
@@ -297,5 +300,18 @@ mod tests {
             "uninstall would leave files behind"
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+    #[test]
+    fn optional_units_are_removed_when_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = custom_unit_filenames("dev");
+        for file in &files {
+            std::fs::write(dir.path().join(file), "old").unwrap();
+        }
+        write_custom_units("dev", dir.path(), "socket", "host", None, None, None).unwrap();
+        for (i, file) in files.iter().enumerate() {
+            let exists = dir.path().join(file).exists();
+            assert_eq!(exists, i < 2, "unexpected unit '{file}'");
+        }
     }
 }

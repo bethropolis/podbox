@@ -52,7 +52,10 @@ pub(crate) fn preflight_check(config: &Config, ctx: &crate::ui::Ctx) -> Result<(
             Some((host, _)) => host,
             None => mount,
         };
-        let path = std::path::Path::new(host_path);
+        // Mount sources use the same `~/` and `%h/` spellings as the
+        // generated Quadlet units; check the expanded host path.
+        let expanded = super::targets::expand_host_source(host_path);
+        let path = expanded.as_path();
         if !path.exists() {
             let prompt = format!(
                 "Mount path '{}' does not exist on the host. Create it?",
@@ -85,26 +88,26 @@ pub(crate) fn preflight_check(config: &Config, ctx: &crate::ui::Ctx) -> Result<(
         .map(|state| state == crate::podman::ContainerState::Running)
         .unwrap_or(false);
 
-    // Only run port bind tests if the container is stopped
+    // Port checks are noisy for an upgrade of a running container, but the
+    // secret and admin-preset checks below still apply.
     if is_running {
         println!(
             "  Note: container '{name}' is running. Skipping port conflict checks for upgrade."
         );
-        return Ok(());
-    }
-
-    // Check for port conflicts (IPv4 + IPv6, TCP + UDP)
-    let conflicts = crate::ports::check_host_ports(&config.network.ports);
-    if !conflicts.is_empty() {
-        let listed = conflicts
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        anyhow::bail!(
-            "Port conflict: already in use on the host — {listed}. \
-             Find the process with: `ss -ltnp 'sport = :<port>'`"
-        );
+    } else {
+        // Check for port conflicts (IPv4 + IPv6, TCP + UDP)
+        let conflicts = crate::ports::check_host_ports(&config.network.ports);
+        if !conflicts.is_empty() {
+            let listed = conflicts
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!(
+                "Port conflict: already in use on the host — {listed}. \
+                 Find the process with: `ss -ltnp 'sport = :<port>'`"
+            );
+        }
     }
 
     // Check declared secrets exist in podman store
