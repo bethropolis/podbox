@@ -25,6 +25,89 @@ fn lookup<'v>(value: &'v toml::Value, segments: &[&str]) -> Option<&'v toml::Val
     Some(current)
 }
 
+/// Convert a `toml_edit` value into a plain `toml::Value`.
+fn plain_value(value: &toml_edit::Value) -> Option<toml::Value> {
+    format!("v = {value}")
+        .parse::<toml::Value>()
+        .ok()?
+        .get("v")
+        .cloned()
+}
+
+/// Insert a value at a dotted path in a TOML document, creating tables as
+/// needed. Returns `None` when a path segment is not a table.
+fn insert_value(
+    doc: &mut toml_edit::DocumentMut,
+    segments: &[&str],
+    value: toml_edit::Value,
+) -> Option<()> {
+    let (leaf, parents) = segments.split_last()?;
+    let mut table = doc.as_table_mut();
+    for seg in parents {
+        match table.get(seg) {
+            None => {
+                table.insert(seg, toml_edit::Item::Table(toml_edit::Table::new()));
+            }
+            Some(item) if !item.is_table() => return None,
+            Some(_) => {}
+        }
+        table = table.get_mut(seg)?.as_table_mut()?;
+    }
+    table.insert(leaf, toml_edit::Item::Value(value));
+    Some(())
+}
+
+/// Effective value of a dotted key, including schema defaults that
+/// `skip_serializing_if` leaves out of `toml::Value::try_from(Config)`.
+///
+/// First look at the serialized config. If the key is absent, consult the
+/// schema defaults, then probe with zero-ish values: a value equal to the
+/// schema default is dropped by `skip_serializing_if`, while a non-default
+/// one survives. That distinguishes a defaulted key from an unknown one
+/// without a hand-maintained field list.
+fn effective_value(config: &Config, segments: &[&str]) -> Option<toml::Value> {
+    let dotted = segments.join(".");
+    let known = podbox::config::key_paths::config_key_paths().contains(&dotted)
+        || podbox::config::schema_defaults().contains_key(&dotted)
+        || podbox::config::schema_enums().contains_key(&dotted);
+    if !known {
+        return None;
+    }
+    let serialized = toml::Value::try_from(config).ok()?;
+    if let Some(value) = lookup(&serialized, segments) {
+        return Some(value.clone());
+    }
+    if let Some(value) = podbox::config::schema_defaults().get(&dotted) {
+        if let Ok(converted) = toml::Value::try_from(value.clone()) {
+            return Some(converted);
+        }
+    }
+    let base = toml::to_string(config).ok()?;
+    for candidate in [
+        toml_edit::Value::from(false),
+        toml_edit::Value::from(true),
+        toml_edit::Value::Array(toml_edit::Array::new()),
+        toml_edit::Value::InlineTable(toml_edit::InlineTable::new()),
+    ] {
+        let Ok(mut doc) = base.parse::<toml_edit::DocumentMut>() else {
+            continue;
+        };
+        if insert_value(&mut doc, segments, candidate.clone()).is_none() {
+            continue;
+        }
+        let Ok(parsed) = Config::parse(&doc.to_string()) else {
+            continue;
+        };
+        let Ok(after) = toml::Value::try_from(&parsed) else {
+            continue;
+        };
+        if lookup(&after, segments).is_none() {
+            return plain_value(&candidate);
+        }
+    }
+    None
+}
+
 /// Print one effective configuration value.
 ///
 /// Reads the loaded config, so defaults and `extends` are applied: what
@@ -32,15 +115,15 @@ fn lookup<'v>(value: &'v toml::Value, segments: &[&str]) -> Option<&'v toml::Val
 /// friendly); tables and arrays print as pretty JSON.
 pub fn run_get(config: &Config, key: &str, output: OutputFormat) -> Result<()> {
     let segments = split_key(key)?;
-    let value = toml::Value::try_from(config)?;
-    let found = lookup(&value, &segments).ok_or_else(|| anyhow::anyhow!("unknown key '{key}'"))?;
+    let found =
+        effective_value(config, &segments).ok_or_else(|| anyhow::anyhow!("unknown key '{key}'"))?;
     match output {
         OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("config get")),
         OutputFormat::Json => {
             podbox::contract::print_json(serde_json::to_value(found)?)?;
         }
         OutputFormat::Text => {
-            println!("{}", render_text(found));
+            println!("{}", render_text(&found));
         }
     }
     Ok(())
@@ -80,6 +163,13 @@ pub fn run_set(
     output: OutputFormat,
 ) -> Result<()> {
     let segments = split_key(key)?;
+    let top_levels = podbox::config::key_paths::config_key_paths();
+    if !top_levels
+        .iter()
+        .any(|path| path.split('.').next() == Some(segments[0]))
+    {
+        anyhow::bail!("unknown key '{key}'");
+    }
     let original = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read '{}'", path.display()))?;
     let mut doc: toml_edit::DocumentMut = original
@@ -87,39 +177,21 @@ pub fn run_set(
         .with_context(|| format!("failed to parse '{}'", path.display()))?;
 
     let new_value = parse_set_value(raw_value);
-    let (leaf, parents) = segments.split_last().expect("split_key rejects empty");
-    let mut table = doc.as_table_mut();
-    for seg in parents {
-        match table.get(seg) {
-            None => {
-                table.insert(seg, toml_edit::Item::Table(toml_edit::Table::new()));
-            }
-            Some(item) if !item.is_table() => {
-                anyhow::bail!("'{seg}' in '{key}' is not a table");
-            }
-            Some(_) => {}
-        }
-        table = table
-            .get_mut(seg)
-            .and_then(|item| item.as_table_mut())
-            .ok_or_else(|| anyhow::anyhow!("'{seg}' in '{key}' is not a table"))?;
+    if insert_value(&mut doc, &segments, new_value.clone()).is_none() {
+        anyhow::bail!("a path segment in '{key}' is not a table");
     }
-    table.insert(leaf, toml_edit::Item::Value(new_value.clone()));
 
     let new_text = doc.to_string();
-    let checked = Config::parse_with_source(path, &new_text)?;
-    // Unknown keys deserialize into the void: confirm the key survived the
-    // round trip through the schema. (Empty collections serialize away, so
-    // they skip this check.)
-    let round_tripped = toml::Value::try_from(&checked)?;
-    let empty_collection = matches!(
-        new_value,
-        toml_edit::Value::Array(ref a) if a.is_empty()
-    ) || matches!(
-        new_value,
-        toml_edit::Value::InlineTable(ref t) if t.is_empty()
-    );
-    if !empty_collection && lookup(&round_tripped, &segments).is_none() {
+    Config::parse_with_source(path, &new_text)?;
+    // Unknown nested keys deserialize into the void, so a serialized
+    // round-trip cannot tell a typo from a field set to its default. Use the
+    // schema's own field names instead (plus the Studio's default/enum
+    // paths, which include a few untagged-enum leaves).
+    let known = podbox::config::key_paths::config_key_paths();
+    let known = known.contains(key)
+        || podbox::config::schema_defaults().contains_key(key)
+        || podbox::config::schema_enums().contains_key(key);
+    if !known {
         anyhow::bail!("unknown key '{key}'");
     }
 
@@ -245,5 +317,69 @@ pub fn run_validate(path: &Path, output: OutputFormat) -> Result<()> {
         Ok(())
     } else {
         Err(PodboxError::ConfigInvalid(errors.len()).into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> Config {
+        Config::parse(
+            "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
+             [container]\nname = \"env\"\nhome = \"~/env\"\n",
+        )
+        .expect("minimal config")
+    }
+
+    #[test]
+    fn get_resolves_defaults_omitted_by_serde() {
+        let config = config();
+        for (key, expected) in [
+            ("integration.audio", toml::Value::Boolean(false)),
+            ("wayland.firewall", toml::Value::Boolean(true)),
+            ("lifecycle.quadlet", toml::Value::Boolean(false)),
+            ("network.mode", toml::Value::String("pasta".into())),
+            ("integration.gpu", toml::Value::String("auto".into())),
+        ] {
+            assert_eq!(
+                effective_value(&config, &key.split('.').collect::<Vec<_>>()),
+                Some(expected),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn get_finds_explicit_values_and_rejects_unknown_keys() {
+        let config = Config::parse(
+            "[image]\nbase = \"fedora:41\"\nname = \"env\"\n\
+             [container]\nname = \"env\"\nhome = \"~/env\"\nshell = \"zsh\"\n",
+        )
+        .expect("config with explicit shell");
+        assert_eq!(
+            effective_value(&config, &["container", "shell"]),
+            Some(toml::Value::String("zsh".into()))
+        );
+        assert_eq!(effective_value(&config, &["bogus", "key"]), None);
+        assert_eq!(effective_value(&config, &["container", "bogus"]), None);
+    }
+
+    #[test]
+    fn inserted_values_are_reachable_after_parsing() {
+        let mut doc: toml_edit::DocumentMut = toml::to_string(&config()).unwrap().parse().unwrap();
+        assert!(
+            insert_value(
+                &mut doc,
+                &["integration", "audio"],
+                toml_edit::Value::from(true)
+            )
+            .is_some()
+        );
+        let checked = Config::parse(&doc.to_string()).unwrap();
+        assert_eq!(
+            effective_value(&checked, &["integration", "audio"]),
+            Some(toml::Value::Boolean(true))
+        );
     }
 }

@@ -91,7 +91,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
 
     // Determine registry: flag > manifest > default.
     if let Some(registry) = opts.registry.as_deref() {
-        manifest.registry = registry.to_owned();
+        registry.clone_into(&mut manifest.registry);
     }
 
     // Validate manifest against context.

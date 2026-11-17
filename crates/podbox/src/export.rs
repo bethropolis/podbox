@@ -123,10 +123,8 @@ pub fn ensure_exports(config: &Config, name: &str) {
     }
 }
 
-/// Find a `.desktop` file in the container by searching XDG dirs,
-/// falling back to user-installed locations.
 /// Validate a binary name before it reaches a host path or an argv.
-fn validate_bin_name(bin: &str) -> Result<(), PodboxError> {
+fn validate_bin_name(bin: &str) -> Result<()> {
     if bin.is_empty() || bin.contains('/') || bin.contains("..") {
         return Err(PodboxError::ExportFailed {
             details: format!("invalid bin name: '{bin}'"),
@@ -149,6 +147,7 @@ fn shim_has_container(content: &str, container_name: &str) -> bool {
         || content.contains(&format!("--container \"{container_name}\""))
 }
 
+/// Export a container binary as a host shim.
 pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
     validate_bin_name(bin)?;
     let bin_dir = dirs::home_dir()

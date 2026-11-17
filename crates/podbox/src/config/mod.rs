@@ -8,6 +8,7 @@ pub mod emit;
 pub mod enums;
 pub mod extends;
 pub mod fs;
+pub mod key_paths;
 pub mod merge;
 pub mod schema;
 pub mod schema_defs;

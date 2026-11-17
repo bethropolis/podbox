@@ -73,7 +73,7 @@ pub fn select_engine(
 pub struct PodmanEngine;
 
 impl Engine for PodmanEngine {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "podman"
     }
 
@@ -112,7 +112,7 @@ impl Engine for PodmanEngine {
 pub struct BuildxEngine;
 
 impl Engine for BuildxEngine {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "buildx"
     }
 
