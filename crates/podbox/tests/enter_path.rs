@@ -23,7 +23,7 @@ fn run_picks_up_container_path_after_start() {
     std::fs::write(
         sb.root.join("bin/podman"),
         format!(
-            "#!/bin/sh\nLOG='{}'\nSTATE='{}'\necho \"$@\" >> \"$LOG\"\ncase \"$1\" in\n  inspect)\n    if [ -f \"$STATE\" ]; then echo \"running deadbeef1234\"; exit 0; else echo \"no such container\" >&2; exit 1; fi;;\n  ps) if [ -f \"$STATE\" ]; then echo deadbeef1234; fi; exit 0;;\n  image) exit 0;;\n  exec)\n    if [ -f \"$STATE\" ]; then echo \"/custom/bin:/usr/bin\"; exit 0; else exit 1; fi;;\n  *) exit 0;;\nesac\n",
+            "#!/bin/sh\nLOG='{}'\nSTATE='{}'\necho \"$@\" >> \"$LOG\"\ncase \"$1\" in\n  inspect)\n    if [ -f \"$STATE\" ]; then echo \"running deadbeef1234\"; exit 0; else echo \"no such container\" >&2; exit 1; fi;;\n  ps) if [ -f \"$STATE\" ]; then echo deadbeef1234; fi; exit 0;;\n  image) exit 0;;\n  start) touch \"$STATE\"; exit 0;;\n  exec)\n    if [ -f \"$STATE\" ]; then echo \"/custom/bin:/usr/bin\"; exit 0; else exit 1; fi;;\n  *) exit 0;;\nesac\n",
             sb.root.join("podman.log").display(),
             state.display(),
         ),
