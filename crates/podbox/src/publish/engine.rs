@@ -13,30 +13,57 @@ use crate::publish::plan::PlanImage;
 /// Build engine trait.
 pub trait Engine: Send + Sync {
     fn name(&self) -> &str;
-    /// Build a single image+tag from an emitted context dir.
-    /// Returns `Ok(())` on success.
+    /// Build a single image+tag for one platform from an emitted context dir.
+    /// `push` asks the engine to publish at build time when it can (buildx);
+    /// otherwise the caller pushes afterwards.
     fn build(
         &self,
         image: &PlanImage,
         tag: &str,
+        platform: &str,
         context_dir: &Path,
         labels: &BTreeMap<String, String>,
+        push: bool,
     ) -> Result<(), PodboxError>;
-    /// Push a single tag.
+    /// Push a single tag. Engines that pushed during `build` treat this as a
+    /// no-op.
     fn push(&self, image: &PlanImage, tag: &str, context_dir: &Path) -> Result<(), PodboxError>;
 }
 
-/// Auto-select an engine: `buildx` when `--ci github` is requested, else
-/// `podman` if available, else `buildx`.
-pub fn select_engine(prefer_ci: bool) -> Result<Box<dyn Engine>, PodboxError> {
-    if prefer_ci {
-        return Ok(Box::new(BuildxEngine));
-    }
-    if Command::new("podman")
+fn podman_available() -> bool {
+    Command::new("podman")
         .arg("--version")
         .output()
         .is_ok_and(|o| o.status.success())
-    {
+}
+
+/// Select an engine: `explicit` wins; otherwise `buildx` for `--ci github`,
+/// else `podman` if available, else `buildx`.
+pub fn select_engine(
+    prefer_ci: bool,
+    explicit: Option<&str>,
+) -> Result<Box<dyn Engine>, PodboxError> {
+    match explicit {
+        Some("buildx") => return Ok(Box::new(BuildxEngine)),
+        Some("podman") => {
+            if podman_available() {
+                return Ok(Box::new(PodmanEngine));
+            }
+            return Err(PodboxError::EngineUnavailable {
+                engine: "podman".into(),
+            });
+        }
+        Some(other) => {
+            return Err(PodboxError::EngineUnavailable {
+                engine: other.into(),
+            });
+        }
+        None => {}
+    }
+    if prefer_ci {
+        return Ok(Box::new(BuildxEngine));
+    }
+    if podman_available() {
         return Ok(Box::new(PodmanEngine));
     }
     Ok(Box::new(BuildxEngine))
@@ -46,7 +73,7 @@ pub fn select_engine(prefer_ci: bool) -> Result<Box<dyn Engine>, PodboxError> {
 pub struct PodmanEngine;
 
 impl Engine for PodmanEngine {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "podman"
     }
 
@@ -54,13 +81,15 @@ impl Engine for PodmanEngine {
         &self,
         _image: &PlanImage,
         tag: &str,
+        platform: &str,
         context_dir: &Path,
         labels: &BTreeMap<String, String>,
+        _push: bool,
     ) -> Result<(), PodboxError> {
         let mut args = vec![
             "build".into(),
             "--platform".into(),
-            "linux/amd64".into(),
+            platform.into(),
             "-t".into(),
             tag.into(),
         ];
@@ -73,8 +102,8 @@ impl Engine for PodmanEngine {
         Ok(())
     }
 
-    fn push(&self, _image: &PlanImage, _tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
-        run_checked("podman", &["push".into(), _tag.into()])?;
+    fn push(&self, _image: &PlanImage, tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
+        run_checked("podman", &["push".into(), tag.into()])?;
         Ok(())
     }
 }
@@ -83,7 +112,7 @@ impl Engine for PodmanEngine {
 pub struct BuildxEngine;
 
 impl Engine for BuildxEngine {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "buildx"
     }
 
@@ -91,16 +120,21 @@ impl Engine for BuildxEngine {
         &self,
         _image: &PlanImage,
         tag: &str,
+        platform: &str,
         context_dir: &Path,
         labels: &BTreeMap<String, String>,
+        push: bool,
     ) -> Result<(), PodboxError> {
         let mut args = vec![
             "buildx".into(),
             "build".into(),
             "--platform".into(),
-            "linux/amd64".into(),
+            platform.into(),
             "-t".into(),
             tag.into(),
+            // buildx has no separate push step: publish at build time, or
+            // load the result into the local image store for `--no-push`.
+            if push { "--push" } else { "--load" }.into(),
         ];
         for (k, v) in labels {
             args.push("--label".into());
@@ -112,9 +146,7 @@ impl Engine for BuildxEngine {
     }
 
     fn push(&self, _image: &PlanImage, _tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
-        // buildx push is folded into build with --push; this is a no-op
-        // hook kept for interface symmetry (tags are pushed at build time
-        // when --push is set).
+        // Folded into `build --push`.
         Ok(())
     }
 }
@@ -144,6 +176,20 @@ mod tests {
     #[test]
     fn select_engine_prefers_podman_locally() {
         // Can't control PATH here; just ensure it returns something.
-        let _eng = select_engine(false).unwrap();
+        let _eng = select_engine(false, None).unwrap();
+        let _eng = select_engine(true, None).unwrap();
+        assert_eq!(
+            select_engine(true, Some("buildx")).unwrap().name(),
+            "buildx"
+        );
+    }
+
+    #[test]
+    fn unknown_explicit_engine_is_rejected() {
+        let err = match select_engine(false, Some("nerdctl")) {
+            Ok(_) => panic!("unknown engine must be rejected"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, PodboxError::EngineUnavailable { .. }));
     }
 }

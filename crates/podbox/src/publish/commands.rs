@@ -87,10 +87,12 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         .manifest
         .clone()
         .unwrap_or_else(|| opts.dir.join("images.toml"));
-    let manifest = load_manifest(&manifest_path, opts.manifest.is_some(), &opts.dir)?;
+    let mut manifest = load_manifest(&manifest_path, opts.manifest.is_some(), &opts.dir)?;
 
     // Determine registry: flag > manifest > default.
-    let _registry = opts.registry.as_deref().unwrap_or(&manifest.registry);
+    if let Some(registry) = opts.registry.as_deref() {
+        manifest.registry = registry.to_owned();
+    }
 
     // Validate manifest against context.
     let validated = manifest
@@ -127,7 +129,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
     // Select engine.
     let prefer_ci = opts.ci.as_deref() == Some("github");
     let engine: Box<dyn crate::publish::engine::Engine> =
-        select_engine(prefer_ci).map_err(|e| anyhow::anyhow!("{e}"))?;
+        select_engine(prefer_ci, opts.engine.as_deref()).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Per-image pipeline.
     let mut events: Vec<ImageEvent> = Vec::new();
@@ -250,16 +252,24 @@ pub fn run(opts: PublishOpts) -> Result<()> {
             continue;
         }
 
-        // Emit context to temp dir.
+        // Emit context to temp dir. Keep the `TempDir` alive for the whole
+        // build/push loop: dropping it deletes the Containerfile.
         let context_dir = emit_context(config, &containerfile)?;
 
         // Build each platform tag.
         let mut image_failed = false;
-        for _platform in &image.platforms {
+        for platform in &image.platforms {
             for tag in &image.tags {
                 let full_tag = format!("{}:{}", image.ref_str, tag);
                 let labels = build_labels(&context, &config.integration, &build_key);
-                if let Err(e) = engine.build(image, &full_tag, &context_dir, &labels.map) {
+                if let Err(e) = engine.build(
+                    image,
+                    &full_tag,
+                    platform,
+                    context_dir.path(),
+                    &labels.map,
+                    push,
+                ) {
                     image_failed = true;
                     failed += 1;
                     events.push(ImageEvent {
@@ -291,7 +301,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         if push {
             for tag in &image.tags {
                 let full_tag = format!("{}:{}", image.ref_str, tag);
-                if let Err(e) = engine.push(image, &full_tag, &context_dir) {
+                if let Err(e) = engine.push(image, &full_tag, context_dir.path()) {
                     failed += 1;
                     events.push(ImageEvent {
                         key: image.key.clone(),
@@ -362,12 +372,44 @@ pub fn run(opts: PublishOpts) -> Result<()> {
     Ok(())
 }
 
+/// Synthesize a manifest for a lone `podbox.toml`, which is a container
+/// definition rather than an `images.toml` manifest.
+fn lone_podbox_manifest(config: String) -> Manifest {
+    let mut images = BTreeMap::new();
+    images.insert(
+        "podbox".to_owned(),
+        crate::publish::manifest::ImageEntry {
+            config,
+            tags: Vec::new(),
+            platforms: Vec::new(),
+            name: None,
+        },
+    );
+    Manifest {
+        schema_version: 1,
+        registry: "ghcr.io".into(),
+        platforms: Vec::new(),
+        tags: vec!["latest".into(), "sha".into()],
+        images,
+    }
+}
+
 /// Load manifest: explicit --manifest or discovery.
 fn load_manifest(
     manifest_path: &Path,
     explicit: bool,
     dir: &Path,
 ) -> Result<Manifest, PodboxError> {
+    // A `podbox.toml` is a definition, never a manifest. Handle it before the
+    // "path exists" branch so it is not parsed with the manifest schema.
+    if manifest_path.file_name().and_then(|n| n.to_str()) == Some("podbox.toml") {
+        let relative = manifest_path
+            .strip_prefix(dir)
+            .unwrap_or(Path::new("podbox.toml"));
+        return Ok(lone_podbox_manifest(
+            relative.to_string_lossy().into_owned(),
+        ));
+    }
     if manifest_path.exists() {
         let content =
             std::fs::read_to_string(manifest_path).map_err(|e| PodboxError::ManifestInvalid {
@@ -403,15 +445,7 @@ fn load_manifest(
             tags: vec!["latest".into(), "sha".into()],
             images,
         }),
-        Ok(Discovery::LonePodboxToml(path)) => {
-            let content =
-                std::fs::read_to_string(&path).map_err(|e| PodboxError::ManifestInvalid {
-                    details: format!("failed to read manifest '{}': {e}", path.display()),
-                })?;
-            Manifest::parse(&content).map_err(|e| PodboxError::ManifestInvalid {
-                details: e.to_string(),
-            })
-        }
+        Ok(Discovery::LonePodboxToml(_path)) => Ok(lone_podbox_manifest("podbox.toml".into())),
         Err(e) => Err(PodboxError::ManifestMissing { dir: e.dir }),
     }
 }
@@ -466,7 +500,10 @@ fn resolve_base_digest(registry: &dyn Registry, config: &Config) -> Result<Strin
 }
 
 /// Emit the build context (Containerfile + guest binary) to a temp dir.
-fn emit_context(_config: &Config, containerfile: &str) -> Result<PathBuf, PodboxError> {
+///
+/// The returned `TempDir` owns the directory: it must outlive the build,
+/// otherwise the Containerfile is deleted before the engine reads it.
+fn emit_context(_config: &Config, containerfile: &str) -> Result<tempfile::TempDir, PodboxError> {
     let dir = tempfile::Builder::new()
         .prefix("podbox-publish-")
         .tempdir()
@@ -488,7 +525,7 @@ fn emit_context(_config: &Config, containerfile: &str) -> Result<PathBuf, Podbox
             }
         })?;
     }
-    Ok(dir.path().to_path_buf())
+    Ok(dir)
 }
 
 /// Generate the Containerfile for a definition.
@@ -735,6 +772,25 @@ mod tests {
         let (action, _) =
             probe_decision(&registry, "ghcr.io/o/r", None, "key-1").expect("no tag means no probe");
         assert!(matches!(action, Action::Build));
+    }
+
+    #[test]
+    fn lone_podbox_toml_is_a_definition_not_a_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("podbox.toml");
+        std::fs::write(&path, "[image]\nbase = \"alpine:latest\"\n").unwrap();
+
+        let manifest = load_manifest(&path, false, dir.path()).unwrap();
+        assert_eq!(manifest.images.len(), 1);
+        assert_eq!(manifest.images["podbox"].config, "podbox.toml");
+    }
+
+    #[test]
+    fn emitted_context_survives_until_the_builder_is_done() {
+        let config = config_with_base("alpine:latest");
+        let dir = emit_context(&config, "FROM alpine:latest\n").unwrap();
+        assert!(dir.path().join("Containerfile").is_file());
+        assert!(dir.path().join("podbox-guest").is_file());
     }
 
     #[test]

@@ -102,7 +102,8 @@ pub fn discover(entries: &[PathBuf], dir: &Path) -> Result<Discovery, ManifestMi
     })
 }
 
-/// Read the entries under `--dir` (files only, non-recursive) for discovery.
+/// Read the entries under `--dir` for discovery: the files directly in it
+/// plus the TOML files of an `envs/` subdirectory (one level deep).
 pub fn list_dir(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     let mut out = Vec::new();
     if let Ok(read_dir) = std::fs::read_dir(dir) {
@@ -110,6 +111,16 @@ pub fn list_dir(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
             let path = entry.path();
             if path.is_file() {
                 out.push(path);
+            } else if path.is_dir() && path.file_name().is_some_and(|n| n == ENV_DIR) {
+                let Ok(envs) = std::fs::read_dir(&path) else {
+                    continue;
+                };
+                for env in envs.flatten() {
+                    let env_path = env.path();
+                    if env_path.is_file() && env_path.extension().is_some_and(|e| e == "toml") {
+                        out.push(env_path);
+                    }
+                }
             }
         }
     }
@@ -148,6 +159,22 @@ mod tests {
         let entries = vec![PathBuf::from("images.toml")];
         let d = discover(&entries, Path::new(".")).unwrap();
         assert!(matches!(d, Discovery::ImagesToml(_)));
+    }
+
+    #[test]
+    fn list_dir_sees_envs_toml_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("envs")).unwrap();
+        std::fs::write(dir.path().join("envs/dev.toml"), "").unwrap();
+        std::fs::write(dir.path().join("envs/notes.txt"), "").unwrap();
+
+        let entries = list_dir(dir.path()).unwrap();
+        let discovered = discover(&entries, dir.path()).unwrap();
+        assert!(matches!(discovered, Discovery::EnvsDir { .. }));
+        if let Discovery::EnvsDir { images, .. } = &discovered {
+            assert_eq!(images.len(), 1);
+            assert_eq!(images["dev"].config, "envs/dev.toml");
+        }
     }
 
     #[test]
