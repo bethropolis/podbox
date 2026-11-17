@@ -108,12 +108,12 @@ impl HostActions for SystemActions {
 
     fn open_uri(&self, uri: &str) -> anyhow::Result<()> {
         let args = [uri.into()];
-        match crate::process::spawn_interactive_timeout("xdg-open", &args, Duration::from_secs(30))
-        {
-            Ok(status) if status.success() => {}
-            Ok(status) => tracing::warn!("xdg-open exited with {status} for host open request"),
-            Err(e) => tracing::warn!("failed to run xdg-open: {e:#}"),
-        }
+        let status =
+            crate::process::spawn_interactive_timeout("xdg-open", &args, Duration::from_secs(30))?;
+        anyhow::ensure!(
+            status.success(),
+            "xdg-open exited with {status} for '{uri}'"
+        );
         Ok(())
     }
 
@@ -122,10 +122,16 @@ impl HostActions for SystemActions {
             .stdin(std::process::Stdio::piped())
             .spawn()?;
         if let Some(ref mut stdin) = child.stdin {
-            let _ = stdin.write_all(text.as_bytes());
+            stdin.write_all(text.as_bytes())?;
         }
         drop(child.stdin.take());
-        let _ = crate::process::wait_child_timeout(child, Duration::from_secs(10))?;
+        let output = crate::process::wait_child_timeout(child, Duration::from_secs(10))?;
+        anyhow::ensure!(
+            output.status.success(),
+            "wl-copy exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
         Ok(())
     }
 
@@ -151,6 +157,12 @@ fn read_host_clipboard(paste_bin: &str) -> anyhow::Result<String> {
         return Ok(String::from_utf8_lossy(&flagged.stdout).into_owned());
     }
     let plain = run_wl_paste(paste_bin, &[])?;
+    anyhow::ensure!(
+        plain.status.success(),
+        "wl-paste exited with {}: {}",
+        plain.status,
+        String::from_utf8_lossy(&plain.stderr).trim()
+    );
     Ok(strip_single_trailing_newline(&String::from_utf8_lossy(
         &plain.stdout,
     )))

@@ -82,10 +82,45 @@ pub fn send_bytes_with_fds(stream: &UnixStream, data: &[&[u8]], fds: &[RawFd]) -
 
     let raw_fd = stream.as_raw_fd();
     let cmsg = ControlMessage::ScmRights(fds);
-    let iov: Vec<IoSlice<'_>> = data.iter().map(|d| IoSlice::new(d)).collect();
+    let total: usize = data.iter().map(|chunk| chunk.len()).sum();
+    let mut sent = 0usize;
+    let mut first = true;
     loop {
-        match sendmsg::<()>(raw_fd, &iov, &[cmsg], MsgFlags::empty(), None) {
-            Ok(_) => return Ok(()),
+        // A SOCK_STREAM sendmsg may write fewer bytes than requested. Send
+        // the remaining slices again, but pass the descriptors only once.
+        let mut skip = sent;
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(data.len());
+        for chunk in data {
+            if skip >= chunk.len() {
+                skip -= chunk.len();
+                continue;
+            }
+            iov.push(IoSlice::new(&chunk[skip..]));
+            skip = 0;
+        }
+        let cmsgs: &[ControlMessage<'_>] = if first {
+            std::slice::from_ref(&cmsg)
+        } else {
+            &[]
+        };
+        match sendmsg::<()>(raw_fd, &iov, cmsgs, MsgFlags::empty(), None) {
+            Ok(n) => {
+                if n == 0 && sent == 0 {
+                    // An empty frame still carries the descriptors.
+                    return Ok(());
+                }
+                if n == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "sendmsg made no progress on a non-empty frame",
+                    ));
+                }
+                sent += n;
+                first = false;
+                if sent >= total {
+                    return Ok(());
+                }
+            }
             Err(nix::errno::Errno::EINTR) => {}
             Err(e) => return Err(io::Error::from(e)),
         }
@@ -187,5 +222,30 @@ mod tests {
         std::io::Read::read_to_string(&mut fd_file, &mut contents).unwrap();
         assert_eq!(contents, "sent-by-test");
         drop(target);
+    }
+
+    /// Large multi-slice frames may need several sendmsg calls on a stream
+    /// socket; every byte must arrive exactly once.
+    #[test]
+    fn send_bytes_with_fds_handles_partial_writes() {
+        use std::io::Read;
+
+        let (tx, mut rx) = UnixStream::pair().unwrap();
+        // Drain in parallel: a blocking sendmsg of more than the socket
+        // buffer would otherwise wait for a reader that has not started.
+        let reader = std::thread::spawn(move || {
+            let mut received = Vec::new();
+            rx.read_to_end(&mut received).unwrap();
+            received
+        });
+        let a = vec![b'a'; 256 * 1024];
+        let b = vec![b'b'; 128 * 1024];
+        send_bytes_with_fds(&tx, &[&a, &b], &[]).expect("large frame");
+        drop(tx);
+
+        let received = reader.join().unwrap();
+        let mut expected = a;
+        expected.extend_from_slice(&b);
+        assert_eq!(received, expected);
     }
 }

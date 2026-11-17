@@ -6,11 +6,14 @@ use anyhow::Result;
 use podbox::config::Config;
 use podbox::xdg::ResolvedXdgDirs;
 
-/// The XDG directories podbox shares with the container, in match order.
-const SHARED_DIRS: [(
-    &str,
+/// One shared XDG directory: config name and accessor.
+type SharedDir = (
+    &'static str,
     fn(&ResolvedXdgDirs) -> Option<&podbox::xdg::ResolvedXdgDir>,
-); 7] = [
+);
+
+/// The XDG directories podbox shares with the container, in match order.
+const SHARED_DIRS: [SharedDir; 7] = [
     ("Documents", |xdg| xdg.documents.as_ref()),
     ("Downloads", |xdg| xdg.downloads.as_ref()),
     ("Pictures", |xdg| xdg.pictures.as_ref()),
