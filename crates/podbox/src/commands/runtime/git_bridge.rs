@@ -224,9 +224,16 @@ fn prepare_git_bridge(
         name,
         xdg,
         env_overrides: explicit,
-        ..
+        dry_run,
     } = ctx;
     if !config.integration.git_identity {
+        return;
+    }
+    if dry_run {
+        // Preview the identity env from host git config only: no podman
+        // probes, stamps or `safe.directory` writes.
+        let identity_env = preview_identity_env(config, explicit);
+        splice_identity_args(args, name_index, &identity_env);
         return;
     }
     let paths = git_mount_paths(config, xdg, here, &env.username);
@@ -257,6 +264,43 @@ fn prepare_git_bridge(
         return;
     }
     splice_identity_args(args, name_index, &identity_env);
+}
+
+/// Build the identity `--env` args a real run would splice in, reading only
+/// host git config. Used for `--dry-run` previews, where no podman probes or
+/// stamps are allowed.
+fn preview_identity_env(config: &Config, explicit: &[String]) -> Vec<String> {
+    let explicit_keys: std::collections::HashSet<&str> = explicit
+        .iter()
+        .filter_map(|entry| entry.split_once('=').map(|(key, _)| key))
+        .collect();
+    let mut identity_env = Vec::new();
+    for (git_key, env_keys) in [
+        ("user.name", ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]),
+        ("user.email", ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"]),
+    ] {
+        let Ok(output) = std::process::Command::new("git")
+            .args(["config", "--global", "--get", git_key])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if value.is_empty() {
+            continue;
+        }
+        for env_key in env_keys {
+            if explicit_keys.contains(env_key) || config.container.env.values.contains_key(env_key)
+            {
+                continue;
+            }
+            identity_env.push(format!("--env={env_key}={value}"));
+        }
+    }
+    identity_env
 }
 
 /// The original per-exec logic, with the round-trips collapsed: one probe

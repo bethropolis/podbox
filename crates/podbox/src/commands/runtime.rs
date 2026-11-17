@@ -167,6 +167,13 @@ pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
     exec_args.push(config.container.shell.as_str().into());
 
     if dry_run {
+        git_bridge::prepare(
+            ctx,
+            &env.username,
+            here.then_some(&workdir),
+            name_index,
+            &mut exec_args,
+        );
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }
@@ -216,11 +223,6 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
         exec_args.push(a.into());
     }
 
-    if dry_run {
-        println!("podman {}", args_to_string(&exec_args));
-        return Ok(());
-    }
-    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     let here_path = if here {
         exec_args
             .windows(2)
@@ -230,6 +232,18 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
     } else {
         None
     };
+    if dry_run {
+        git_bridge::prepare(
+            ctx,
+            if root { "root" } else { &env.username },
+            here_path.as_deref(),
+            name_index,
+            &mut exec_args,
+        );
+        println!("podman {}", args_to_string(&exec_args));
+        return Ok(());
+    }
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
     // The daemon writes /run/podbox/path on startup, so the PATH is only
     // readable once the box is running. Root sessions keep the image PATH.
     let name_index = if root {
@@ -276,6 +290,7 @@ pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()
     }
 
     if dry_run {
+        git_bridge::prepare(ctx, &env.username, None, name_index, &mut exec_args);
         println!("podman {}", args_to_string(&exec_args));
         return Ok(());
     }

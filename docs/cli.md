@@ -78,6 +78,7 @@ Read commands take `--output json` and print nothing else on stdout:
 - `status`: `{"name","status","installed"}`
 - `snapshot list`: `{"snapshots": [{"tag","created","image"}]}`
 - `history`: `{"history": [{"timestamp","name","action","detail"}]}`
+- `stats`: `{"stats": [...]}` (podman's JSON rows, enveloped)
 - `publish`: `{"ok":true,"images":[...],"pushed":N,"skipped":N,"failed":N}` (`--output json`)
   or one compact `{"event":"image",...}` per line plus `{"event":"done",...}` (`--output ndjson`).
 

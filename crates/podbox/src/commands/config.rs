@@ -197,6 +197,14 @@ pub fn run_set(
 
     if dry_run {
         podbox::ui::would(&format!("set {key} = {raw_value} in {}", path.display()));
+        if matches!(output, OutputFormat::Json) {
+            podbox::contract::print_json(serde_json::json!({
+                "ok": true,
+                "key": key,
+                "rebuild_required": segments[0] == "image",
+                "dry_run": true,
+            }))?;
+        }
         return Ok(());
     }
     podbox::fsutil::write_atomic(path, new_text.as_bytes())?;
