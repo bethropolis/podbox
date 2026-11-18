@@ -1,0 +1,66 @@
+# Top-level keys must precede the first table header.
+default_profile = "full"
+
+[sift]
+style = "xml"
+output = "codebase.xml"
+budget = 150000
+compress_mode = "full"
+fallback_mode = "signatures"
+fallback_threshold = 0.9
+smart_filter = false
+secret_scan = true
+# Hidden project config is valuable here (.github/workflows, .cargo/config.toml,
+# .goreleaser.yaml), so keep hidden files and ignore only confirmed local noise.
+ignore_hidden = false
+ignore_git = true
+ignore = [
+  # Git-ignored build and release output.
+  "/target/",
+  "/dist/",
+  "/site/",
+  "/.commandcode/",
+  # Machine-local scratch, plans, and a nested checkout used for patch work.
+  "/.opencode/",
+  "/.patch/",
+  "/.plan/",
+  "/podbox-patch/",
+  # Frontend dependencies and generated/build state.
+  "website/node_modules/",
+  "website/.astro/",
+  "website/.impeccable/",
+  "website/.vscode/",
+  "website/dist/",
+  # Generated search index: a single-line derivative of the excluded docs,
+  # with no useful signature compression (~43k tokens for one file).
+  "website/src/design/searchIndex.ts",
+  # Do not re-ingest generated context documents.
+  "codebase.xml",
+  "guidance-context.xml",
+  # Markdown policy: repository-root README.md and AGENTS.md only.
+  "**/*.md",
+  "!/README.md",
+  "!/AGENTS.md",
+]
+
+[profiles.full]
+prompt = """This is podbox, a declarative Podman-native container environment manager for Linux, written as a Rust 2024 workspace. One TOML definition is the single source of truth: codegen turns it into a Containerfile and systemd Quadlet units, systemd owns the lifecycle, and there is no host daemon. A small guest binary runs inside each container and speaks to the host CLI over a Unix socket.
+
+Trace behavior end to end: CLI dispatch in crates/podbox/src/main -> config resolution and validation in config/ -> pure codegen in codegen/ (config in, string out) -> Quadlet install and systemd units -> runtime commands. Separately trace a guest connection: Hello -> capability check -> request -> socket_host handler -> interceptor (notify-send, xdg-open, clipboard, host-exec).
+
+Respect the crate boundaries. crates/podbox-protocol owns the wire format, messages, CAP_* constants and PROTOCOL_VERSION; additive message types do not bump the version, breaking changes do, and already-baked guests must keep working. crates/podbox-guest is built as static musl and embedded by the host build.rs. crates/podbox-wasm compiles config/codegen to wasm for the website Studio; the podbox lib must build for wasm32 without the `cli` feature, so OS-specific code stays behind it. The website is Astro + React + Tailwind (bun); website/src/wasm and website/src/content/docs are generated, not hand-edited.
+
+Cross-cutting rules to check in code: unsafe_code is denied workspace-wide except scoped SAFETY-justified allows; JSON payloads carry \"schema\": 1 with stable error codes and documented exit codes; --dry-run must not write files or run state-changing podman/systemctl verbs; runtime names come from Config::runtime_name()/image_repo()/local_image_tag() and user-supplied names are validated before paths or argv; shell-outs use the checked helpers in process.rs.
+
+Use crates/podbox/tests (fixtures, golden JSON, insta snapshots, sandbox stubs) as evidence of expected behavior. Distinguish verified behavior in the included source from inference: the tree is orientation only. Do not assume a file is active just because it exists; respect feature flags, platform-specific modules and generated-file boundaries. Nested Markdown docs (docs/*.md, CONTRIBUTING.md, SPEC-*.md) are excluded from this dump - read them from the repository when needed instead of treating their absence as missing behavior.
+"""
+
+[[targets]]
+name = "guidance"
+profile = "full"
+output = "guidance-context.xml"
+style = "xml"
+extensions = ["md"]
+budget = 12000
+compress_mode = "full"
+prompt = """Summarize only the included repository-root README.md and AGENTS.md. Extract podbox's purpose, documented architecture, development and test commands, CLI/config contracts, and contribution conventions, preserving the documents' terminology. Separate explicit statements from inference, identify what the documents do not explain, and do not imply that the excluded nested Markdown documents (docs/, CONTRIBUTING.md, SECURITY.md, SPEC-*.md) were read."""
