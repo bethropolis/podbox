@@ -556,7 +556,7 @@ your own file and fail as circular.
 
 | Command | Description |
 |---------|-------------|
-| `podbox publish [<key>...]` | Build definitions from `images.toml` (or `envs/*.toml` / `podbox.toml`) into prebuilt OCI images and push them to a registry (GHCR by default). Skips images whose inputs haven't changed. Supports `--manifest`, `--dir`, `--registry`, `--push`/`--no-push`, `--force`, `--list`, `--dry-run`, `--engine buildx|podman`, `--ci github`, and `--output text|json|ndjson`. |
+| `podbox publish [<key>...]` | Build definitions from `images.toml` (or `envs/*.toml` / `podbox.toml`) into prebuilt OCI images and push them to a registry (GHCR by default). Skips images whose inputs haven't changed. Supports `--manifest`, `--dir`, `--registry`, `--containerfile`, `--push`/`--no-push`, `--force`, `--list`, `--dry-run`, `--engine buildx|podman`, `--ci github`, and `--output text|json|ndjson`. |
 
 All commands support `--dry-run` to preview without side effects.
 
@@ -565,6 +565,33 @@ All commands support `--dry-run` to preview without side effects.
 use `podman`, which is the fallback. With neither probe tool installed it
 exits 5 (`registry_probe_unavailable`); a probe failure other than a missing
 image exits 6 (`registry_probe_failed`).
+
+#### Build context file name
+
+`podbox publish` writes the generated Containerfile into a temporary build
+context and passes it to the engine with an explicit `--file`, so neither
+`podman build` nor `docker buildx build` relies on its default. The name is
+configurable, resolved in this order (first match wins):
+
+| Priority | Source | Scope |
+|---|---|---|
+| 1 | `podbox publish --containerfile <NAME>` | every image |
+| 2 | `[images.<key>] containerfile = "<NAME>"` | one image |
+| 3 | top-level `containerfile = "<NAME>"` in `images.toml` | every image |
+| 4 | default `Containerfile` | — |
+
+```toml
+# images.toml
+containerfile = "Dockerfile"
+
+[images.dev]
+config = "envs/dev.toml"
+containerfile = "Dockerfile.custom"
+```
+
+A name must be a single path component using only letters, digits, `.`, `_`,
+`+` or `-` (at most 128 bytes). An invalid name fails with
+`containerfile_name_invalid` before any registry probe or build.
 
 ## Next Steps
 

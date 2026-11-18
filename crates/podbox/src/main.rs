@@ -117,7 +117,8 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
             // Publish errors.
             PodboxError::ManifestMissing { .. }
             | PodboxError::ManifestInvalid { .. }
-            | PodboxError::PublishDefinitionLoad { .. } => ExitCode::from(2),
+            | PodboxError::PublishDefinitionLoad { .. }
+            | PodboxError::ContainerfileNameInvalid { .. } => ExitCode::from(2),
             PodboxError::ImageMissing { .. } => ExitCode::from(3),
             PodboxError::NoTags { .. } | PodboxError::NotBuildable { .. } => ExitCode::from(1),
             PodboxError::EngineUnavailable { engine, .. } => {

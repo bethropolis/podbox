@@ -4,6 +4,7 @@
 //! Behind a trait so tests can fake it.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -16,12 +17,14 @@ pub trait Engine: Send + Sync {
     /// Build a single image+tag for one platform from an emitted context dir.
     /// `push` asks the engine to publish at build time when it can (buildx);
     /// otherwise the caller pushes afterwards.
+    #[allow(clippy::too_many_arguments)] // one full build job, threaded through
     fn build(
         &self,
         image: &PlanImage,
         tag: &str,
         platform: &str,
         context_dir: &Path,
+        containerfile: &Path,
         labels: &BTreeMap<String, String>,
         push: bool,
     ) -> Result<(), PodboxError>;
@@ -77,33 +80,28 @@ impl Engine for PodmanEngine {
         "podman"
     }
 
+    #[allow(clippy::too_many_arguments)] // mirrors the trait's build signature
     fn build(
         &self,
         _image: &PlanImage,
         tag: &str,
         platform: &str,
         context_dir: &Path,
+        containerfile: &Path,
         labels: &BTreeMap<String, String>,
         _push: bool,
     ) -> Result<(), PodboxError> {
-        let mut args = vec![
-            "build".into(),
-            "--platform".into(),
-            platform.into(),
-            "-t".into(),
-            tag.into(),
-        ];
-        for (k, v) in labels {
-            args.push("--label".into());
-            args.push(format!("{k}={v}").into());
-        }
-        args.push(context_dir.to_owned().into());
-        run_checked("podman", &args)?;
+        let args = podman_build_args(tag, platform, context_dir, containerfile, labels);
+        run_checked("podman", &args, Some(containerfile))?;
         Ok(())
     }
 
     fn push(&self, _image: &PlanImage, tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
-        run_checked("podman", &["push".into(), tag.into()])?;
+        run_checked(
+            "podman",
+            &[OsString::from("push"), OsString::from(tag)],
+            None,
+        )?;
         Ok(())
     }
 }
@@ -116,32 +114,19 @@ impl Engine for BuildxEngine {
         "buildx"
     }
 
+    #[allow(clippy::too_many_arguments)] // mirrors the trait's build signature
     fn build(
         &self,
         _image: &PlanImage,
         tag: &str,
         platform: &str,
         context_dir: &Path,
+        containerfile: &Path,
         labels: &BTreeMap<String, String>,
         push: bool,
     ) -> Result<(), PodboxError> {
-        let mut args = vec![
-            "buildx".into(),
-            "build".into(),
-            "--platform".into(),
-            platform.into(),
-            "-t".into(),
-            tag.into(),
-            // buildx has no separate push step: publish at build time, or
-            // load the result into the local image store for `--no-push`.
-            if push { "--push" } else { "--load" }.into(),
-        ];
-        for (k, v) in labels {
-            args.push("--label".into());
-            args.push(format!("{k}={v}").into());
-        }
-        args.push(context_dir.to_owned().into());
-        run_checked("docker", &args)?;
+        let args = buildx_build_args(tag, platform, context_dir, containerfile, labels, push);
+        run_checked("docker", &args, Some(containerfile))?;
         Ok(())
     }
 
@@ -151,7 +136,63 @@ impl Engine for BuildxEngine {
     }
 }
 
-fn run_checked(bin: &str, args: &[std::ffi::OsString]) -> Result<(), PodboxError> {
+/// `podman build` argv. `--file` is explicit: no engine default is relied on.
+fn podman_build_args(
+    tag: &str,
+    platform: &str,
+    context_dir: &Path,
+    containerfile: &Path,
+    labels: &BTreeMap<String, String>,
+) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec![
+        "build".into(),
+        "--file".into(),
+        containerfile.as_os_str().to_owned(),
+        "--platform".into(),
+        platform.into(),
+        "-t".into(),
+        tag.into(),
+    ];
+    push_labels(&mut args, labels);
+    args.push(context_dir.as_os_str().to_owned());
+    args
+}
+
+/// `docker buildx build` argv. Folds the push step into the build.
+fn buildx_build_args(
+    tag: &str,
+    platform: &str,
+    context_dir: &Path,
+    containerfile: &Path,
+    labels: &BTreeMap<String, String>,
+    push: bool,
+) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec![
+        "buildx".into(),
+        "build".into(),
+        "--file".into(),
+        containerfile.as_os_str().to_owned(),
+        "--platform".into(),
+        platform.into(),
+        "-t".into(),
+        tag.into(),
+        // buildx has no separate push step: publish at build time, or
+        // load the result into the local image store for `--no-push`.
+        if push { "--push" } else { "--load" }.into(),
+    ];
+    push_labels(&mut args, labels);
+    args.push(context_dir.as_os_str().to_owned());
+    args
+}
+
+fn push_labels(args: &mut Vec<OsString>, labels: &BTreeMap<String, String>) {
+    for (k, v) in labels {
+        args.push("--label".into());
+        args.push(format!("{k}={v}").into());
+    }
+}
+
+fn run_checked(bin: &str, args: &[OsString], file: Option<&Path>) -> Result<(), PodboxError> {
     let status = Command::new(bin)
         .args(args)
         .stdout(Stdio::null())
@@ -162,9 +203,13 @@ fn run_checked(bin: &str, args: &[std::ffi::OsString]) -> Result<(), PodboxError
         Ok(())
     } else {
         let code = status.code().unwrap_or(1);
+        let details = match file {
+            Some(path) => format!("{bin} exited {code} (--file {})", path.display()),
+            None => format!("{bin} exited {code}"),
+        };
         Err(PodboxError::PublishBuildFailed {
             key: "unknown".into(),
-            details: format!("{bin} exited {code}"),
+            details,
         })
     }
 }
@@ -191,5 +236,58 @@ mod tests {
             Err(err) => err,
         };
         assert!(matches!(err, PodboxError::EngineUnavailable { .. }));
+    }
+
+    fn rendered(args: &[OsString]) -> Vec<String> {
+        args.iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn labels() -> BTreeMap<String, String> {
+        BTreeMap::from([("podbox.build-key".to_string(), "k".to_string())])
+    }
+
+    #[test]
+    fn podman_build_passes_an_explicit_file_before_platform() {
+        let args = rendered(&podman_build_args(
+            "img:latest",
+            "linux/amd64",
+            Path::new("/ctx"),
+            Path::new("/ctx/Dockerfile"),
+            &labels(),
+        ));
+        assert_eq!(&args[..3], &["build", "--file", "/ctx/Dockerfile"]);
+        let file = args.iter().position(|a| a == "--file").unwrap();
+        let platform = args.iter().position(|a| a == "--platform").unwrap();
+        assert!(file < platform, "--file must precede --platform");
+        assert_eq!(args.iter().filter(|a| *a == "--file").count(), 1);
+        assert_eq!(
+            args.iter().filter(|a| *a == "--label").count(),
+            labels().len()
+        );
+        assert_eq!(args.last().unwrap(), "/ctx");
+    }
+
+    #[test]
+    fn buildx_build_passes_an_explicit_file_before_platform() {
+        for push in [false, true] {
+            let args = rendered(&buildx_build_args(
+                "img:latest",
+                "linux/amd64",
+                Path::new("/ctx"),
+                Path::new("/ctx/Containerfile"),
+                &labels(),
+                push,
+            ));
+            assert_eq!(&args[..3], &["buildx", "build", "--file"]);
+            assert_eq!(args[3], "/ctx/Containerfile");
+            let file = args.iter().position(|a| a == "--file").unwrap();
+            let platform = args.iter().position(|a| a == "--platform").unwrap();
+            assert!(file < platform, "--file must precede --platform");
+            assert_eq!(args.iter().filter(|a| *a == "--file").count(), 1);
+            assert!(args.contains(&if push { "--push" } else { "--load" }.to_string()));
+            assert_eq!(args.last().unwrap(), "/ctx");
+        }
     }
 }

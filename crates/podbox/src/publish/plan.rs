@@ -145,6 +145,7 @@ mod tests {
                         tags: Vec::new(),
                         platforms: Vec::new(),
                         name: None,
+                        containerfile: None,
                     },
                 ),
                 (
@@ -154,9 +155,11 @@ mod tests {
                         tags: vec!["latest".to_string(), "nightly".to_string()],
                         platforms: Vec::new(),
                         name: Some("ghcr.io/me/gaming".into()),
+                        containerfile: None,
                     },
                 ),
             ]),
+            containerfile: None,
         }
     }
 

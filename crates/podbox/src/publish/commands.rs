@@ -13,6 +13,7 @@ use serde_json::json;
 use crate::config::Config;
 use crate::contract;
 use crate::error::PodboxError;
+use crate::publish::build_context;
 use crate::publish::build_key::{compute_build_key, guest_hash};
 use crate::publish::context::{RefType, context_from_flags, context_from_github_env};
 use crate::publish::discover::{Discovery, discover, list_dir};
@@ -39,6 +40,7 @@ pub struct PublishOpts {
     pub manifest: Option<PathBuf>,
     pub dir: PathBuf,
     pub registry: Option<String>,
+    pub containerfile: Option<String>,
     pub push: bool,
     pub no_push: bool,
     pub force: bool,
@@ -120,6 +122,21 @@ pub fn run(opts: PublishOpts) -> Result<()> {
     // Build plan.
     let is_lone_podbox_toml = manifest_source_is_lone_podbox_toml(&opts, &manifest_path)?;
     let plan = build_plan(&validated, &context, &opts.keys, is_lone_podbox_toml)?;
+
+    // Resolve each image's Containerfile name up front so an invalid name fails
+    // before any registry or build I/O, including under `--list`.
+    let mut containerfile_names: BTreeMap<String, String> = BTreeMap::new();
+    for image in &plan.images {
+        let entry = validated
+            .image(&image.key)
+            .expect("plan images come from the validated manifest");
+        let name = build_context::resolve_containerfile_name(
+            opts.containerfile.as_deref(),
+            entry.containerfile.as_deref(),
+            validated.containerfile.as_deref(),
+        )?;
+        containerfile_names.insert(image.key.clone(), name);
+    }
 
     // --list: print plan only, no network, no build.
     if opts.list {
@@ -254,7 +271,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
 
         // Emit context to temp dir. Keep the `TempDir` alive for the whole
         // build/push loop: dropping it deletes the Containerfile.
-        let context_dir = emit_context(config, &containerfile)?;
+        let ctx = emit_context(&containerfile, &containerfile_names[&image.key])?;
 
         // Build each platform tag.
         let mut image_failed = false;
@@ -266,7 +283,8 @@ pub fn run(opts: PublishOpts) -> Result<()> {
                     image,
                     &full_tag,
                     platform,
-                    context_dir.path(),
+                    ctx.dir.path(),
+                    &ctx.containerfile,
                     &labels.map,
                     push,
                 ) {
@@ -301,7 +319,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         if push {
             for tag in &image.tags {
                 let full_tag = format!("{}:{}", image.ref_str, tag);
-                if let Err(e) = engine.push(image, &full_tag, context_dir.path()) {
+                if let Err(e) = engine.push(image, &full_tag, ctx.dir.path()) {
                     failed += 1;
                     events.push(ImageEvent {
                         key: image.key.clone(),
@@ -383,6 +401,7 @@ fn lone_podbox_manifest(config: String) -> Manifest {
             tags: Vec::new(),
             platforms: Vec::new(),
             name: None,
+            containerfile: None,
         },
     );
     Manifest {
@@ -390,6 +409,7 @@ fn lone_podbox_manifest(config: String) -> Manifest {
         registry: "ghcr.io".into(),
         platforms: Vec::new(),
         tags: vec!["latest".into(), "sha".into()],
+        containerfile: None,
         images,
     }
 }
@@ -443,6 +463,7 @@ fn load_manifest(
             registry: "ghcr.io".into(),
             platforms: Vec::new(),
             tags: vec!["latest".into(), "sha".into()],
+            containerfile: None,
             images,
         }),
         Ok(Discovery::LonePodboxToml(_path)) => Ok(lone_podbox_manifest("podbox.toml".into())),
@@ -499,33 +520,40 @@ fn resolve_base_digest(registry: &dyn Registry, config: &Config) -> Result<Strin
     })
 }
 
+/// A build context emitted to a temp dir.
+#[derive(Debug)]
+struct BuildContext {
+    /// Owns the directory: it must outlive the build, otherwise the
+    /// Containerfile is deleted before the engine reads it.
+    dir: tempfile::TempDir,
+    /// Absolute path to the generated build file (the `--file` argument).
+    containerfile: PathBuf,
+}
+
 /// Emit the build context (Containerfile + guest binary) to a temp dir.
-///
-/// The returned `TempDir` owns the directory: it must outlive the build,
-/// otherwise the Containerfile is deleted before the engine reads it.
-fn emit_context(_config: &Config, containerfile: &str) -> Result<tempfile::TempDir, PodboxError> {
+fn emit_context(containerfile: &str, name: &str) -> Result<BuildContext, PodboxError> {
+    // Defense in depth: names were already validated during resolution.
+    build_context::validate_name(name)?;
     let dir = tempfile::Builder::new()
         .prefix("podbox-publish-")
         .tempdir()
-        .map_err(|e| PodboxError::PublishBuildFailed {
-            key: "unknown".into(),
-            details: e.to_string(),
-        })?;
-    std::fs::write(dir.path().join("Containerfile"), containerfile).map_err(|e| {
-        PodboxError::PublishBuildFailed {
-            key: "unknown".into(),
-            details: e.to_string(),
-        }
-    })?;
+        .map_err(publish_build_failed)?;
+    let path = dir.path().join(name);
+    std::fs::write(&path, containerfile).map_err(publish_build_failed)?;
     if let Some(guest) = crate::guest::PODBOX_GUEST {
-        std::fs::write(dir.path().join("podbox-guest"), guest).map_err(|e| {
-            PodboxError::PublishBuildFailed {
-                key: "unknown".into(),
-                details: e.to_string(),
-            }
-        })?;
+        std::fs::write(dir.path().join("podbox-guest"), guest).map_err(publish_build_failed)?;
     }
-    Ok(dir)
+    Ok(BuildContext {
+        dir,
+        containerfile: path,
+    })
+}
+
+fn publish_build_failed(error: std::io::Error) -> PodboxError {
+    PodboxError::PublishBuildFailed {
+        key: "unknown".into(),
+        details: error.to_string(),
+    }
 }
 
 /// Generate the Containerfile for a definition.
@@ -787,10 +815,25 @@ mod tests {
 
     #[test]
     fn emitted_context_survives_until_the_builder_is_done() {
-        let config = config_with_base("alpine:latest");
-        let dir = emit_context(&config, "FROM alpine:latest\n").unwrap();
-        assert!(dir.path().join("Containerfile").is_file());
-        assert!(dir.path().join("podbox-guest").is_file());
+        let ctx = emit_context("FROM alpine:latest\n", "Containerfile").unwrap();
+        assert!(ctx.dir.path().join("Containerfile").is_file());
+        assert!(ctx.dir.path().join("podbox-guest").is_file());
+        assert_eq!(ctx.containerfile, ctx.dir.path().join("Containerfile"));
+    }
+
+    #[test]
+    fn emitted_context_uses_the_configured_name() {
+        let ctx = emit_context("FROM alpine:latest\n", "Dockerfile.custom").unwrap();
+        assert!(ctx.containerfile.is_file());
+        assert!(ctx.containerfile.ends_with("Dockerfile.custom"));
+        assert!(!ctx.dir.path().join("Containerfile").exists());
+        assert!(ctx.dir.path().join("podbox-guest").is_file());
+    }
+
+    #[test]
+    fn invalid_containerfile_name_fails_before_io() {
+        let err = emit_context("FROM x\n", "../escape").unwrap_err();
+        assert!(matches!(err, PodboxError::ContainerfileNameInvalid { .. }));
     }
 
     #[test]

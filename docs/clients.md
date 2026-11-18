@@ -205,7 +205,7 @@ Exit codes are part of the contract. **Today**
 |------|---------|
 | 0 | Success |
 | 1 | Any other error |
-| 2 | Definition file missing or unreadable, including an explicit `--config` path that does not exist (`config_missing`) |
+| 2 | Definition file missing or unreadable, including an explicit `--config` path that does not exist (`config_missing`), or an invalid build-context file name (`containerfile_name_invalid`) |
 | 3 | Container or config not found (`container_missing`) |
 | 4 | Build failure or inspect failure |
 | 5 | podman not installed (`podman_missing`), or no registry probe tool for `publish` (`registry_probe_unavailable`) |

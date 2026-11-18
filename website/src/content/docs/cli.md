@@ -56,7 +56,7 @@ Two settings have no per-command override:
 |------|---------|
 | 0 | success |
 | 1 | anything else |
-| 2 | definition file missing / unreadable: includes `find-definition NAME` miss, and an explicit `--config PATH` that does not exist (`config_missing`) |
+| 2 | definition file missing / unreadable: includes `find-definition NAME` miss, an explicit `--config PATH` that does not exist (`config_missing`), and an invalid build-context file name (`containerfile_name_invalid`) |
 | 3 | container/config not found for the requested operation (`container_missing`) |
 | 4 | build failure or podman inspect failure |
 | 5 | podman not installed, or no registry probe tool for `publish` (`registry_probe_unavailable`) |

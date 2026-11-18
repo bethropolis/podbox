@@ -131,6 +131,10 @@ pub enum PodboxError {
     #[error("publish build failed for '{key}': {details}")]
     PublishBuildFailed { key: String, details: String },
 
+    /// Publish: the generated build file's name is unusable.
+    #[error("invalid Containerfile name '{name}': {reason}")]
+    ContainerfileNameInvalid { name: String, reason: String },
+
     /// Publish: registry rejected credentials.
     #[error("registry authentication failed for '{registry}'")]
     AuthFailed { registry: String },
@@ -195,6 +199,7 @@ impl PodboxError {
             Self::RegistryProbeFailed { .. } => "registry_probe_failed",
             Self::RegistryProbeUnavailable => "registry_probe_unavailable",
             Self::PublishBuildFailed { .. } => "build_failed",
+            Self::ContainerfileNameInvalid { .. } => "containerfile_name_invalid",
             Self::AuthFailed { .. } => "auth_failed",
             Self::PublishPushFailed { .. } => "push_failed",
             Self::MissingContextField { .. } => "publish_context_missing",

@@ -5,6 +5,7 @@
 //! engine can share it. I/O (registry probes, engine invocation, event
 //! rendering) is behind `#[cfg(feature = "cli")]`.
 
+pub mod build_context;
 pub mod build_key;
 pub mod context;
 pub mod discover;

@@ -80,6 +80,7 @@ pub fn discover(entries: &[PathBuf], dir: &Path) -> Result<Discovery, ManifestMi
                     tags: Vec::new(),
                     platforms: Vec::new(),
                     name: None,
+                    containerfile: None,
                 },
             );
         }

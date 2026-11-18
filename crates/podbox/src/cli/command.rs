@@ -11,6 +11,9 @@ use std::path::PathBuf;
 use super::{OutputFormat, Shell};
 
 #[derive(Subcommand)]
+// Clap requires each subcommand's flags inline in the variant; boxing the
+// publish payload would obscure the CLI surface for no runtime benefit.
+#[allow(clippy::large_enum_variant)]
 pub enum Command {
     /// Manage persistent shared cache volumes.
     #[command(display_order = 60)]
@@ -522,6 +525,10 @@ pub enum Command {
         /// Registry host (default: ghcr.io, or the manifest's `registry`).
         #[arg(long)]
         registry: Option<String>,
+        /// Name of the generated build file in the context (default:
+        /// `Containerfile`). Overrides `images.toml`.
+        #[arg(long)]
+        containerfile: Option<String>,
         /// Push results to the registry (default: safe `--no-push`).
         #[arg(long)]
         push: bool,

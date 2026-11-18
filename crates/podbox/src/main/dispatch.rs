@@ -519,6 +519,10 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
                     Command::Publish { registry, .. } => registry.clone(),
                     _ => unreachable!(),
                 },
+                containerfile: match &cli.command {
+                    Command::Publish { containerfile, .. } => containerfile.clone(),
+                    _ => unreachable!(),
+                },
                 push: match &cli.command {
                     Command::Publish { push, .. } => *push,
                     _ => unreachable!(),

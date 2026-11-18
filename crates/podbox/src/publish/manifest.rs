@@ -20,6 +20,10 @@ pub struct Manifest {
     pub platforms: Vec<String>,
     #[serde(default = "default_tags")]
     pub tags: Vec<String>,
+    /// Name of the generated build file in each context. Defaults to
+    /// `Containerfile`; a per-image entry overrides this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub containerfile: Option<String>,
     #[serde(default)]
     pub images: BTreeMap<String, ImageEntry>,
 }
@@ -47,6 +51,9 @@ pub struct ImageEntry {
     /// Full ref without tag (derived when omitted).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Build file name for this image, overriding the manifest-wide default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub containerfile: Option<String>,
 }
 
 /// Validated manifest, ready for planning.
@@ -56,6 +63,8 @@ pub struct ValidatedManifest {
     pub platforms: Vec<String>,
     pub tags: Vec<String>,
     pub images: BTreeMap<String, ImageEntry>, // BTreeMap = deterministic order
+    /// Manifest-wide Containerfile name, when set.
+    pub containerfile: Option<String>,
 }
 
 /// Error during manifest parsing/validation.
@@ -108,7 +117,14 @@ impl Manifest {
         }
 
         // Reject unknown top-level keys.
-        let allowed = ["schema_version", "registry", "platforms", "tags", "images"];
+        let allowed = [
+            "schema_version",
+            "registry",
+            "platforms",
+            "tags",
+            "containerfile",
+            "images",
+        ];
         for key in table.keys() {
             if !allowed.contains(&key.as_str()) {
                 return Err(ManifestError::UnknownKey { key: key.clone() });
@@ -173,6 +189,7 @@ impl Manifest {
             platforms,
             tags,
             images: self.images,
+            containerfile: self.containerfile,
         })
     }
 }
@@ -239,6 +256,30 @@ name = "ghcr.io/me/gaming"
             vec!["latest".to_string(), "nightly".to_string()]
         );
         assert_eq!(gaming.name, Some("ghcr.io/me/gaming".to_string()));
+    }
+
+    #[test]
+    fn parses_containerfile_at_both_levels() {
+        let m = Manifest::parse(
+            r#"
+schema_version = 1
+containerfile = "Dockerfile"
+
+[images.dev]
+config = "envs/dev.toml"
+
+[images.gaming]
+config = "envs/gaming.toml"
+containerfile = "Dockerfile.custom"
+"#,
+        )
+        .unwrap();
+        assert_eq!(m.containerfile.as_deref(), Some("Dockerfile"));
+        assert_eq!(m.images["dev"].containerfile, None);
+        assert_eq!(
+            m.images["gaming"].containerfile.as_deref(),
+            Some("Dockerfile.custom")
+        );
     }
 
     #[test]
