@@ -4,7 +4,7 @@
 //! Extracted verbatim from `doctor.rs`; see `super` for the check surface.
 
 use std::os::unix::fs::MetadataExt as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use podbox::config::Config;
 use podbox::env::HostEnv;
@@ -85,7 +85,8 @@ fn guest_version_in_container(name: &str) -> Option<String> {
         vec!["exec", name, "cat", "/run/podbox/guest-version"],
         vec!["exec", name, "printenv", "PODBOX_GUEST_VERSION"],
     ] {
-        if let Ok(output) = std::process::Command::new("podman").args(&probe).output()
+        let args = podbox::process::args(&probe);
+        if let Ok(output) = podbox::process::run_piped("podman", &args)
             && output.status.success()
         {
             let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -321,6 +322,33 @@ fn passwd_entry_check(stdout: &str) -> Check {
 /// entirely, bind mounts under the home (read-only host shares) are never
 /// entered, and the home root itself is not judged — it is a volume the
 /// host owns.
+/// Decode `/proc/self/mountinfo` octal escapes (`\040` space, `\011` tab,
+/// `\012` newline, `\134` backslash) so mount paths compare correctly.
+fn unescape_mountinfo_path(raw: &str) -> PathBuf {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let mut octal = String::new();
+        for _ in 0..3 {
+            if let Some(d) = chars.next() {
+                octal.push(d);
+            }
+        }
+        match u8::from_str_radix(&octal, 8) {
+            Ok(byte) => out.push(char::from(byte)),
+            Err(_) => {
+                out.push('\\');
+                out.push_str(&octal);
+            }
+        }
+    }
+    PathBuf::from(out)
+}
+
 pub(crate) fn check_home_ownership(config: &Config, env: &HostEnv) -> Vec<Check> {
     let home = &config.container.home;
     let mut foreign: Vec<String> = Vec::new();
@@ -331,8 +359,8 @@ pub(crate) fn check_home_ownership(config: &Config, env: &HostEnv) -> Vec<Check>
             content
                 .lines()
                 .filter_map(|line| line.split_whitespace().nth(4))
-                .filter(|p| Path::new(p).starts_with(home.as_os_str()))
-                .map(PathBuf::from)
+                .map(unescape_mountinfo_path)
+                .filter(|p| p.starts_with(home.as_os_str()))
                 .collect::<std::collections::HashSet<_>>()
         })
         .unwrap_or_default();
@@ -347,6 +375,12 @@ pub(crate) fn check_home_ownership(config: &Config, env: &HostEnv) -> Vec<Check>
             let Ok(meta) = std::fs::symlink_metadata(&path) else {
                 continue;
             };
+            // Symlinks are never repaired (their target owns the mode), so
+            // skip them here too instead of warning about something no fix
+            // can clear.
+            if meta.file_type().is_symlink() {
+                continue;
+            }
             if meta.uid() != env.uid || meta.gid() != env.gid {
                 foreign.push(path.display().to_string());
             } else {

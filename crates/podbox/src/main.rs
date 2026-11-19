@@ -118,7 +118,8 @@ fn exit_code_for_error(err: &anyhow::Error) -> ExitCode {
             PodboxError::ManifestMissing { .. }
             | PodboxError::ManifestInvalid { .. }
             | PodboxError::PublishDefinitionLoad { .. }
-            | PodboxError::ContainerfileNameInvalid { .. } => ExitCode::from(2),
+            | PodboxError::ContainerfileNameInvalid { .. }
+            | PodboxError::InvalidOptionValue { .. } => ExitCode::from(2),
             PodboxError::ImageMissing { .. } => ExitCode::from(3),
             PodboxError::NoTags { .. } | PodboxError::NotBuildable { .. } => ExitCode::from(1),
             PodboxError::EngineUnavailable { engine, .. } => {
@@ -159,6 +160,11 @@ fn run(mut cli: Cli) -> Result<()> {
 
     let ctx = Ctx::from_cli(&cli);
     let target = dispatch::target_name(&cli.command, cli.container.as_deref());
+    // `$PODBOX_CONTAINER` and the active context enter after
+    // `validate_cli_names`, so validate the resolved target too.
+    if let Some(name) = &target {
+        podbox::config::validate_container_name("container", name)?;
+    }
     match dispatch::needs_config(&cli.command) {
         dispatch::ConfigNeed::None => dispatch::dispatch_no_config(&ctx, &cli, target),
         dispatch::ConfigNeed::Named(_) | dispatch::ConfigNeed::All => {

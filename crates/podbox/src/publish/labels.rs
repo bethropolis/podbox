@@ -3,7 +3,7 @@
 //! Pure module: context + integration config -> label map.
 //! Encodings match what [`crate::labels`] reads from prebuilt images.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::config::IntegrationConfig;
 
@@ -29,6 +29,8 @@ impl Labels {
 pub fn build_labels(
     context: &crate::publish::context::PublishContext,
     integration: &IntegrationConfig,
+    explicit: &HashSet<String>,
+    image_key: &str,
     build_key: &str,
 ) -> Labels {
     let mut map = BTreeMap::new();
@@ -43,39 +45,39 @@ pub fn build_labels(
     );
     map.insert(
         "org.opencontainers.image.created".into(),
-        context
-            .now
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-            .to_string(),
+        context.created_rfc3339(),
     );
-    map.insert(
-        "org.opencontainers.image.title".into(),
-        integration_key(integration),
-    );
+    map.insert("org.opencontainers.image.title".into(), image_key.into());
 
     // podbox.build-key.
     map.insert("podbox.build-key".into(), build_key.into());
 
-    // podbox.integration.*: only explicitly-set keys.
-    add_integration_labels(&mut map, integration);
+    // podbox.integration.* / podbox.xdg_dirs.*: only explicitly-set keys, so
+    // the labels and the build key hash the same inputs.
+    for (key, value) in integration_label_pairs(integration, explicit) {
+        map.insert(key, value);
+    }
 
     Labels { map }
 }
 
-/// Title label: image key (best effort from integration config).
-fn integration_key(_integration: &IntegrationConfig) -> String {
-    "podbox-image".into()
+fn explicit_contains(explicit: &HashSet<String>, path: &str) -> bool {
+    explicit.contains(path)
+        || explicit
+            .iter()
+            .any(|key| key.starts_with(path) && key[path.len()..].starts_with('.'))
 }
 
-/// Emit `podbox.integration.*` for keys the publisher set explicitly.
+/// Integration/xdg labels the publisher set explicitly.
 ///
-/// Matches [`crate::labels::apply_defaults`] precedence: explicit definition
-/// value beats image label beats built-in default. We only emit what the
-/// publisher chose, never defaults that might change later.
-fn add_integration_labels(map: &mut BTreeMap<String, String>, integration: &IntegrationConfig) {
-    // Bool fields: emit when explicitly set (true or false).
+/// Sorted by key so the build key is deterministic. Shared with
+/// [`crate::publish::build_key::compute_build_key`] callers.
+pub fn integration_label_pairs(
+    integration: &IntegrationConfig,
+    explicit: &HashSet<String>,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+
     let bool_fields = [
         ("wayland", integration.wayland),
         ("audio", integration.audio),
@@ -87,16 +89,18 @@ fn add_integration_labels(map: &mut BTreeMap<String, String>, integration: &Inte
         ("sync_themes", integration.sync_themes),
     ];
     for (name, value) in bool_fields {
-        map.insert(format!("podbox.integration.{name}"), value.to_string());
+        if explicit_contains(explicit, &format!("integration.{name}")) {
+            out.push((format!("podbox.integration.{name}"), value.to_string()));
+        }
     }
 
-    // xdg_open: emit enabled state.
-    map.insert(
-        "podbox.integration.xdg_open".into(),
-        integration.xdg_open.enabled.to_string(),
-    );
+    if explicit_contains(explicit, "integration.xdg_open") {
+        out.push((
+            "podbox.integration.xdg_open".to_string(),
+            integration.xdg_open.enabled.to_string(),
+        ));
+    }
 
-    // XDG dirs: emit enabled state per dir.
     let xdg_fields = [
         ("documents", integration.xdg_dirs.documents.is_enabled()),
         ("downloads", integration.xdg_dirs.downloads.is_enabled()),
@@ -107,19 +111,26 @@ fn add_integration_labels(map: &mut BTreeMap<String, String>, integration: &Inte
         ("projects", integration.xdg_dirs.projects.is_enabled()),
     ];
     for (name, value) in xdg_fields {
-        map.insert(format!("podbox.xdg_dirs.{name}"), value.to_string());
+        if explicit_contains(explicit, &format!("integration.xdg_dirs.{name}")) {
+            out.push((format!("podbox.xdg_dirs.{name}"), value.to_string()));
+        }
     }
 
-    // GPU: emit as string.
-    map.insert(
-        "podbox.integration.gpu".into(),
-        match integration.gpu {
-            crate::config::GpuMode::Auto => "auto".into(),
-            crate::config::GpuMode::Enabled => "true".into(),
-            crate::config::GpuMode::Disabled => "false".into(),
-            crate::config::GpuMode::Nvidia => "nvidia".into(),
-        },
-    );
+    if explicit_contains(explicit, "integration.gpu") {
+        out.push((
+            "podbox.integration.gpu".to_string(),
+            match integration.gpu {
+                crate::config::GpuMode::Auto => "auto",
+                crate::config::GpuMode::Enabled => "true",
+                crate::config::GpuMode::Disabled => "false",
+                crate::config::GpuMode::Nvidia => "nvidia",
+            }
+            .to_string(),
+        ));
+    }
+
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
 }
 
 #[cfg(test)]
@@ -175,9 +186,45 @@ mod tests {
         }
     }
 
+    fn explicit_all() -> HashSet<String> {
+        let mut set: HashSet<String> = [
+            "wayland",
+            "audio",
+            "dbus",
+            "notify",
+            "clipboard",
+            "sync_fonts",
+            "sync_icons",
+            "sync_themes",
+        ]
+        .into_iter()
+        .map(|name| format!("integration.{name}"))
+        .collect();
+        set.insert("integration.xdg_open.enabled".into());
+        for name in [
+            "documents",
+            "downloads",
+            "pictures",
+            "music",
+            "videos",
+            "desktop",
+            "projects",
+        ] {
+            set.insert(format!("integration.xdg_dirs.{name}"));
+        }
+        set.insert("integration.gpu".into());
+        set
+    }
+
     #[test]
     fn builds_all_labels() {
-        let labels = build_labels(&context(), &integration(), "sha256:deadbeef");
+        let labels = build_labels(
+            &context(),
+            &integration(),
+            &explicit_all(),
+            "dev",
+            "sha256:deadbeef",
+        );
         let m = &labels.map;
         assert_eq!(
             m.get("org.opencontainers.image.source"),
@@ -187,6 +234,11 @@ mod tests {
             m.get("org.opencontainers.image.revision"),
             Some(&"abc1234567890".into())
         );
+        assert_eq!(
+            m.get("org.opencontainers.image.created"),
+            Some(&"1970-01-01T00:00:00Z".into())
+        );
+        assert_eq!(m.get("org.opencontainers.image.title"), Some(&"dev".into()));
         assert_eq!(m.get("podbox.build-key"), Some(&"sha256:deadbeef".into()));
         assert_eq!(m.get("podbox.integration.audio"), Some(&"false".into()));
         assert_eq!(m.get("podbox.integration.gpu"), Some(&"nvidia".into()));
@@ -194,8 +246,29 @@ mod tests {
     }
 
     #[test]
+    fn only_explicit_integration_keys_are_labeled() {
+        let labels = build_labels(&context(), &integration(), &HashSet::new(), "dev", "k");
+        assert!(
+            !labels
+                .map
+                .keys()
+                .any(|k| k.starts_with("podbox.integration.") || k.starts_with("podbox.xdg_dirs."))
+        );
+        assert_eq!(
+            labels.map.get("org.opencontainers.image.title"),
+            Some(&"dev".into())
+        );
+    }
+
+    #[test]
     fn labels_are_sorted() {
-        let labels = build_labels(&context(), &integration(), "sha256:deadbeef");
+        let labels = build_labels(
+            &context(),
+            &integration(),
+            &explicit_all(),
+            "dev",
+            "sha256:deadbeef",
+        );
         let keys: Vec<&str> = labels.map.keys().map(|s| s.as_str()).collect();
         let mut sorted: Vec<&str> = keys.clone();
         sorted.sort_unstable();

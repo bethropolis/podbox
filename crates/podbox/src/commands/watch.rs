@@ -29,11 +29,19 @@ pub fn run_watch(
     let interval = Duration::from_secs(interval_secs.max(1));
     let targets = resolve_targets(name.clone(), config_path.clone())?;
     if dry_run {
-        println!(
-            "would poll {} container(s) every {}s",
-            targets.len(),
-            interval.as_secs()
-        );
+        if matches!(output, OutputFormat::Ndjson) {
+            podbox::contract::emit_event(serde_json::json!({
+                "event": "plan",
+                "containers": targets.len(),
+                "interval_secs": interval.as_secs(),
+            }));
+        } else {
+            println!(
+                "would poll {} container(s) every {}s",
+                targets.len(),
+                interval.as_secs()
+            );
+        }
         return Ok(());
     }
 
@@ -46,19 +54,13 @@ pub fn run_watch(
 
     loop {
         std::thread::sleep(interval);
-        // Re-resolve each tick so new boxes join the stream. A transient
-        // failure (half-written file) keeps the previous set quietly; the
-        // next tick recovers instead of emitting spurious transitions.
-        let current = resolve_targets(name.clone(), config_path.clone())
-            .unwrap_or_else(|_| last.keys().cloned().collect());
-        for target in &current {
+        for target in &targets {
             let status = podbox::podman::state_label(target).to_string();
             if last.get(target).is_none_or(|prev| prev != &status) {
                 emit(target, last.get(target), &status, output);
                 last.insert(target.clone(), status);
             }
         }
-        last.retain(|known, _| current.iter().any(|c| c == known));
     }
 }
 

@@ -640,7 +640,11 @@ fn export_remove_app_roundtrip() {
     let apps_dir = sb.dir.join("data").join("applications");
     std::fs::create_dir_all(&apps_dir).unwrap();
     let planted = apps_dir.join("podbox-myenv-testapp.desktop");
-    std::fs::write(&planted, "[Desktop Entry]\nName=Test (myenv)\n").unwrap();
+    std::fs::write(
+        &planted,
+        "[Desktop Entry]\nName=Test (myenv)\nExec=podbox --container \"myenv\" run testapp\n",
+    )
+    .unwrap();
 
     let out = sb
         .cmd()
@@ -1024,10 +1028,10 @@ fn watch_dry_run_prints_plan() {
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        String::from_utf8_lossy(&out.stdout).contains("every 2s"),
-        "stdout: {}",
-        String::from_utf8_lossy(&out.stdout)
+        stdout.contains("\"event\":\"plan\"") && stdout.contains("\"interval_secs\":2"),
+        "stdout: {stdout}"
     );
 }
 

@@ -75,8 +75,16 @@ fn export_clean_keeps_sibling_container_launchers() {
     sb.write_config("mybox", "mybox");
     let apps = sb.root.join("data/applications");
     std::fs::create_dir_all(&apps).unwrap();
-    std::fs::write(apps.join("podbox-mybox-x.desktop"), "[Desktop Entry]\n").unwrap();
-    std::fs::write(apps.join("podbox-mybox2-y.desktop"), "[Desktop Entry]\n").unwrap();
+    std::fs::write(
+        apps.join("podbox-mybox-x.desktop"),
+        "[Desktop Entry]\nExec=podbox --container \"mybox\" run /usr/bin/x\n",
+    )
+    .unwrap();
+    std::fs::write(
+        apps.join("podbox-mybox2-y.desktop"),
+        "[Desktop Entry]\nExec=podbox --container \"mybox2\" run /usr/bin/y\n",
+    )
+    .unwrap();
 
     let out = sb.run(&["-C", "mybox", "export", "clean"]);
     assert!(

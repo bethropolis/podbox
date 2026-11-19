@@ -47,12 +47,13 @@ pub fn connect_to_host(socket_path: &Path) -> Result<UnixStream, GuestError> {
 
 /// Perform the hello handshake.
 ///
-/// Returns (`accepted_capabilities`, `idle_timeout_secs`, `host_exec_shims`).
+/// Returns (`accepted_capabilities`, `idle_timeout_secs`, `host_exec_shims`,
+/// `host_version`).
 pub fn handshake(
     host_stream: &mut UnixStream,
     container_name: &str,
     capabilities: &[String],
-) -> Result<(Vec<String>, u64, Vec<String>), GuestError> {
+) -> Result<(Vec<String>, u64, Vec<String>, String), GuestError> {
     let hello = GuestMessage::Hello {
         protocol_version: crate::protocol::PROTOCOL_VERSION,
         guest_version: crate::VERSION.into(),
@@ -73,8 +74,9 @@ pub fn handshake(
             accepted,
             idle_timeout_secs,
             host_exec_shims,
+            host_version,
             ..
-        } => Ok((accepted, idle_timeout_secs, host_exec_shims)),
+        } => Ok((accepted, idle_timeout_secs, host_exec_shims, host_version)),
         // The host answers with `Shutdown` when the protocol versions do
         // not match (see the host's hello handler). Retrying that
         // handshake is pointless, so it gets its own error: the caller
@@ -129,7 +131,8 @@ pub fn negotiate_at_with_optional(
     let mut stream = UnixStream::connect(socket_path)?;
     let mut requested: Vec<String> = required.iter().map(|c| (*c).to_string()).collect();
     requested.extend(optional.iter().map(|c| (*c).to_string()));
-    let (accepted, _idle_timeout, _shims) = handshake(&mut stream, container, &requested)?;
+    let (accepted, _idle_timeout, _shims, _host_version) =
+        handshake(&mut stream, container, &requested)?;
     for cap in required {
         if !accepted.iter().any(|a| a == cap) {
             return Err(GuestError::CapabilityRefused((*cap).to_string()));

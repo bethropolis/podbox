@@ -16,33 +16,33 @@ pub(crate) fn confirm_fix(action: &str) -> bool {
 
 /// Enable lingering for `user` so autostart units run at boot.
 pub(crate) fn enable_linger(user: &str) -> Result<()> {
-    let status = std::process::Command::new("loginctl")
-        .args(["enable-linger", user])
-        .status()
-        .map_err(|e| anyhow::anyhow!("failed to run loginctl: {e}"))?;
-    if !status.success() {
-        anyhow::bail!("loginctl enable-linger failed");
-    }
+    let args = podbox::process::args(&["enable-linger", user]);
+    podbox::process::run_checked("loginctl", &args)?;
     Ok(())
 }
 
 pub(crate) fn rewrite_memory_raw(path: &Path, suggested: &str) -> Result<()> {
     let content = std::fs::read_to_string(path)?;
-    let mut value: toml::Value = content.parse()?;
-    if let Some(tbl) = value.get_mut("container").and_then(|c| c.as_table_mut()) {
-        tbl.insert("memory".into(), toml::Value::String(suggested.to_string()));
-    } else {
-        anyhow::bail!("container table not found in {}", path.display());
-    }
-    let out = toml::to_string_pretty(&value)?;
-    podbox::fsutil::write_atomic(path, out.as_bytes())?;
+    let mut doc: toml_edit::DocumentMut = content
+        .parse()
+        .map_err(|e| anyhow::anyhow!("failed to parse '{}': {e}", path.display()))?;
+    let container = doc
+        .get_mut("container")
+        .and_then(toml_edit::Item::as_table_mut)
+        .ok_or_else(|| anyhow::anyhow!("container table not found in {}", path.display()))?;
+    container.insert("memory", toml_edit::value(suggested));
+    podbox::fsutil::write_atomic(path, doc.to_string().as_bytes())?;
     Ok(())
 }
 
 /// Attempt to fix a bare `memory = "2"` directly from the raw TOML file,
 /// bypassing `Config::load` validation. Used when `podbox doctor --fix` is
 /// invoked on an otherwise-invalid config. Returns true if a fix was applied.
-pub fn try_fix_bare_memory_for_target(target_name: Option<&str>, fix: bool) -> Result<bool> {
+pub fn try_fix_bare_memory_for_target(
+    target_name: Option<&str>,
+    config_path: Option<&Path>,
+    fix: bool,
+) -> Result<bool> {
     if !fix {
         return Ok(false);
     }
@@ -53,9 +53,12 @@ pub fn try_fix_bare_memory_for_target(target_name: Option<&str>, fix: bool) -> R
             None => return Ok(false),
         },
     };
-    let path = match podbox::config::find_by_runtime_or_stem(&name) {
-        Some(p) => p,
-        None => return Ok(false),
+    let path = match config_path {
+        Some(path) => path.to_path_buf(),
+        None => match podbox::config::find_by_runtime_or_stem(&name) {
+            Some(p) => p,
+            None => return Ok(false),
+        },
     };
     let content = std::fs::read_to_string(&path)?;
     let value: toml::Value = match content.parse() {
@@ -90,11 +93,16 @@ pub(crate) fn fix_wayland_socket_ownership(socket: &Path) -> Result<()> {
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine runtime directory from socket path"))?;
 
-    let output = std::process::Command::new("podman")
-        .args(["unshare", "chown", "0:0"])
-        .arg(socket)
-        .arg(runtime_dir)
-        .output()
+    let socket_str = socket.to_string_lossy();
+    let runtime_str = runtime_dir.to_string_lossy();
+    let args = podbox::process::args(&[
+        "unshare",
+        "chown",
+        "0:0",
+        socket_str.as_ref(),
+        runtime_str.as_ref(),
+    ]);
+    let output = podbox::process::run_piped("podman", &args)
         .map_err(|e| anyhow::anyhow!("Failed to run podman unshare: {e}"))?;
 
     if !output.status.success() {

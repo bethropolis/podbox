@@ -86,12 +86,11 @@ pub fn export_app(container_name: &str, app: &str) -> Result<()> {
     }
 
     // 5. Update desktop database
-    if let Err(e) = std::process::Command::new("update-desktop-database")
-        .arg(&apps_dir)
-        .output()
-        .map(|_| ())
+    let args = crate::process::args(&[apps_dir.to_string_lossy().to_string()]);
+    if let Ok(output) = crate::process::run_piped("update-desktop-database", &args)
+        && !output.status.success()
     {
-        eprintln!("Warning: update-desktop-database failed: {e}");
+        eprintln!("Warning: update-desktop-database exited {}", output.status);
     }
 
     println!(
@@ -125,7 +124,15 @@ pub fn ensure_exports(config: &Config, name: &str) {
 
 /// Validate a binary name before it reaches a host path or an argv.
 fn validate_bin_name(bin: &str) -> Result<()> {
-    if bin.is_empty() || bin.contains('/') || bin.contains("..") {
+    if bin.is_empty()
+        || bin == "."
+        || bin == ".."
+        || bin.starts_with('-')
+        || bin.contains('/')
+        || bin.contains('\\')
+        || bin.contains("..")
+        || bin.chars().any(char::is_whitespace)
+    {
         return Err(PodboxError::ExportFailed {
             details: format!("invalid bin name: '{bin}'"),
         }
@@ -140,11 +147,45 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// Recognize both the current single-quoted shim and the legacy double-quoted
-/// form, so older shims can still be unexported.
-fn shim_has_container(content: &str, container_name: &str) -> bool {
-    content.contains(&format!("--container {}", shell_quote(container_name)))
-        || content.contains(&format!("--container \"{container_name}\""))
+/// Container named by a `podbox`/`podmgr` command line, if the program is
+/// ours and it carries `--container`/`-C`.
+fn podbox_container_from_argv(line: &str) -> Option<String> {
+    let args = shell_words::split(line).ok()?;
+    let mut idx = 0;
+    // Skip `exec` and leading `KEY=value` assignments.
+    while idx < args.len() && (args[idx] == "exec" || args[idx].contains('=')) {
+        idx += 1;
+    }
+    let program = Path::new(args.get(idx)?).file_name()?.to_str()?;
+    if program != "podbox" && program != "podmgr" {
+        return None;
+    }
+    let pos = args.iter().position(|a| a == "--container" || a == "-C")?;
+    args.get(pos + 1).cloned()
+}
+
+/// Container referenced by a `.desktop` file's `Exec=` line, if it is a
+/// podbox launcher.
+pub fn desktop_exec_container(content: &str) -> Option<String> {
+    let exec = content.lines().find_map(|l| l.strip_prefix("Exec="))?;
+    podbox_container_from_argv(exec)
+}
+
+/// Container referenced by a bin shim script, if it invokes podbox/podmgr.
+pub fn shim_exec_container(content: &str) -> Option<String> {
+    content
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .find_map(podbox_container_from_argv)
+}
+
+/// Read at most `limit` bytes, as UTF-8.
+fn read_prefix(path: &Path, limit: usize) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; limit];
+    let n = file.read(&mut buf).ok()?;
+    String::from_utf8(buf[..n].to_vec()).ok()
 }
 
 /// Export a container binary as a host shim.
@@ -179,6 +220,12 @@ pub fn export_bin(container_name: &str, bin: &str) -> Result<()> {
 /// Errors when nothing with that id is exported, so scripts can tell
 /// "already gone" apart from success.
 pub fn unexport_app(container_name: &str, app: &str) -> Result<()> {
+    if !is_valid_app_name(app) {
+        return Err(PodboxError::ExportFailed {
+            details: format!("invalid app name: '{app}'"),
+        }
+        .into());
+    }
     let path = dirs::data_dir()
         .unwrap_or_else(|| {
             dirs::home_dir()
@@ -187,7 +234,10 @@ pub fn unexport_app(container_name: &str, app: &str) -> Result<()> {
         })
         .join("applications")
         .join(format!("podbox-{container_name}-{app}.desktop"));
-    if !path.exists() {
+    let owned = read_prefix(&path, 4096)
+        .and_then(|content| desktop_exec_container(&content))
+        .is_some_and(|name| name == container_name);
+    if !path.exists() || !owned {
         return Err(PodboxError::ExportFailed {
             details: format!("no exported app '{app}' for '{container_name}'"),
         }
@@ -208,9 +258,9 @@ pub fn unexport_bin(container_name: &str, bin: &str) -> Result<()> {
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"))
         .join(bin);
-    let owned = std::fs::read_to_string(&path)
-        .map(|content| shim_has_container(&content, container_name))
-        .unwrap_or(false);
+    let owned = read_prefix(&path, 4096)
+        .and_then(|content| shim_exec_container(&content))
+        .is_some_and(|name| name == container_name);
     if !owned {
         return Err(PodboxError::ExportFailed {
             details: format!("no exported bin '{bin}' for '{container_name}'"),
@@ -237,8 +287,14 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
         for entry in entries.flatten() {
             let name = entry.file_name();
             // Trailing dash: without it, cleaning `box` would also delete
-            // `box2`'s launchers.
-            if name.to_string_lossy().starts_with(&prefix) {
+            // `box2`'s launchers. Verify the Exec target too, because a
+            // hyphenated container (`dev-rust`) shares the `podbox-dev-`
+            // prefix with `dev`.
+            if name.to_string_lossy().starts_with(&prefix)
+                && read_prefix(&entry.path(), 4096)
+                    .and_then(|content| desktop_exec_container(&content))
+                    .is_some_and(|container| container == container_name)
+            {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
@@ -271,15 +327,11 @@ pub fn unexport_all(container_name: &str) -> Result<()> {
     // Remove shims that reference this container
     if let Ok(entries) = std::fs::read_dir(&bin_dir) {
         for entry in entries.flatten() {
-            if let Ok(mut file) = std::fs::File::open(entry.path()) {
-                use std::io::Read;
-                let mut chunk = vec![0u8; 4096];
-                if let Ok(bytes_read) = file.read(&mut chunk) {
-                    let content = String::from_utf8_lossy(&chunk[..bytes_read]);
-                    if shim_has_container(&content, container_name) {
-                        let _ = std::fs::remove_file(entry.path());
-                    }
-                }
+            if read_prefix(&entry.path(), 4096)
+                .and_then(|content| shim_exec_container(&content))
+                .is_some_and(|name| name == container_name)
+            {
+                let _ = std::fs::remove_file(entry.path());
             }
         }
     }
@@ -366,13 +418,28 @@ fn exported_desktop_files(container_name: &str) -> std::collections::BTreeMap<St
                 .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
         })
         .join("applications");
+    exported_desktop_files_in(&apps_dir, container_name)
+}
+
+/// [`exported_desktop_files`] against an explicit directory (testable).
+fn exported_desktop_files_in(
+    apps_dir: &Path,
+    container_name: &str,
+) -> std::collections::BTreeMap<String, PathBuf> {
     let prefix = format!("podbox-{container_name}-");
     let suffix = ".desktop";
     let mut out = std::collections::BTreeMap::new();
-    if let Ok(entries) = std::fs::read_dir(&apps_dir) {
+    if let Ok(entries) = std::fs::read_dir(apps_dir) {
         for entry in entries.flatten() {
             let file_name = entry.file_name().to_string_lossy().into_owned();
-            if file_name.starts_with(&prefix) && file_name.ends_with(suffix) {
+            if !(file_name.starts_with(&prefix) && file_name.ends_with(suffix)) {
+                continue;
+            }
+            // The prefix is not enough: `dev` and `dev-rust` share it.
+            let owned = read_prefix(&entry.path(), 4096)
+                .and_then(|content| desktop_exec_container(&content))
+                .is_some_and(|name| name == container_name);
+            if owned {
                 let id = file_name[prefix.len()..file_name.len() - suffix.len()].to_string();
                 out.insert(id, entry.path());
             }
@@ -386,19 +453,22 @@ fn exported_shim_names(container_name: &str) -> std::collections::BTreeSet<Strin
     let bin_dir = dirs::home_dir()
         .map(|h| h.join(".local/bin"))
         .unwrap_or_else(|| PathBuf::from("/usr/local/bin"));
+    exported_shim_names_in(&bin_dir, container_name)
+}
+
+/// [`exported_shim_names`] against an explicit directory (testable).
+fn exported_shim_names_in(
+    bin_dir: &Path,
+    container_name: &str,
+) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
-    if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+    if let Ok(entries) = std::fs::read_dir(bin_dir) {
         for entry in entries.flatten() {
-            let path = entry.path();
-            if let Ok(mut file) = std::fs::File::open(&path) {
-                use std::io::Read;
-                let mut chunk = vec![0u8; 4096];
-                if let Ok(bytes_read) = file.read(&mut chunk) {
-                    let content = String::from_utf8_lossy(&chunk[..bytes_read]);
-                    if shim_has_container(&content, container_name) {
-                        out.insert(entry.file_name().to_string_lossy().into_owned());
-                    }
-                }
+            let owned = read_prefix(&entry.path(), 4096)
+                .and_then(|content| shim_exec_container(&content))
+                .is_some_and(|name| name == container_name);
+            if owned {
+                out.insert(entry.file_name().to_string_lossy().into_owned());
             }
         }
     }
@@ -426,8 +496,15 @@ fn container_bin_path(container_name: &str, bin: &str, running: bool) -> Option<
     {
         return None;
     }
-    let probe = format!("command -v {bin}");
-    let args = crate::process::args(&["exec", container_name, "sh", "-c", probe.as_str()]);
+    let args = crate::process::args(&[
+        "exec",
+        container_name,
+        "sh",
+        "-c",
+        "command -v -- \"$1\"",
+        "podbox-probe",
+        bin,
+    ]);
     let output =
         crate::process::run_piped_timeout("podman", &args, std::time::Duration::from_secs(10))
             .ok()?;
@@ -495,7 +572,17 @@ mod tests {
 
     #[test]
     fn export_bin_rejects_path_traversal() {
-        for bad in ["", "../.bashrc", "sub/bin", "a..b", "/etc/passwd"] {
+        for bad in [
+            "",
+            ".",
+            "..",
+            "../.bashrc",
+            "sub/bin",
+            "a..b",
+            "/etc/passwd",
+            "-weird",
+            "a b",
+        ] {
             let err = match validate_bin_name(bad) {
                 Ok(()) => panic!("'{bad}' must be rejected"),
                 Err(err) => err,
@@ -503,23 +590,47 @@ mod tests {
             assert!(err.to_string().contains("invalid bin name"));
         }
         assert!(validate_bin_name("firefox").is_ok());
-        assert!(validate_bin_name("-weird").is_ok());
     }
 
     #[test]
-    fn legacy_and_quoted_shims_are_recognized() {
-        assert!(shim_has_container(
-            "#!/bin/sh\nexec podbox --container \"box\" exec \"firefox\" \"$@\"\n",
-            "box"
-        ));
-        assert!(shim_has_container(
-            "#!/bin/sh\nexec 'podbox' --container 'box' exec -- 'firefox' \"$@\"\n",
-            "box"
-        ));
-        assert!(!shim_has_container(
-            "#!/bin/sh\nexec podbox --container 'other' exec -- 'firefox' \"$@\"\n",
-            "box"
-        ));
+    fn shim_marker_requires_podbox_and_container_flag() {
+        assert_eq!(
+            shim_exec_container(
+                "#!/bin/sh\nexec podbox --container \"box\" exec \"firefox\" \"$@\"\n"
+            )
+            .as_deref(),
+            Some("box")
+        );
+        assert_eq!(
+            shim_exec_container(
+                "#!/bin/sh\nexec '/usr/bin/podbox' --container 'box' exec -- 'firefox' \"$@\"\n"
+            )
+            .as_deref(),
+            Some("box")
+        );
+        assert_eq!(
+            shim_exec_container("#!/bin/sh\ngit -C \"$HOME/work\" status\n"),
+            None
+        );
+        assert_eq!(
+            shim_exec_container("#!/bin/sh\npodman --container foo ps\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn desktop_marker_requires_podbox() {
+        assert_eq!(
+            desktop_exec_container(
+                "[Desktop Entry]\nExec=podbox --container \"box\" run /usr/bin/firefox %u\n"
+            )
+            .as_deref(),
+            Some("box")
+        );
+        assert_eq!(
+            desktop_exec_container("[Desktop Entry]\nExec=/usr/bin/git -C \"$HOME/work\" status\n"),
+            None
+        );
     }
 
     #[test]
@@ -596,49 +707,39 @@ mod tests {
     }
 
     #[test]
-    fn list_exports_lists_apps_and_bins() {
-        let apps_dir = dirs::data_dir().expect("data dir").join("applications");
-        std::fs::create_dir_all(&apps_dir).expect("create apps dir");
-        let app_path = apps_dir.join("podbox-box-firefox.desktop");
-        std::fs::write(&app_path, "[Desktop Entry]\nName=Firefox (box)\n").unwrap();
+    fn exported_inventory_ignores_hyphenated_siblings_and_foreign_bins() {
+        let root = tempfile::tempdir().unwrap();
+        let apps = root.path().join("applications");
+        let bin = root.path().join("bin");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
 
-        let bin_dir = dirs::home_dir().expect("home dir").join(".local/bin");
-        std::fs::create_dir_all(&bin_dir).expect("create bin dir");
-        let shim_path = bin_dir.join("firefox");
         std::fs::write(
-            &shim_path,
-            "#!/bin/sh\nexec /usr/bin/podbox --container \"box\" exec \"firefox\" \"$@\"\n",
+            apps.join("podbox-dev-firefox.desktop"),
+            "[Desktop Entry]\nExec=podbox --container \"dev\" run /usr/bin/firefox\n",
         )
         .unwrap();
+        std::fs::write(
+            apps.join("podbox-dev-rust-code.desktop"),
+            "[Desktop Entry]\nExec=podbox --container \"dev-rust\" run /usr/bin/code\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bin.join("firefox"),
+            "#!/bin/sh\nexec podbox --container 'dev' exec -- 'firefox' \"$@\"\n",
+        )
+        .unwrap();
+        std::fs::write(bin.join("git"), "#!/bin/sh\ngit -C \"$HOME/work\" status\n").unwrap();
 
-        let apps_dir = dirs::data_dir().expect("data dir").join("applications");
-        let prefix = format!("podbox-{}-", "box");
-        let suffix = ".desktop";
-        let mut apps: Vec<String> = std::fs::read_dir(&apps_dir)
-            .unwrap()
-            .flatten()
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n.starts_with(&prefix) && n.ends_with(suffix))
-            .map(|n| n[prefix.len()..n.len() - suffix.len()].to_string())
-            .collect();
-        apps.sort();
-
-        let mut bins: Vec<String> = std::fs::read_dir(&bin_dir)
-            .unwrap()
-            .flatten()
-            .filter(|e| {
-                std::fs::read_to_string(e.path())
-                    .map(|c| shim_has_container(&c, "box"))
-                    .unwrap_or(false)
-            })
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        bins.sort();
-
-        assert_eq!(apps, vec!["firefox".to_string()]);
-        assert_eq!(bins, vec!["firefox".to_string()]);
-
-        let _ = std::fs::remove_file(&app_path);
-        let _ = std::fs::remove_file(&shim_path);
+        let apps_found = exported_desktop_files_in(&apps, "dev");
+        assert_eq!(
+            apps_found.keys().cloned().collect::<Vec<_>>(),
+            vec!["firefox".to_string()]
+        );
+        let bins_found = exported_shim_names_in(&bin, "dev");
+        assert_eq!(
+            bins_found.into_iter().collect::<Vec<_>>(),
+            vec!["firefox".to_string()]
+        );
     }
 }

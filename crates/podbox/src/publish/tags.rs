@@ -113,27 +113,44 @@ pub fn expand_tags(tokens: &[TagToken], context: &TagContext) -> Result<Vec<Stri
 }
 
 fn is_version_tag(ref_name: &str) -> bool {
-    let v = ref_name.strip_prefix('v').unwrap_or(ref_name);
-    semver_version(v).is_some()
+    // `latest` only follows a stable version; a pre-release must not move it.
+    semver_parts(ref_name).is_some_and(|(_, pre)| pre.is_none())
 }
 
-/// `X.Y.Z`, `X.Y`, `X` — leading `v` stripped. Pre-release never reduces.
-fn semver_version(v: &str) -> Option<String> {
+/// Split `X.Y.Z[-pre]` into exactly three digit components and an optional
+/// pre-release. A leading `v` and `+build` metadata are dropped.
+fn semver_parts(v: &str) -> Option<([&str; 3], Option<&str>)> {
     let v = v.strip_prefix('v').unwrap_or(v);
-    // Split off any pre-release / build suffix (-rc.1, +build) before validating digits.
-    let core = v.split(['-', '+']).next()?;
+    let v = v.split('+').next()?;
+    let (core, pre) = match v.split_once('-') {
+        Some((core, pre)) if !pre.is_empty() => (core, Some(pre)),
+        Some(_) => return None,
+        None => (v, None),
+    };
     let parts: Vec<&str> = core.split('.').collect();
-    if parts.len() < 3 {
+    if parts.len() != 3 {
         return None;
     }
-    let (major, minor, patch) = (parts[0], parts[1], parts[2]);
-    if !major.chars().all(|c| c.is_ascii_digit())
-        || !minor.chars().all(|c| c.is_ascii_digit())
-        || !patch.chars().all(|c| c.is_ascii_digit())
+    if parts
+        .iter()
+        .any(|p| p.is_empty() || !p.chars().all(|c| c.is_ascii_digit()))
     {
         return None;
     }
-    Some(format!("{major}.{minor}.{patch}"))
+    Some(([parts[0], parts[1], parts[2]], pre))
+}
+
+/// `X.Y.Z` or `X.Y.Z-pre`; a pre-release keeps its suffix so it never
+/// overwrites the stable tag.
+fn semver_version(v: &str) -> Option<String> {
+    let (parts, pre) = semver_parts(v)?;
+    let mut out = format!("{}.{}.{}", parts[0], parts[1], parts[2]);
+    if let Some(pre) = pre {
+        out.push('-');
+        out.push_str(pre);
+    }
+    validate_tag_literal(&out).ok()?;
+    Some(out)
 }
 
 /// Sanitize a branch name for use as a tag: lowercase, replace illegal
@@ -142,6 +159,7 @@ fn sanitize_branch(name: &str) -> String {
     let s: String = name
         .chars()
         .map(|c| {
+            let c = c.to_ascii_lowercase();
             if c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-') {
                 c
             } else {
@@ -282,11 +300,21 @@ mod tests {
     }
 
     #[test]
-    fn pre_release_semver_full_only() {
-        let tokens = parse_tags(&["semver".into()]).unwrap();
+    fn pre_release_semver_keeps_its_suffix() {
+        let tokens = parse_tags(&["semver".into(), "latest".into()]).unwrap();
         let c = tag_ctx("v1.2.3-rc.1", "abc1234", "20260102");
         let tags = expand_tags(&tokens, &c).unwrap();
-        assert_eq!(tags, vec!["1.2.3"]);
+        // The pre-release gets its own tag; `latest` must not move backwards
+        // to a release candidate.
+        assert_eq!(tags, vec!["1.2.3-rc.1"]);
+    }
+
+    #[test]
+    fn semver_rejects_malformed_and_extra_parts() {
+        for bad in ["v..", "v1..3", "v1.2.3.4", "v1.2", "v", "v1.2.x"] {
+            assert_eq!(semver_version(bad), None, "{bad:?} must not parse");
+        }
+        assert_eq!(semver_version("v1.2.3").as_deref(), Some("1.2.3"));
     }
 
     #[test]
@@ -326,5 +354,6 @@ mod tests {
         assert_eq!(sanitize_branch("feat/fix#1"), "feat-fix-1");
         assert_eq!(sanitize_branch("-leading"), "leading");
         assert_eq!(sanitize_branch(".dot"), "dot");
+        assert_eq!(sanitize_branch("Feature/ABC"), "feature-abc");
     }
 }

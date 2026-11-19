@@ -27,13 +27,38 @@ pub static HOME_LOCK: Mutex<()> = Mutex::new(());
 /// [`with_sandbox_home`], no directory is created — codegen only builds
 /// paths, never touches the filesystem — so the fixed path need not exist.
 /// `XDG_DATA_HOME` is pinned as well because `dirs` prefers it over `HOME`.
+/// Restores environment variables on drop, even when `f` panics.
+struct EnvRestore(Vec<(String, Option<std::ffi::OsString>)>);
+
+impl EnvRestore {
+    fn capture(vars: &[&str]) -> Self {
+        Self(
+            vars.iter()
+                .map(|v| ((*v).to_string(), std::env::var_os(v)))
+                .collect(),
+        )
+    }
+}
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        // SAFETY: callers hold `HOME_LOCK` for the whole scope, serializing
+        // every environment mutation in this test binary.
+        #[allow(unsafe_code)]
+        unsafe {
+            for (k, v) in self.0.drain(..) {
+                match v {
+                    Some(val) => std::env::set_var(k, val),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+    }
+}
+
 pub fn with_fixed_home(home: &str, f: impl FnOnce()) {
     let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let vars = ["HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"];
-    let old: Vec<(String, Option<std::ffi::OsString>)> = vars
-        .iter()
-        .map(|v| (v.to_string(), std::env::var_os(v)))
-        .collect();
+    let _env = EnvRestore::capture(&["HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"]);
     // SAFETY: serialized behind HOME_LOCK like `with_sandbox_home`.
     #[allow(unsafe_code)]
     unsafe {
@@ -43,55 +68,26 @@ pub fn with_fixed_home(home: &str, f: impl FnOnce()) {
         std::env::remove_var("XDG_CONFIG_HOME");
     }
     f();
-    // SAFETY: Same serialization as above.
-    #[allow(unsafe_code)]
-    unsafe {
-        for (k, v) in old {
-            if let Some(val) = v {
-                std::env::set_var(k, val);
-            } else {
-                std::env::remove_var(k);
-            }
-        }
-    }
 }
 
 /// Create a sandboxed home directory and run `f` with `HOME` pointing at it.
 /// The temp dir is cleaned up on drop after restoring `HOME`.
 pub fn with_sandbox_home(f: impl FnOnce(&std::path::Path)) {
     let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = EnvRestore::capture(&["HOME", "XDG_CONFIG_HOME"]);
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let old_home = std::env::var_os("HOME");
     // SAFETY: `set_var` is edition-2024 unsafe against multi-threaded env
     // mutation; this helper serializes all HOME mutations behind HOME_LOCK
-    // and restores the prior value on exit. No library alternative exists.
+    // and `EnvRestore` restores the prior values on drop. No library
+    // alternative exists.
     #[allow(unsafe_code)]
     unsafe {
         std::env::set_var("HOME", tmp.path());
-    }
-    // `dirs` prefers XDG_CONFIG_HOME over HOME, so a developer machine with
-    // it set would leak real configs into the sandbox. Clear it the same way.
-    let old_xdg = std::env::var_os("XDG_CONFIG_HOME");
-    // SAFETY: Same serialization as HOME above.
-    #[allow(unsafe_code)]
-    unsafe {
+        // `dirs` prefers XDG_CONFIG_HOME over HOME, so a developer machine
+        // with it set would leak real configs into the sandbox.
         std::env::remove_var("XDG_CONFIG_HOME");
     }
     f(tmp.path());
-    // SAFETY: Same serialization as above.
-    #[allow(unsafe_code)]
-    unsafe {
-        if let Some(h) = old_home {
-            std::env::set_var("HOME", h);
-        } else {
-            std::env::remove_var("HOME");
-        }
-        if let Some(x) = old_xdg {
-            std::env::set_var("XDG_CONFIG_HOME", x);
-        }
-    }
-    // _guard dropped → HOME_LOCK released.
-    // TempDir is dropped here — cleaned up automatically.
 }
 
 pub fn load_config(name: &str) -> Config {

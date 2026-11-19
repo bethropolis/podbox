@@ -27,6 +27,11 @@ mod printing {
         QUIET.store(quiet, Ordering::Relaxed);
     }
 
+    /// Current quiet state, so a short-lived scan can restore it.
+    pub fn quiet() -> bool {
+        QUIET.load(Ordering::Relaxed)
+    }
+
     /// Claim and print one diagnostic line: quietly skipped under
     /// [`set_quiet`], and deduplicated by text so repeating a parse in the
     /// same process does not n-repeat the same line.
@@ -49,6 +54,12 @@ mod printing {
 #[cfg(feature = "cli")]
 pub fn set_parse_warnings_quiet(quiet: bool) {
     printing::set_quiet(quiet);
+}
+
+/// Current parse-warning quiet state, for save/restore around a scan.
+#[cfg(feature = "cli")]
+pub fn parse_warnings_quiet() -> bool {
+    printing::quiet()
 }
 
 /// Print one diagnostic through the once-per-process gate (used by both

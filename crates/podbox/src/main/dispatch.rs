@@ -154,6 +154,7 @@ pub(crate) fn needs_podman(cmd: &Command) -> bool {
             | Command::Cache { .. }
             | Command::InternalStdinWatchdog { .. }
             | Command::Migrate { .. }
+            | Command::Publish { .. }
             | Command::Dotfiles {
                 dotfiles_cmd: DotfilesCommand::Status { .. }
             }
@@ -258,7 +259,7 @@ pub(crate) fn command_output_format(cmd: &Command) -> Option<OutputFormat> {
 /// Covers every place a name can enter: the global `-C`, positional names,
 /// `create --name`, `clone` (both names), profile names, and snapshot tags.
 pub(crate) fn validate_cli_names(cli: &Cli) -> Result<()> {
-    use podbox::cli::{ProfileCommand, SnapshotCommand};
+    use podbox::cli::{CacheCommand, ProfileCommand, SnapshotCommand};
     use podbox::config::validate_container_name as check;
 
     if let Some(name) = &cli.container {
@@ -271,12 +272,22 @@ pub(crate) fn validate_cli_names(cli: &Cli) -> Result<()> {
         Command::Create {
             name: Some(name), ..
         } => check("container", name)?,
+        Command::Init {
+            name: Some(name), ..
+        } => check("container", name)?,
         Command::Clone { src, dst, .. } => {
             check("container", src)?;
             check("container", dst)?;
         }
+        Command::Restore { tag, .. } => check("snapshot tag", tag)?,
+        Command::Cache {
+            cache_cmd: CacheCommand::Prune {
+                name: Some(name), ..
+            },
+        } => check("cache", name)?,
         Command::Profile { profile_cmd } => match profile_cmd {
             ProfileCommand::Show { name } => check("profile", name)?,
+            ProfileCommand::Export { name, .. } => check("profile", name)?,
             ProfileCommand::Import {
                 name: Some(name), ..
             } => check("profile", name)?,
@@ -648,7 +659,11 @@ fn dispatch_doctor(
             // bare `container.memory` (typed match, not message text).
             if apply_fix
                 && err.is_bare_memory()
-                && commands::runtime::try_fix_bare_memory_for_target(target.as_deref(), apply_fix)?
+                && commands::runtime::try_fix_bare_memory_for_target(
+                    target.as_deref(),
+                    cli.config.as_deref(),
+                    apply_fix,
+                )?
             {
                 let (config, _) = resolve::resolve_config(cli, target)
                     .map_err(ConfigResolveError::into_report)?;
@@ -660,12 +675,27 @@ fn dispatch_doctor(
     }
 }
 
+/// Whether the invoked command asked to open the definition in `$EDITOR`.
+fn wants_edit(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Build { edit: true, .. }
+            | Command::Start { edit: true, .. }
+            | Command::Enter { edit: true, .. }
+    )
+}
+
 /// Run a command that needs one merged definition.
 ///
 /// Resolution happens exactly once through [`resolve::resolve_config`] — the
 /// single chain, with typed errors so `main`'s exit mapping keeps its codes.
 pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -> Result<()> {
     let dry = ctx.dry_run;
+    // Apply `--edit` before resolving: the command must run against what the
+    // user just saved, not the pre-edit snapshot.
+    if wants_edit(&cli.command) {
+        edit_config_for_command(ctx, cli)?;
+    }
     let (config, name) =
         resolve::resolve_config(cli, target.clone()).map_err(ConfigResolveError::into_report)?;
 
@@ -677,14 +707,11 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
             name: _,
             rebuild,
             no_diff,
-            edit,
             output,
+            ..
         } => {
             if matches!(output, OutputFormat::Json) {
                 anyhow::bail!("`podbox build` supports text and ndjson output, not pretty json");
-            }
-            if *edit {
-                edit_config_for_command(ctx, cli)?;
             }
             commands::lifecycle::run_build(&config, &env, &xdg, dry, *rebuild, *no_diff, *output)?;
         }
@@ -698,13 +725,8 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
         }
 
         Command::Start {
-            name: _,
-            timeout,
-            edit,
+            name: _, timeout, ..
         } => {
-            if *edit {
-                edit_config_for_command(ctx, cli)?;
-            }
             commands::lifecycle::run_start(&config, &env, &xdg, &name, dry, *timeout)?;
         }
 
@@ -718,13 +740,10 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
 
         Command::Enter {
             name: _,
-            edit,
             here,
             env: env_overrides,
+            ..
         } => {
-            if *edit {
-                edit_config_for_command(ctx, cli)?;
-            }
             let ctx = commands::runtime::RunContext {
                 env: &env,
                 config: &config,

@@ -76,6 +76,8 @@ pub enum ManifestError {
     SchemaTooNew(u32),
     #[error("unknown key '{key}' in images.toml")]
     UnknownKey { key: String },
+    #[error("failed to parse images.toml: {details}")]
+    Parse { details: String },
     #[error("images is empty: at least one image must be declared")]
     EmptyImages,
     #[error("image '{key}' references config '{path}' which does not exist under --dir")]
@@ -91,10 +93,9 @@ impl Manifest {
     ///
     /// Unknown keys are errors with line numbers, matching `config validate`.
     pub fn parse(content: &str) -> Result<Self, ManifestError> {
-        let value: toml::Value =
-            toml::from_str(content).map_err(|_| ManifestError::UnknownKey {
-                key: "parse error".into(),
-            })?;
+        let value: toml::Value = toml::from_str(content).map_err(|e| ManifestError::Parse {
+            details: e.to_string(),
+        })?;
         Self::from_value(value)
     }
 
@@ -131,24 +132,32 @@ impl Manifest {
             }
         }
 
-        let manifest: Manifest = value
-            .try_into()
-            .map_err(|e| ManifestError::UnknownKey { key: e.to_string() })?;
+        let manifest: Manifest =
+            value
+                .try_into()
+                .map_err(|e: toml::de::Error| ManifestError::Parse {
+                    details: e.to_string(),
+                })?;
 
         // Validate.
         if manifest.images.is_empty() {
             return Err(ManifestError::EmptyImages);
         }
-        for _platform in &manifest.platforms {
-            if _platform != "linux/amd64" {
+        for platform in &manifest.platforms {
+            if platform != "linux/amd64" {
                 return Err(ManifestError::UnsupportedPlatform {
-                    platform: _platform.clone(),
+                    platform: platform.clone(),
                 });
             }
         }
         for (key, entry) in &manifest.images {
-            let _ = key;
-            let _ = entry;
+            for platform in &entry.platforms {
+                if platform != "linux/amd64" {
+                    return Err(ManifestError::UnsupportedPlatform {
+                        platform: format!("{key}: {platform}"),
+                    });
+                }
+            }
         }
 
         Ok(manifest)

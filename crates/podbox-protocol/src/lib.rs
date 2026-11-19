@@ -150,6 +150,10 @@ pub enum HostMessage {
         /// List of command names for which the guest daemon should create PATH shims.
         #[serde(default)]
         host_exec_shims: Vec<String>,
+        /// Version of the live host speaking this handshake, so the guest can
+        /// compare it with the version baked into the image.
+        #[serde(default)]
+        host_version: String,
     },
     ClipboardData {
         text: String,
@@ -202,8 +206,17 @@ pub enum HostMessage {
 /// Write a length-prefixed JSON frame.
 pub fn write_frame<W: Write>(w: &mut W, msg: &impl Serialize) -> io::Result<()> {
     let json = serde_json::to_vec(msg)?;
+    if json.len() > MAX_FRAME_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "frame too large: {} bytes (max {MAX_FRAME_SIZE})",
+                json.len()
+            ),
+        ));
+    }
     let len = u32::try_from(json.len())
-        .expect("frame payload exceeds 4 GiB")
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "frame payload exceeds 4 GiB"))?
         .to_be_bytes();
     w.write_all(&len)?;
     w.write_all(&json)?;
@@ -421,6 +434,7 @@ mod tests {
             rejected: vec![],
             idle_timeout_secs: 10,
             host_exec_shims: vec!["git".into(), "code".into()],
+            host_version: "0.9.5".into(),
         };
         let mut buf = Vec::new();
         write_frame(&mut buf, &msg).unwrap();
@@ -430,10 +444,12 @@ mod tests {
             HostMessage::HelloAck {
                 accepted,
                 host_exec_shims,
+                host_version,
                 ..
             } => {
                 assert_eq!(accepted, vec!["host_exec"]);
                 assert_eq!(host_exec_shims, vec!["git", "code"]);
+                assert_eq!(host_version, "0.9.5");
             }
             _ => panic!("wrong message type"),
         }
@@ -445,8 +461,13 @@ mod tests {
         let msg: HostMessage = serde_json::from_slice(json.as_bytes()).unwrap();
         match msg {
             HostMessage::HelloAck {
-                host_exec_shims, ..
-            } => assert!(host_exec_shims.is_empty()),
+                host_exec_shims,
+                host_version,
+                ..
+            } => {
+                assert!(host_exec_shims.is_empty());
+                assert!(host_version.is_empty());
+            }
             _ => panic!("wrong message type"),
         }
     }

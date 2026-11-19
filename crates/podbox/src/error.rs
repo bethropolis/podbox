@@ -135,6 +135,19 @@ pub enum PodboxError {
     #[error("invalid Containerfile name '{name}': {reason}")]
     ContainerfileNameInvalid { name: String, reason: String },
 
+    /// Publish: at least one image failed. The per-image report was already
+    /// printed, so `main` must not append a second JSON document.
+    #[error("publish failed: {failed} image(s) failed")]
+    PublishFailed { failed: usize },
+
+    /// A CLI option carried a value outside its allowed set.
+    #[error("invalid {option} value '{value}': expected {expected}")]
+    InvalidOptionValue {
+        option: &'static str,
+        value: String,
+        expected: &'static str,
+    },
+
     /// Publish: registry rejected credentials.
     #[error("registry authentication failed for '{registry}'")]
     AuthFailed { registry: String },
@@ -200,6 +213,8 @@ impl PodboxError {
             Self::RegistryProbeUnavailable => "registry_probe_unavailable",
             Self::PublishBuildFailed { .. } => "build_failed",
             Self::ContainerfileNameInvalid { .. } => "containerfile_name_invalid",
+            Self::PublishFailed { .. } => "publish_failed",
+            Self::InvalidOptionValue { .. } => "invalid_option_value",
             Self::AuthFailed { .. } => "auth_failed",
             Self::PublishPushFailed { .. } => "push_failed",
             Self::MissingContextField { .. } => "publish_context_missing",
@@ -214,7 +229,10 @@ impl PodboxError {
     pub fn json_reported(&self) -> bool {
         matches!(
             self,
-            Self::StepsPending | Self::ChecksFailed(_) | Self::ConfigInvalid(_)
+            Self::StepsPending
+                | Self::ChecksFailed(_)
+                | Self::ConfigInvalid(_)
+                | Self::PublishFailed { .. }
         )
     }
 }

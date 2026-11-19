@@ -46,14 +46,9 @@ pub fn run_translate_path(
     };
 
     if to_container {
-        let translated = to_container_path(
-            &host_path,
-            xdg,
-            &config.container.home,
-            &host_home,
-            &home_in_container,
-        )
-        .unwrap_or_else(|| path_str.to_owned());
+        let translated =
+            to_container_path(&host_path, xdg, &config.container.home, &home_in_container)
+                .unwrap_or_else(|| path_str.to_owned());
         write_path(&translated)?;
     }
 
@@ -82,7 +77,6 @@ fn to_container_path(
     host_path: &Path,
     xdg: &ResolvedXdgDirs,
     container_home: &Path,
-    host_home: &Path,
     home_in_container: &str,
 ) -> Option<String> {
     for (dir_name, dir) in SHARED_DIRS {
@@ -98,9 +92,8 @@ fn to_container_path(
     if let Ok(relative) = host_path.strip_prefix(container_home) {
         return Some(format!("{home_in_container}/{}", relative.display()));
     }
-    if let Ok(relative) = host_path.strip_prefix(host_home) {
-        return Some(format!("{home_in_container}/{}", relative.display()));
-    }
+    // No arbitrary `$HOME` fallback: an unshared host path has no
+    // corresponding container path, and inventing one breaks round-trips.
     None
 }
 
@@ -113,11 +106,18 @@ fn to_host_path(
 ) -> Option<String> {
     for (dir_name, dir) in SHARED_DIRS {
         if let Some(resolved) = dir(xdg) {
-            let prefix = format!("{home_in_container}/{dir_name}/");
+            let exact = format!("{home_in_container}/{dir_name}");
+            if path_str == exact {
+                return Some(resolved.path.display().to_string());
+            }
+            let prefix = format!("{exact}/");
             if let Some(relative) = path_str.strip_prefix(&prefix) {
                 return Some(resolved.path.join(relative).display().to_string());
             }
         }
+    }
+    if path_str == home_in_container {
+        return Some(container_home.display().to_string());
     }
     let prefix = format!("{home_in_container}/");
     if let Some(relative) = path_str.strip_prefix(&prefix) {
@@ -150,7 +150,6 @@ mod tests {
             Path::new("/home/user/containers/dev/notes.txt"),
             &xdg(),
             Path::new("/home/user/containers/dev"),
-            Path::new("/home/user"),
             "/home/user",
         );
         assert_eq!(translated.as_deref(), Some("/home/user/notes.txt"));
@@ -162,7 +161,6 @@ mod tests {
             Path::new("/host/Projects/podbox"),
             &xdg(),
             Path::new("/home/user/containers/dev"),
-            Path::new("/home/user"),
             "/home/user",
         );
         assert_eq!(translated.as_deref(), Some("/home/user/Projects/podbox"));
@@ -174,6 +172,38 @@ mod tests {
             "/home/user",
         );
         assert_eq!(back.as_deref(), Some("/host/Projects/podbox"));
+    }
+
+    #[test]
+    fn exact_shared_paths_round_trip() {
+        let back = to_host_path(
+            "/home/user/Documents",
+            &xdg(),
+            Path::new("/home/user/containers/dev"),
+            "/home/user",
+        );
+        assert_eq!(back.as_deref(), Some("/host/Documents"));
+
+        let back = to_host_path(
+            "/home/user",
+            &xdg(),
+            Path::new("/home/user/containers/dev"),
+            "/home/user",
+        );
+        assert_eq!(back.as_deref(), Some("/home/user/containers/dev"));
+    }
+
+    #[test]
+    fn unshared_host_path_has_no_container_path() {
+        assert_eq!(
+            to_container_path(
+                Path::new("/home/user/.ssh/id_rsa"),
+                &xdg(),
+                Path::new("/home/user/containers/dev"),
+                "/home/user",
+            ),
+            None
+        );
     }
 
     #[test]

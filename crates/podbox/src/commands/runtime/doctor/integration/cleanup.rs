@@ -70,9 +70,13 @@ fn socket_is_stale(owner: &str, kind: Option<&str>) -> bool {
         return false; // host guest socket of a box that still exists
     };
     // Lenient load, warnings quiet: this scan must stay silent even when a
-    // definition on disk is one the strict validator would reject.
+    // definition on disk is one the strict validator would reject. Restore
+    // the previous state so a later command still hears its warnings.
+    let previous = podbox::config::parse_warnings_quiet();
     podbox::config::set_parse_warnings_quiet(true);
-    let Ok(cfg) = podbox::config::Config::load_lenient(&path) else {
+    let loaded = podbox::config::Config::load_lenient(&path);
+    podbox::config::set_parse_warnings_quiet(previous);
+    let Ok(cfg) = loaded else {
         return false; // cannot tell; never flag
     };
     socket_kind_stale(&cfg, kind)
@@ -194,19 +198,11 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
                 let fname_str = fname.to_string_lossy();
                 if (fname_str.starts_with("podbox-") || fname_str.starts_with("podmgr-"))
                     && fname_str.ends_with(".desktop")
+                    && let Some(content) = read_prefix(&entry.path(), 4096)
+                    && let Some(name) = podbox::export::desktop_exec_container(&content)
+                    && podbox::config::find_by_runtime_name(&name).is_none()
                 {
-                    if let Some(content) = read_prefix(&entry.path(), 4096) {
-                        if let Some(exec_line) = content.lines().find(|l| l.starts_with("Exec=")) {
-                            let rest = exec_line.strip_prefix("Exec=").unwrap_or("");
-                            let args = shell_words::split(rest).unwrap_or_default();
-                            let pos = args.iter().position(|a| a == "-C" || a == "--container");
-                            if let Some(name) = pos.and_then(|p| args.get(p + 1))
-                                && podbox::config::find_by_runtime_name(name).is_none()
-                            {
-                                dead.push((entry.path(), name.clone()));
-                            }
-                        }
-                    }
+                    dead.push((entry.path(), name));
                 }
             }
         }
@@ -219,16 +215,11 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
                 if path.is_dir() {
                     continue;
                 }
-                if let Some(content) = read_prefix(&path, 4096) {
-                    if content.contains("--container") || content.contains("-C ") {
-                        let args = shell_words::split(&content).unwrap_or_default();
-                        let pos = args.iter().position(|a| a == "-C" || a == "--container");
-                        if let Some(name) = pos.and_then(|p| args.get(p + 1))
-                            && podbox::config::find_by_runtime_name(name).is_none()
-                        {
-                            dead.push((path, name.clone()));
-                        }
-                    }
+                if let Some(content) = read_prefix(&path, 4096)
+                    && let Some(name) = podbox::export::shim_exec_container(&content)
+                    && podbox::config::find_by_runtime_name(&name).is_none()
+                {
+                    dead.push((path, name));
                 }
             }
         }
@@ -305,7 +296,7 @@ pub(crate) fn check_desktop_entries() -> Vec<Check> {
         {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+        let Some(content) = read_prefix(&entry.path(), 4096) else {
             continue;
         };
         // desktop-file-validate takes a file path, so it runs per entry.

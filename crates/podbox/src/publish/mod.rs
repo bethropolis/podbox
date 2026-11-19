@@ -9,14 +9,17 @@ pub mod build_context;
 pub mod build_key;
 pub mod context;
 pub mod discover;
-pub mod engine;
 pub mod events;
 pub mod labels;
 pub mod manifest;
 pub mod naming;
 pub mod plan;
-pub mod registry;
 pub mod tags;
+
+#[cfg(feature = "cli")]
+pub mod engine;
+#[cfg(feature = "cli")]
+pub mod registry;
 
 #[cfg(feature = "cli")]
 pub mod commands;

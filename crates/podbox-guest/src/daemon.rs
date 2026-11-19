@@ -167,13 +167,18 @@ pub fn run() -> Result<(), GuestError> {
         .iter()
         .map(|&s| s.to_string())
         .collect();
-    let (accepted, idle_timeout_secs, host_exec_shims) =
+    let (accepted, mut idle_timeout_secs, host_exec_shims, host_version) =
         socket::handshake(&mut host_stream, &container_name, &all_caps)?;
     let accepted_set: HashSet<String> = accepted.iter().cloned().collect();
     tracing::info!("guest: accepted capabilities: {accepted:?}");
 
     // 4. Check version drift
-    check_version_drift(&accepted_set, &mut host_stream, &container_name);
+    check_version_drift(
+        &accepted_set,
+        &mut host_stream,
+        &container_name,
+        &host_version,
+    );
 
     // 5. Install interceptor symlinks for accepted capabilities
     install_interceptors(&accepted_set, &bin_dir, &host_exec_shims)?;
@@ -199,32 +204,42 @@ pub fn run() -> Result<(), GuestError> {
                     return Ok(());
                 }
                 tracing::warn!("guest: host disconnected. Retrying connection...");
-                backoff_failures = backoff_failures.saturating_add(1);
-                std::thread::sleep(backoff_delay(backoff_failures));
-                let stream = match socket::connect_to_host(&host_socket_path) {
-                    Ok(stream) => stream,
-                    Err(e) => {
-                        tracing::error!("guest: reconnect failed: {e}");
-                        continue;
+                // Retry connect + handshake in an inner loop: a failed
+                // handshake must not fall through to `event_loop` on a stream
+                // that was never negotiated.
+                loop {
+                    backoff_failures = backoff_failures.saturating_add(1);
+                    std::thread::sleep(backoff_delay(backoff_failures));
+                    if shutdown.load(Ordering::Relaxed) {
+                        return Ok(());
                     }
-                };
-                host_stream = stream;
-                match socket::handshake(&mut host_stream, &container_name, &all_caps) {
-                    Ok((caps, _, shims)) => {
-                        tracing::info!(
-                            "guest: re-established connection and handshook successfully."
-                        );
-                        backoff_failures = 0;
-                        let caps_set: HashSet<String> = caps.iter().cloned().collect();
-                        let _ = install_interceptors(&caps_set, &bin_dir, &shims);
-                        let _ = write_path_injection(&bin_dir);
-                    }
-                    Err(GuestError::VersionMismatch(reason)) => {
-                        tracing::error!("guest: {reason}; not reconnecting.");
-                        return Err(GuestError::VersionMismatch(reason));
-                    }
-                    Err(e) => {
-                        tracing::error!("guest: re-handshake failed: {e}");
+                    let stream = match socket::connect_to_host(&host_socket_path) {
+                        Ok(stream) => stream,
+                        Err(e) => {
+                            tracing::error!("guest: reconnect failed: {e}");
+                            continue;
+                        }
+                    };
+                    host_stream = stream;
+                    match socket::handshake(&mut host_stream, &container_name, &all_caps) {
+                        Ok((caps, idle, shims, _host_version)) => {
+                            tracing::info!(
+                                "guest: re-established connection and handshook successfully."
+                            );
+                            backoff_failures = 0;
+                            idle_timeout_secs = idle;
+                            let caps_set: HashSet<String> = caps.iter().cloned().collect();
+                            let _ = install_interceptors(&caps_set, &bin_dir, &shims);
+                            let _ = write_path_injection(&bin_dir);
+                            break;
+                        }
+                        Err(GuestError::VersionMismatch(reason)) => {
+                            tracing::error!("guest: {reason}; not reconnecting.");
+                            return Err(GuestError::VersionMismatch(reason));
+                        }
+                        Err(e) => {
+                            tracing::error!("guest: re-handshake failed: {e}");
+                        }
                     }
                 }
             }
@@ -255,17 +270,16 @@ fn install_interceptors(
     host_exec_shims: &[String],
 ) -> std::io::Result<()> {
     let self_path = std::env::current_exe()?;
-    let self_path_str = self_path.to_string_lossy();
 
+    // Everything this daemon should expose. Links for anything not in this
+    // set are stale and removed below, so revoked capabilities/shims stop
+    // resolving.
+    let mut desired: HashSet<String> = HashSet::new();
     for (name, cap) in crate::protocol::INTERCEPTORS {
         if accepted.contains(*cap) {
-            let link = bin_dir.join(name);
-            let _ = std::fs::remove_file(&link);
-            std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
+            desired.insert((*name).to_string());
         }
     }
-
-    // Custom host-exec shims (e.g. `git` -> podbox-guest shim)
     if accepted.contains(crate::protocol::CAP_HOST_EXEC) {
         for shim in host_exec_shims {
             if shim == "podbox-guest"
@@ -287,20 +301,63 @@ fn install_interceptors(
             if is_core {
                 continue;
             }
-            let link = bin_dir.join(shim);
-            let _ = std::fs::remove_file(&link);
-            std::os::unix::fs::symlink(self_path_str.as_ref(), &link)?;
-            tracing::info!("installed host-exec shim: /run/podbox/bin/{shim}");
+            desired.insert(shim.clone());
         }
     }
 
+    for name in &desired {
+        let link = bin_dir.join(name);
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&self_path, &link)?;
+    }
+    prune_stale_links(bin_dir, &self_path, &desired);
+
+    for name in &desired {
+        if crate::protocol::INTERCEPTORS.iter().any(|(n, _)| n == name) {
+            tracing::debug!("installed interceptor: /run/podbox/bin/{name}");
+        } else {
+            tracing::info!("installed host-exec shim: /run/podbox/bin/{name}");
+        }
+    }
     Ok(())
+}
+
+/// Remove symlinks in `bin_dir` that point at this binary but are no longer
+/// in `desired` (a capability or host-exec shim was revoked on reconnect).
+fn prune_stale_links(
+    bin_dir: &std::path::Path,
+    self_path: &std::path::Path,
+    desired: &HashSet<String>,
+) {
+    let Ok(entries) = std::fs::read_dir(bin_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if desired.contains(&name) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !meta.file_type().is_symlink() {
+            continue;
+        }
+        let Ok(target) = std::fs::read_link(&path) else {
+            continue;
+        };
+        if target == self_path {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 fn check_version_drift(
     accepted: &HashSet<String>,
     _host_stream: &mut UnixStream,
     container_name: &str,
+    live_host_version: &str,
 ) {
     let Ok(baked_host_version) =
         std::env::var("PODBOX_HOST_VERSION").or_else(|_| std::env::var("PODMGR_HOST_VERSION"))
@@ -308,15 +365,19 @@ fn check_version_drift(
         return;
     };
 
-    let guest_version = crate::VERSION;
+    // Hosts older than the `host_version` handshake field send an empty
+    // value; that is not drift.
+    if live_host_version.is_empty() {
+        return;
+    }
 
-    if baked_host_version == guest_version {
+    if baked_host_version == live_host_version {
         return;
     }
 
     let summary = "podbox: container image is outdated";
     let body = format!(
-        "Container '{container_name}' was built with podbox {baked_host_version} but host is now {guest_version}. Run `podbox build --rebuild`."
+        "Container '{container_name}' was built with podbox {baked_host_version} but host is now {live_host_version}. Run `podbox build --rebuild`."
     );
 
     if accepted.contains(crate::protocol::CAP_NOTIFY) {
@@ -330,7 +391,7 @@ fn check_version_drift(
         let _ = crate::socket::connect_and_send_oneshot(&msg, crate::protocol::CAP_NOTIFY);
     } else {
         tracing::warn!(
-            "image is outdated (built with {baked_host_version}, host is now {guest_version}). Run `podbox build --rebuild`."
+            "image is outdated (built with {baked_host_version}, host is now {live_host_version}). Run `podbox build --rebuild`."
         );
     }
 }
@@ -491,6 +552,12 @@ fn write_path_cache(home: &str, uid: u32, gid: u32, path: &str, now_secs: u64) {
     let file = path_cache_file(home);
     if let Some(parent) = file.parent() {
         let _ = std::fs::create_dir_all(parent);
+        // `create_dir_all` may create `~/.cache` and `~/.cache/podbox` as
+        // root; chown both so the user can write the cache later.
+        let _ = std::os::unix::fs::chown(parent, Some(uid), Some(gid));
+        if let Some(cache_dir) = parent.parent() {
+            let _ = std::os::unix::fs::chown(cache_dir, Some(uid), Some(gid));
+        }
     }
     let content = format!(
         "{}\n{}\n{}\n{}",
@@ -615,6 +682,31 @@ const MAX_POLL_MS: u64 = 60_000;
 /// TOCTOU race where a freshly-started process would be killed by shutdown.
 const IDLE_CONFIRM_MS: u64 = 1_000;
 
+/// Poll timeout in milliseconds, or `None` for "block forever".
+///
+/// `idle_timeout_secs == 0` disables idle shutdown entirely. Otherwise the
+/// timeout is only armed when no user process is tracked; a non-zero value
+/// means the deadline has not passed yet.
+fn idle_poll_ms(
+    idle_enabled: bool,
+    tracked_empty: bool,
+    idle_deadline: std::time::Instant,
+    now: std::time::Instant,
+) -> Option<u16> {
+    if !idle_enabled || !tracked_empty {
+        return None;
+    }
+    let rem: u64 = idle_deadline
+        .saturating_duration_since(now)
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX);
+    if rem == 0 {
+        return Some(0);
+    }
+    Some(u16::try_from(rem.min(MAX_POLL_MS)).unwrap_or(u16::MAX))
+}
+
 #[allow(clippy::too_many_lines)]
 fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &AtomicBool) -> Exit {
     let idle_limit_ms = idle_timeout_secs.saturating_mul(1000);
@@ -640,21 +732,14 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
                 fds.push(PollFd::new(proc.fd.as_fd(), PollFlags::POLLIN));
             }
 
-            let timeout = if tracked.is_empty() {
-                let now = std::time::Instant::now();
-                let rem = idle_deadline
-                    .saturating_duration_since(now)
-                    .as_millis()
-                    .try_into()
-                    .unwrap_or(u64::MAX);
-                if rem > 0 {
-                    let poll_ms = rem.min(MAX_POLL_MS);
-                    PollTimeout::from(Some(u16::try_from(poll_ms).unwrap_or(u16::MAX)))
-                } else {
-                    PollTimeout::from(Some(0u16))
-                }
-            } else {
-                PollTimeout::from(None::<u16>)
+            let timeout = match idle_poll_ms(
+                idle_timeout_secs > 0,
+                tracked.is_empty(),
+                idle_deadline,
+                std::time::Instant::now(),
+            ) {
+                Some(ms) => PollTimeout::from(Some(ms)),
+                None => PollTimeout::from(None::<u16>),
             };
 
             match poll(&mut fds, timeout) {
@@ -775,13 +860,13 @@ fn event_loop(host_stream: &mut UnixStream, idle_timeout_secs: u64, shutdown: &A
 
         if !exited.is_empty() && tracked.is_empty() {
             let active = scan_user_processes();
-            if !active.is_empty() {
-                tracked = track_processes(&active);
-                idle_deadline =
-                    std::time::Instant::now() + std::time::Duration::from_millis(idle_limit_ms);
-            }
-            // No processes found: idle timer started naturally on next poll iteration
-            // (poll timeout when tracked.is_empty()).
+            tracked = track_processes(&active);
+            // Restart the idle window when the last tracked process exits,
+            // even if the scan found nothing: the previous deadline may be in
+            // the past, which would otherwise shut the box down immediately
+            // instead of after a fresh timeout.
+            idle_deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(idle_limit_ms);
         }
     }
 }
@@ -1018,5 +1103,39 @@ mod tests {
     fn preset_shutdown_flag_exits_without_reading() {
         let (server, _mock) = std::os::unix::net::UnixStream::pair().unwrap();
         assert_eq!(run_event_loop_once(server, 0, true), Exit::Shutdown);
+    }
+
+    #[test]
+    fn idle_timeout_zero_disables_the_timer() {
+        let now = std::time::Instant::now();
+        assert_eq!(idle_poll_ms(false, true, now, now), None);
+    }
+
+    #[test]
+    fn idle_poll_arms_only_without_tracked_processes() {
+        let now = std::time::Instant::now();
+        let deadline = now + std::time::Duration::from_secs(30);
+        assert_eq!(idle_poll_ms(true, false, deadline, now), None);
+        assert_eq!(idle_poll_ms(true, true, now, now), Some(0));
+        assert_eq!(idle_poll_ms(true, true, deadline, now), Some(30_000));
+    }
+
+    #[test]
+    fn prune_stale_links_removes_only_links_to_this_binary() {
+        let dir = std::env::temp_dir().join(format!("podbox-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let self_path = std::path::Path::new("/tmp/podbox-self-target");
+        std::os::unix::fs::symlink(self_path, dir.join("stale")).unwrap();
+        std::os::unix::fs::symlink("/bin/false", dir.join("other")).unwrap();
+        std::os::unix::fs::symlink("/bin/true", dir.join("keep")).unwrap();
+        let desired = HashSet::from(["keep".to_string()]);
+
+        prune_stale_links(&dir, self_path, &desired);
+
+        assert!(dir.join("keep").exists(), "desired link was removed");
+        assert!(!dir.join("stale").exists(), "stale link survived");
+        assert!(dir.join("other").exists(), "unrelated link was removed");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

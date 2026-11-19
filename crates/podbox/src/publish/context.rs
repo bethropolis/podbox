@@ -29,6 +29,30 @@ pub struct PublishContext {
     pub now: SystemTime,
 }
 
+/// Convert days since the Unix epoch to a civil date (Howard Hinnant).
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let shifted = days + 719_468;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = if month_prime < 10 {
+        month_prime + 3
+    } else {
+        month_prime - 9
+    };
+    let year = if month <= 2 { year + 1 } else { year };
+    (year, month, day)
+}
+
 impl PublishContext {
     /// sha7: first 7 hex chars of the commit.
     pub fn sha7(&self) -> String {
@@ -37,26 +61,28 @@ impl PublishContext {
 
     /// date_utc: YYYYMMDD in UTC.
     pub fn date_utc(&self) -> String {
-        let dur = self.now.duration_since(UNIX_EPOCH).unwrap_or_default();
-        #[allow(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            clippy::cast_possible_wrap
-        )]
-        let secs = dur.as_secs() as i64;
-        let days = secs / 86400;
-        // Days since epoch to YYYYMMDD (algorithm from Howard Hinnant).
-        let z = days + 719468;
-        let era = if z >= 0 { z } else { z - 146096 } / 146097;
-        let doe = z - era * 146097;
-        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-        let y = yoe + era * 400;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let d = doy - (153 * mp + 2) / 5 + 1;
-        let m = if mp < 10 { mp + 3 } else { mp - 9 };
-        let y = if m <= 2 { y + 1 } else { y };
+        let (y, m, d) = civil_from_days(self.epoch_days());
         format!("{y:04}{m:02}{d:02}")
+    }
+
+    /// RFC 3339 UTC timestamp for OCI `org.opencontainers.image.created`.
+    pub fn created_rfc3339(&self) -> String {
+        let dur = self.now.duration_since(UNIX_EPOCH).unwrap_or_default();
+        let secs = i64::try_from(dur.as_secs()).unwrap_or(i64::MAX);
+        let days = secs.div_euclid(86_400);
+        let seconds_of_day = secs.rem_euclid(86_400);
+        let (year, month, day) = civil_from_days(days);
+        let hour = seconds_of_day / 3600;
+        let minute = (seconds_of_day % 3600) / 60;
+        let second = seconds_of_day % 60;
+        format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+    }
+
+    fn epoch_days(&self) -> i64 {
+        let dur = self.now.duration_since(UNIX_EPOCH).unwrap_or_default();
+        i64::try_from(dur.as_secs())
+            .unwrap_or(i64::MAX)
+            .div_euclid(86_400)
     }
 
     /// Default platforms when none are configured.
@@ -181,5 +207,22 @@ mod tests {
             now: SystemTime::UNIX_EPOCH,
         };
         assert_eq!(c.date_utc(), "19700101");
+        assert_eq!(c.created_rfc3339(), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn created_rfc3339_includes_the_time_of_day() {
+        let c = PublishContext {
+            owner: "o".into(),
+            repo: "r".into(),
+            sha: "abc".into(),
+            ref_name: "main".into(),
+            ref_type: RefType::Branch,
+            event: "push".into(),
+            default_branch: None,
+            source_url: None,
+            now: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(3661),
+        };
+        assert_eq!(c.created_rfc3339(), "1970-01-01T01:01:01Z");
     }
 }

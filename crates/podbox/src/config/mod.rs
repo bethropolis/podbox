@@ -42,5 +42,7 @@ pub use types::{
     builtin_cache_mount_names, builtin_cache_names,
 };
 #[cfg(feature = "cli")]
+pub use validation::parse_warnings_quiet;
+#[cfg(feature = "cli")]
 pub use validation::set_parse_warnings_quiet;
 pub use validation::{is_valid_env_key, validate_container_name};

@@ -162,6 +162,11 @@ pub fn run_set(
     dry_run: bool,
     output: OutputFormat,
 ) -> Result<()> {
+    // Reject machine formats before touching the file: `ndjson` is not a
+    // supported output for `config set`, and a dry-run must not write either.
+    if matches!(output, OutputFormat::Ndjson) {
+        return Err(podbox::contract::bail_ndjson("config set"));
+    }
     let segments = split_key(key)?;
     let top_levels = podbox::config::key_paths::config_key_paths();
     if !top_levels
@@ -263,7 +268,11 @@ pub fn run_validate(path: &Path, output: OutputFormat) -> Result<()> {
             Ok(_) => {}
             Err(e) => match e.downcast_ref::<PodboxError>() {
                 Some(PodboxError::ConfigValidationFailed { details }) => {
-                    for entry in details.split("\n  - ") {
+                    for entry in details
+                        .split("\n  - ")
+                        .map(str::trim)
+                        .filter(|entry| !entry.is_empty())
+                    {
                         let (field, message) = match entry.split_once(": ") {
                             Some((f, m)) => (Some(f.to_string()), m.to_string()),
                             None => (None, entry.to_string()),

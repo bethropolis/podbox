@@ -11,11 +11,14 @@
 //! the manifest digest.
 
 use std::collections::BTreeMap;
-use std::process::Command;
+use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
 use crate::error::PodboxError;
+
+/// Registry probes must not hang a publish run.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Opaque handle to a registry image manifest.
 #[derive(Debug, Clone)]
@@ -136,14 +139,18 @@ fn is_missing_image(stderr: &str) -> bool {
 
 fn inspect_skopeo(ref_str: &str) -> Result<Probe, PodboxError> {
     let ref_str = registry_ref(ref_str);
-    let output = Command::new("skopeo")
-        .args(skopeo_inspect_argv(ref_str))
-        .output();
-
-    let Ok(output) = output else {
+    if which::which("skopeo").is_err() {
         // skopeo not installed; let the caller try podman.
         return Ok(Probe::ToolMissing);
-    };
+    }
+    let args = crate::process::args(&skopeo_inspect_argv(ref_str));
+    let output =
+        crate::process::run_piped_timeout("skopeo", &args, PROBE_TIMEOUT).map_err(|e| {
+            PodboxError::RegistryProbeFailed {
+                reference: ref_str.into(),
+                details: format!("skopeo inspect --raw failed: {e}"),
+            }
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if is_missing_image(&stderr) {
@@ -187,12 +194,13 @@ fn inspect_skopeo(ref_str: &str) -> Result<Probe, PodboxError> {
 /// unlike appending `@<digest>` to an existing reference (which produces an
 /// invalid `repo:tag@digest` or `repo@digest@digest` reference).
 fn config_labels_skopeo(ref_str: &str) -> Result<BTreeMap<String, String>, PodboxError> {
-    let output = Command::new("skopeo")
-        .args(skopeo_config_argv(ref_str))
-        .output()
-        .map_err(|e| PodboxError::RegistryProbeFailed {
-            reference: ref_str.into(),
-            details: format!("skopeo inspect --config could not run: {e}"),
+    let args = crate::process::args(&skopeo_config_argv(ref_str));
+    let output =
+        crate::process::run_piped_timeout("skopeo", &args, PROBE_TIMEOUT).map_err(|e| {
+            PodboxError::RegistryProbeFailed {
+                reference: ref_str.into(),
+                details: format!("skopeo inspect --config could not run: {e}"),
+            }
         })?;
     if !output.status.success() {
         return Err(PodboxError::RegistryProbeFailed {
@@ -233,20 +241,23 @@ fn parse_labels(config: &serde_json::Value) -> BTreeMap<String, String> {
 
 fn inspect_podman(ref_str: &str) -> Result<Probe, PodboxError> {
     let ref_str = registry_ref(ref_str);
-    let output = Command::new("podman")
-        .args([
-            "manifest",
-            "inspect",
-            "--format",
-            "{{json .}}",
-            &format!("docker://{ref_str}"),
-        ])
-        .output();
-
-    let Ok(output) = output else {
-        // podman not installed.
+    if which::which("podman").is_err() {
         return Ok(Probe::ToolMissing);
-    };
+    }
+    let args = crate::process::args(&[
+        "manifest",
+        "inspect",
+        "--format",
+        "{{json .}}",
+        &format!("docker://{ref_str}"),
+    ]);
+    let output =
+        crate::process::run_piped_timeout("podman", &args, PROBE_TIMEOUT).map_err(|e| {
+            PodboxError::RegistryProbeFailed {
+                reference: ref_str.into(),
+                details: format!("podman manifest inspect failed: {e}"),
+            }
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.trim().is_empty() || is_missing_image(&stderr) {

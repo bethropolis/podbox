@@ -15,13 +15,15 @@ use crate::contract;
 use crate::error::PodboxError;
 use crate::publish::build_context;
 use crate::publish::build_key::{compute_build_key, guest_hash};
-use crate::publish::context::{RefType, context_from_flags, context_from_github_env};
+use crate::publish::context::{
+    PublishContext, RefType, context_from_flags, context_from_github_env,
+};
 use crate::publish::discover::{Discovery, discover, list_dir};
 use crate::publish::engine::select_engine;
 use crate::publish::events::{
     ImageEvent, done_document, done_event, image_event, plan_entry, step_event,
 };
-use crate::publish::labels::build_labels;
+use crate::publish::labels::{build_labels, integration_label_pairs};
 use crate::publish::manifest::Manifest;
 use crate::publish::plan::{Plan, build_plan};
 use crate::publish::registry::{Registry, SkopeoRegistry};
@@ -66,23 +68,31 @@ pub fn run(opts: PublishOpts) -> Result<()> {
 
     // Build the publish context.
     let now = SystemTime::now();
-    let context = match opts.ci.as_deref() {
+    let ref_type = opts.ref_type.as_deref().map(parse_ref_type).transpose()?;
+    let mut context = match opts.ci.as_deref() {
         Some("github") => context_from_github_env(now)?,
-        _ => context_from_flags(
+        Some(other) => {
+            return Err(PodboxError::InvalidOptionValue {
+                option: "--ci",
+                value: other.into(),
+                expected: "'github'",
+            }
+            .into());
+        }
+        None => context_from_flags(
             opts.owner.clone(),
             opts.repo.clone(),
             opts.sha.clone(),
             opts.ref_name.clone(),
-            opts.ref_type.as_deref().map(|s| match s {
-                "tag" => RefType::Tag,
-                _ => RefType::Branch,
-            }),
+            ref_type,
             opts.event.clone(),
             opts.default_branch.clone(),
             None,
             now,
         )?,
     };
+    // `--owner`, `--sha`, etc. are documented as overriding `--ci github`.
+    apply_context_overrides(&mut context, &opts)?;
 
     // Load manifest: explicit --manifest or discovery.
     let manifest_path = opts
@@ -143,10 +153,13 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         return print_list(&plan, output);
     }
 
+    // Every publish build copies the embedded guest binary into the context.
+    let guest = crate::guest::PODBOX_GUEST.ok_or(PodboxError::GuestBinaryUnavailable)?;
+
     // Select engine.
     let prefer_ci = opts.ci.as_deref() == Some("github");
     let engine: Box<dyn crate::publish::engine::Engine> =
-        select_engine(prefer_ci, opts.engine.as_deref()).map_err(|e| anyhow::anyhow!("{e}"))?;
+        select_engine(prefer_ci, opts.engine.as_deref())?;
 
     // Per-image pipeline.
     let mut events: Vec<ImageEvent> = Vec::new();
@@ -174,8 +187,9 @@ pub fn run(opts: PublishOpts) -> Result<()> {
 
         // Compute build key.
         let containerfile = generate_containerfile(config)?;
-        let guest_hash_str = guest_hash(crate::guest::PODBOX_GUEST.unwrap_or(&[]));
-        let integration_labels = integration_label_pairs(config);
+        let guest_hash_str = guest_hash(guest);
+        let integration_labels =
+            integration_label_pairs(&config.integration, &config.explicit_keys);
         let build_key = compute_build_key(
             &containerfile,
             &guest_hash_str,
@@ -273,40 +287,45 @@ pub fn run(opts: PublishOpts) -> Result<()> {
         // build/push loop: dropping it deletes the Containerfile.
         let ctx = emit_context(&containerfile, &containerfile_names[&image.key])?;
 
-        // Build each platform tag.
+        // Build every platform once, with all planned tags.
+        let tags: Vec<String> = image
+            .tags
+            .iter()
+            .map(|tag| format!("{}:{}", image.ref_str, tag))
+            .collect();
+        let labels = build_labels(
+            &context,
+            &config.integration,
+            &config.explicit_keys,
+            &image.key,
+            &build_key,
+        );
         let mut image_failed = false;
         for platform in &image.platforms {
-            for tag in &image.tags {
-                let full_tag = format!("{}:{}", image.ref_str, tag);
-                let labels = build_labels(&context, &config.integration, &build_key);
-                if let Err(e) = engine.build(
-                    image,
-                    &full_tag,
-                    platform,
-                    ctx.dir.path(),
-                    &ctx.containerfile,
-                    &labels.map,
-                    push,
-                ) {
-                    image_failed = true;
-                    failed += 1;
-                    events.push(ImageEvent {
-                        key: image.key.clone(),
-                        ref_str: image.ref_str.clone(),
-                        tags: image.tags.clone(),
-                        pushed: false,
-                        skipped: false,
-                        digest: None,
-                        build_key: Some(build_key.clone()),
-                        retagged: None,
-                        first_push: None,
-                        error: Some(e.to_string()),
-                        error_code: Some("build_failed".into()),
-                    });
-                    break;
-                }
-            }
-            if image_failed {
+            if let Err(e) = engine.build(
+                image,
+                &tags,
+                platform,
+                ctx.dir.path(),
+                &ctx.containerfile,
+                &labels.map,
+                push,
+            ) {
+                image_failed = true;
+                failed += 1;
+                events.push(ImageEvent {
+                    key: image.key.clone(),
+                    ref_str: image.ref_str.clone(),
+                    tags: image.tags.clone(),
+                    pushed: false,
+                    skipped: false,
+                    digest: None,
+                    build_key: Some(build_key.clone()),
+                    retagged: None,
+                    first_push: None,
+                    error: Some(e.to_string()),
+                    error_code: Some("build_failed".into()),
+                });
                 break;
             }
         }
@@ -315,7 +334,8 @@ pub fn run(opts: PublishOpts) -> Result<()> {
             continue;
         }
 
-        // Push.
+        // Push, then report the digest the registry now answers with.
+        let mut pushed_digest: Option<String> = None;
         if push {
             for tag in &image.tags {
                 let full_tag = format!("{}:{}", image.ref_str, tag);
@@ -338,20 +358,28 @@ pub fn run(opts: PublishOpts) -> Result<()> {
                     break;
                 }
             }
+            if !image_failed
+                && let Some(first) = image.tags.first()
+                && let Ok(Some(img)) = registry.inspect(&format!("{}:{}", image.ref_str, first))
+            {
+                pushed_digest = Some(img.digest);
+            }
         }
 
         if image_failed {
             continue;
         }
 
-        pushed += 1;
+        if push {
+            pushed += 1;
+        }
         events.push(ImageEvent {
             key: image.key.clone(),
             ref_str: image.ref_str.clone(),
             tags: image.tags.clone(),
             pushed: push,
             skipped: false,
-            digest: Some(base_digest.clone()),
+            digest: pushed_digest,
             build_key: Some(build_key),
             retagged: None,
             first_push: None,
@@ -385,7 +413,7 @@ pub fn run(opts: PublishOpts) -> Result<()> {
     }
 
     if failed > 0 {
-        return Err(anyhow::anyhow!("publish failed: {failed} image(s) failed"));
+        return Err(PodboxError::PublishFailed { failed }.into());
     }
     Ok(())
 }
@@ -562,23 +590,45 @@ fn generate_containerfile(config: &Config) -> Result<String, PodboxError> {
     crate::codegen::containerfile::generate(config, "podbox-guest", &env)
 }
 
-/// Extract integration label pairs (explicit keys only) for the build key.
-fn integration_label_pairs(config: &Config) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let int = &config.integration;
-    if config.explicit_keys.contains("integration.wayland") {
-        out.push(("integration.wayland".into(), int.wayland.to_string()));
+fn parse_ref_type(value: &str) -> Result<RefType, PodboxError> {
+    match value {
+        "branch" => Ok(RefType::Branch),
+        "tag" => Ok(RefType::Tag),
+        other => Err(PodboxError::InvalidOptionValue {
+            option: "--ref-type",
+            value: other.into(),
+            expected: "'branch' or 'tag'",
+        }),
     }
-    if config.explicit_keys.contains("integration.audio") {
-        out.push(("integration.audio".into(), int.audio.to_string()));
+}
+
+/// Apply explicit CLI context flags on top of `--ci github` values.
+fn apply_context_overrides(
+    context: &mut PublishContext,
+    opts: &PublishOpts,
+) -> Result<(), PodboxError> {
+    if let Some(value) = &opts.owner {
+        context.owner.clone_from(value);
     }
-    if config.explicit_keys.contains("integration.dbus") {
-        out.push(("integration.dbus".into(), int.dbus.to_string()));
+    if let Some(value) = &opts.repo {
+        context.repo.clone_from(value);
     }
-    if config.explicit_keys.contains("integration.gpu") {
-        out.push(("integration.gpu".into(), format!("{:?}", int.gpu)));
+    if let Some(value) = &opts.sha {
+        context.sha.clone_from(value);
     }
-    out
+    if let Some(value) = &opts.ref_name {
+        context.ref_name.clone_from(value);
+    }
+    if let Some(value) = &opts.event {
+        context.event.clone_from(value);
+    }
+    if let Some(value) = &opts.default_branch {
+        context.default_branch = Some(value.clone());
+    }
+    if let Some(value) = &opts.ref_type {
+        context.ref_type = parse_ref_type(value)?;
+    }
+    Ok(())
 }
 
 enum Action {

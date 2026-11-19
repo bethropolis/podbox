@@ -21,6 +21,7 @@ fn hello_ack_serializes_with_type_tag() {
         rejected: vec![],
         idle_timeout_secs: 0,
         host_exec_shims: vec![],
+        host_version: "0.9.5".into(),
     };
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"type\":\"hello_ack\""));
@@ -112,6 +113,7 @@ fn hello_ack_with_shims_round_trips() {
         rejected: vec![],
         idle_timeout_secs: 30,
         host_exec_shims: vec!["git".into(), "flatpak".into()],
+        host_version: "0.9.5".into(),
     };
     let mut buf = Vec::new();
     write_frame(&mut buf, &msg).unwrap();
@@ -123,11 +125,13 @@ fn hello_ack_with_shims_round_trips() {
             rejected,
             idle_timeout_secs,
             host_exec_shims,
+            host_version,
         } => {
             assert_eq!(accepted, vec!["notify", "host_exec"]);
             assert!(rejected.is_empty());
             assert_eq!(idle_timeout_secs, 30);
             assert_eq!(host_exec_shims, vec!["git", "flatpak"]);
+            assert_eq!(host_version, "0.9.5");
         }
         _ => panic!("wrong message type"),
     }

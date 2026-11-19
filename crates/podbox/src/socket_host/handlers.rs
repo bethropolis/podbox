@@ -102,6 +102,7 @@ pub(super) fn handle_hello(
         rejected,
         idle_timeout_secs,
         host_exec_shims,
+        host_version: crate::VERSION.into(),
     };
     write_frame(stream, &response)?;
     Ok(HelloOutcome::Accepted(accepted))

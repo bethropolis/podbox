@@ -21,7 +21,7 @@ pub trait Engine: Send + Sync {
     fn build(
         &self,
         image: &PlanImage,
-        tag: &str,
+        tags: &[String],
         platform: &str,
         context_dir: &Path,
         containerfile: &Path,
@@ -84,25 +84,24 @@ impl Engine for PodmanEngine {
     fn build(
         &self,
         _image: &PlanImage,
-        tag: &str,
+        tags: &[String],
         platform: &str,
         context_dir: &Path,
         containerfile: &Path,
         labels: &BTreeMap<String, String>,
         _push: bool,
     ) -> Result<(), PodboxError> {
-        let args = podman_build_args(tag, platform, context_dir, containerfile, labels);
+        let args = podman_build_args(tags, platform, context_dir, containerfile, labels);
         run_checked("podman", &args, Some(containerfile))?;
         Ok(())
     }
 
     fn push(&self, _image: &PlanImage, tag: &str, _context_dir: &Path) -> Result<(), PodboxError> {
-        run_checked(
+        run_checked_push(
             "podman",
+            tag,
             &[OsString::from("push"), OsString::from(tag)],
-            None,
-        )?;
-        Ok(())
+        )
     }
 }
 
@@ -118,14 +117,14 @@ impl Engine for BuildxEngine {
     fn build(
         &self,
         _image: &PlanImage,
-        tag: &str,
+        tags: &[String],
         platform: &str,
         context_dir: &Path,
         containerfile: &Path,
         labels: &BTreeMap<String, String>,
         push: bool,
     ) -> Result<(), PodboxError> {
-        let args = buildx_build_args(tag, platform, context_dir, containerfile, labels, push);
+        let args = buildx_build_args(tags, platform, context_dir, containerfile, labels, push);
         run_checked("docker", &args, Some(containerfile))?;
         Ok(())
     }
@@ -138,7 +137,7 @@ impl Engine for BuildxEngine {
 
 /// `podman build` argv. `--file` is explicit: no engine default is relied on.
 fn podman_build_args(
-    tag: &str,
+    tags: &[String],
     platform: &str,
     context_dir: &Path,
     containerfile: &Path,
@@ -150,9 +149,8 @@ fn podman_build_args(
         containerfile.as_os_str().to_owned(),
         "--platform".into(),
         platform.into(),
-        "-t".into(),
-        tag.into(),
     ];
+    push_tags(&mut args, tags);
     push_labels(&mut args, labels);
     args.push(context_dir.as_os_str().to_owned());
     args
@@ -160,7 +158,7 @@ fn podman_build_args(
 
 /// `docker buildx build` argv. Folds the push step into the build.
 fn buildx_build_args(
-    tag: &str,
+    tags: &[String],
     platform: &str,
     context_dir: &Path,
     containerfile: &Path,
@@ -174,21 +172,46 @@ fn buildx_build_args(
         containerfile.as_os_str().to_owned(),
         "--platform".into(),
         platform.into(),
-        "-t".into(),
-        tag.into(),
-        // buildx has no separate push step: publish at build time, or
-        // load the result into the local image store for `--no-push`.
-        if push { "--push" } else { "--load" }.into(),
     ];
+    push_tags(&mut args, tags);
+    // buildx has no separate push step: publish at build time, or load the
+    // result into the local image store for `--no-push`.
+    args.push(if push { "--push" } else { "--load" }.into());
     push_labels(&mut args, labels);
     args.push(context_dir.as_os_str().to_owned());
     args
+}
+
+/// One `-t` per planned tag, so a single build produces every tag.
+fn push_tags(args: &mut Vec<OsString>, tags: &[String]) {
+    for tag in tags {
+        args.push("-t".into());
+        args.push(tag.into());
+    }
 }
 
 fn push_labels(args: &mut Vec<OsString>, labels: &BTreeMap<String, String>) {
     for (k, v) in labels {
         args.push("--label".into());
         args.push(format!("{k}={v}").into());
+    }
+}
+
+fn run_checked_push(bin: &str, tag: &str, args: &[OsString]) -> Result<(), PodboxError> {
+    let status = Command::new(bin)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|_e| PodboxError::EngineUnavailable { engine: bin.into() })?;
+    if status.success() {
+        Ok(())
+    } else {
+        let code = status.code().unwrap_or(1);
+        Err(PodboxError::PublishPushFailed {
+            key: tag.into(),
+            details: format!("{bin} push exited {code}"),
+        })
     }
 }
 
@@ -250,8 +273,9 @@ mod tests {
 
     #[test]
     fn podman_build_passes_an_explicit_file_before_platform() {
+        let tags = vec!["img:latest".to_string(), "img:1".to_string()];
         let args = rendered(&podman_build_args(
-            "img:latest",
+            &tags,
             "linux/amd64",
             Path::new("/ctx"),
             Path::new("/ctx/Dockerfile"),
@@ -262,6 +286,7 @@ mod tests {
         let platform = args.iter().position(|a| a == "--platform").unwrap();
         assert!(file < platform, "--file must precede --platform");
         assert_eq!(args.iter().filter(|a| *a == "--file").count(), 1);
+        assert_eq!(args.iter().filter(|a| *a == "-t").count(), tags.len());
         assert_eq!(
             args.iter().filter(|a| *a == "--label").count(),
             labels().len()
@@ -272,8 +297,9 @@ mod tests {
     #[test]
     fn buildx_build_passes_an_explicit_file_before_platform() {
         for push in [false, true] {
+            let tags = vec!["img:latest".to_string(), "img:1".to_string()];
             let args = rendered(&buildx_build_args(
-                "img:latest",
+                &tags,
                 "linux/amd64",
                 Path::new("/ctx"),
                 Path::new("/ctx/Containerfile"),
@@ -286,6 +312,7 @@ mod tests {
             let platform = args.iter().position(|a| a == "--platform").unwrap();
             assert!(file < platform, "--file must precede --platform");
             assert_eq!(args.iter().filter(|a| *a == "--file").count(), 1);
+            assert_eq!(args.iter().filter(|a| *a == "-t").count(), tags.len());
             assert!(args.contains(&if push { "--push" } else { "--load" }.to_string()));
             assert_eq!(args.last().unwrap(), "/ctx");
         }
