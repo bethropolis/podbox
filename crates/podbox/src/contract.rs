@@ -60,6 +60,7 @@ pub const CONTRACT_FEATURES: &[&str] = &[
     "publish",
     "watch",
     "build_ndjson",
+    "info_build",
 ];
 
 /// Convert a byte offset into 1-based (line, column). Columns count Unicode

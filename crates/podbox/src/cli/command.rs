@@ -8,7 +8,7 @@ use clap::{Subcommand, ValueEnum};
 
 use std::path::PathBuf;
 
-use super::{OutputFormat, Shell};
+use super::{PublishFormat, Shell, StreamFormat, TextJson};
 
 #[derive(Subcommand)]
 // Clap requires each subcommand's flags inline in the variant; boxing the
@@ -43,8 +43,8 @@ pub enum Command {
         #[arg(long)]
         edit: bool,
         /// Output format (text, or ndjson for streamed progress events).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = StreamFormat::Text)]
+        output: StreamFormat,
     },
 
     /// Install Quadlet systemd files and enable the container.
@@ -98,8 +98,13 @@ pub enum Command {
         name: Option<String>,
     },
 
-    /// Execute a command interactively in the container.
-    #[command(display_order = 21)]
+    /// Execute a command in the container.
+    #[command(
+        display_order = 21,
+        after_help = "Examples:\n  \
+        podbox exec -C dev -- htop\n  \
+        podbox exec dev htop   # leading name is promoted when dev is a managed config"
+    )]
     Exec {
         /// Run as root inside the container (omit -u flag).
         #[arg(long)]
@@ -116,7 +121,13 @@ pub enum Command {
     },
 
     /// Run a GUI application in the container (detached).
-    #[command(display_order = 22)]
+    #[command(
+        display_order = 22,
+        after_help = "Examples:\n  \
+        podbox run -C dev firefox\n  \
+        podbox run dev firefox   # leading name is promoted when dev is a managed config\n  \
+        podbox run -C dev gedit ~/notes.txt"
+    )]
     Run {
         /// Application to run.
         app: String,
@@ -134,8 +145,8 @@ pub enum Command {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Show container logs.
@@ -170,8 +181,8 @@ pub enum Command {
         #[arg(long)]
         no_stream: bool,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Remove the container.
@@ -180,8 +191,8 @@ pub enum Command {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
         /// Also remove the home directory.
-        #[arg(long)]
-        all: bool,
+        #[arg(long = "home", alias = "all")]
+        home: bool,
         /// Skip confirmation prompt.
         #[arg(long)]
         force: bool,
@@ -210,8 +221,8 @@ pub enum Command {
         #[arg(long)]
         env: bool,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Run the host socket server (socket-activated by systemd).
@@ -289,16 +300,16 @@ pub enum Command {
     #[command(visible_alias = "ls", display_order = 25)]
     List {
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Show podbox/podman versions and client-contract capabilities.
     #[command(display_order = 27)]
     Info {
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Clone an existing container config to a new name.
@@ -374,9 +385,12 @@ pub enum Command {
         /// Auto-fix common issues (e.g. corrupted Wayland socket ownership).
         #[arg(long)]
         fix: bool,
+        /// Apply `--fix` actions without prompting.
+        #[arg(long, requires = "fix")]
+        yes: bool,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Generate shell completions.
@@ -398,8 +412,8 @@ pub enum Command {
         #[arg(long)]
         apply: bool,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Snapshot the current container state as a tagged image.
@@ -431,7 +445,7 @@ pub enum Command {
         /// Container name to set as active (omit to show current context).
         name: Option<String>,
         /// Clear the active context.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "name")]
         clear: bool,
     },
 
@@ -461,8 +475,8 @@ pub enum Command {
         #[arg(long, default_value_t = 25)]
         limit: usize,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 
     /// Stream container status changes as newline-delimited JSON.
@@ -478,8 +492,8 @@ pub enum Command {
         #[arg(long, default_value_t = 2)]
         interval: u64,
         /// Output format (ndjson or text).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Ndjson)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = StreamFormat::Ndjson)]
+        output: StreamFormat,
     },
 
     /// Translate a path between host and container.
@@ -490,10 +504,10 @@ pub enum Command {
             .multiple(false)
     ))]
     TranslatePath {
-        /// Direction of translation.
+        /// Translate a host path into the container.
         #[arg(long)]
         to_container: bool,
-        /// Direction of translation.
+        /// Translate a container path onto the host.
         #[arg(long)]
         to_host: bool,
         /// Path to translate.
@@ -508,69 +522,70 @@ pub enum Command {
         force: bool,
     },
 
-    /// Publish one or more podbox definitions as prebuilt OCI images to a
-    /// registry (GHCR by default). Reads `images.toml` (or discovers
-    /// `envs/*.toml` / `podbox.toml`), builds each image, tags it, and
-    /// pushes it, skipping images whose inputs haven't changed.
+    /// Build prebuilt OCI images from a manifest.
+    ///
+    /// Reads `images.toml` (or discovers `envs/*.toml` / `podbox.toml`),
+    /// builds each selected image, tags it, and pushes only with `--push`.
+    /// Images whose inputs have not changed are skipped.
     #[command(display_order = 65)]
     Publish {
         /// Image keys to publish (from the manifest). Omit to publish all.
         keys: Vec<String>,
         /// Use this manifest (default: discovery).
-        #[arg(long)]
+        #[arg(long, help_heading = "Manifest")]
         manifest: Option<PathBuf>,
         /// Repo root; manifest and config paths resolve from here.
-        #[arg(long, default_value = ".")]
+        #[arg(long, default_value = ".", help_heading = "Manifest")]
         dir: PathBuf,
         /// Registry host (default: ghcr.io, or the manifest's `registry`).
-        #[arg(long)]
+        #[arg(long, help_heading = "Manifest")]
         registry: Option<String>,
         /// Name of the generated build file in the context (default:
         /// `Containerfile`). Overrides `images.toml`.
-        #[arg(long)]
+        #[arg(long, help_heading = "Manifest")]
         containerfile: Option<String>,
         /// Push results to the registry (default: safe `--no-push`).
-        #[arg(long)]
+        #[arg(long, help_heading = "Build")]
         push: bool,
         /// Do not push (default).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "push", help_heading = "Build")]
         no_push: bool,
         /// Ignore the up-to-date shortcut and rebuild everything.
-        #[arg(long)]
+        #[arg(long, help_heading = "Build")]
         force: bool,
         /// Print the plan only. No network, no build, no registry reads.
-        #[arg(long, conflicts_with = "dry_run")]
+        #[arg(long, conflicts_with = "dry_run", help_heading = "Build")]
         list: bool,
         /// Build engine: `buildx` or `podman`.
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, help_heading = "Build")]
         engine: Option<PublishEngine>,
         /// Fill the context from `GITHUB_*` variables.
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         ci: Option<String>,
         /// Registry owner (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         owner: Option<String>,
         /// Registry repo (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         repo: Option<String>,
         /// Commit SHA (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         sha: Option<String>,
         /// Ref name (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         ref_name: Option<String>,
         /// Ref type: `branch` or `tag` (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         ref_type: Option<String>,
         /// Event name (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         event: Option<String>,
         /// Default branch (overrides `--ci github`).
-        #[arg(long)]
+        #[arg(long, help_heading = "CI context")]
         default_branch: Option<String>,
-        /// Output format.
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        /// Output format (text, json, or ndjson).
+        #[arg(long, value_enum, default_value_t = PublishFormat::Text, help_heading = "Output")]
+        output: PublishFormat,
     },
 
     /// Read and change container configuration without hand-editing TOML.
@@ -594,8 +609,8 @@ pub enum ConfigCommand {
         /// Dotted key path, e.g. `container.memory`.
         key: String,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
     /// Set one configuration value, preserving comments and formatting.
     /// Values parse as TOML (`4`, `true`, `["a"]`); anything else becomes a
@@ -606,8 +621,8 @@ pub enum ConfigCommand {
         /// New value.
         value: String,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
     /// Validate the configuration file, reporting errors with line numbers.
     Validate {
@@ -615,8 +630,8 @@ pub enum ConfigCommand {
         #[arg(value_name = "NAME")]
         name: Option<String>,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 }
 
@@ -666,8 +681,8 @@ pub enum ExportCommand {
     /// List apps and bins exported to the host for the container.
     List {
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
 }
 
@@ -741,8 +756,8 @@ pub enum ProvisionCommand {
         /// Container name (overrides active context).
         name: Option<String>,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
         /// Exit 1 when any step is pending or stale (for scripting).
         #[arg(long)]
         check: bool,
@@ -764,8 +779,8 @@ pub enum SnapshotCommand {
         /// Container name (overrides auto-detection / active context).
         name: Option<String>,
         /// Output format (text or json).
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
+        #[arg(long, value_enum, default_value_t = TextJson::Text)]
+        output: TextJson,
     },
     /// Prune old snapshots, keeping the newest N.
     Prune {
@@ -774,6 +789,9 @@ pub enum SnapshotCommand {
         /// Number of snapshots to keep (default: 5).
         #[arg(long, default_value_t = 5)]
         keep: usize,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        yes: bool,
     },
 }
 

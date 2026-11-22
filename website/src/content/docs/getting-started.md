@@ -368,6 +368,9 @@ podbox doctor
 
 # Auto-fix common issues (Wayland socket ownership, etc.)
 podbox doctor --fix
+
+# Non-interactive: accept every fix
+podbox doctor --fix --yes
 ```
 
 ## Lifecycle Management
@@ -425,10 +428,10 @@ podbox disable myenv --force
 podbox remove myenv
 
 # Remove container and home directory
-podbox remove myenv --all
+podbox remove myenv --home
 
 # Force-remove without confirmation
-podbox remove myenv --all --force
+podbox remove myenv --home --force
 
 # Also delete the TOML config file
 podbox remove myenv --remove-config
@@ -494,7 +497,7 @@ your own file and fail as circular.
 | `podbox create --import <file>` | Install a TOML file into profiles/ and create from it |
 | `podbox create --edit <name>` | Open the config in your editor first, then create from what you saved |
 | `podbox build [<name>]` | Build or rebuild the container image |
-| `podbox pull <name>` | Pull a prebuilt image without building |
+| `podbox pull [<image>]` | Pull a prebuilt image without building (target via `-C`/active context) |
 
 ### Running and entering
 
@@ -513,10 +516,11 @@ your own file and fail as circular.
 | `podbox disable [<name>] [--force]` | Remove Quadlet files |
 | `podbox start [<name>]` | Start the container |
 | `podbox stop [<name>]` | Stop the container |
-| `podbox remove [<name>] [--all]` | Remove the container (and home with `--all`) |
+| `podbox remove [<name>] [--home]` | Remove the container (and home with `--home`) |
 | `podbox remove --stale` | Clean up orphaned/failed containers |
 | `podbox snapshot create [<name>] [--tag <t>]` | Commit container state as an OCI image |
 | `podbox snapshot list [<name>]` | List snapshots for a container |
+| `podbox snapshot prune [<name>] [--keep N] [--yes]` | Delete old snapshots after confirmation |
 | `podbox restore <tag> [<name>]` | Roll back to a previous snapshot |
 | `podbox rollback [<name>]` | Restore the image captured before the last update or rebuild |
 | `podbox clone <src> <dst>` | Copy a config for a variant |
@@ -556,9 +560,11 @@ your own file and fail as circular.
 
 | Command | Description |
 |---------|-------------|
-| `podbox publish [<key>...]` | Build definitions from `images.toml` (or `envs/*.toml` / `podbox.toml`) into prebuilt OCI images and push them to a registry (GHCR by default). Skips images whose inputs haven't changed. Supports `--manifest`, `--dir`, `--registry`, `--containerfile`, `--push`/`--no-push`, `--force`, `--list`, `--dry-run`, `--engine buildx|podman`, `--ci github`, and `--output text|json|ndjson`. |
+| `podbox publish [<key>...]` | Build definitions from `images.toml` (or `envs/*.toml` / `podbox.toml`) into prebuilt OCI images and optionally push them with `--push` (GHCR by default). Skips images whose inputs haven't changed. Supports `--manifest`, `--dir`, `--registry`, `--containerfile`, `--push`/`--no-push`, `--force`, `--list`, `--dry-run`, `--engine buildx|podman`, `--ci github`, and `--output text|json|ndjson`. |
 
-All commands support `--dry-run` to preview without side effects.
+Most commands support `--dry-run` to preview without side effects.
+`export` (except `export list`) refuses because it writes host files
+directly.
 
 `podbox publish` resolves base image digests by reading the registry: install
 `skopeo` (tested with 1.24.1; `--config` must accept tag and digest refs) or

@@ -6,7 +6,7 @@ description: Fix common podbox issues — find your symptom, run the fix.
 
 ```bash
 podbox doctor         # diagnoses most issues, explains the fix
-podbox doctor --fix   # offers to fix them
+podbox doctor --fix   # offers to fix them; --yes accepts all
 ```
 
 | Symptom | Fix |
@@ -31,7 +31,7 @@ podbox recover [NAME]        # guided fix; --yes skips prompts
 
 Safe and idempotent: reloads systemd, reinstalls Quadlets, rebuilds the
 image only if missing, then restarts. Never touches your home or config —
-only `podbox remove --all` deletes those.
+only `podbox remove --home` deletes those.
 
 <details>
 <summary>What doctor and recover actually do</summary>

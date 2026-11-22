@@ -5,7 +5,10 @@
 //! sharing, Wayland/audio passthrough, GPU acceleration, and desktop
 //! integration (`.desktop` export, binary shims).
 
-pub const VERSION: &str = env!("PODBOX_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Descriptive build string (`v0.9.6`, `v0.9.6-3-gabc123`, or `-dirty`).
+/// Machine clients should read [`VERSION`] for semver and this for display.
+pub const BUILD_VERSION: &str = env!("PODBOX_BUILD");
 
 // Pure modules: config schema, validation, and Quadlet codegen. These have
 // no Linux/host dependencies and compile for wasm32-unknown-unknown

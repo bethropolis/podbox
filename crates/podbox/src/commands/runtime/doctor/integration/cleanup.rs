@@ -88,7 +88,7 @@ fn socket_kind_stale(cfg: &Config, kind: &str) -> bool {
     !integration_enabled(cfg, kind)
 }
 
-pub(crate) fn check_stale_sockets(config: &Config, fix: bool) -> Vec<Check> {
+pub(crate) fn check_stale_sockets(config: &Config, fix: bool, yes: bool) -> Vec<Check> {
     let mut out = Vec::new();
     // ── Stale sockets (grouped per owner; per-socket lines would flood the
     // summary and inflate the pass/fail ratio) ──
@@ -110,7 +110,7 @@ pub(crate) fn check_stale_sockets(config: &Config, fix: bool) -> Vec<Check> {
             }
         }
         if !stale.is_empty() {
-            if fix && confirm_fix(&format!("Remove {} stale socket(s)", stale.len())) {
+            if fix && confirm_fix(&format!("Remove {} stale socket(s)", stale.len()), yes) {
                 let mut removed = 0usize;
                 let mut errors: Vec<String> = Vec::new();
                 for path in &stale {
@@ -187,7 +187,7 @@ fn read_prefix(path: &Path, limit: usize) -> Option<String> {
     String::from_utf8(buf[..n].to_vec()).ok()
 }
 
-pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
+pub(crate) fn check_dead_exports(fix: bool, yes: bool) -> Vec<Check> {
     let mut out = Vec::new();
     // ── Dead export shims (desktop files + bin shims, one grouped check) ──
     let mut dead: Vec<(std::path::PathBuf, String)> = Vec::new();
@@ -230,7 +230,7 @@ pub(crate) fn check_dead_exports(fix: bool) -> Vec<Check> {
             .iter()
             .map(|(p, name)| format!("{} (container '{name}' missing)", p.display()))
             .collect();
-        if fix && confirm_fix(&format!("Remove {} dead export(s)", dead.len())) {
+        if fix && confirm_fix(&format!("Remove {} dead export(s)", dead.len()), yes) {
             let mut removed = 0usize;
             let mut errors: Vec<String> = Vec::new();
             for (path, _) in &dead {

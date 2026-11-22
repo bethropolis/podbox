@@ -142,3 +142,80 @@ fn remove_exposes_remove_config() {
         "remove should expose --remove-config"
     );
 }
+
+fn help_of(args: &[&str]) -> String {
+    let out = podbox().args(args).output().unwrap();
+    assert!(out.status.success(), "{args:?} --help failed");
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+fn lists_value(help: &str, value: &str) -> bool {
+    if help.lines().any(|line| line.trim() == format!("- {value}")) {
+        return true;
+    }
+    help.split("[possible values: ").skip(1).any(|rest| {
+        rest.split(']')
+            .next()
+            .is_some_and(|list| list.split(',').any(|entry| entry.trim() == value))
+    })
+}
+
+/// Each `--output` flag advertises only the formats its handler accepts.
+#[test]
+fn output_help_lists_only_supported_values() {
+    let status = help_of(&["status", "--help"]);
+    assert!(!lists_value(&status, "ndjson"), "status: {status}");
+    assert!(lists_value(&status, "json"));
+
+    let config = help_of(&["config", "get", "--help"]);
+    assert!(!lists_value(&config, "ndjson"), "config get: {config}");
+
+    let build = help_of(&["build", "--help"]);
+    assert!(!lists_value(&build, "json"), "build: {build}");
+    assert!(lists_value(&build, "ndjson"));
+
+    let watch = help_of(&["watch", "--help"]);
+    assert!(!lists_value(&watch, "json"), "watch: {watch}");
+    assert!(lists_value(&watch, "ndjson"));
+
+    let publish = help_of(&["publish", "--help"]);
+    for value in ["text", "json", "ndjson"] {
+        assert!(lists_value(&publish, value), "publish missing {value}");
+    }
+}
+
+/// Global flags are grouped instead of interleaved with command flags.
+#[test]
+fn global_options_are_grouped() {
+    let status = help_of(&["status", "--help"]);
+    assert!(status.contains("Global options"), "{status}");
+}
+
+/// `remove --all` was ambiguous with `stop --all`; `--home` is canonical.
+#[test]
+fn remove_uses_home_for_the_home_directory() {
+    let remove = help_of(&["remove", "--help"]);
+    assert!(remove.contains("--home"), "{remove}");
+    assert!(!remove.contains("--all"), "{remove}");
+}
+
+/// `--clear` and a name are mutually exclusive.
+#[test]
+fn use_clear_conflicts_with_a_name() {
+    let out = podbox().args(["use", "--clear", "dev"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("cannot be used with"),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Doctor must be usable non-interactively with `--fix`.
+#[test]
+fn doctor_fix_exposes_yes() {
+    let doctor = help_of(&["doctor", "--help"]);
+    assert!(doctor.contains("--yes"), "{doctor}");
+    let prune = help_of(&["snapshot", "prune", "--help"]);
+    assert!(prune.contains("--yes"), "{prune}");
+}

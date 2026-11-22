@@ -8,9 +8,10 @@ use anyhow::Result;
 
 /// Ask before applying a destructive-ish `--fix` action. Only prompts on a
 /// real TTY; scripts must stay non-interactive, so both the non-TTY refusal
-/// and a declined prompt skip the fix rather than erroring.
-pub(crate) fn confirm_fix(action: &str) -> bool {
-    let ctx = podbox::ui::Ctx::new(false, false, false);
+/// and a declined prompt skip the fix rather than erroring. `assume_yes`
+/// comes from `doctor --yes`.
+pub(crate) fn confirm_fix(action: &str, assume_yes: bool) -> bool {
+    let ctx = podbox::ui::Ctx::new(assume_yes, false, false);
     podbox::ui::confirm(&ctx, &format!("Fix: {action}"), false).is_ok()
 }
 
@@ -42,6 +43,7 @@ pub fn try_fix_bare_memory_for_target(
     target_name: Option<&str>,
     config_path: Option<&Path>,
     fix: bool,
+    yes: bool,
 ) -> Result<bool> {
     if !fix {
         return Ok(false);
@@ -77,10 +79,13 @@ pub fn try_fix_bare_memory_for_target(
         return Ok(false);
     }
     let suggested = format!("{mem}G");
-    if !confirm_fix(&format!(
-        "Rewrite memory '{mem}' → '{suggested}' in {}?",
-        path.display()
-    )) {
+    if !confirm_fix(
+        &format!(
+            "Rewrite memory '{mem}' → '{suggested}' in {}?",
+            path.display()
+        ),
+        yes,
+    ) {
         return Ok(false);
     }
     rewrite_memory_raw(&path, &suggested)?;

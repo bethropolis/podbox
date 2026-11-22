@@ -66,13 +66,10 @@ pub fn run_export(
             };
             let inv = podbox::export::inventory(name, declared_apps, declared_bins);
             match output {
-                podbox::cli::OutputFormat::Json => {
+                podbox::cli::TextJson::Json => {
                     podbox::contract::print_json(serde_json::to_value(&inv)?)?;
                 }
-                podbox::cli::OutputFormat::Ndjson => {
-                    return Err(podbox::contract::bail_ndjson("export list"));
-                }
-                podbox::cli::OutputFormat::Text => {
+                podbox::cli::TextJson::Text => {
                     podbox::export::print_inventory_text(name, &inv);
                 }
             }

@@ -25,13 +25,18 @@ are hidden systemd plumbing — callable, but not for daily use.
 
 ## Naming a container
 
-Every command resolves its target the same way:
+Most commands resolve their target the same way:
 
 1. positional `NAME`
 2. `-C NAME`
 3. `$PODBOX_CONTAINER`
 4. active context (`podbox use`)
 5. single config in the config dir / local `.podbox.toml`
+
+Exceptions: `config get|set|validate` and the `export` subcommands take the
+target only through `-C`, `$PODBOX_CONTAINER` or the active context because
+their positionals are the key or item. `publish` takes image keys and reads
+a manifest instead of one definition.
 
 A leading name works podman-style too (`podbox exec myenv ls`), but only
 for a known config with more arguments after it. Explicit `-C` always wins.
@@ -52,8 +57,6 @@ Two settings have no per-command override:
 
 | Code | Meaning |
 |------|---------|
-| Code | Meaning |
-|------|---------|
 | 0 | success |
 | 1 | anything else, including a `publish` run where one or more images failed (`publish_failed`) |
 | 2 | definition file missing / unreadable: includes `find-definition NAME` miss, an explicit `--config PATH` that does not exist (`config_missing`), an invalid build-context file name (`containerfile_name_invalid`), and an out-of-range option value (`invalid_option_value`) |
@@ -68,7 +71,9 @@ A missing `--config` never falls back to a default box. Destructive commands
 stop before touching anything.
 
 Under `--dry-run`, planned actions print as `would: …` lines on **stderr**, so
-`--output json` keeps stdout a single JSON document.
+`--output json` keeps stdout a single JSON document. `export` (except
+`export list`) refuses rather than acting because it writes host files
+directly.
 
 ## JSON output
 

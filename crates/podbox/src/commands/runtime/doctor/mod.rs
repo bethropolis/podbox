@@ -72,7 +72,13 @@ fn group_for(check_name: &str) -> &'static str {
     }
 }
 
-pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputFormat) -> Result<()> {
+pub fn run_doctor(
+    config: &Config,
+    env: &HostEnv,
+    fix: bool,
+    yes: bool,
+    output: OutputFormat,
+) -> Result<()> {
     let mut entries: Vec<DoctorEntry> = Vec::new();
     let mut passes = 0u32;
     let mut failures = 0u32;
@@ -109,22 +115,22 @@ pub fn run_doctor(config: &Config, env: &HostEnv, fix: bool, output: OutputForma
     collect!(integration::check_xdg_user_dir());
     collect!(host::check_sub_ids(env));
     collect!(host::check_embedded_guest());
-    collect!(host::check_linger(config, fix));
+    collect!(host::check_linger(config, fix, yes));
     collect!(container::check_quadlet(config));
     collect!(integration::check_host_exec(config));
     collect!(integration::check_hardware(config, env));
     collect!(integration::check_secrets(config));
-    collect!(host::check_config_layout(fix));
-    collect!(container::check_memory(config, fix));
+    collect!(host::check_config_layout(fix, yes));
+    collect!(container::check_memory(config, fix, yes));
     collect!(container::check_guest_version(config));
     collect!(container::check_guest_user(config));
     collect!(container::check_home_ownership(config, env));
     collect!(container::check_guest_locale(config));
     collect!(container::check_guest_socket(config));
     collect!(integration::check_toolchain());
-    collect!(integration::check_stale_sockets(config, fix));
+    collect!(integration::check_stale_sockets(config, fix, yes));
     collect!(container::check_orphaned_snapshots());
-    collect!(integration::check_dead_exports(fix));
+    collect!(integration::check_dead_exports(fix, yes));
     collect!(integration::check_desktop_entries());
 
     match output {

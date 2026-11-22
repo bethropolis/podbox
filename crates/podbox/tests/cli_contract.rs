@@ -625,10 +625,20 @@ fn info_json_shape() {
         .expect("info must print a single JSON document");
     assert_eq!(v["schema"], 1);
     assert!(v["podbox"].is_string(), "podbox version missing: {v}");
+    let version = v["podbox"].as_str().unwrap();
+    assert!(
+        !version.starts_with('v'),
+        "podbox must report a bare semver, got {version:?}"
+    );
+    assert!(v["build"].is_string(), "build/describe string missing: {v}");
     let features = v["features"].as_array().expect("features array");
     assert!(
         features.iter().any(|f| f == "restart"),
         "features missing restart: {features:?}"
+    );
+    assert!(
+        features.iter().any(|f| f == "info_build"),
+        "features missing info_build: {features:?}"
     );
 }
 
@@ -1062,7 +1072,8 @@ fn watch_ndjson_streams_snapshot_lines() {
     }
 }
 
-/// Contract P5: `--output ndjson` fails loudly on single-document readers.
+/// Contract P5: unsupported output values are rejected by clap (exit 2),
+/// not by the handler after it starts.
 #[test]
 fn ndjson_rejected_outside_streams() {
     let sb = Sandbox::new(&["alpha"]);
@@ -1071,15 +1082,16 @@ fn ndjson_rejected_outside_streams() {
         .args(["list", "--output", "ndjson"])
         .output()
         .unwrap();
-    assert!(!out.status.success());
+    assert_eq!(out.status.code(), Some(2));
     assert!(
-        String::from_utf8_lossy(&out.stderr).contains("only supported by"),
+        String::from_utf8_lossy(&out.stderr).contains("invalid value 'ndjson'"),
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
 }
 
-/// Contract P5: `build --output json` points at ndjson; dry-run stays text.
+/// Contract P5: `build` advertises only text and ndjson; json is a clap
+/// error, and dry-run ndjson still prints the human plan.
 #[test]
 fn build_output_modes() {
     let sb = Sandbox::new(&["alpha"]);
@@ -1088,7 +1100,12 @@ fn build_output_modes() {
         .args(["-C", "alpha", "build", "--output", "json", "--dry-run"])
         .output()
         .unwrap();
-    assert!(!out.status.success());
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("invalid value 'json'"),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let out = sb
         .cmd()
         .args(["-C", "alpha", "build", "--dry-run", "--output", "ndjson"])

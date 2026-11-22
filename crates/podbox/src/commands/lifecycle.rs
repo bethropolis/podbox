@@ -414,7 +414,7 @@ pub fn run_remove(
     config: &Config,
     name: &str,
     dry_run: bool,
-    all: bool,
+    home: bool,
     force: bool,
     remove_config: bool,
 ) -> Result<()> {
@@ -430,7 +430,7 @@ pub fn run_remove(
                 .unwrap_or_else(|| podbox::config::profiles_dir().join(format!("{name}.toml")));
             println!("rm {}", p.display());
         }
-        if all {
+        if home {
             println!("rm -rf {}", config.container.home.display());
         }
         return Ok(());
@@ -485,7 +485,7 @@ pub fn run_remove(
     let _ = podbox::history::record(name, "remove", "container removed");
 
     // 4. Optionally remove the home directory
-    if all {
+    if home {
         let home = &config.container.home;
         if home.exists() {
             if !force {

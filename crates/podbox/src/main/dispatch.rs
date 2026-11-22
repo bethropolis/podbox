@@ -182,8 +182,6 @@ pub(crate) fn command_output_format(cmd: &Command) -> Option<OutputFormat> {
         | Command::Doctor { output, .. }
         | Command::Diff { output, .. }
         | Command::History { output, .. }
-        | Command::Build { output, .. }
-        | Command::Watch { output, .. }
         | Command::Config {
             config_cmd:
                 ConfigCommand::Get { output, .. }
@@ -198,8 +196,9 @@ pub(crate) fn command_output_format(cmd: &Command) -> Option<OutputFormat> {
         }
         | Command::Snapshot {
             snapshot_cmd: SnapshotCommand::List { output, .. },
-        }
-        | Command::Publish { output, .. } => *output,
+        } => (*output).into(),
+        Command::Build { output, .. } | Command::Watch { output, .. } => (*output).into(),
+        Command::Publish { output, .. } => (*output).into(),
         // Text-only commands. Grouped per variant so a new output format on
         // any of them is a deliberate decision, not a default.
         Command::Cache { .. }
@@ -359,7 +358,7 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
             name,
             limit,
             output,
-        } => commands::history::run_history(name.clone(), *limit, *output),
+        } => commands::history::run_history(name.clone(), *limit, (*output).into()),
 
         Command::Cache { cache_cmd } => {
             let yes = matches!(cache_cmd, CacheCommand::Prune { yes, .. } if *yes);
@@ -400,9 +399,9 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
 
         Command::Profile { profile_cmd } => handlers::run_profile_command(profile_cmd, dry),
 
-        Command::List { output } => commands::definition::run_list(*output),
+        Command::List { output } => commands::definition::run_list((*output).into()),
 
-        Command::Info { output } => commands::info::run_info(*output),
+        Command::Info { output } => commands::info::run_info((*output).into()),
 
         Command::Watch {
             name,
@@ -412,7 +411,7 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
             name.clone().or_else(|| cli.container.clone()),
             cli.config.clone(),
             *interval,
-            *output,
+            (*output).into(),
             dry,
         ),
 
@@ -428,7 +427,7 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
                 None => resolve::resolve_config_path(cli.container.as_deref())
                     .map_err(ConfigResolveError::into_report)?,
             };
-            commands::config::run_set(&path, key, value, dry, *output)
+            commands::config::run_set(&path, key, value, dry, (*output).into())
         }
         Command::Config {
             config_cmd: ConfigCommand::Validate { name, output },
@@ -440,7 +439,7 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
                     resolve::resolve_config_path(target).map_err(ConfigResolveError::into_report)?
                 }
             };
-            commands::config::run_validate(&path, *output)
+            commands::config::run_validate(&path, (*output).into())
         }
 
         Command::Clone {
@@ -493,14 +492,14 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
         // definitions that fail strict validation can still be deleted.
         Command::Remove {
             name: _,
-            all,
+            home,
             force,
             remove_config,
             stale: false,
         } => {
             let (config, name) = resolve::resolve_config_lenient(cli, target)
                 .map_err(ConfigResolveError::into_report)?;
-            commands::lifecycle::run_remove(&config, &name, dry, *all, *force, *remove_config)
+            commands::lifecycle::run_remove(&config, &name, dry, *home, *force, *remove_config)
         }
 
         // `stop --all` needs no target: it enumerates running containers itself.
@@ -509,8 +508,9 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
         Command::Doctor {
             name: _,
             fix,
+            yes,
             output,
-        } => dispatch_doctor(ctx, cli, target, *fix, *output),
+        } => dispatch_doctor(ctx, cli, target, *fix, *yes, (*output).into()),
 
         Command::Publish { .. } => {
             let opts = podbox::publish::commands::PublishOpts {
@@ -592,9 +592,15 @@ pub(crate) fn dispatch_no_config(ctx: &Ctx, cli: &Cli, target: Option<String>) -
                 },
                 output: match &cli.command {
                     Command::Publish { output, .. } => match *output {
-                        OutputFormat::Text => podbox::publish::commands::OutputFormat::Text,
-                        OutputFormat::Json => podbox::publish::commands::OutputFormat::Json,
-                        OutputFormat::Ndjson => podbox::publish::commands::OutputFormat::Ndjson,
+                        podbox::cli::PublishFormat::Text => {
+                            podbox::publish::commands::OutputFormat::Text
+                        }
+                        podbox::cli::PublishFormat::Json => {
+                            podbox::publish::commands::OutputFormat::Json
+                        }
+                        podbox::cli::PublishFormat::Ndjson => {
+                            podbox::publish::commands::OutputFormat::Ndjson
+                        }
                     },
                     _ => unreachable!(),
                 },
@@ -642,6 +648,7 @@ fn dispatch_doctor(
     cli: &Cli,
     target: Option<String>,
     fix: bool,
+    yes: bool,
     output: OutputFormat,
 ) -> Result<()> {
     // `--fix` writes config and units; under --dry-run it only reports.
@@ -652,7 +659,7 @@ fn dispatch_doctor(
     match resolve::resolve_config(cli, target.clone()) {
         Ok((config, _)) => {
             let env = podbox::env::resolve()?;
-            commands::runtime::run_doctor(&config, &env, apply_fix, output)
+            commands::runtime::run_doctor(&config, &env, apply_fix, yes, output)
         }
         Err(err) => {
             // The only resolution failure doctor can repair in place is a
@@ -663,12 +670,13 @@ fn dispatch_doctor(
                     target.as_deref(),
                     cli.config.as_deref(),
                     apply_fix,
+                    yes,
                 )?
             {
                 let (config, _) = resolve::resolve_config(cli, target)
                     .map_err(ConfigResolveError::into_report)?;
                 let env = podbox::env::resolve()?;
-                return commands::runtime::run_doctor(&config, &env, apply_fix, output);
+                return commands::runtime::run_doctor(&config, &env, apply_fix, yes, output);
             }
             Err(err.into_report())
         }
@@ -710,10 +718,15 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
             output,
             ..
         } => {
-            if matches!(output, OutputFormat::Json) {
-                anyhow::bail!("`podbox build` supports text and ndjson output, not pretty json");
-            }
-            commands::lifecycle::run_build(&config, &env, &xdg, dry, *rebuild, *no_diff, *output)?;
+            commands::lifecycle::run_build(
+                &config,
+                &env,
+                &xdg,
+                dry,
+                *rebuild,
+                *no_diff,
+                (*output).into(),
+            )?;
         }
 
         Command::Enable { name: _, yes } => {
@@ -789,19 +802,19 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
         }
 
         Command::Status { name: _, output } => {
-            commands::runtime::run_status(&config, &name, dry, *output)?;
+            commands::runtime::run_status(&config, &name, dry, (*output).into())?;
         }
 
         Command::Config {
             config_cmd: ConfigCommand::Get { key, output, .. },
         } => {
-            commands::config::run_get(&config, key, *output)?;
+            commands::config::run_get(&config, key, (*output).into())?;
         }
 
         Command::Stats {
             no_stream, output, ..
         } => {
-            commands::stats::run_stats(&name, *no_stream, *output)?;
+            commands::stats::run_stats(&name, *no_stream, (*output).into())?;
         }
 
         Command::Logs {
@@ -814,7 +827,7 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
         }
 
         Command::Diff { apply, output, .. } => {
-            commands::diff::run_diff(&config, &name, &env.username, *apply, dry, *output)?;
+            commands::diff::run_diff(&config, &name, &env.username, *apply, dry, (*output).into())?;
         }
 
         Command::Snapshot { snapshot_cmd } => {
@@ -844,7 +857,7 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
                 *show_config,
                 *show_quadlet,
                 *show_env,
-                *output,
+                (*output).into(),
             )?;
         }
 
@@ -874,7 +887,7 @@ pub(crate) fn dispatch_with_config(ctx: &Ctx, cli: &Cli, target: Option<String>)
                 commands::provision::sync(&config, &env, steps, *force, dry)?;
             }
             ProvisionCommand::Status { output, check, .. } => {
-                commands::provision::status(&config, *output, *check)?;
+                commands::provision::status(&config, (*output).into(), *check)?;
             }
         },
 

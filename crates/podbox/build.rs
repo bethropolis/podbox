@@ -2,12 +2,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-    let version = std::env::var("PODBOX_VERSION")
+    let build = std::env::var("PODBOX_VERSION")
         .ok()
         .filter(|s| !s.is_empty())
         .or_else(git_describe)
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION not set"));
-    println!("cargo:rustc-env=PODBOX_VERSION={version}");
+    println!("cargo:rustc-env=PODBOX_BUILD={build}");
 
     // The version tracks git state, which cargo never watches on its own —
     // and the guest-only directives below override the default file watching.

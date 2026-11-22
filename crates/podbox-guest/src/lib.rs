@@ -1,4 +1,4 @@
-pub const VERSION: &str = env!("PODBOX_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod daemon;
 pub mod entry;

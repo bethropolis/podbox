@@ -7,7 +7,7 @@ mod socket;
 
 use std::path::Path;
 
-pub const VERSION: &str = env!("PODBOX_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn init_tracing() {
     use tracing_subscriber::prelude::*;

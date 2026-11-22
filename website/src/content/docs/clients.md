@@ -31,17 +31,24 @@ This page is the contract those clients can rely on. Each item is marked:
    optional.** Only the fields listed as required below are guaranteed.
    **Today**
 5. **Check the exit code first.** Then parse stdout. **Today**
-6. **Preview with `--dry-run`.** Every command accepts it. **Today**
+6. **Preview with `--dry-run`.** Most commands accept it; read-only commands
+   treat it as a no-op, and `export` (except `export list`) refuses it
+   because it writes host files directly. **Today**
 
 ## Name resolution
 
-Every command resolves its target in the same order:
+Most commands resolve their target in the same order:
 
 1. positional `NAME`
 2. `-C NAME`
 3. `$PODBOX_CONTAINER`
 4. active context
 5. the single config in the config directory, or a local `.podbox.toml`
+
+Exceptions: `publish` takes image keys and reads a manifest; `config
+get|set|validate` and the `export` subcommands take the target only via
+`-C`, `$PODBOX_CONTAINER`, or the active context, because their positionals
+are the key or item.
 
 Clients should use 1 or 2.
 
@@ -51,8 +58,10 @@ completion); `container.name` is the *runtime name* shown by `list` and
 config is created normally and diverge only if hand-edited — clients
 should always display the runtime name.
 
-**Proposed:** one documented name rule, `^[A-Za-z0-9_.-]+$`, enforced by
-podbox itself so clients can validate against the same pattern.
+The name rule is `^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$` (1 to 63 bytes, first
+character alphanumeric), enforced for container, profile, cache and
+snapshot-tag names. **Today** Clients can validate against the same
+pattern.
 
 ## Reading state
 
@@ -96,15 +105,15 @@ Each field is present when readable, absent otherwise:
 
 | Command | Output |
 |---------|--------|
-| `podbox stats NAME --no-stream --output json` | Resource snapshot. Field names are not yet documented. |
+| `podbox stats NAME --no-stream --output json` | `{"schema":1,"stats":[...]}`; podman field names are informational. |
 | `podbox history [NAME] --output json` | `{"history": [{"timestamp","name","action","detail"}]}` |
 | `podbox snapshot list NAME --output json` | `{"snapshots": [{"tag","created","image"}]}` |
 | `podbox provision status NAME --output json` | `{"steps": [{"name","state","applied_at"}]}` |
 | `podbox inspect NAME --toml` | The resolved config. |
 
 !!! note ""
-    `stats` is the least stable reader today. Document its shape before
-    clients build on it.
+    `stats` rows come from podman. The envelope is stable; the fields
+    inside each row follow the installed podman version.
 
 ## Acting on an environment
 
@@ -145,11 +154,11 @@ They never prompt when `--output json` or `--yes` is given.
 
 | Action | Command | Status |
 |--------|---------|--------|
-| Export an app | `podbox export app NAME ITEM` | **Today** |
-| Export a command | `podbox export bin NAME ITEM` | **Today** |
-| Remove everything exported | `podbox export clean` with `-C NAME` | **Today** |
-| List exportable items and what is exported | `podbox export list NAME --output json` | **Today** |
-| Remove one item | `podbox export remove app\|bin ITEM` with `-C NAME` | **Today** |
+| Export an app | `podbox -C NAME export app ITEM` | **Today** |
+| Export a command | `podbox -C NAME export bin ITEM` | **Today** |
+| Remove everything exported | `podbox -C NAME export clean` | **Today** |
+| List exportable items and what is exported | `podbox -C NAME export list --output json` | **Today** |
+| Remove one item | `podbox -C NAME export remove app\|bin ITEM` | **Today** |
 
 App export reads the `.desktop` file with `podman exec`, so the environment
 must be running.
@@ -199,8 +208,6 @@ Target the config with `-C NAME`, the active context, or `--config PATH`
 
 Exit codes are part of the contract. **Today**
 
-| Code | Meaning |
-|------|---------|
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
@@ -272,21 +279,22 @@ A failure terminates the stream with the compact error object instead of
 box. **Today**
 
 ```json
-{"schema": 1, "podbox": "0.8.2", "podman": "5.6.0", "features": ["export_list", "restart"]}
+{"schema": 1, "podbox": "0.9.6", "build": "v0.9.6", "podman": "5.6.0", "features": ["export_list", "restart", "info_build"]}
 ```
 
-`podman` is null when podman is not installed. `features` is additive:
-probe for the flags you need, tolerate unknown ones. New fields and new
-commands never bump `schema`; only a breaking change does.
+`podbox` is a bare semver. `build` is the git-describe string and may carry
+a commit count or `-dirty` suffix; show it for diagnostics, do not parse it
+as semver. `podman` is null when podman is not installed. `features` is
+additive: probe for the flags you need, tolerate unknown ones. New fields
+and new commands never bump `schema`; only a breaking change does.
 
 Every podbox-owned JSON payload carries `"schema": 1`. Clients should
 refuse to run against a higher schema than they know.
 
-Exception: `stats --output json` is a raw `podman stats` passthrough with
-no envelope. It prints podman's own JSON array (one object per container,
-all values strings — `CPU` like `"0.12%"`, `MemUsage` like `"12.3MiB /
-2GiB"`, `PIDs`), whose exact fields follow the installed podman version.
-Treat it as informational, not contractual.
+`stats --output json` is enveloped like the other readers:
+`{"schema": 1, "stats": [...]}`. With streaming, podman may emit one
+object per line; podbox collects those into the `stats` array. Field names
+inside the objects come from podman and are informational, not contractual.
 
 ## Safety
 
@@ -310,7 +318,7 @@ own tests without a running container. **Today**
 
 In priority order:
 
-1. ~~Document this page's **Today** items and the `stats` shape.~~ Page written; `stats` documented as passthrough.
+1. ~~Document this page's **Today** items and the `stats` shape.~~ Page written; `stats` documented as an enveloped reader.
 2. ~~Extend `status --output json` with the optional fields.~~ Done.
 3. ~~Add `export list --output json` and per-item removal.~~ Done.
 4. ~~Add `restart`.~~ Done.

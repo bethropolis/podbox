@@ -35,7 +35,7 @@ podbox stats                     # show resource usage
 podbox doctor --fix              # fix common issues
 podbox export app <name>         # add to host launcher
 podbox diff                      # check installed packages vs config
-podbox remove --all              # full cleanup
+podbox remove --home              # full cleanup
 ```
 
 Most commands accept an optional `<name>` — defaults to the active context.

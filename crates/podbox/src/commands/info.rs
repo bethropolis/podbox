@@ -15,13 +15,18 @@ pub fn run_info(output: OutputFormat) -> Result<()> {
         OutputFormat::Json => {
             podbox::contract::print_json(serde_json::json!({
                 "podbox": podbox::VERSION,
+                "build": podbox::BUILD_VERSION,
                 "podman": podman,
                 "features": podbox::contract::CONTRACT_FEATURES,
             }))?;
         }
         OutputFormat::Ndjson => return Err(podbox::contract::bail_ndjson("info")),
         OutputFormat::Text => {
-            println!("podbox {}", podbox::VERSION);
+            println!(
+                "podbox {} (build {})",
+                podbox::VERSION,
+                podbox::BUILD_VERSION
+            );
             match &podman {
                 Some(v) => println!("podman {v}"),
                 None => println!("podman not installed"),

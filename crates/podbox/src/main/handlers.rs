@@ -121,10 +121,10 @@ pub(crate) fn run_snapshot_command(
             commands::lifecycle::run_snapshot(config, name, tag.as_deref(), dry_run)?;
         }
         podbox::cli::SnapshotCommand::List { output, .. } => {
-            commands::lifecycle::run_snapshot_list(name, *output)?;
+            commands::lifecycle::run_snapshot_list(name, (*output).into())?;
         }
-        podbox::cli::SnapshotCommand::Prune { keep, .. } => {
-            commands::lifecycle::run_snapshot_prune(name, *keep, dry_run)?;
+        podbox::cli::SnapshotCommand::Prune { keep, yes, .. } => {
+            commands::lifecycle::run_snapshot_prune(name, *keep, dry_run, *yes)?;
         }
     }
     Ok(())

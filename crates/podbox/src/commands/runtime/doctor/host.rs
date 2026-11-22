@@ -196,7 +196,7 @@ pub(crate) fn check_embedded_guest() -> Vec<Check> {
     }
 }
 
-pub(crate) fn check_linger(config: &Config, fix: bool) -> Vec<Check> {
+pub(crate) fn check_linger(config: &Config, fix: bool, yes: bool) -> Vec<Check> {
     let mut out = Vec::new();
     if config.lifecycle.autostart {
         if which::which("loginctl").is_ok() {
@@ -215,7 +215,10 @@ pub(crate) fn check_linger(config: &Config, fix: bool) -> Vec<Check> {
                 if out_str.contains("yes") {
                     out.push(Check::new("loginctl linger", "pass", "enabled"));
                 } else if fix {
-                    if confirm_fix(&format!("Enable linger for '{username}' (autostart is on)")) {
+                    if confirm_fix(
+                        &format!("Enable linger for '{username}' (autostart is on)"),
+                        yes,
+                    ) {
                         match enable_linger(&username) {
                             Ok(()) => {
                                 out.push(Check::new(
@@ -252,7 +255,7 @@ pub(crate) fn check_linger(config: &Config, fix: bool) -> Vec<Check> {
     out
 }
 
-pub(crate) fn check_config_layout(fix: bool) -> Vec<Check> {
+pub(crate) fn check_config_layout(fix: bool, yes: bool) -> Vec<Check> {
     let legacy = podbox::config::find_legacy_root_configs();
     if !legacy.is_empty() {
         let names = legacy
@@ -260,7 +263,12 @@ pub(crate) fn check_config_layout(fix: bool) -> Vec<Check> {
             .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
             .collect::<Vec<_>>()
             .join(", ");
-        if fix && confirm_fix("Migrate legacy configs from root to profiles/ directory?") {
+        if fix
+            && confirm_fix(
+                "Migrate legacy configs from root to profiles/ directory?",
+                yes,
+            )
+        {
             match crate::commands::migrate::run_migrate(crate::commands::migrate::MigrateOpts {
                 dry_run: false,
                 force: false,

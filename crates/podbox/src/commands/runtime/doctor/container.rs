@@ -24,7 +24,7 @@ pub(crate) fn check_quadlet(config: &Config) -> Vec<Check> {
     out
 }
 
-pub(crate) fn check_memory(config: &Config, fix: bool) -> Vec<Check> {
+pub(crate) fn check_memory(config: &Config, fix: bool, yes: bool) -> Vec<Check> {
     // ── container memory: bare number without unit (e.g. "2" → "2G") ──
     if let Some(ref mem) = config.container.memory {
         let t = mem.trim();
@@ -33,9 +33,10 @@ pub(crate) fn check_memory(config: &Config, fix: bool) -> Vec<Check> {
             if let Some(path) = podbox::config::find_by_runtime_or_stem(&config.container.name) {
                 let path_str = path.display().to_string();
                 if fix
-                    && confirm_fix(&format!(
-                        "Rewrite memory '{t}' → '{suggested}' in {path_str}?"
-                    ))
+                    && confirm_fix(
+                        &format!("Rewrite memory '{t}' → '{suggested}' in {path_str}?"),
+                        yes,
+                    )
                 {
                     match rewrite_memory_raw(&path, &suggested) {
                         Ok(()) => vec![Check::new(

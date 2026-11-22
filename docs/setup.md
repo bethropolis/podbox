@@ -147,7 +147,7 @@ stale. Tweak `timeout` and nothing happens.
 
 Stamps live in `~/.local/state/podbox/provision/<name>.stamp` **inside the
 container home**, so their lifetime matches the home's: `podbox remove` keeps
-them (a recreate won't re-run), `podbox remove --all` deletes them (a recreate
+them (a recreate won't re-run), `podbox remove --home` deletes them (a recreate
 re-runs everything). `podbox clone` starts from a new home, so every step is
 pending again.
 

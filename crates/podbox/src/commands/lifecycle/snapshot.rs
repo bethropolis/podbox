@@ -109,7 +109,7 @@ pub fn run_snapshot_list(name: &str, output: podbox::cli::OutputFormat) -> Resul
 }
 
 /// Prune old snapshots, keeping the newest N.
-pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> {
+pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool, yes: bool) -> Result<()> {
     let mut snapshots = list_snapshots(name)?;
     if snapshots.len() <= keep {
         if !dry_run {
@@ -125,6 +125,23 @@ pub fn run_snapshot_prune(name: &str, keep: usize, dry_run: bool) -> Result<()> 
     snapshots.sort_by(|a, b| b.created.cmp(&a.created));
 
     let to_remove: Vec<&SnapshotMeta> = snapshots.iter().skip(keep).collect();
+
+    // Deleting images is destructive and easy to trigger by accident with a
+    // small `--keep`; confirm unless `--yes` was passed. A decline is a
+    // no-op, not an error.
+    if !dry_run {
+        let ctx = podbox::ui::Ctx::new(yes, false, false);
+        match podbox::ui::confirm(
+            &ctx,
+            &format!("Remove {} snapshot(s), keeping {}?", to_remove.len(), keep),
+            false,
+        ) {
+            Ok(()) => {}
+            Err(podbox::error::PodboxError::Cancelled) => return Ok(()),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
     println!("Pruning {} snapshot(s), keeping {}:", to_remove.len(), keep);
 
     let mut failed = 0u32;

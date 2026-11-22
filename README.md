@@ -203,7 +203,7 @@ podbox inspect myenv --quadlet
 
 Run `podbox doctor` first. It catches most of the common setup issues on its own. If that doesn't sort it out, the [Troubleshooting Guide](docs/troubleshooting.md) covers specific problems in more depth.
 
-Every command also takes `--dry-run` if you want to see what it'd do before it does it.
+Most commands also take `--dry-run` if you want to see what they'd do before acting. `export` (except `export list`) refuses because it writes host files directly.
 
 ## Full command reference
 
