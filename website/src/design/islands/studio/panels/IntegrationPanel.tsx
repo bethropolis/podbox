@@ -23,6 +23,49 @@ import type { StudioState } from '../useStudioState';
 
 type IntegrationPanelProps = Pick<StudioState, 'exportAppsList' | 'exportBinsList' | 'hostExecCwd' | 'hostExecEnabled' | 'hostExecList' | 'hwJoystick' | 'hwKvm' | 'hwSerial' | 'hwUsb' | 'hwWebcam' | 'hwYubikey' | 'intAudio' | 'intClipboard' | 'intDbus' | 'intGitIdentity' | 'intGpgAgent' | 'intGpu' | 'intNotify' | 'intSshAgent' | 'intSyncFonts' | 'intSyncIcons' | 'intSyncThemes' | 'intWayland' | 'intX11' | 'intXdgOpen' | 'intXdgOpenSchemes' | 'packagesInstallList' | 'setExportAppsList' | 'setExportBinsList' | 'setHostExecCwd' | 'setHostExecEnabled' | 'setHostExecList' | 'setHwJoystick' | 'setHwKvm' | 'setHwSerial' | 'setHwUsb' | 'setHwWebcam' | 'setHwYubikey' | 'setIntAudio' | 'setIntClipboard' | 'setIntDbus' | 'setIntGitIdentity' | 'setIntGpgAgent' | 'setIntGpu' | 'setIntNotify' | 'setIntSshAgent' | 'setIntSyncFonts' | 'setIntSyncIcons' | 'setIntSyncThemes' | 'setIntWayland' | 'setIntX11' | 'setIntXdgOpen' | 'setIntXdgOpenSchemes' | 'setXdgDesktop' | 'setXdgDocuments' | 'setXdgDownloads' | 'setXdgMusic' | 'setXdgPictures' | 'setXdgProjects' | 'setXdgVideos' | 'xdgDesktop' | 'xdgDocuments' | 'xdgDownloads' | 'xdgMusic' | 'xdgPictures' | 'xdgProjects' | 'xdgVideos'>;
 
+/** A tiny themed checkbox for dense option rows; the native control is
+ *  unfilled/white on every browser theme. */
+function CompactCheck({
+  checked,
+  onChange,
+  label,
+  title,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  title?: string;
+}) {
+  return (
+    <label className="flex items-center gap-1 cursor-pointer" title={title}>
+      <span className="relative inline-flex h-3 w-3 shrink-0 items-center justify-center">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="peer sr-only"
+        />
+        <span className="h-3 w-3 rounded-[2px] border border-[var(--border)] bg-[var(--bg-mantle)] transition-colors peer-checked:border-[var(--accent-mauve)] peer-checked:bg-[var(--accent-mauve)] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-[var(--accent-mauve)]" />
+        <svg
+          viewBox="0 0 12 12"
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 m-auto h-2 w-2 text-[var(--bg-base)] opacity-0 peer-checked:opacity-100"
+        >
+          <path
+            d="M2.5 6.2 5 8.5l4.5-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+      <span>{label}</span>
+    </label>
+  );
+}
+
 export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; errorMap?: Record<string, string> }) {
   const { exportAppsList, exportBinsList, hostExecCwd, hostExecEnabled, hostExecList, hwJoystick, hwKvm, hwSerial, hwUsb, hwWebcam, hwYubikey, intAudio, packagesInstallList, intClipboard, intDbus, intGitIdentity, intGpgAgent, intGpu, intNotify, intSshAgent, intSyncFonts, intSyncIcons, intSyncThemes, intWayland, intX11, intXdgOpen, intXdgOpenSchemes, setExportAppsList, setExportBinsList, setHostExecCwd, setHostExecEnabled, setHostExecList, setHwJoystick, setHwKvm, setHwSerial, setHwUsb, setHwWebcam, setHwYubikey, setIntAudio, setIntClipboard, setIntDbus, setIntGitIdentity, setIntGpgAgent, setIntGpu, setIntNotify, setIntSshAgent, setIntSyncFonts, setIntSyncIcons, setIntSyncThemes, setIntWayland, setIntX11, setIntXdgOpen, setIntXdgOpenSchemes, setXdgDesktop, setXdgDocuments, setXdgDownloads, setXdgMusic, setXdgPictures, setXdgProjects, setXdgVideos, xdgDesktop, xdgDocuments, xdgDownloads, xdgMusic, xdgPictures, xdgProjects, xdgVideos } = st;
   const err = (field: string) => errorMap?.[field];
@@ -625,47 +668,31 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-muted)]">
-              <label
-                className="flex items-center gap-1 cursor-pointer"
+              <CompactCheck
+                checked={e.shim !== false}
+                onChange={(checked) => updateHostExecEntry(idx, { shim: checked })}
+                label="PATH shim"
                 title="Create a PATH shim inside the container (default: on)."
-              >
-                <input
-                  type="checkbox"
-                  checked={e.shim !== false}
-                  onChange={(ev) => updateHostExecEntry(idx, { shim: ev.target.checked })}
-                  className="accent-[var(--accent-mauve)]"
-                />
-                <span>PATH shim</span>
-              </label>
-              <label
-                className="flex items-center gap-1 cursor-pointer"
+              />
+              <CompactCheck
+                checked={e.filter === true}
+                onChange={(checked) => updateHostExecEntry(idx, { filter: checked })}
+                label="Arg filter"
                 title="Reject arguments with shell metacharacters, globs or parentheses. Off by default: allowlisted programs are trusted; this is a best-effort blocklist."
-              >
-                <input
-                  type="checkbox"
-                  checked={e.filter === true}
-                  onChange={(ev) => updateHostExecEntry(idx, { filter: ev.target.checked })}
-                  className="accent-[var(--accent-mauve)]"
-                />
-                <span>Arg filter</span>
-              </label>
+              />
               <label className="flex items-center gap-1">
                 <span>Timeout</span>
                 <input
-                  type="number"
-                  min={1}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={e.timeout ?? ''}
                   aria-label={`Host exec ${idx + 1} timeout`}
                   onChange={(ev) => {
-                    const raw = ev.target.value;
-                    if (raw === '') {
-                      updateHostExecEntry(idx, { timeout: undefined });
-                    } else {
-                      const secs = Math.floor(Number(raw));
-                      updateHostExecEntry(idx, {
-                        timeout: Number.isFinite(secs) && secs >= 1 ? secs : undefined,
-                      });
-                    }
+                    const raw = ev.target.value.replace(/\D/g, '');
+                    updateHostExecEntry(idx, {
+                      timeout: raw === '' ? undefined : Number(raw),
+                    });
                   }}
                   placeholder="none"
                   title="Optional kill timeout in seconds; empty = no timeout. TTY sessions are never time-limited."
