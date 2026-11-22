@@ -45,6 +45,7 @@ const fail = (msg: string): never => {
 const cases: Array<[string, Partial<StudioValues>]> = [
   ["defaults", {}],
   ["rust", presetPatch("rust")],
+  ["android", presetPatch("android")],
   ["arch-gui", presetPatch("arch-gui")],
   ["fullstack", presetPatch("fullstack")],
   ["gaming", presetPatch("gaming")],
