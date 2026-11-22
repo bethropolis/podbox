@@ -7,9 +7,10 @@
 //!
 //! serde's derive skips defaulted *values* but still prints a section that
 //! ends up empty; the post-pass below finishes the job (drop sections that
-//! hold nothing after default-skipping) and compacts detailed per-directory
-//! `xdg_dirs` entries back under their parent table (`projects = { … }`
-//! reads as part of the directory list, not as a section of its own).
+//! hold nothing after default-skipping) and compacts named map entries back
+//! under their parent table (`projects = { … }`, `git = { … }`, or
+//! `web = { … }`) so they read as part of the map, not as sections of their
+//! own.
 //!
 //! Pure module: no host dependencies, compiles for wasm.
 
@@ -27,7 +28,7 @@ pub fn toml_string(config: &Config) -> Result<String> {
     // the transformations only prune dead weight the issuer already wrote.
     let mut doc = toml::to_string_pretty(config)?.parse::<toml_edit::DocumentMut>()?;
     drop_defaulted_tables(doc.as_table_mut());
-    inline_xdg_dirs(doc.as_table_mut());
+    inline_config_maps(doc.as_table_mut());
     Ok(doc.to_string())
 }
 
@@ -66,64 +67,94 @@ fn is_default_empty(item: &toml_edit::Item) -> bool {
     }
 }
 
-/// Detailed per-directory entries under `[integration.xdg_dirs]` serialize
-/// as child tables; hoisted under the parent (`projects = { … }`) they read
-/// as part of the directory list. Only tables whose body is pure values
-/// convert; anything nested keeps its header.
-fn inline_xdg_dirs(root: &mut toml_edit::Table) {
-    let Some(dirs) = root
-        .get_mut("integration")
-        .and_then(|item| item.as_table_mut())
-        .and_then(|integration| integration.get_mut("xdg_dirs"))
-        .and_then(|item| item.as_table_mut())
-    else {
-        return;
-    };
+/// Named map entries serialize as child tables by default; compact them under
+/// their parent so every map of user-named entries reads the same way:
+///
+/// ```toml
+/// [container.services]
+/// web = { command = "…", restart = "always" }
+///
+/// [integration.host_exec.allowlist]
+/// git = { path = "/usr/bin/git", filter = true, shim = true }
+///
+/// [integration.xdg_dirs]
+/// projects = { enabled = true, read_write = true }
+/// ```
+fn inline_config_maps(root: &mut toml_edit::Table) {
+    for path in [
+        ["integration", "xdg_dirs"].as_slice(),
+        ["integration", "host_exec", "allowlist"].as_slice(),
+        ["container", "services"].as_slice(),
+    ] {
+        if let Some(map) = table_at_mut(root, path) {
+            inline_value_tables(map);
+        }
+    }
+}
 
-    let keys: Vec<String> = dirs
+/// Walk a table path, returning the final table when every segment exists.
+fn table_at_mut<'a>(
+    root: &'a mut toml_edit::Table,
+    path: &[&str],
+) -> Option<&'a mut toml_edit::Table> {
+    let (last, parents) = path.split_last()?;
+    let mut table = root;
+    for key in parents {
+        table = table.get_mut(key)?.as_table_mut()?;
+    }
+    table.get_mut(last)?.as_table_mut()
+}
+
+/// Replace each child table in `table` with an inline table when its body can
+/// be represented inline. Entries that are already plain values (the short
+/// service/host-exec forms) stay untouched.
+fn inline_value_tables(table: &mut toml_edit::Table) {
+    let keys: Vec<String> = table
         .iter()
         .filter(|(_, item)| item.is_table())
         .map(|(key, _)| key.to_owned())
         .collect();
     for key in keys {
-        let Some(inline) = dirs
+        let Some(inline) = table
             .get(&key)
             .and_then(|item| item.as_table())
             .and_then(inline_if_values)
         else {
             continue;
         };
-        dirs.remove(&key);
-        dirs.insert(&key, toml_edit::value(inline));
+        table.remove(&key);
+        table.insert(&key, toml_edit::value(inline));
     }
 }
 
-/// A table whose entries are all value items becomes an inline table;
-/// anything holding a nested table returns `None`.
+/// A table becomes an inline table when every entry is a value or a table
+/// that can itself inline (a service `env`, for example). Arrays of tables
+/// and other exotic items keep the entry as a section.
 fn inline_if_values(t: &toml_edit::Table) -> Option<toml_edit::InlineTable> {
     if t.is_empty() {
         return None;
     }
-    let mut entries: Vec<(toml_edit::Key, &toml_edit::Value)> = Vec::new();
+    let mut entries: Vec<(toml_edit::Key, toml_edit::Value)> = Vec::new();
     for (key, entry) in t {
-        match entry {
-            toml_edit::Item::Value(v) => entries.push((toml_edit::Key::new(key), v)),
+        let value = match entry {
+            toml_edit::Item::Value(v) => v.clone(),
+            toml_edit::Item::Table(child) => {
+                toml_edit::Value::InlineTable(inline_if_values(child)?)
+            }
             _ => return None,
-        }
+        };
+        entries.push((toml_edit::Key::new(key), value));
     }
     let mut inline = toml_edit::InlineTable::default();
     let last = entries.len().saturating_sub(1);
-    for (idx, (key, v)) in entries.into_iter().enumerate() {
+    for (idx, (key, mut value)) in entries.into_iter().enumerate() {
         if idx == last {
             // The plain `toml_edit` rendering glues the closing brace to the
             // final value; a suffix on the last entry gives the symmetric
             // `{ … }` the rest of the config examples use.
-            let mut owned = v.clone();
-            owned.decor_mut().set_suffix(" ");
-            inline.insert(key, owned);
-        } else {
-            inline.insert(key, v.clone());
+            value.decor_mut().set_suffix(" ");
         }
+        inline.insert(key, value);
     }
     Some(inline)
 }
@@ -159,9 +190,9 @@ services.web = "redis-server"
     }
 
     #[test]
-    fn emits_detailed_service_without_empty_fields() {
-        // `env` is empty and stays out; no empty `[container.services.web.env]`
-        // table is written.
+    fn emits_detailed_service_inline() {
+        // `env` is empty and stays out; the service itself sits under its
+        // parent map instead of a `[container.services.web]` section.
         let cfg = Config::parse(
             r#"
 [image]
@@ -179,9 +210,12 @@ restart = "always"
         )
         .unwrap();
         let out = toml_string(&cfg).unwrap();
-        assert!(out.contains("[container.services.web]"), "{out}");
-        assert!(out.contains("command = \"redis-server\""), "{out}");
-        assert!(!out.contains("[container.services.web.env]"), "{out}");
+        assert!(out.contains("[container.services]"), "{out}");
+        assert!(
+            out.contains("web = { command = \"redis-server\", restart = \"always\" }"),
+            "{out}"
+        );
+        assert!(!out.contains("[container.services.web]"), "{out}");
         let reparsed = Config::parse(&out).unwrap();
         match &reparsed.container.services["web"] {
             crate::config::ServiceConfig::Detailed(detail) => {
@@ -190,6 +224,97 @@ restart = "always"
             }
             other => panic!("expected detailed service, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn emits_service_env_inline() {
+        // A nested map (service env) becomes a nested inline table rather
+        // than forcing the whole service back to a section.
+        let cfg = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
+name = "env"
+
+[container]
+name = "env"
+home = "~/env"
+
+[container.services.web]
+command = "redis-server"
+
+[container.services.web.env]
+LOG_LEVEL = "debug"
+"#,
+        )
+        .unwrap();
+        let out = toml_string(&cfg).unwrap();
+        assert!(
+            out.contains("web = { command = \"redis-server\", env = { LOG_LEVEL = \"debug\" } }"),
+            "{out}"
+        );
+        assert!(!out.contains("[container.services.web]"), "{out}");
+        let reparsed = Config::parse(&out).unwrap();
+        match &reparsed.container.services["web"] {
+            crate::config::ServiceConfig::Detailed(detail) => {
+                assert_eq!(
+                    detail.env.get("LOG_LEVEL").map(String::as_str),
+                    Some("debug")
+                );
+            }
+            other => panic!("expected detailed service, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn host_exec_allowlist_entries_roundtrip_inline() {
+        // Short entries stay strings; detailed entries sit beside them as
+        // inline tables under `[integration.host_exec.allowlist]`.
+        let cfg = Config::parse(
+            r#"
+[image]
+base = "fedora:44"
+name = "env"
+
+[container]
+name = "env"
+home = "~/env"
+
+[integration.host_exec]
+enabled = true
+
+[integration.host_exec.allowlist]
+gh = "/usr/bin/gh"
+git = { path = "/usr/bin/git", filter = true, shim = true }
+scrcpy = { path = "/usr/bin/scrcpy", timeout = 30 }
+"#,
+        )
+        .unwrap();
+        let out = toml_string(&cfg).unwrap();
+        assert!(out.contains("[integration.host_exec.allowlist]"), "{out}");
+        assert!(out.contains("gh = \"/usr/bin/gh\""), "{out}");
+        assert!(
+            out.contains("git = { path = \"/usr/bin/git\", filter = true, shim = true }"),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "scrcpy = { path = \"/usr/bin/scrcpy\", filter = false, shim = true, timeout = 30 }"
+            ),
+            "{out}"
+        );
+        assert!(
+            !out.contains("[integration.host_exec.allowlist."),
+            "entries must stay under the parent table: {out}"
+        );
+        let reparsed = Config::parse(&out).unwrap();
+        let gh = reparsed.integration.host_exec.resolve("gh").unwrap();
+        assert!(matches!(gh, crate::config::HostExecEntry::Simple(_)));
+        let git = reparsed.integration.host_exec.resolve("git").unwrap();
+        assert!(git.filter_enabled());
+        assert!(git.shim_enabled());
+        let scrcpy = reparsed.integration.host_exec.resolve("scrcpy").unwrap();
+        assert_eq!(scrcpy.timeout_secs(), Some(30));
     }
 
     #[test]
