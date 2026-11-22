@@ -285,12 +285,15 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum HostExecEntry {
-    /// Simple path string (defaults: `filter = true`, `shim = true`).
+    /// Simple path string (defaults: `filter = false`, `shim = true`).
     Simple(String),
     /// Detailed configuration table.
     Detailed {
         path: String,
-        #[serde(default = "default_true")]
+        /// Best-effort argument blocklist. Off by default: the allowlist
+        /// entry is already a trusted program, and the blocklist rejects
+        /// harmless globs/metacharacters. Opt in for extra guardrails.
+        #[serde(default)]
         filter: bool,
         #[serde(default = "default_true")]
         shim: bool,
@@ -313,7 +316,7 @@ impl HostExecEntry {
 
     pub fn filter_enabled(&self) -> bool {
         match self {
-            Self::Simple(_) => true,
+            Self::Simple(_) => false,
             Self::Detailed { filter, .. } => *filter,
         }
     }
@@ -361,16 +364,16 @@ pub enum HostExecCwd {
     /// mappings (home volume, XDG dirs, host caches, extra mounts). A path
     /// with no mapping falls back to the host home with a stderr warning
     /// the guest sees.
+    #[default]
     Map,
     /// Ignore the guest cwd entirely: the child starts in the host home.
-    #[default]
     Home,
     /// Refuse the request with a typed error naming the guest path.
     Refuse,
 }
 
 /// The `skip_serializing_if` hook for `integration.host_exec.cwd`: the
-/// default (`home`) stays out of written TOML like every untouched key.
+/// default (`map`) stays out of written TOML like every untouched key.
 fn is_default_host_exec_cwd(v: &HostExecCwd) -> bool {
     *v == HostExecCwd::default()
 }

@@ -402,8 +402,8 @@ storage — wider than `serial`, so enable it deliberately.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Allow container to execute commands on the host |
-| `allowlist` | table | (none) | Allowed commands as alias → path pairs. When set, only those commands may run; when absent, anything may run. Each value may also be a detailed table `{ path = "/usr/bin/…", filter = true, shim = true, timeout = 30 }` |
-| `cwd` | string | `"home"` | What the fd-passing session does with the guest working directory (see [cwd handling](#cwd-handling) below) |
+| `allowlist` | table | (required when enabled) | Allowed commands as alias → path pairs. Only these commands may run; enabling host-exec without at least one entry is rejected. Each value may also be a detailed table `{ path = "/usr/bin/…", filter = false, shim = true, timeout = 30 }` |
+| `cwd` | string | `"map"` | What the fd-passing session does with the guest working directory (see [cwd handling](#cwd-handling) below) |
 
 **cwd handling**
 
@@ -415,8 +415,8 @@ refused, exactly like a piped one:
 
 | Value | Behaviour |
 |-------|-----------|
-| `"home"` (default) | Ignore the guest path: the command starts in the host `$HOME` |
-| `"map"` | Translate the guest path through the container's known bind mappings — the home volume, enabled `[integration.xdg_dirs]`, `[storage.host_caches]` and `[container.mounts].extra` binds. A path with no mapping falls back to the host `$HOME` and prints a warning naming the unmapped guest path to stderr |
+| `"map"` (default) | Translate the guest path through the container's known bind mappings — the home volume, enabled `[integration.xdg_dirs]`, `[storage.host_caches]` and `[container.mounts].extra` binds. A path with no mapping falls back to the host `$HOME` and prints a warning naming the unmapped guest path to stderr |
+| `"home"` | Ignore the guest path: the command starts in the host `$HOME` |
 | `"refuse"` | Refuse the request with a typed error naming the guest path; nothing is executed |
 
 Shared cache *volumes* (`[storage.shared_caches]`) are translated only if
@@ -429,7 +429,6 @@ behaviour above.
 ```toml
 [integration.host_exec]
 enabled = true
-cwd = "map"
 
 [integration.host_exec.allowlist]
 git = "/usr/bin/git"
@@ -455,11 +454,12 @@ allowlist = { git = "/usr/bin/git", systemctl = "/usr/bin/systemctl" }
 ```
 
 **Security note:** no shell is involved (`execve` directly), so shell
-injection can't happen. But the filter is a blocklist — **an allowlisted
-binary keeps its full host powers** (`git -C /root …`, `find -exec …`,
-`python -c …`). Prefer wrapper scripts that pin the exact arguments over
-general-purpose tools. The filter also rejects harmless arguments containing
-globs or parentheses.
+injection can't happen. The per-entry argument filter is **off by default**
+because the allowlist is already the trust boundary; set `filter = true`
+on an entry to reject arguments containing shell metacharacters, globs or
+parentheses. Either way, **an allowlisted binary keeps its full host
+powers** (`git -C /root …`, `find -exec …`, `python -c …`). Prefer wrapper
+scripts that pin the exact arguments over general-purpose tools.
 
 ### `[integration.xdg_dirs]`
 

@@ -14,6 +14,10 @@ export interface HostExecItem {
   path: string;
   /** Optional kill timeout in seconds; `undefined` = none. */
   timeout?: number;
+  /** Best-effort argument blocklist; off by default. */
+  filter?: boolean;
+  /** Create a PATH shim in the container; on by default. */
+  shim?: boolean;
 }
 
 export interface ServiceItem {

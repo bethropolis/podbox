@@ -179,13 +179,25 @@ export const CUSTOM_SCHEMA_PATHS = {
 // Suggestions for [integration.host_exec.allowlist]. The browser cannot ask
 // the host what is installed, so these are the commands worth reaching for
 // often enough to be one click away; any absolute path still works.
-export const HOST_EXEC_SUGGESTIONS: { alias: string; path: string }[] = [
-  { alias: 'podbox', path: '/usr/local/bin/podbox' },
-  { alias: 'git', path: '/usr/bin/git' },
-  { alias: 'gh', path: '/usr/bin/gh' },
-  { alias: 'podman', path: '/usr/bin/podman' },
-  { alias: 'docker', path: '/usr/bin/docker' },
-  { alias: 'rsync', path: '/usr/bin/rsync' },
+export const HOST_EXEC_SUGGESTIONS: { alias: string; path: string; hint: string }[] = [
+  { alias: 'git', path: '/usr/bin/git', hint: 'version control' },
+  { alias: 'gh', path: '/usr/bin/gh', hint: 'GitHub CLI' },
+  { alias: 'podman', path: '/usr/bin/podman', hint: 'host containers' },
+  { alias: 'docker', path: '/usr/bin/docker', hint: 'host containers' },
+  { alias: 'rsync', path: '/usr/bin/rsync', hint: 'file sync' },
+  { alias: 'make', path: '/usr/bin/make', hint: 'builds' },
+  { alias: 'systemctl', path: '/usr/bin/systemctl', hint: 'user services' },
+  { alias: 'journalctl', path: '/usr/bin/journalctl', hint: 'host logs' },
+  { alias: 'ssh', path: '/usr/bin/ssh', hint: 'remote hosts' },
+  { alias: 'kubectl', path: '/usr/bin/kubectl', hint: 'Kubernetes' },
+  { alias: 'helm', path: '/usr/bin/helm', hint: 'Helm charts' },
+  { alias: 'terraform', path: '/usr/bin/terraform', hint: 'infrastructure' },
+  { alias: 'python3', path: '/usr/bin/python3', hint: 'scripts' },
+  { alias: 'node', path: '/usr/bin/node', hint: 'scripts' },
+  { alias: 'jq', path: '/usr/bin/jq', hint: 'JSON' },
+  { alias: 'lsof', path: '/usr/bin/lsof', hint: 'open files' },
+  { alias: 'ss', path: '/usr/bin/ss', hint: 'sockets' },
+  { alias: 'podbox', path: '/usr/local/bin/podbox', hint: 'nested podbox' },
 ];
 
 // A few known container schemes to offer one click away; anything can still
@@ -583,7 +595,7 @@ export function initialStudioValues(): StudioDefaults {
     intSshAgent: false,
     intGpgAgent: false,
     hostExecEnabled: false,
-    hostExecCwd: 'home',
+    hostExecCwd: 'map',
     hostExecList: [],
     provisionSteps: [],
     hwKvm: false,

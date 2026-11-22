@@ -63,11 +63,12 @@ pub fn schema_defaults() -> Map<String, Value> {
     );
     // [integration]
     put("integration.gpu", json!("auto"));
-    // The engine default is `home`: without this key the guest cwd is
-    // ignored and the child starts in the host home.
+    // The engine default is `map`: without this key the guest cwd is
+    // translated through the container's bind mappings before the host
+    // command runs.
     put(
         "integration.host_exec.cwd",
-        json!(super::types::HostExecCwd::Home),
+        json!(super::types::HostExecCwd::Map),
     );
     // [lifecycle]
     put(

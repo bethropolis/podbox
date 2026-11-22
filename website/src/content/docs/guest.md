@@ -113,14 +113,18 @@ lives and dies with this list.
 
 ### Host-exec security
 
-Off by default. When enabled, the host validates every command:
+Off by default. When enabled, only commands in the allowlist can run; the
+guest's `$PATH` is ignored for lookup:
 
 | Check | Rejected | Example error |
 |-------|----------|---------------|
-| Allowlist | Anything not in the map (guest `$PATH` ignored) | `Permission denied: 'ls' is not in the host-exec allowlist` |
-| Shell metacharacters | `;`, `\|`, `&`, `$`, `` ` `` in args | `host-exec: failed to execute 'echo $HOME'` |
-| Dangerous flags | `--exec-path`, `--config`, `-o`, … | `Security violation: argument "--exec-path=/tmp/x" …` |
+| Allowlist | Anything not in the map | `Permission denied: 'ls' is not in the host-exec allowlist` |
 | Absolute-path bypass | `/usr/bin/git` when the key is `git` | `Permission denied: '/usr/bin/git' is not in the host-exec allowlist` |
+
+The optional per-entry argument filter (`filter = true`, off by default)
+also rejects shell metacharacters, globs and a small dangerous-flag blocklist
+before the child starts. It is a best-effort blocklist, not a sandbox:
+an allowlisted binary keeps its full host powers either way.
 
 See [config.md](config.md#integrationhost_exec) for the allowlist shape —
 and prefer wrapper scripts over general-purpose tools.

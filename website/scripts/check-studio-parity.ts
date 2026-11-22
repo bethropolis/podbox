@@ -108,9 +108,9 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       ],
     },
   ],
-  // [integration.host_exec]: the per-entry timeout rides the detailed
-  // allowlist table form (only when set), and a guest-cwd policy that
-  // differs from the engine default gets written.
+  // [integration.host_exec]: the per-entry timeout and filter/shim
+  // overrides ride the detailed allowlist table form, and a guest-cwd
+  // policy that differs from the engine default gets written.
   [
     "host-exec",
     {
@@ -118,8 +118,9 @@ const cases: Array<[string, Partial<StudioValues>]> = [
       hostExecList: [
         { alias: "git", path: "/usr/bin/git", timeout: undefined },
         { alias: "compile", path: "/usr/local/bin/compile", timeout: 300 },
+        { alias: "gh", path: "/usr/bin/gh", filter: true, shim: false },
       ],
-      hostExecCwd: "map",
+      hostExecCwd: "home",
     },
   ],
 ];
@@ -354,8 +355,8 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
     console.error(`✗ host-exec-cwd: engine schema does not serve the cwd variant list: ${JSON.stringify(served)}`);
     process.exit(1);
   }
-  if (engineData.defaults["integration.host_exec.cwd"] !== "home") {
-    console.error(`✗ host-exec-cwd: engine default is not "home": ${JSON.stringify(engineData.defaults["integration.host_exec.cwd"])}`);
+  if (engineData.defaults["integration.host_exec.cwd"] !== "map") {
+    console.error(`✗ host-exec-cwd: engine default is not "map": ${JSON.stringify(engineData.defaults["integration.host_exec.cwd"])}`);
     process.exit(1);
   }
   const values = studioReducer(defaults, {
@@ -365,17 +366,22 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
       hostExecList: [
         { alias: "git", path: "/usr/bin/git", timeout: undefined },
         { alias: "compile", path: "/usr/local/bin/compile", timeout: 300 },
+        { alias: "gh", path: "/usr/bin/gh", filter: true, shim: false },
       ],
-      hostExecCwd: "map",
+      hostExecCwd: "home",
     },
   });
   const toml = configToToml(stateToConfig(values)) ?? "";
-  if (!toml.includes("cwd = \"map\"")) {
-    console.error(`✗ host-exec-cwd: map policy not emitted:\n${toml}`);
+  if (!toml.includes("cwd = \"home\"")) {
+    console.error(`✗ host-exec-cwd: home policy not emitted:\n${toml}`);
     process.exit(1);
   }
   if (!toml.includes("timeout = 300") || toml.includes("timeout = 0")) {
     console.error(`✗ host-exec-timeout: per-entry timeout not emitted:\n${toml}`);
+    process.exit(1);
+  }
+  if (!toml.includes("filter = true") || !toml.includes("shim = false")) {
+    console.error(`✗ host-exec-entry: filter/shim overrides not emitted:\n${toml}`);
     process.exit(1);
   }
   // The engine default stays out of the TOML, matching the serde rule.
@@ -398,8 +404,12 @@ console.log("\nAll Studio presets round-trip through the Rust engine.");
     console.error(`✗ host-exec-timeout: unset timeout leaked into the TOML:\n${plain}`);
     process.exit(1);
   }
-  console.log("✓ host-exec-cwd: map/refuse emitted, default kept out of the TOML");
-  console.log("✓ host-exec-timeout: detailed entry written only once a timeout is set");
+  if (plain.includes("filter =") || plain.includes("shim =")) {
+    console.error(`✗ host-exec-entry: default filter/shim leaked into the TOML:\n${plain}`);
+    process.exit(1);
+  }
+  console.log("✓ host-exec-cwd: non-default policy emitted, default map kept out of the TOML");
+  console.log("✓ host-exec-entry: detailed form written only for non-default keys");
 }
 // xdg_open table form: a custom scheme allowlist must survive emission and
 // import in Studio-land, and stay a fixed point.

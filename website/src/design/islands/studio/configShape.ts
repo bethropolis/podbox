@@ -226,17 +226,23 @@ export function stateToConfig(s: StudioValues): V {
   if (s.hostExecEnabled) {
     const hostExec: V = { enabled: true };
     // The cwd policy is runtime behaviour, but it is config: written only
-    // when it differs from the engine default (`home`).
-    if (s.hostExecCwd !== 'home') hostExec.cwd = s.hostExecCwd;
+    // when it differs from the engine default (`map`).
+    if (s.hostExecCwd !== 'map') hostExec.cwd = s.hostExecCwd;
     const allowList: V = {};
     for (const e of s.hostExecList) {
-      // A plain alias → path pair stays the simple form; only an entry with
-      // a timeout needs the detailed table form.
+      // A plain alias → path pair stays the simple form when every field is
+      // at its engine default (filter off, shim on). Anything else uses the
+      // detailed table, writing only the non-default keys.
       const alias = e.alias.trim();
       const path = e.path.trim();
       if (!alias || !path) continue;
-      if (e.timeout !== undefined) {
-        allowList[alias] = { path, timeout: e.timeout } as V;
+      const detailed = e.timeout !== undefined || e.filter === true || e.shim === false;
+      if (detailed) {
+        const entry: V = { path };
+        if (e.filter === true) entry.filter = true;
+        if (e.shim === false) entry.shim = false;
+        if (e.timeout !== undefined) entry.timeout = e.timeout;
+        allowList[alias] = entry;
       } else {
         allowList[alias] = path;
       }

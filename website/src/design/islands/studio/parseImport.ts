@@ -76,6 +76,8 @@ function parseAllowlist(rec: unknown): HostExecItem[] | undefined {
           alias,
           path: typeof detail.path === 'string' ? detail.path : '',
           timeout: num(detail.timeout),
+          filter: bool(detail.filter),
+          shim: bool(detail.shim),
         };
       }
       return { alias, path: '', timeout: undefined };

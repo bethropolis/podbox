@@ -185,7 +185,7 @@ flatpak = "/usr/bin/flatpak"
     assert!(cfg.integration.host_exec.enabled);
     let entry = cfg.integration.host_exec.resolve("flatpak").unwrap();
     assert_eq!(entry.path(), "/usr/bin/flatpak");
-    assert!(entry.filter_enabled());
+    assert!(!entry.filter_enabled());
     assert!(entry.shim_enabled());
 }
 
@@ -271,7 +271,7 @@ systemctl = { path = "/usr/bin/systemctl", shim = false }
             .filter_enabled()
     );
     assert!(
-        cfg.integration
+        !cfg.integration
             .host_exec
             .resolve("flatpak")
             .unwrap()
@@ -305,24 +305,23 @@ enabled = true
 }
 
 #[test]
-fn host_exec_filter_false_allows_shell_metacharacters_conceptually() {
+fn host_exec_filter_defaults_to_off_and_can_be_opted_in() {
     use podbox::config::HostExecEntry;
-    let filtered = HostExecEntry::Simple("/usr/bin/git".into());
-    let unfiltered = HostExecEntry::Detailed {
+    let default_entry = HostExecEntry::Simple("/usr/bin/git".into());
+    let filtered = HostExecEntry::Detailed {
         path: "/usr/bin/git".into(),
-        filter: false,
+        filter: true,
         shim: true,
         timeout: None,
     };
+    assert!(!default_entry.filter_enabled());
     assert!(filtered.filter_enabled());
-    assert!(!unfiltered.filter_enabled());
-    // The actual bypass is in handle_host_exec: when filter_enabled() is false,
-    // validate_host_exec_args is skipped. Verify the entry API correctly
-    // distinguishes the two modes.
+    // The blocklist is applied only when filter_enabled() is true; execution
+    // is always execve, never a shell.
 }
 
 /// The `integration.host_exec.cwd` key parses in all three variants,
-/// defaults to `home` when omitted, and a wrong value is a parse error
+/// defaults to `map` when omitted, and a wrong value is a parse error
 /// naming the key so a typo in the TOML is discoverable.
 #[test]
 fn host_exec_cwd_parses_and_rejects_unknown_values() {
@@ -344,7 +343,7 @@ enabled = true
 git = "/usr/bin/git"
 "#;
     let cfg = Config::parse(&(base.to_owned() + allowlist)).unwrap();
-    assert_eq!(cfg.integration.host_exec.cwd, HostExecCwd::Home);
+    assert_eq!(cfg.integration.host_exec.cwd, HostExecCwd::Map);
 
     // `cwd` must sit above the allowlist table: appending it after the
     // `[...]` header would make it an allowlist key instead.
@@ -409,7 +408,7 @@ compile = { path = "/usr/local/bin/compile", timeout = 300 }
     );
 
     // Writing the parsed config must keep default-side keys out: no
-    // `cwd` (default `home`) and no `timeout` where none was set.
+    // `cwd` (default `map`) and no `timeout` where none was set.
     let written = toml::to_string(&cfg).unwrap();
     assert!(!written.contains("cwd ="), "{written}");
     // The compile entry keeps its timeout, git stays the simple form.
@@ -429,7 +428,7 @@ home = "~/containers/test"
 
 [integration.host_exec]
 enabled = true
-cwd = "map"
+cwd = "home"
 
 [integration.host_exec.allowlist]
 git = "/usr/bin/git"
@@ -437,7 +436,7 @@ git = "/usr/bin/git"
     )
     .unwrap();
     let written = toml::to_string(&cfg_map).unwrap();
-    assert!(written.contains("cwd = \"map\""), "{written}");
+    assert!(written.contains("cwd = \"home\""), "{written}");
 
     // A negative timeout is a TOML type error (unsigned integer).
     let result = Config::parse(

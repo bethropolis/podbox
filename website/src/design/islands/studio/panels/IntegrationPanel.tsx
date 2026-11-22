@@ -62,7 +62,13 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
   const allowlistReady = hostExecList.some((e) => e.alias.trim() && e.path.trim());
   const addAllowlistEntry = (entry: { alias: string; path: string }) => {
     if (hostExecList.some((e) => e.alias === entry.alias)) return;
-    setHostExecList([...hostExecList, entry]);
+    setHostExecList([...hostExecList, { alias: entry.alias, path: entry.path }]);
+  };
+  const updateHostExecEntry = (
+    idx: number,
+    patch: Partial<(typeof hostExecList)[number]>,
+  ) => {
+    setHostExecList(hostExecList.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
   };
   // Rules exist for a proxy that is switched off: the engine rejects the
   // config, so offer the switch right here rather than a banner.
@@ -549,114 +555,145 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
       }
       description="Expose allowlisted host commands inside the container"
     />
-    {/* The engine rejects enabled-without-allowlist, and rightly so. Keep the
-        error, but say what fixes it instead of just refusing. */}
-    {hostExecEnabled && !allowlistReady && (
-      <div className="flex flex-col gap-2 rounded-[3px] border border-[var(--accent-yellow)]/40 bg-[var(--accent-yellow)]/5 p-2.5">
-        <p className="text-[11px] text-[var(--text-subtext)] leading-snug">
-          <span className="font-bold text-[var(--accent-yellow)]">Needs an allowlist.</span>{' '}
-          Add at least one alias + path pair below to unblock it.
-        </p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-tight text-[var(--text-muted)]">
-            Add common:
-          </span>
-          {HOST_EXEC_SUGGESTIONS.map((s) => (
-            <button
-              key={s.alias}
-              type="button"
-              onClick={() => addAllowlistEntry(s)}
-              disabled={hostExecList.some((e) => e.alias === s.alias)}
-              title={s.path}
-              className="px-1.5 py-0.5 rounded-[2px] text-[11px] font-mono border border-[var(--border)] bg-[var(--bg-mantle)] text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:text-[var(--text-subtext)]"
-            >
-              {s.alias}
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
-    {err('integration.host_exec') && !allowlistReady && (
-      <p className="text-[11px] leading-snug text-[var(--text-muted)]">
-        podbox will refuse this config until the allowlist has at least one entry.
-      </p>
-    )}
     {hostExecEnabled && (
       <div className="space-y-2">
+        {/* The engine rejects enabled-without-allowlist, and rightly so. Keep
+            the error, but say what fixes it instead of just refusing. */}
+        {!allowlistReady && (
+          <div className="rounded-[3px] border border-[var(--accent-yellow)]/40 bg-[var(--accent-yellow)]/5 p-2.5">
+            <p className="text-[11px] text-[var(--text-subtext)] leading-snug">
+              <span className="font-bold text-[var(--accent-yellow)]">Needs an allowlist.</span>{' '}
+              Pick a trusted tool below, or add an alias + path pair.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)]/40 p-2 space-y-1.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Popular tools
+            </span>
+            <span className="text-[10px] text-[var(--text-muted)]">
+              one click adds a common path
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {HOST_EXEC_SUGGESTIONS.map((s) => (
+              <button
+                key={s.alias}
+                type="button"
+                onClick={() => addAllowlistEntry(s)}
+                disabled={hostExecList.some((e) => e.alias === s.alias)}
+                title={`${s.path} - ${s.hint}`}
+                className="px-1.5 py-0.5 rounded-[2px] text-[11px] font-mono border border-[var(--border)] bg-[var(--bg-mantle)] text-[var(--text-subtext)] hover:text-[var(--text-primary)] hover:border-[var(--accent-mauve)]/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:text-[var(--text-subtext)]"
+              >
+                {s.alias}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {hostExecList.map((e, idx) => (
-          <div key={idx} className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={e.alias}
-              aria-label={`Host exec ${idx + 1} alias`}
-              onChange={(ev) => {
-                const updated = [...hostExecList];
-                updated[idx].alias = ev.target.value;
-                setHostExecList(updated);
-              }}
-              placeholder="alias"
-              className={`${STUDIO_FIELD} w-32 shrink-0`}
-            />
-            <input
-              type="text"
-              value={e.path}
-              aria-label={`Host exec ${idx + 1} path`}
-              onChange={(ev) => {
-                const updated = [...hostExecList];
-                updated[idx].path = ev.target.value;
-                setHostExecList(updated);
-              }}
-              placeholder="/usr/bin/..."
-              className={`${STUDIO_FIELD} flex-1`}
-            />
-            <input
-              type="number"
-              min={1}
-              value={e.timeout ?? ''}
-              aria-label={`Host exec ${idx + 1} timeout`}
-              onChange={(ev) => {
-                const updated = [...hostExecList];
-                const raw = ev.target.value;
-                if (raw === '') {
-                  updated[idx].timeout = undefined;
-                } else {
-                  const secs = Math.floor(Number(raw));
-                  updated[idx].timeout = Number.isFinite(secs) && secs >= 1 ? secs : undefined;
-                }
-                setHostExecList(updated);
-              }}
-              placeholder="timeout s"
-              title="Optional kill timeout in seconds; empty = no timeout"
-              className={`${STUDIO_FIELD} w-20 shrink-0`}
-            />
-            <button
-              type="button"
-              onClick={() => setHostExecList(hostExecList.filter((_, i) => i !== idx))}
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer"
-              title="Remove entry"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+          <div
+            key={idx}
+            className="rounded-[3px] border border-[var(--border)] bg-[var(--bg-mantle)]/30 p-2 space-y-1.5"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={e.alias}
+                aria-label={`Host exec ${idx + 1} alias`}
+                onChange={(ev) => updateHostExecEntry(idx, { alias: ev.target.value })}
+                placeholder="alias"
+                className={`${STUDIO_FIELD} w-28 shrink-0`}
+              />
+              <input
+                type="text"
+                value={e.path}
+                aria-label={`Host exec ${idx + 1} path`}
+                onChange={(ev) => updateHostExecEntry(idx, { path: ev.target.value })}
+                placeholder="/usr/bin/..."
+                className={`${STUDIO_FIELD} min-w-0 flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => setHostExecList(hostExecList.filter((_, i) => i !== idx))}
+                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-red)] rounded-[2px] cursor-pointer"
+                title="Remove entry"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-muted)]">
+              <label
+                className="flex items-center gap-1 cursor-pointer"
+                title="Create a PATH shim inside the container (default: on)."
+              >
+                <input
+                  type="checkbox"
+                  checked={e.shim !== false}
+                  onChange={(ev) => updateHostExecEntry(idx, { shim: ev.target.checked })}
+                  className="accent-[var(--accent-mauve)]"
+                />
+                <span>PATH shim</span>
+              </label>
+              <label
+                className="flex items-center gap-1 cursor-pointer"
+                title="Reject arguments with shell metacharacters, globs or parentheses. Off by default: allowlisted programs are trusted; this is a best-effort blocklist."
+              >
+                <input
+                  type="checkbox"
+                  checked={e.filter === true}
+                  onChange={(ev) => updateHostExecEntry(idx, { filter: ev.target.checked })}
+                  className="accent-[var(--accent-mauve)]"
+                />
+                <span>Arg filter</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <span>Timeout</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={e.timeout ?? ''}
+                  aria-label={`Host exec ${idx + 1} timeout`}
+                  onChange={(ev) => {
+                    const raw = ev.target.value;
+                    if (raw === '') {
+                      updateHostExecEntry(idx, { timeout: undefined });
+                    } else {
+                      const secs = Math.floor(Number(raw));
+                      updateHostExecEntry(idx, {
+                        timeout: Number.isFinite(secs) && secs >= 1 ? secs : undefined,
+                      });
+                    }
+                  }}
+                  placeholder="none"
+                  title="Optional kill timeout in seconds; empty = no timeout. TTY sessions are never time-limited."
+                  className="w-16 rounded-[2px] bg-[var(--bg-mantle)] border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent-mauve)]"
+                />
+                <span>s</span>
+              </label>
+            </div>
           </div>
         ))}
+
         <button
           type="button"
-          onClick={() =>
-            setHostExecList([...hostExecList, { alias: '', path: '', timeout: undefined }])
-          }
+          onClick={() => setHostExecList([...hostExecList, { alias: '', path: '' }])}
           className="text-xs text-[var(--accent-mauve)] hover:text-white flex items-center gap-1 cursor-pointer"
         >
           <Plus className="w-3 h-3" />
-          <span>Add Allowlist Entry</span>
+          <span>Add allowlist entry</span>
         </button>
+
         <StudioSelect
           label={
             <div className="flex items-center">
-              <span>Guest cwd</span>
+              <span>Working directory</span>
               <StudioTooltip
                 section="[integration.host_exec]"
-                title='cwd = "home" | "map" | "refuse"'
-                description="What a fd-passing command does with the container's working directory: ignore it (home), translate it through the container's bind mappings (map), or refuse an unusable path (refuse)."
+                title='cwd = "map" (default) | "home" | "refuse"'
+                description="Map runs the host command in the matching host directory when the container path is shared. Home always uses the host $HOME. Refuse blocks unmapped paths instead of falling back."
               />
             </div>
           }
@@ -664,7 +701,16 @@ export function IntegrationPanel({ st, errorMap }: { st: IntegrationPanelProps; 
           onChange={setHostExecCwd}
           options={enumOptions('integration.host_exec.cwd')}
         />
+        <p className="text-[10px] leading-snug text-[var(--text-muted)]">
+          Commands run in the matching host directory when the container path is shared.
+          Unmapped paths fall back to the host $HOME.
+        </p>
       </div>
+    )}
+    {err('integration.host_exec') && !allowlistReady && (
+      <p className="text-[11px] leading-snug text-[var(--text-muted)]">
+        podbox will refuse this config until the allowlist has at least one entry.
+      </p>
     )}
   </div>
 

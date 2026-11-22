@@ -30,6 +30,10 @@ home = "~/containers/myenv"
     assert!(!cfg.integration.clipboard);
     assert!(!cfg.integration.host_exec.enabled);
     assert!(cfg.integration.host_exec.allowlist.is_none());
+    assert_eq!(
+        cfg.integration.host_exec.cwd,
+        crate::config::HostExecCwd::Map
+    );
     assert!(!cfg.integration.ssh_agent);
     assert!(!cfg.integration.git_identity);
     assert!(!cfg.lifecycle.auto_checkpoint);

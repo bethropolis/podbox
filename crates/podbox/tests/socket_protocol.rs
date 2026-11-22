@@ -572,7 +572,22 @@ fn host_exec_refuses_commands_outside_the_allowlist() {
 
 #[test]
 fn host_exec_refuses_argument_injection_patterns() {
-    let (mut c, h) = start(enabled_config(), Arc::default());
+    let mut cfg = enabled_config();
+    cfg.integration
+        .host_exec
+        .allowlist
+        .as_mut()
+        .unwrap()
+        .insert(
+            "echo".to_string(),
+            HostExecEntry::Detailed {
+                path: "/bin/echo".into(),
+                filter: true,
+                shim: true,
+                timeout: None,
+            },
+        );
+    let (mut c, h) = start(cfg, Arc::default());
     send(&mut c, &hello(&[CAP_HOST_EXEC]));
     let _ = recv(&mut c);
     for args in [
@@ -1783,10 +1798,10 @@ fn refuse_policy_rejects_an_unmapped_cwd_without_executing() {
     finish(c, h).unwrap();
 }
 
-/// With the default cwd policy (`home`), the guest path is ignored: the
-/// child starts in the host home and no warning is emitted.
+/// With the `home` cwd policy, the guest path is ignored: the child starts
+/// in the host home and no warning is emitted.
 #[test]
-fn default_cwd_policy_ignores_the_guest_path() {
+fn home_cwd_policy_ignores_the_guest_path() {
     use podbox::config::HostExecCwd;
     let fix = CwdFixture::new(HostExecCwd::Home);
     let (mut c, h) = start_cwd(fix.cfg, fix.cwd_map, Arc::default());
