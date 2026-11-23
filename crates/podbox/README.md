@@ -9,10 +9,16 @@ GUI-capable dev containers with Wayland, D-Bus, clipboard, notifications, and ho
 ## Install
 
 ```bash
+curl -fsSL https://bethropolis.github.io/podbox/install.sh | sh
+```
+
+**From crates.io (prebuilt images only):**
+
+```bash
 cargo install podbox-cli
 ```
 
-> The crates.io build works with **prebuilt images** — any image that already ships
+> The crates.io build works with **prebuilt images only** — any image that already ships
 > the podman guest, whether that's your own (`podbox create ghcr.io/you/img:<tag>`)
 > or the official ones built from the [`images/`](https://github.com/bethropolis/podbox/tree/main/images) directory (`podbox create cachy`). Only fresh builds
 > from a bare base (`[image] base`) require a workspace build to embed the guest.

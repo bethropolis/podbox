@@ -248,7 +248,7 @@ podbox diff myenv --apply
 
 1. `podbox init` creates a config file at `~/.config/podbox/profiles/<name>.toml`
 2. `podbox build` auto-generates a Containerfile from the config, copies in the guest binary (`podbox-guest`), and runs `podman build`
-3. `podbox enable` writes Quadlet files (`<name>.container`, `<name>.socket`, `<name>-host.service`) to `~/.config/containers/systemd/`
+3. `podbox enable` writes Quadlet files (`<name>.container`, `<name>.build`) to `~/.config/containers/systemd/` and custom units (`<name>.socket`, `<name>-host.service`) to `~/.config/systemd/user/`
 4. `podbox start` starts the container — the guest daemon connects to the host socket
 5. `podbox enter <name>` opens an interactive shell
 

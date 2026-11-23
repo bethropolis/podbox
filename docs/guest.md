@@ -15,7 +15,7 @@ The container starts with `podbox-guest --entry [<command>...]`:
    portal-aware toolkits route audio/video capture through portals.
 2. `fork()`s: the child re-execs `podbox-guest --daemon`; the parent execs
    your command (or a login shell).
-3. The daemon idles in the background with a 5-minute timeout.
+3. The daemon idles in the background; `lifecycle.idle_timeout` defaults to off.
 
 ### User setup and privilege drop
 
@@ -69,7 +69,7 @@ Length-prefixed JSON over `$XDG_RUNTIME_DIR/podbox/<container>.sock`.
 Full wire format: [protocol.md](protocol.md).
 
 ```
-→ {"type":"hello","version":"0.1.0","container":"myenv","capabilities":["notify","xdg_open","clipboard","host_exec"]}
+→ {"type":"hello","protocol_version":1,"guest_version":"0.9.7","container":"myenv","capabilities":["notify","xdg_open","clipboard","host_exec"]}
 ← {"type":"hello_ack","accepted":["notify","xdg_open"],"rejected":["clipboard","host_exec"]}
 ```
 

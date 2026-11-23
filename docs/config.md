@@ -8,7 +8,7 @@ description: Complete TOML configuration reference for podbox — all keys, defa
 
 1. `./.podbox.toml` (project-local)
 2. Active context from `~/.config/podbox/.active` (set via `podbox use <name>`)
-3. `~/.config/podbox/*.toml` (first file, sorted by name)
+3. `~/.config/podbox/profiles/*.toml` (canonical), with legacy `~/.config/podbox/*.toml` still accepted (first file, sorted by name)
 4. Embedded default (`fedora:44`, name `podbox`)
 
 ## Inheritance (`extends`)
@@ -405,7 +405,7 @@ storage — wider than `serial`, so enable it deliberately.
 | `allowlist` | table | (required when enabled) | Allowed commands as alias → path pairs. Only these commands may run; enabling host-exec without at least one entry is rejected. Each value may also be a detailed table `{ path = "/usr/bin/…", filter = false, shim = true, timeout = 30 }` |
 | `cwd` | string | `"map"` | What the fd-passing session does with the guest working directory (see [cwd handling](#cwd-handling) below) |
 
-**cwd handling**
+#### cwd handling
 
 The fd-passing session carries the shell's working directory in
 `HostExecV2.cwd`; `cwd` decides what the host does with it before the

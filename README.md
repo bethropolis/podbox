@@ -28,6 +28,21 @@ The container gets its own home directory by default. Extra folders, devices, GP
 
 systemd owns the lifecycle from there: autostart, restarts, socket activation. There's no podbox process running in the background.
 
+## What the container can't do
+
+The home is an isolated volume; host folders are not mounted unless the TOML asks
+for them (podbox still mounts its own socket and a sandbox marker). Hardware
+devices, XDG directories, SSH/GPG agents and host-exec are off by default; GPU
+detection (`gpu = "auto"`) is the exception. D-Bus is off by default and, when
+enabled, goes through `xdg-dbus-proxy` unless you opt out (`preset = "none"` with
+no rules or capabilities). With the default proxy rules, portal access is limited
+to notifications and OpenURI, so screenshot, screencast and file chooser are
+denied. With Wayland enabled, the firewall blocks screen capture, virtual input,
+input methods and window listing by default. Host-exec runs only allowlisted
+binaries with no shell, but an allowlisted binary keeps its full host powers.
+`xdg-open` accepts only `http`, `https` and `mailto` until you widen the list.
+`no_new_privileges` is on by default, blocking setuid escalation.
+
 ## vs distrobox
 
 Distrobox mounts your home directory and session bus by default and gets out of the way after that, which is the right approach if you want a container that feels like the host. podbox defaults to the opposite: nothing is shared unless it's in the TOML, and the environment is reproducible from that file rather than whatever state the container happened to drift into.
@@ -40,7 +55,7 @@ It's not a replacement for distrobox, it solves a different problem.
 | **Config** | Declarative TOML, version-controllable | Imperative CLI flags | Shell flags per run |
 | **Lifecycle** | systemd Quadlet units | Shell shims | Manual |
 | **D-Bus** | Filtered via `xdg-dbus-proxy` | Unfiltered session bus | Unfiltered |
-| **Wayland / audio** | Opt-out (on by default) | Always on | Manual |
+| **Wayland / audio** | Opt-in | Always on | Manual |
 | **GPU** | `auto` / `nvidia` / off | `--nvidia` flag | Manual device flags |
 | **Notifications** | Guest interceptor → host | Via shared D-Bus | Not supported |
 | **Clipboard** | Guest interceptor → host | Via shared home | Not supported |
@@ -81,11 +96,11 @@ brew install bethropolis/homebrew-tap/podbox
 paru -S podbox-bin
 ```
 
-**From crates.io:**
+**From crates.io (prebuilt images only):**
 ```bash
 cargo install podbox-cli
 ```
-> Note: the crates.io build supports **prebuilt images only** (`image_ref`
+> Note: the crates.io build supports **prebuilt images only** (`image.image`
 > in your config, or `podbox create ghcr.io/bethropolis/podbox:<tag>`).
 > Custom image builds (a `[image] base = "..."` in the TOML) need a full
 > source build from the workspace, where the guest daemon is embedded at
@@ -178,8 +193,8 @@ podbox export bin rg
 
 **Snapshots, restores, clones:**
 ```bash
-podbox snapshot myenv
-podbox restore myenv <tag>
+podbox snapshot create myenv --tag <tag>
+podbox restore <tag> myenv
 podbox clone work dev
 ```
 
@@ -194,7 +209,7 @@ podbox inspect myenv --quadlet
 **Required:**
 - Podman ≥ 5.5 (5.6+ if you want SSH agent passthrough)
 - A systemd user session
-- Linux with a Wayland compositor (X11 apps work via Xwayland)
+- Linux with a Wayland compositor (X11 apps via xwayland-satellite)
 
 **Nice to have:**
 - `xdg-dbus-proxy`, for filtered D-Bus access. Usually already on your system if you've got Flatpak installed.

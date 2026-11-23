@@ -160,7 +160,7 @@ snapshots. (`lifecycle.on_stop` is deprecated and emits nothing.)
 
 ### `<name>-host.service`
 
-Generated at `~/.config/containers/systemd/<name>-host.service`:
+Generated at `~/.config/systemd/user/<name>-host.service`:
 
 ```ini
 [Unit]

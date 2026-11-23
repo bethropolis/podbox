@@ -109,7 +109,7 @@ guest daemon. If it can't reach the host socket, they're silently skipped.
 ```bash
 podbox exec -- ps aux | grep podbox-guest       # daemon running?
 podbox exec -- echo $PATH                       # should include /run/podbox/bin
-podbox exec -- cat /etc/environment.d/podbox.conf   # PATH injection file
+podbox exec -- cat /etc/profile.d/podbox.sh         # PATH injection (fish: /etc/fish/conf.d/podbox.fish)
 ```
 
 ## UID mismatch or permission errors
@@ -262,8 +262,8 @@ Diagnose inside the container:
 podman exec <container> getent passwd $UID
 ```
 
-Fix: rebuild with a non-colliding UID, or set `container.user` / the
-image's user explicitly in the TOML definition.
+Fix: rebuild with a non-colliding UID; the entrypoint reconciles the image's
+user with the host UID (see [guest.md](guest.md#user-setup-and-privilege-drop)).
 
 ## `setlocale` warnings
 
@@ -294,7 +294,7 @@ or the host socket service is down.
 Diagnose:
 
 ```bash
-systemctl --user status podbox-<name>.socket
+systemctl --user status <name>.socket
 ```
 
 Fix: ensure the socket unit is active and re-run `podbox enable <name>`.

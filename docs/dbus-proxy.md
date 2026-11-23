@@ -17,7 +17,7 @@ portal access:
 
 1. `podbox enable` writes an additional file:
    ```
-   ~/.config/containers/systemd/<name>-proxy.service
+   ~/.config/systemd/user/<name>-proxy.service
    ```
 
 2. The generated `.container` quadlet gains:
@@ -93,7 +93,7 @@ else. A disabled capability contributes no rules.
 ## Generated proxy unit
 
 When rules are present, a companion systemd service is generated at
-`~/.config/containers/systemd/<name>-proxy.service`:
+`~/.config/systemd/user/<name>-proxy.service`:
 
 ```ini
 [Unit]
