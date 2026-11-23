@@ -263,6 +263,22 @@ impl Config {
         Self::parse_with_source(path, &content)
     }
 
+    /// Load without emitting diagnostics; used when scanning for a runtime name.
+    pub(crate) fn load_for_lookup(path: &std::path::Path) -> Result<Config> {
+        if !path.exists() {
+            return Err(PodboxError::DefinitionNotFound {
+                path: path.to_path_buf(),
+            }
+            .into());
+        }
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read definition file '{}'", path.display()))?;
+        let merged = crate::config::extends::resolve_extends_chain(path, &content)?;
+        let config = Self::from_merged(merged)?;
+        let (_, result) = config.validate_with_warnings();
+        result.map(|()| config)
+    }
+
     pub fn embedded() -> Config {
         Self::parse(EMBEDDED_DEFAULT).expect("embedded default is valid TOML")
     }

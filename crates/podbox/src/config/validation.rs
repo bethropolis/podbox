@@ -48,6 +48,23 @@ mod printing {
         }
         eprintln!("{message}");
     }
+
+    /// Whether a diagnostic was claimed by the once-per-process gate. Used
+    /// by the lookup regression test to prove a scan stayed silent.
+    #[cfg(test)]
+    pub fn was_noted(message: &str) -> bool {
+        SHOWN
+            .get_or_init(Mutex::default)
+            .lock()
+            .map(|shown| shown.contains(message))
+            .unwrap_or(false)
+    }
+}
+
+/// Test-only query over the parse-warning gate.
+#[cfg(all(test, feature = "cli"))]
+pub(crate) fn note_was_seen(message: &str) -> bool {
+    printing::was_noted(message)
 }
 
 /// [`printing::set_quiet`], for the command layer.

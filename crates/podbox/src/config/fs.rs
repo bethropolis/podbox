@@ -243,7 +243,7 @@ pub fn find_by_runtime_or_stem(name: &str) -> Option<PathBuf> {
 pub(crate) fn find_by_runtime_in(paths: &[PathBuf], runtime: &str) -> Option<PathBuf> {
     paths
         .iter()
-        .find(|path| match super::Config::load(path) {
+        .find(|path| match super::Config::load_for_lookup(path) {
             Ok(cfg) => cfg.container.name == runtime,
             Err(_) => path.file_stem().is_some_and(|stem| stem == runtime),
         })
@@ -271,6 +271,49 @@ mod tests {
             err.contains("no config found for container 'dev'")
                 && err.contains("{profiles/,}dev.toml"),
             "{err}"
+        );
+    }
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn runtime_lookup_does_not_emit_other_profiles_warnings() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("host-dotfiles-does-not-exist");
+        let path = dir.path().join("noisy.toml");
+        std::fs::write(
+            &path,
+            format!(
+                r#"
+[image]
+base = "fedora:44"
+name = "noisy"
+
+[container]
+name = "noisy"
+home = "{}"
+
+[dotfiles]
+source = "host:{}"
+target = "~/.dotfiles"
+"#,
+                dir.path().join("home").display(),
+                missing.display()
+            ),
+        )
+        .unwrap();
+        let warning = format!(
+            "dotfiles.source: host directory '{}' does not exist — nothing will be copied into the home",
+            missing.display()
+        );
+
+        assert!(!super::super::validation::note_was_seen(&warning));
+        assert_eq!(
+            find_by_runtime_in(std::slice::from_ref(&path), "noisy"),
+            Some(path)
+        );
+        assert!(
+            !super::super::validation::note_was_seen(&warning),
+            "runtime lookup leaked a warning from an unrelated definition"
         );
     }
 
