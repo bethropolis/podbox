@@ -53,20 +53,20 @@ export function TerminalCodeBlock({
       <pre className="m-0 p-0 font-mono">
         <code>
           {lines.map((line, idx) => (
-            <div key={idx} className="table-row">
+            <span key={idx} className="flex">
               {showLineNumbers && (
-                <span className="table-cell pr-4 text-right select-none text-[var(--text-muted)] opacity-50 text-xs">
+                <span className="w-8 shrink-0 pr-4 text-right select-none text-[var(--text-muted)] opacity-50 text-xs">
                   {idx + 1}
                 </span>
               )}
-              <span className="table-cell break-all">
+              <span className="min-w-0 flex-1 break-all">
                 {/* A blank line rendered as-is produces no line box, so the
                     row collapses to zero height and the gap disappears from
                     the code while still being present in the copied text. A
                     non-breaking space keeps the line box. */}
                 {line.trim() === '' ? '\u00A0' : highlighted[idx]}
               </span>
-            </div>
+            </span>
           ))}
         </code>
       </pre>
