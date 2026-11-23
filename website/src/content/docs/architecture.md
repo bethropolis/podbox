@@ -47,7 +47,7 @@ COPY podbox-guest /usr/local/bin/podbox-guest
 RUN chmod +x /usr/local/bin/podbox-guest
 
 ENV PODBOX_CONTAINER=myenv
-ENV PODBOX_HOST_VERSION=0.5.0
+ENV PODBOX_HOST_VERSION=0.9.7
 ENV LANG=en_US.UTF-8
 ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/usr/bin/fish"]
@@ -63,7 +63,9 @@ CMD ["/usr/bin/fish"]
 
 ## Generated Quadlet Files
 
-Files written to `~/.config/containers/systemd/`:
+Quadlet files (`.build`, `.container`) are written to
+`~/.config/containers/systemd/`; the companion `.socket` and `-host.service`
+units go to `~/.config/systemd/user/`:
 
 ### `myenv.build`
 
@@ -105,8 +107,8 @@ Key Quadlet settings (see [quadlet.md](quadlet.md) for full list):
 | `User` | `root` | Run as root (UID mapped via UserNS) |
 | `SecurityLabelDisable` | `true` | Required for Wayland socket access |
 | `NoNewPrivileges` | `true` | Block setuid escalation (sudo, su) |
-| `PodmanArgs` | `--init` | catatonit as PID 1 (zombie reaping) |
-| `PodmanArgs` | `--workdir=/home/%u` | Default working directory |
+| `RunInit` | `true` | catatonit as PID 1 (zombie reaping) |
+| `WorkingDir` | `/home/%u` | Default working directory |
 | `Volume` | `<context>/.flatpak-info:/.flatpak-info:ro` | Sandbox detection marker (portals) |
 | `Volume` | `%h/containers/<name>:/home/%u:Z` | Isolated home (never the host home) |
 | `Volume` | `%t/podbox/<name>.sock:%t/podbox/<name>.sock` | Host-guest socket |

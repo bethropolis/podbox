@@ -19,6 +19,8 @@
 | [Architecture Overview](architecture.md) | How podbox works end-to-end |
 | [Quadlet Keys](quadlet.md) | Generated systemd unit files |
 | [Host-Guest Protocol](protocol.md) | Wire format and message types |
+| [CLI Reference](cli.md) | Command groups, name resolution, exit codes, JSON output |
+| [Building clients](clients.md) | Stable CLI contract for scripts, widgets and apps |
 | [Exit Codes](architecture.md#exit-codes) | Program exit code meanings |
 
 ## Quick Reference

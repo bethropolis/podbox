@@ -31,7 +31,8 @@ The host socket is created by systemd before the container starts and persists a
 ```json
 {
   "type": "hello",
-  "version": "0.1.0",
+  "protocol_version": 1,
+  "guest_version": "0.9.7",
   "container": "myenv",
   "capabilities": ["notify", "xdg_open", "clipboard", "host_exec"]
 }
