@@ -4,7 +4,7 @@ import { named, type PresetDef } from './shared';
 export const gamingPreset: PresetDef = {
   id: 'gaming',
   label: 'Gaming',
-  blurb: 'Steam on Mesa, Xwayland + gamepad',
+  blurb: 'Steam on Mesa, X11 bridge + gamepad',
   icon: Gamepad2,
   accent: 'text-[var(--accent-blue)]',
   overrides: {
@@ -29,30 +29,24 @@ export const gamingPreset: PresetDef = {
       'mesa-utils',
       'xorg-xdpyinfo',
       'pipewire-alsa',
-      'noto-fonts',
-      'noto-fonts-emoji',
-      'noto-fonts-cjk',
     ],
     // No cache-clean RUN step: the engine appends `pacman -Scc` to the
     // install layer itself, so a separate step would only add a layer.
     // No shell override: bash is the default, and Steam launches from a
     // .desktop entry that never sees an interactive shell.
-    // Game library on a real disk, plus the host Xwayland socket for the
-    // clients that still speak X. DISPLAY has to match the host's.
-    extraMounts: [
-      { host: '~/Games', guest: '/home/%u/Games', mode: 'z' },
-      { host: '/tmp/.X11-unix', guest: '/tmp/.X11-unix', mode: 'z' },
-    ],
-    envVars: [{ key: 'DISPLAY', value: ':0' }],
+    // Game library on a real disk; X11 clients use podbox's own bridge.
+    extraMounts: [{ host: '~/Games', guest: '/home/%u/Games', mode: 'z' }],
     // Steam's runtime sandbox needs syscalls the default profile blocks;
     // tighten back to "default" if your library runs without it.
     seccomp: 'unconfined',
     netMode: 'pasta',
     intWayland: true,
+    intX11: true,
     intAudio: true,
     intDbus: true,
     intNotify: true,
     intXdgOpen: true,
+    intSyncFonts: true,
     hwJoystick: true,
     exportAppsList: ['steam'],
     // Studio defaults share Downloads/Projects and enable auto-update; the
