@@ -13,14 +13,16 @@ mod actions;
 mod conn;
 mod cwd_map;
 mod handlers;
+mod handshake;
 mod monitor;
+mod sessions;
 
 pub use actions::{HostActions, SystemActions};
 pub use cwd_map::CwdMap;
 
 use conn::handle_connection;
-use conn::peer_is_in_host_userns;
 use monitor::listen_fd;
+use sessions::peer_is_in_host_userns;
 
 /// Maximum consecutive failed negotiations (bad hello, unauthenticated
 /// privileged message, malformed frame) before the connection is dropped.
@@ -242,8 +244,8 @@ pub fn run(socket_path: &Path, config: &Config, container_name: &str) -> anyhow:
 
 #[cfg(test)]
 mod tests {
-    use super::conn::{has_cap, note_failure};
     use super::handlers::{MAX_URI_LEN, UriError, validate_host_exec_args, validate_uri};
+    use super::handshake::{has_cap, note_failure};
     use crate::config::types::DEFAULT_ALLOWED_URI_SCHEMES;
     use std::collections::HashSet;
     use std::sync::Arc;
@@ -691,7 +693,7 @@ mod tests {
 
     #[test]
     fn hello_protocol_mismatch_is_rejected() {
-        use super::handlers::{HelloOutcome, handle_hello};
+        use super::handshake::{HelloOutcome, handle_hello};
         let (mut server, mut client) = socket_pair();
         let config = crate::config::Config::embedded();
         let outcome = handle_hello(
@@ -716,7 +718,7 @@ mod tests {
 
     #[test]
     fn hello_accepts_enabled_capabilities() {
-        use super::handlers::{HelloOutcome, handle_hello};
+        use super::handshake::{HelloOutcome, handle_hello};
         let (mut server, mut client) = socket_pair();
         let mut config = crate::config::Config::embedded();
         config.integration.notify = true;

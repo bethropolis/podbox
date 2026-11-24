@@ -8,9 +8,6 @@ use std::collections::HashSet;
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
-
-use nix::sys::socket::{getsockopt, sockopt};
 
 use crate::config::Config;
 use crate::process;
@@ -18,11 +15,9 @@ use crate::protocol::{FrameRead, FrameReader, GuestMessage, HostMessage, write_f
 
 use super::actions::HostActions;
 use super::handlers;
-use super::monitor::monitor_pidfd;
-use super::{
-    FRAME_DEADLINE, HELLO_DEADLINE, MAX_NEGOTIATION_FAILURES, MAX_SESSIONS, PING_INTERVAL,
-    SharedState,
-};
+use super::handshake::{HelloOutcome, handle_hello, has_cap, note_failure};
+use super::sessions::register_session;
+use super::{FRAME_DEADLINE, HELLO_DEADLINE, PING_INTERVAL, SharedState};
 
 pub(crate) fn handle_connection(
     stream: &mut UnixStream,
@@ -118,7 +113,7 @@ pub(crate) fn handle_connection(
                 container,
                 capabilities,
             } => {
-                let outcome = handlers::handle_hello(
+                let outcome = handle_hello(
                     stream,
                     &config.integration,
                     state.idle_timeout_secs,
@@ -127,7 +122,7 @@ pub(crate) fn handle_connection(
                     container,
                     capabilities,
                 )?;
-                let handlers::HelloOutcome::Accepted(accepted) = outcome else {
+                let HelloOutcome::Accepted(accepted) = outcome else {
                     // Failed negotiation: no capabilities granted, daemon stream
                     // stays unclaimed. Drop after repeated failures.
                     if note_failure(stream, &mut failures, "hello rejected") {
@@ -147,41 +142,8 @@ pub(crate) fn handle_connection(
                 // before the user's shell can start.
             }
             GuestMessage::RegisterSession => {
-                // host-CLI-only: the peer must be inside the host user
-                // namespace (i.e. running on the host, not in the container).
-                if !peer_is_in_host_userns(stream) {
-                    tracing::warn!("rejecting RegisterSession from foreign user namespace");
-                    let _ = write_frame(
-                        stream,
-                        &HostMessage::Error {
-                            reason: "register_session is host-only".into(),
-                            code: None,
-                        },
-                    );
-                    return Ok(());
-                }
-                if state.session_count.load(Ordering::SeqCst) >= MAX_SESSIONS {
-                    tracing::warn!("rejecting RegisterSession: session cap reached");
-                    let _ = write_frame(
-                        stream,
-                        &HostMessage::Error {
-                            reason: "session limit reached".into(),
-                            code: Some("busy".into()),
-                        },
-                    );
-                    return Ok(());
-                }
-                // Receive the pidfd via SCM_RIGHTS
-                let fd = match process::recv_fd(stream) {
-                    Ok(Some(fd)) => fd,
-                    Ok(None) => return Ok(()),
-                    Err(_) => return Ok(()),
-                };
-                state.session_count.fetch_add(1, Ordering::SeqCst);
-                let s = Arc::clone(state);
-                std::thread::spawn(move || monitor_pidfd(fd, s));
-                // Return immediately — the CLI closes the connection after
-                // sending RegisterSession + pidfd.
+                register_session(stream, state)?;
+                // The CLI closes the connection after RegisterSession + pidfd.
                 return Ok(());
             }
             GuestMessage::Busy => {
@@ -327,49 +289,5 @@ pub(crate) fn handle_connection(
                 );
             }
         }
-    }
-}
-
-/// Count a failed negotiation and reply with a typed `Error` frame. Returns
-/// true once the connection should be dropped (fail-closed after
-/// `MAX_NEGOTIATION_FAILURES` failures).
-pub(crate) fn note_failure(stream: &mut UnixStream, failures: &mut u32, reason: &str) -> bool {
-    *failures = failures.saturating_add(1);
-    let _ = write_frame(
-        stream,
-        &HostMessage::Error {
-            reason: reason.to_string(),
-            code: None,
-        },
-    );
-    *failures >= MAX_NEGOTIATION_FAILURES
-}
-
-/// True if `negotiated` contains the given capability.
-pub(crate) fn has_cap(negotiated: &Option<HashSet<String>>, cap: &str) -> bool {
-    negotiated
-        .as_ref()
-        .is_some_and(|caps| caps.iter().any(|c| c == cap))
-}
-
-/// Whether the peer of `stream` lives in the host user namespace.
-///
-/// Compares `SO_PEERCRED`'s pid against `/proc/self/ns/user`. The host CLI
-/// runs in the host userns; anything inside the container runs in the
-/// container's private userns (rootless podman), so the inode differs.
-///
-/// Note the TOCTOU caveat: the pid is read from the socket, then
-/// `/proc/<pid>/ns/user` is read in a separate step, so a recycled pid
-/// could point at the wrong process. A pidfd-based check would close this.
-pub(crate) fn peer_is_in_host_userns(stream: &UnixStream) -> bool {
-    let creds = match getsockopt(stream, sockopt::PeerCredentials) {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    let self_ns = std::fs::read_link("/proc/self/ns/user").ok();
-    let peer_ns = std::fs::read_link(format!("/proc/{}/ns/user", creds.pid())).ok();
-    match (self_ns, peer_ns) {
-        (Some(a), Some(b)) => a == b,
-        _ => false,
     }
 }
