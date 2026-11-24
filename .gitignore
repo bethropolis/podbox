@@ -4,8 +4,11 @@
 # GoReleaser build output
 /dist/
 
-# Local tool config
-.commandcode/
+
+# Sift context dumps
+/codebase*.xml
+/podbox-core.xml
+/guidance-context.xml
 
 # Editor cruft
 *.swp
