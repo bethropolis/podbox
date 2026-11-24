@@ -38,6 +38,11 @@ pub struct HostEnv {
     pub host_has_local_share_themes: bool,
     pub host_has_local_share_icons: bool,
     pub host_has_local_share_fonts: bool,
+    /// Host terminfo directory to expose read-only inside the container.
+    ///
+    /// Chosen from standard system directories and the user's terminfo
+    /// directories, preferring one that defines the invoking `$TERM`.
+    pub host_terminfo_dir: Option<PathBuf>,
     pub host_shell: Option<String>,
     pub host_locale: Option<String>,
     pub gpg_agent_socket: Option<PathBuf>,
@@ -84,6 +89,7 @@ impl HostEnv {
             host_has_local_share_themes: true,
             host_has_local_share_icons: true,
             host_has_local_share_fonts: true,
+            host_terminfo_dir: Some(PathBuf::from("/usr/share/terminfo")),
             host_shell: Some("/usr/bin/fish".into()),
             host_locale: Some("en_US.UTF-8".into()),
             gpg_agent_socket: Some(PathBuf::from("/home/user/.gnupg/S.gpg-agent")),
@@ -155,6 +161,7 @@ pub fn resolve() -> Result<HostEnv> {
     let host_has_timezone_file = Path::new("/etc/timezone").exists();
 
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/root"));
+    let host_terminfo_dir = probe_host_terminfo(&home);
     let host_has_themes = home.join(".themes").exists();
     let host_has_icons = home.join(".icons").exists();
     let host_has_fonts = home.join(".fonts").exists();
@@ -212,6 +219,7 @@ pub fn resolve() -> Result<HostEnv> {
         host_has_local_share_themes,
         host_has_local_share_icons,
         host_has_local_share_fonts,
+        host_terminfo_dir,
         host_shell,
         host_locale,
         gpg_agent_socket,
@@ -219,6 +227,90 @@ pub fn resolve() -> Result<HostEnv> {
         ssh_agent_socket,
         host_cache_dirs: Some(probe_host_cache_dirs(&home)),
     })
+}
+
+/// Pick a host terminfo directory to expose read-only in containers.
+///
+/// Standard system directories come first. User directories are considered
+/// only when they resolve under the home directory (or a Nix store), so a
+/// stray symlink cannot turn this into a bind mount of `/`.
+#[cfg(feature = "cli")]
+fn probe_host_terminfo(home: &Path) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = [
+        "/usr/share/terminfo",
+        "/usr/local/share/terminfo",
+        "/usr/lib/terminfo",
+        "/lib/terminfo",
+        "/etc/terminfo",
+        "/run/current-system/sw/share/terminfo",
+        "/nix/var/nix/profiles/default/share/terminfo",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+    candidates.push(home.join(".terminfo"));
+    candidates.push(home.join(".local/share/terminfo"));
+    candidates.push(home.join(".nix-profile/share/terminfo"));
+    select_terminfo_dir(&candidates, env::var("TERM").ok().as_deref(), home)
+}
+
+/// Pick the first directory that defines `term`, falling back to the first
+/// valid directory when the terminal is unknown or `TERM` is unset.
+#[cfg(feature = "cli")]
+fn select_terminfo_dir(candidates: &[PathBuf], term: Option<&str>, home: &Path) -> Option<PathBuf> {
+    let canonical_home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let term = term.filter(|t| safe_term_name(t));
+    let mut fallback = None;
+    for candidate in candidates {
+        if !candidate.is_dir() {
+            continue;
+        }
+        let Ok(canonical) = std::fs::canonicalize(candidate) else {
+            continue;
+        };
+        if canonical == Path::new("/") {
+            continue;
+        }
+        if candidate.starts_with(home) || candidate.starts_with(&canonical_home) {
+            let under_home = canonical.starts_with(&canonical_home);
+            let in_store =
+                canonical.starts_with("/nix/store") || canonical.starts_with("/run/current-system");
+            if !under_home && !in_store {
+                continue;
+            }
+        }
+        if fallback.is_none() {
+            fallback = Some(canonical.clone());
+        }
+        if term.is_some_and(|term| terminfo_has(&canonical, term)) {
+            return Some(canonical);
+        }
+    }
+    fallback
+}
+
+#[cfg(feature = "cli")]
+fn safe_term_name(term: &str) -> bool {
+    !term.is_empty()
+        && term != "."
+        && term != ".."
+        && !term.contains('/')
+        && !term.contains('\0')
+        && !term.chars().any(char::is_control)
+}
+
+#[cfg(feature = "cli")]
+fn terminfo_has(dir: &Path, term: &str) -> bool {
+    let Some(first) = term.chars().next() else {
+        return false;
+    };
+    let mut subdirs = vec![first.to_string()];
+    if first.is_ascii() {
+        subdirs.push(format!("{:x}", u32::from(first)));
+    }
+    subdirs
+        .iter()
+        .any(|subdir| dir.join(subdir).join(term).is_file())
 }
 
 /// True when an NVIDIA CDI spec exists under one of `dirs`.
@@ -286,5 +378,46 @@ mod tests {
         write(tmp.path(), "nvidia.txt");
         assert!(!cdi_specs_present_in(&[tmp.path()]));
         assert!(!cdi_specs_present_in(&[Path::new("/nonexistent-cdi-dir")]));
+    }
+
+    #[test]
+    fn terminfo_selection_prefers_a_directory_with_the_host_term() {
+        let system = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(system.path().join("x")).unwrap();
+        std::fs::write(system.path().join("x/xterm-ghostty"), b"").unwrap();
+        std::fs::create_dir_all(home.path().join(".terminfo/x")).unwrap();
+        std::fs::write(home.path().join(".terminfo/x/other"), b"").unwrap();
+
+        let candidates = [system.path().to_path_buf(), home.path().join(".terminfo")];
+        assert_eq!(
+            select_terminfo_dir(&candidates, Some("xterm-ghostty"), home.path()).as_deref(),
+            Some(system.path())
+        );
+    }
+
+    #[test]
+    fn terminfo_selection_can_use_a_user_entry_and_hex_layout() {
+        let system = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".terminfo/78")).unwrap();
+        std::fs::write(home.path().join(".terminfo/78/xterm-ghostty"), b"").unwrap();
+
+        let candidates = [system.path().to_path_buf(), home.path().join(".terminfo")];
+        let expected = std::fs::canonicalize(home.path().join(".terminfo")).unwrap();
+        assert_eq!(
+            select_terminfo_dir(&candidates, Some("xterm-ghostty"), home.path()).as_deref(),
+            Some(expected.as_path())
+        );
+    }
+
+    #[test]
+    fn terminfo_selection_falls_back_when_the_term_is_absent() {
+        let system = tempfile::tempdir().unwrap();
+        let candidates = [system.path().to_path_buf(), PathBuf::from("/nonexistent")];
+        assert_eq!(
+            select_terminfo_dir(&candidates, Some("unknown-term"), Path::new("/home/test")),
+            Some(std::fs::canonicalize(system.path()).unwrap())
+        );
     }
 }

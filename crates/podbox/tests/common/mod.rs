@@ -123,6 +123,7 @@ pub fn default_env() -> HostEnv {
         host_has_local_share_themes: false,
         host_has_local_share_icons: false,
         host_has_local_share_fonts: false,
+        host_terminfo_dir: None,
         host_shell: None,
         host_locale: None,
         gpg_agent_socket: None,

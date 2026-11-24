@@ -35,6 +35,39 @@ pub const ALL_CAPABILITIES: &[&str] = &[
     CAP_HOST_EXEC_FDS,
 ];
 
+/// Host terminal variables that describe the invoking terminal.
+///
+/// These are presentation metadata, not host capabilities: they carry no
+/// socket paths or credentials. Podbox forwards them to interactive
+/// container sessions and host-exec children. Terminal control sockets
+/// (`KITTY_LISTEN_ON`, `WEZTERM_UNIX_SOCKET`) and multiplexer state (`TMUX`,
+/// `STY`) deliberately stay out.
+pub const TERMINAL_ENV_KEYS: &[&str] = &[
+    "TERM",
+    "COLORTERM",
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "TERM_SESSION_ID",
+    "VTE_VERSION",
+    "KONSOLE_VERSION",
+    "KITTY_WINDOW_ID",
+    "WEZTERM_PANE",
+    "WT_SESSION",
+    "LC_TERMINAL",
+    "LC_TERMINAL_VERSION",
+];
+
+/// Whether a guest may pass `key` through to a host-exec child.
+///
+/// The child runs on the host, so only presentation metadata and locale
+/// cross the boundary; `PATH`, `LD_PRELOAD` and host socket variables do
+/// not. Old hosts apply the narrower historical set and drop the rest,
+/// which is why extending this list needs no protocol bump.
+#[must_use]
+pub fn is_host_exec_env(key: &str) -> bool {
+    key == "LANG" || TERMINAL_ENV_KEYS.contains(&key)
+}
+
 /// Interceptor binaries and the capability each needs: `(binary, capability)`.
 ///
 /// Single source of truth for shim installation and the core-interceptor
@@ -95,7 +128,7 @@ pub enum GuestMessage {
         cmd: String,
         args: Vec<String>,
         /// Key/value pairs the guest asks the host to export to the child.
-        /// The host applies only allowlisted keys (TERM, LANG, COLORTERM).
+        /// The host applies only [`is_host_exec_env`] keys.
         #[serde(default)]
         env: Vec<(String, String)>,
         #[serde(default)]
@@ -639,6 +672,37 @@ mod tests {
                 assert!(tty);
             }
             other => panic!("expected HostExecV2, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn terminal_env_allowlist_carries_identity_but_not_host_sockets() {
+        for key in [
+            "TERM",
+            "COLORTERM",
+            "TERM_PROGRAM",
+            "TERM_PROGRAM_VERSION",
+            "VTE_VERSION",
+            "KITTY_WINDOW_ID",
+            "LC_TERMINAL",
+        ] {
+            assert!(TERMINAL_ENV_KEYS.contains(&key), "{key} must be forwarded");
+            assert!(is_host_exec_env(key), "{key} must reach host-exec");
+        }
+        assert!(is_host_exec_env("LANG"));
+        for key in [
+            "PATH",
+            "LD_PRELOAD",
+            "KITTY_LISTEN_ON",
+            "WEZTERM_UNIX_SOCKET",
+            "TMUX",
+            "STY",
+        ] {
+            assert!(!is_host_exec_env(key), "{key} must stay inside");
+            assert!(
+                !TERMINAL_ENV_KEYS.contains(&key),
+                "{key} is not terminal identity"
+            );
         }
     }
 

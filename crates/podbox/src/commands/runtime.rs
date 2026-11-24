@@ -115,7 +115,10 @@ fn append_forwarded_env(args: &mut Vec<OsString>, config: &Config, explicit: &[S
         .filter_map(|entry| entry.split_once('=').map(|(key, _)| key))
         .collect();
     for (key, value) in std::env::vars() {
-        if config.container.env.values.contains_key(&key) || explicit_keys.contains(key.as_str()) {
+        if config.container.env.values.contains_key(&key)
+            || explicit_keys.contains(key.as_str())
+            || podbox::protocol::TERMINAL_ENV_KEYS.contains(&key.as_str())
+        {
             continue;
         }
         let forwarded = config.container.env.forward.iter().any(|pattern| {
@@ -128,6 +131,30 @@ fn append_forwarded_env(args: &mut Vec<OsString>, config: &Config, explicit: &[S
         if forwarded {
             args.push(format!("--env={key}={value}").into());
         }
+    }
+}
+
+/// Forward the invoking terminal's identity into a `podman exec` session.
+///
+/// Podman's `-t` otherwise supplies `TERM=xterm`, which silently downgrades
+/// colour and hides vendor-specific capabilities. Explicit `-e` values and
+/// `[container.env]` entries win; socket-bearing variables stay on the host.
+fn append_terminal_env(args: &mut Vec<OsString>, config: &Config, explicit: &[String]) {
+    for key in podbox::protocol::TERMINAL_ENV_KEYS {
+        if config.container.env.values.contains_key(*key)
+            || explicit
+                .iter()
+                .any(|entry| entry.split_once('=').is_some_and(|(k, _)| k == *key))
+        {
+            continue;
+        }
+        let Ok(value) = std::env::var(key) else {
+            continue;
+        };
+        if value.is_empty() || value.chars().any(|c| matches!(c, '\0' | '\n' | '\r')) {
+            continue;
+        }
+        args.push(format!("--env={key}={value}").into());
     }
 }
 
@@ -160,6 +187,7 @@ pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
         "-w".into(),
         workdir.clone().into(),
     ];
+    append_terminal_env(&mut exec_args, config, env_overrides);
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
     let name_index = exec_args.len();
@@ -215,6 +243,7 @@ pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool
         exec_args.push("-w".into());
         exec_args.push(resolve_container_workdir(config, env, xdg, true)?.into());
     }
+    append_terminal_env(&mut exec_args, config, env_overrides);
     append_forwarded_env(&mut exec_args, config, env_overrides);
     append_env_args(&mut exec_args, env_overrides)?;
     let name_index = exec_args.len();

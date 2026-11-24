@@ -287,6 +287,26 @@ pub(super) fn emit_volumes(
         lines.push(String::new());
     }
 
+    // Host terminal capability definitions. Mounted over the image's system
+    // database because ncurses ignores TERMINFO_DIRS for root; the host's
+    // database is authoritative for the terminal the user is actually on.
+    if let Some(ref terminfo) = env.host_terminfo_dir
+        && !config
+            .container
+            .mounts
+            .extra
+            .iter()
+            .any(|mount| mount.split(':').nth(1) == Some("/usr/share/terminfo"))
+    {
+        match value::raw(&terminfo.display().to_string()) {
+            Ok(escaped) => {
+                value::push_composed(lines, format!("Volume={escaped}:/usr/share/terminfo:ro"))
+            }
+            Err(e) => warnings.push(format!("skipping terminfo Volume= line: {e}")),
+        }
+        lines.push(String::new());
+    }
+
     // The guest daemon needs XDG_RUNTIME_DIR to locate the host socket
     // regardless of Wayland/audio integration.
     lines.push("Environment=XDG_RUNTIME_DIR=%t".into());
@@ -437,15 +457,30 @@ pub(super) fn emit_env(
     lines: &mut Vec<String>,
     config: &Config,
     name: &str,
-    _env: &HostEnv,
+    home_in_container: &str,
+    env: &HostEnv,
     warnings: &mut Vec<String>,
 ) {
     // Locale environment: LANG only. Forcing LC_ALL would override the
     // user's per-category settings (LC_TIME, LC_NUMERIC, …) inside the
     // box, and a host locale the image lacks makes every program warn.
     // Explicit [container.env] entries still layer over this below.
-    if let Some(ref locale) = _env.host_locale {
+    if let Some(ref locale) = env.host_locale {
         value::push_env(lines, warnings, "LANG", locale);
+        lines.push(String::new());
+    }
+
+    // Keep container-side user entries discoverable while the host database
+    // supplies the terminal the session is actually attached to. Root ignores
+    // TERMINFO_DIRS (ncurses security), so the system mount above covers it.
+    if env.host_terminfo_dir.is_some() && !config.container.env.values.contains_key("TERMINFO_DIRS")
+    {
+        let dirs = format!(
+            "/usr/share/terminfo:/usr/local/share/terminfo:\
+             {home_in_container}/.terminfo:{home_in_container}/.local/share/terminfo:\
+             /lib/terminfo:/usr/lib/terminfo:/etc/terminfo"
+        );
+        value::push_composed(lines, format!("Environment=TERMINFO_DIRS={dirs}"));
         lines.push(String::new());
     }
 

@@ -84,6 +84,43 @@ fn quadlet_container_writable_root_has_no_scratch_tmpfs() {
         "scratch tmpfs is read-only-rootfs only:\n{q}"
     );
 }
+
+#[test]
+fn quadlet_mounts_host_terminfo_and_sets_search_path() {
+    let config = load_config("minimal.toml");
+    let mut env = default_env();
+    env.host_terminfo_dir = Some(PathBuf::from("/usr/share/terminfo"));
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert!(q.contains("Volume=/usr/share/terminfo:/usr/share/terminfo:ro"));
+    assert!(q.contains(
+        "Environment=TERMINFO_DIRS=/usr/share/terminfo:/usr/local/share/terminfo:/home/%u/.terminfo:/home/%u/.local/share/terminfo"
+    ));
+}
+
+#[test]
+fn quadlet_omits_terminfo_mount_without_a_host_database() {
+    let config = load_config("minimal.toml");
+    let q = quadlet::generate_container(&config, &default_env(), &default_xdg());
+    assert!(!q.contains("/usr/share/terminfo"));
+    assert!(!q.contains("TERMINFO_DIRS"));
+}
+
+#[test]
+fn quadlet_respects_an_explicit_terminfo_mount_and_search_path() {
+    let mut config = load_config("minimal.toml");
+    config.container.mounts.extra = vec!["/tmp/terminfo:/usr/share/terminfo:ro".into()];
+    config
+        .container
+        .env
+        .values
+        .insert("TERMINFO_DIRS".into(), "/tmp/terminfo".into());
+    let mut env = default_env();
+    env.host_terminfo_dir = Some(PathBuf::from("/usr/share/terminfo"));
+    let q = quadlet::generate_container(&config, &env, &default_xdg());
+    assert_eq!(q.matches(":/usr/share/terminfo:ro").count(), 1);
+    assert!(q.contains("Volume=/tmp/terminfo:/usr/share/terminfo:ro"));
+    assert!(q.contains("Environment=TERMINFO_DIRS=/tmp/terminfo"));
+}
 #[test]
 fn quadlet_container_has_cpu_limit() {
     let config = load_config("full.toml");

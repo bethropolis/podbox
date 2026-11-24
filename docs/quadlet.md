@@ -102,6 +102,7 @@ These unit files are generated per container:
 | `GPG_TTY` | `/dev/pts/0` | GPG TTY (conditional) |
 | `GNUPGHOME` | `/run/podbox/gnupg` | GPG home (conditional) |
 | `LANG` | From host locale | Locale (conditional; `LC_*` overrides stay with the user) |
+| `TERMINFO_DIRS` | Host terminfo mount + container user dirs | Host terminal capabilities (conditional on a detected host database; explicit `[container.env] TERMINFO_DIRS` wins) |
 | `PODBOX_CONTAINER` | `<name>` | Always set; identifies the container |
 
 Custom `[container.env]` entries are also passed as `Environment=`.
@@ -120,6 +121,7 @@ Custom `[container.env]` entries are also passed as `Environment=`.
 | `%h/.fonts` | `/home/%u/.fonts` | `ro` | `sync_fonts` + path exists |
 | `%h/.local/share/fonts` | `/home/%u/.local/share/fonts` | `ro` | `sync_fonts` + path exists |
 | `/etc/timezone` | `/etc/timezone` | `ro` | File exists on host (Debian convention; `/etc/localtime` itself is set up via `Timezone=local`, not a bind-mount) |
+| Host terminfo database | `/usr/share/terminfo` | `ro` | Detected host database; explicit `container.mounts.extra` targeting `/usr/share/terminfo` wins |
 | Wayland socket | Wayland socket | `ro` | `wayland = true` |
 | `%t/pipewire-0` | `%t/pipewire-0` | (none) | `audio = true` + PipeWire present |
 | `%t/pulse` | `%t/pulse` | (none) | `audio = true` + PulseAudio present |

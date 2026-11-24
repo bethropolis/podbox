@@ -31,10 +31,6 @@ const SIGNAL_RELAY_POLL_MS: u16 = 100;
 /// the kernel hand over bytes it buffered before the slave closed.
 const TTY_DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Env keys the guest may ask the host to export to a child. Sent only if
-/// actually set somewhere; the host enforces the same fixed list again.
-const EXEC_ENV_KEYS: &[&str] = &["TERM", "LANG", "COLORTERM"];
-
 pub fn run(args: &[String]) {
     if args.len() < 2 {
         eprintln!("host-exec: usage: host-exec <command> [args...]");
@@ -631,12 +627,10 @@ fn emit(out: &mut dyn Write, data: &[u8]) -> bool {
 }
 
 /// The env pairs this process may offer the child, restricted to the same
-/// fixed list the host re-checks. Sending only these keeps the request
-/// honest even against a host whose filter is older than the shim.
+/// list the host re-checks.
 fn allowlisted_own_env() -> Vec<(String, String)> {
-    EXEC_ENV_KEYS
-        .iter()
-        .filter_map(|k| std::env::var(k).ok().map(|v| ((*k).to_string(), v)))
+    std::env::vars()
+        .filter(|(key, _)| crate::protocol::is_host_exec_env(key))
         .collect()
 }
 

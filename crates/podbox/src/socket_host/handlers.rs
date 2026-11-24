@@ -441,17 +441,12 @@ const EXEC_FD_COUNT: usize = 3;
 /// when the host is idle.
 const SIGNAL_RELAY_POLL: Duration = Duration::from_millis(100);
 
-/// Env keys a guest may export into a host-exec child. The child runs
-/// with the host's environment; a guessable key like `LD_PRELOAD` or
-/// `PATH` would let container content steer the child differently from
-/// the same command run on the host, so only terminal-presentation keys
-/// pass through.
-const EXEC_ENV_KEYS: &[&str] = &["TERM", "LANG", "COLORTERM"];
-
-/// Filter guest-requested child env down to the fixed allowlist.
+/// Filter guest-requested child env down to the shared presentation
+/// allowlist. A key like `LD_PRELOAD` or `PATH` must not let container
+/// content steer a host child differently from the same host command.
 fn allowlisted_exec_env(env: &[(String, String)]) -> Vec<(String, String)> {
     env.iter()
-        .filter(|(k, _)| EXEC_ENV_KEYS.contains(&k.as_str()))
+        .filter(|(k, _)| crate::protocol::is_host_exec_env(k))
         .cloned()
         .collect()
 }

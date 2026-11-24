@@ -19,6 +19,7 @@ podbox doctor --fix   # offers to fix them; --yes accepts all
 | SSH agent not forwarded | [SSH agent](#ssh-agent-not-forwarding) |
 | Stale image or failed build | [Build](#build-fails-or-produces-a-stale-image) |
 | `podbox shell` hangs | [Shell missing](#container-starts-but-podbox-shell-hangs) |
+| Wrong colours or missing terminal features | [Terminal identity](#terminal-identity-or-colours-are-wrong) |
 | Commands hit the wrong container | [Targeting](#commands-target-the-wrong-container) |
 
 ## Quick recovery
@@ -176,6 +177,39 @@ and `run.commands` changes are picked up automatically.
 
 The shell in `container.shell` isn't installed in the image. Add it to
 `[image.packages].install`, then `podbox build --rebuild`.
+
+## Terminal identity or colours are wrong
+
+Symptom: `TERM` is `xterm` instead of the host value, `tput colors` reports
+`8`, `TERM_PROGRAM` is empty, or an application reports an unknown terminal.
+
+Cause: the container was created before terminal propagation and host
+terminfo support were enabled, or the host terminal's `$TERM` has no terminfo
+entry on the host.
+
+Fix: regenerate the unit and recreate the container:
+
+```bash
+podbox enable <name>
+podbox stop <name>
+podbox start <name>
+```
+
+Verify from a terminal:
+
+```bash
+podbox exec <name> sh -c 'echo TERM=$TERM COLORTERM=$COLORTERM; tput colors'
+podbox exec <name> sh -c 'infocmp "$TERM" >/dev/null && echo terminfo ok'
+```
+
+`podbox enable` installs a read-only mount of the host terminfo database.
+The directory that defines the host's current `$TERM` is selected at
+`enable` time, so if you switch to a terminal whose entry lives in a
+different directory, rerun `podbox enable` and restart the container. It is
+mounted over the container's system terminfo directory, so image-specific
+system entries are shadowed while the host database is in use. If you
+deliberately set `TERM` in `[container.env]` or pass `-e TERM=...`, that
+explicit value wins.
 
 ## Commands target the wrong container
 
