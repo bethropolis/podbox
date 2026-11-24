@@ -4,10 +4,10 @@ default_profile = "full"
 [sift]
 style = "xml"
 output = "codebase.xml"
-budget = 150000
+budget = 250000
 compress_mode = "full"
 fallback_mode = "signatures"
-fallback_threshold = 0.9
+fallback_threshold = 0.8
 smart_filter = false
 secret_scan = true
 # Hidden project config is valuable here (.github/workflows, .cargo/config.toml,
@@ -15,32 +15,108 @@ secret_scan = true
 ignore_hidden = false
 ignore_git = true
 ignore = [
-  # Git-ignored build and release output.
-  "/target/",
-  "/dist/",
-  "/site/",
-  "/.commandcode/",
-  # Machine-local scratch, plans, and a nested checkout used for patch work.
-  "/.opencode/",
-  "/.patch/",
-  "/.plan/",
-  "/podbox-patch/",
-  # Frontend dependencies and generated/build state.
-  "website/node_modules/",
-  "website/.astro/",
-  "website/.impeccable/",
-  "website/.vscode/",
-  "website/dist/",
   # Generated search index: a single-line derivative of the excluded docs,
   # with no useful signature compression (~43k tokens for one file).
   "website/src/design/searchIndex.ts",
-  # Do not re-ingest generated context documents.
-  "codebase.xml",
-  "guidance-context.xml",
   # Markdown policy: repository-root README.md and AGENTS.md only.
   "**/*.md",
   "!/README.md",
   "!/AGENTS.md",
+]
+
+[modes]
+full = [
+  # Build, CI, and repository contracts.
+  "Cargo.toml",
+  "Cargo.lock",
+  "rust-toolchain.toml",
+  "mise.toml",
+  "Justfile",
+  "hk.pkl",
+  ".cargo/config.toml",
+  ".github/workflows/*.yml",
+  ".goreleaser.yaml",
+  # CLI composition, config, codegen, protocol, and the host/guest boundary.
+  "crates/podbox/Cargo.toml",
+  "crates/podbox/build.rs",
+  "crates/podbox/src/main.rs",
+  "crates/podbox/src/main/**",
+  "crates/podbox/src/config/mod.rs",
+  "crates/podbox/src/config/defaults.rs",
+  "crates/podbox/src/config/fs.rs",
+  "crates/podbox/src/config/schema.rs",
+  "crates/podbox/src/config/schema_defs.rs",
+  "crates/podbox/src/codegen/distros.rs",
+  "crates/podbox/src/codegen/mod.rs",
+  "crates/podbox/src/codegen/quadlet/**",
+  "crates/podbox/src/process.rs",
+  "crates/podbox/src/contract.rs",
+  "crates/podbox/src/profiles.rs",
+  "crates/podbox/src/profiles/*.toml",
+  "crates/podbox/src/socket_host/**",
+  "crates/podbox-protocol/src/**",
+  "crates/podbox-guest/src/daemon/services.rs",
+  "crates/podbox-guest/src/interceptors/xdg_open.rs",
+  # Behavioral contracts and the Studio's engine adapter.
+  "crates/podbox/tests/fixtures/**",
+  "website/src/wasm/podbox_wasm.d.ts",
+  "website/src/wasm/podbox_wasm_bg.wasm.d.ts",
+  "website/src/design/islands/studio/configShape.ts",
+  "website/src/design/islands/studio/engine.ts",
+  "website/src/design/islands/studio/reducer.ts",
+  "website/src/design/islands/studio/presets/**",
+  "website/scripts/check-studio-parity.ts",
+]
+signatures = [
+  # Large command/UI surfaces and peripheral generators. The picker can still
+  # promote any file to full fidelity when a task needs exact control flow.
+  "crates/podbox/src/commands/**",
+  "crates/podbox/src/codegen/containerfile.rs",
+  "crates/podbox/src/config/emit.rs",
+  "crates/podbox/src/config/enums.rs",
+  "crates/podbox/src/config/extends.rs",
+  "crates/podbox/src/config/key_paths.rs",
+  "crates/podbox/src/config/merge.rs",
+  "crates/podbox/src/config/schema/tests/**",
+  "crates/podbox/src/config/types/cache.rs",
+  "crates/podbox/src/config/types/runtime.rs",
+  "crates/podbox/src/config/types.rs",
+  "crates/podbox/src/config/validation.rs",
+  "crates/podbox/src/config/validation/**",
+  "crates/podbox/src/publish/**",
+  "crates/podbox/src/compositor/**",
+  "crates/podbox/src/quadlet_install/**",
+  "crates/podbox/src/systemd/**",
+  "crates/podbox/src/wizard/**",
+  "crates/podbox/src/export/**",
+  "crates/podbox/src/podman.rs",
+  "crates/podbox/tests/*.rs",
+  "crates/podbox/tests/sandbox/**",
+  "crates/podbox/tests/snapshots/**",
+  "crates/podbox-guest/src/entry.rs",
+  "crates/podbox-guest/src/daemon.rs",
+  "crates/podbox-guest/src/interceptors/host_exec.rs",
+  "crates/podbox-guest/src/socket.rs",
+  "crates/podbox-guest/src/interceptors/clipboard.rs",
+  "crates/podbox-guest/src/interceptors/notify.rs",
+  "crates/podbox-guest/src/interceptors/mod.rs",
+  "crates/podbox-guest/src/error.rs",
+  "crates/podbox-wasm/src/**",
+  "website/src/design/components/**",
+  "website/src/design/islands/studio/panels/**",
+  "website/src/design/islands/studio/parseImport.ts",
+  "website/src/design/islands/studio/schema.ts",
+  "website/src/design/islands/studio/useStudioState.ts",
+  "website/src/design/islands/studio/*.tsx",
+  "website/src/design/highlight.tsx",
+  "website/src/wasm/podbox_wasm.js",
+  "website/src/landing/**",
+  "website/src/layouts/**",
+  "website/src/pages/**",
+  "website/scripts/config-emission.ts",
+  "website/scripts/sync-content.ts",
+  "scripts/**",
+  "images/**",
 ]
 
 [profiles.full]
@@ -54,6 +130,43 @@ Cross-cutting rules to check in code: unsafe_code is denied workspace-wide excep
 
 Use crates/podbox/tests (fixtures, golden JSON, insta snapshots, sandbox stubs) as evidence of expected behavior. Distinguish verified behavior in the included source from inference: the tree is orientation only. Do not assume a file is active just because it exists; respect feature flags, platform-specific modules and generated-file boundaries. Nested Markdown docs (docs/*.md, CONTRIBUTING.md, SPEC-*.md) are excluded from this dump - read them from the repository when needed instead of treating their absence as missing behavior.
 """
+
+[profiles.core]
+budget = 250000
+compress_mode = "full"
+fallback_mode = "signatures"
+fallback_threshold = 0.85
+ignore = [
+  # Guidance has its own target; keep the focused source view lean.
+  "README.md",
+  "AGENTS.md",
+  ".sift.toml",
+  # Separate publishing workflow and site chrome are out of this focused view.
+  "crates/podbox/src/publish/**",
+  "crates/podbox/src/commands/runtime/doctor/**",
+  "website/src/design/components/**",
+  "website/src/design/islands/studio/panels/**",
+  "website/src/design/islands/studio/schema.ts",
+  "website/src/landing/**",
+  "website/src/layouts/**",
+  "website/src/pages/**",
+  "website/src/assets/**",
+  "website/public/**",
+  "website/bun.lock",
+  "scripts/gen-*.py",
+  "scripts/gen-*.sh",
+]
+prompt = """Focused podbox host/guest core context. Trace CLI dispatch in crates/podbox/src/main -> config resolution and validation -> pure codegen -> Quadlet install/systemd/runtime. Separately trace a guest connection: Hello -> capability check -> socket_host handler -> notify-send, xdg-open, clipboard or host-exec interceptor.
+
+The website portion is limited to the Studio's Rust-engine adapter, schema, presets and parity checks. The publish subsystem and site UI are excluded from this profile; read them from the repository when a task needs them. Use crates/podbox/tests fixtures, golden JSON and snapshots as evidence. Respect feature flags, platform modules, generated-file boundaries and the podbox-protocol compatibility rules. Distinguish verified behavior from inference and call out missing evidence."""
+
+[[targets]]
+name = "core"
+profile = "core"
+output = "podbox-core.xml"
+style = "xml"
+budget = 250000
+compress_mode = "full"
 
 [[targets]]
 name = "guidance"
