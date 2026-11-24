@@ -7,7 +7,7 @@ use std::ffi::OsString;
 
 use anyhow::Result;
 
-use super::doctor::is_systemd_managed;
+use crate::commands::runner::is_systemd_managed;
 
 /// Show container logs, routing through journalctl for systemd-managed
 /// containers and falling back to `podman logs` for standalone ones.

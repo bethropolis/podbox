@@ -12,7 +12,6 @@ mod host;
 mod integration;
 
 pub use fix::try_fix_bare_memory_for_target;
-pub(crate) use host::is_systemd_managed;
 
 use anyhow::Result;
 use owo_colors::{OwoColorize, Stream};

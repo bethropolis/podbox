@@ -8,11 +8,6 @@ use podbox::env::HostEnv;
 use super::Check;
 use super::fix::{confirm_fix, enable_linger};
 
-/// Check whether a container is managed by systemd (Quadlet).
-pub(crate) fn is_systemd_managed(name: &str) -> bool {
-    podbox::systemd::is_unit_enabled(name)
-}
-
 pub(crate) fn check_podman() -> Vec<Check> {
     let mut out = Vec::new();
     match podbox::podman::podman_version() {

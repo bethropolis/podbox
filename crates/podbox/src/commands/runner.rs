@@ -15,6 +15,11 @@ use podbox::systemd;
 
 use crate::ctx::Ctx;
 
+/// Check whether a container is managed by systemd (Quadlet).
+pub(crate) fn is_systemd_managed(name: &str) -> bool {
+    systemd::is_unit_enabled(name)
+}
+
 /// The layer that actually performs a start/stop/restart.
 pub enum Runtime {
     /// The box is Quadlet-managed and systemctl exists: verbs run against

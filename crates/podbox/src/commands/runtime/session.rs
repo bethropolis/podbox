@@ -1,0 +1,209 @@
+//! Interactive and background `podman exec` session orchestration.
+
+use std::ffi::OsString;
+use std::os::fd::AsRawFd;
+use std::os::unix::net::UnixStream;
+
+use anyhow::Result;
+
+use podbox::codegen::distros;
+use podbox::protocol::{GuestMessage, write_frame};
+
+use super::context::{RunContext, resolve_container_workdir};
+use super::{git_bridge, watchdog};
+
+mod args;
+
+pub(in crate::commands) use args::args_to_string;
+use args::{append_env_args, append_forwarded_env, append_terminal_env, insert_user_path};
+
+/// Try to register a terminal session with the host's `socket_host`.
+///
+/// Opens a pidfd for the current process, connects to the host socket,
+/// sends `RegisterSession` with the pidfd via `SCM_RIGHTS`, then closes
+/// the connection. Silently skips on old kernels or when `serve` is
+/// not running.
+fn register_session(name: &str, xdg_runtime_dir: &std::path::Path) {
+    let pidfd = match podbox::process::open_pidfd(std::process::id().cast_signed()) {
+        Ok(fd) => fd,
+        _ => return,
+    };
+    let socket_path = xdg_runtime_dir.join("podbox").join(format!("{name}.sock"));
+    let mut stream = match UnixStream::connect(&socket_path) {
+        Ok(s) => s,
+        _ => return,
+    };
+    if let Err(e) = write_frame(&mut stream, &GuestMessage::RegisterSession) {
+        tracing::warn!("failed to register session: {e}");
+        return;
+    }
+    if let Err(e) = podbox::process::send_fd(&stream, pidfd.as_raw_fd()) {
+        tracing::warn!("failed to send pidfd to host: {e}");
+    }
+}
+
+/// Enter a shell inside the container.
+pub fn run_shell_enter(ctx: RunContext<'_>, here: bool) -> Result<()> {
+    let RunContext {
+        env,
+        config,
+        name,
+        xdg,
+        env_overrides,
+        dry_run,
+    } = ctx;
+    let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
+    let workdir = resolve_container_workdir(config, env, xdg, here)?;
+
+    let mut exec_args: Vec<OsString> = vec![
+        "exec".into(),
+        tty_flag.into(),
+        "-u".into(),
+        env.username.as_str().into(),
+        "-w".into(),
+        workdir.clone().into(),
+    ];
+    append_terminal_env(&mut exec_args, config, env_overrides);
+    append_forwarded_env(&mut exec_args, config, env_overrides);
+    append_env_args(&mut exec_args, env_overrides)?;
+    let name_index = exec_args.len();
+    exec_args.push(name.into());
+    exec_args.push(config.container.shell.as_str().into());
+
+    if dry_run {
+        git_bridge::prepare(
+            ctx,
+            &env.username,
+            here.then_some(&workdir),
+            name_index,
+            &mut exec_args,
+        );
+        println!("podman {}", args_to_string(&exec_args));
+        return Ok(());
+    }
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running.
+    let name_index = insert_user_path(name, &mut exec_args, name_index);
+    git_bridge::prepare(
+        ctx,
+        &env.username,
+        here.then_some(&workdir),
+        name_index,
+        &mut exec_args,
+    );
+    register_session(name, &env.xdg_runtime_dir);
+    watchdog::spawn_stdin_watchdog();
+    let err = podbox::process::exec_replace("podman", &exec_args);
+    Err(err)
+}
+
+/// Execute an arbitrary command inside the container.
+pub fn run_exec(ctx: RunContext<'_>, cmd_args: &[String], root: bool, here: bool) -> Result<()> {
+    let RunContext {
+        env,
+        config,
+        name,
+        xdg,
+        env_overrides,
+        dry_run,
+    } = ctx;
+    let tty_flag = if distros::is_tty() { "-it" } else { "-i" };
+
+    let mut exec_args: Vec<OsString> = vec!["exec".into(), tty_flag.into()];
+    if !root {
+        exec_args.push("-u".into());
+        exec_args.push(env.username.as_str().into());
+    }
+    if here {
+        exec_args.push("-w".into());
+        exec_args.push(resolve_container_workdir(config, env, xdg, true)?.into());
+    }
+    append_terminal_env(&mut exec_args, config, env_overrides);
+    append_forwarded_env(&mut exec_args, config, env_overrides);
+    append_env_args(&mut exec_args, env_overrides)?;
+    let name_index = exec_args.len();
+    exec_args.push(name.into());
+    for a in cmd_args {
+        exec_args.push(a.into());
+    }
+
+    let here_path = if here {
+        exec_args
+            .windows(2)
+            .find(|pair| pair[0] == "-w")
+            .and_then(|pair| pair[1].to_str())
+            .map(str::to_string)
+    } else {
+        None
+    };
+    if dry_run {
+        git_bridge::prepare(
+            ctx,
+            if root { "root" } else { &env.username },
+            here_path.as_deref(),
+            name_index,
+            &mut exec_args,
+        );
+        println!("podman {}", args_to_string(&exec_args));
+        return Ok(());
+    }
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running. Root sessions keep the image PATH.
+    let name_index = if root {
+        name_index
+    } else {
+        insert_user_path(name, &mut exec_args, name_index)
+    };
+    git_bridge::prepare(
+        ctx,
+        if root { "root" } else { &env.username },
+        here_path.as_deref(),
+        name_index,
+        &mut exec_args,
+    );
+    register_session(name, &env.xdg_runtime_dir);
+    watchdog::spawn_stdin_watchdog();
+    let err = podbox::process::exec_replace("podman", &exec_args);
+    Err(err)
+}
+
+/// Run an app in the background inside the container.
+pub fn run_run(ctx: RunContext<'_>, app: &str, app_args: &[String]) -> Result<()> {
+    let RunContext {
+        env,
+        name,
+        config,
+        env_overrides,
+        dry_run,
+        ..
+    } = ctx;
+    let mut exec_args: Vec<OsString> = vec![
+        "exec".into(),
+        "-d".into(),
+        "-u".into(),
+        env.username.as_str().into(),
+    ];
+    append_forwarded_env(&mut exec_args, config, env_overrides);
+    append_env_args(&mut exec_args, env_overrides)?;
+    let name_index = exec_args.len();
+    exec_args.push(name.into());
+    exec_args.push(app.into());
+    for a in app_args {
+        exec_args.push(a.into());
+    }
+
+    if dry_run {
+        git_bridge::prepare(ctx, &env.username, None, name_index, &mut exec_args);
+        println!("podman {}", args_to_string(&exec_args));
+        return Ok(());
+    }
+    crate::commands::ensure_running(name, false, crate::commands::DEFAULT_START_TIMEOUT_SECS)?;
+    // The daemon writes /run/podbox/path on startup, so the PATH is only
+    // readable once the box is running.
+    let name_index = insert_user_path(name, &mut exec_args, name_index);
+    git_bridge::prepare(ctx, &env.username, None, name_index, &mut exec_args);
+    register_session(name, &env.xdg_runtime_dir);
+    podbox::process::spawn_interactive_checked("podman", &exec_args)
+}
