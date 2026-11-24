@@ -104,7 +104,7 @@ pub fn bind_targets_under_home(
     }
 
     // Visual integration, mirroring the conditions in
-    // `codegen::quadlet::container::emit_volumes`.
+    // `codegen::quadlet::container_volumes::emit_volumes`.
     let host_home = dirs_home();
     if config.integration.sync_themes {
         if host_home.join(".themes").exists() {

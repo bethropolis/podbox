@@ -6,6 +6,11 @@
 
 mod caches;
 mod container;
+mod container_core;
+mod container_environment;
+mod container_service;
+mod container_unit;
+mod container_volumes;
 mod devices;
 mod services;
 pub(crate) mod value;
