@@ -32,7 +32,7 @@ The host socket is created by systemd before the container starts and persists a
 {
   "type": "hello",
   "protocol_version": 1,
-  "guest_version": "0.9.7",
+  "guest_version": "0.9.8",
   "container": "myenv",
   "capabilities": ["notify", "xdg_open", "clipboard", "host_exec"]
 }

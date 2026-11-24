@@ -47,7 +47,7 @@ COPY podbox-guest /usr/local/bin/podbox-guest
 RUN chmod +x /usr/local/bin/podbox-guest
 
 ENV PODBOX_CONTAINER=myenv
-ENV PODBOX_HOST_VERSION=0.9.7
+ENV PODBOX_HOST_VERSION=0.9.8
 ENV LANG=en_US.UTF-8
 ENTRYPOINT ["/usr/local/bin/podbox-guest", "--entry"]
 CMD ["/usr/bin/fish"]

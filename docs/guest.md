@@ -69,7 +69,7 @@ Length-prefixed JSON over `$XDG_RUNTIME_DIR/podbox/<container>.sock`.
 Full wire format: [protocol.md](protocol.md).
 
 ```
-→ {"type":"hello","protocol_version":1,"guest_version":"0.9.7","container":"myenv","capabilities":["notify","xdg_open","clipboard","host_exec"]}
+→ {"type":"hello","protocol_version":1,"guest_version":"0.9.8","container":"myenv","capabilities":["notify","xdg_open","clipboard","host_exec"]}
 ← {"type":"hello_ack","accepted":["notify","xdg_open"],"rejected":["clipboard","host_exec"]}
 ```
 
