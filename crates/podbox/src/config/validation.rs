@@ -10,9 +10,9 @@ mod host;
 mod printing;
 mod provision;
 mod safety;
+mod sections;
 mod values;
 
-use values::{MAX_CPUS, is_absolute_path, is_portal_family};
 pub use values::{
     is_bare_memory_digits, is_lowercase_image_name, is_valid_env_key, is_valid_image_ref,
     is_valid_memory, parse_duration_secs, parse_idle_timeout_secs, parse_provision_timeout_secs,
@@ -66,133 +66,9 @@ impl Config {
         let mut warnings: Vec<String> = self.parse_notices.clone();
         let mut errors: Vec<String> = Vec::new();
 
-        if self.image.base.trim().is_empty() {
-            errors.push("image.base: must not be empty".into());
-        } else if !is_valid_image_ref(&self.image.base) {
-            errors.push(format!(
-                "image.base: '{}' is not a valid image reference (expected [registry/]name[:tag], no spaces or shell characters)",
-                self.image.base
-            ));
-        }
-        if self.image.name.trim().is_empty() {
-            errors.push("image.name: must not be empty".into());
-        } else if let Err(e) = validate_container_name("image", &self.image.name) {
-            errors.push(format!("image.name: {e}"));
-        } else if !is_lowercase_image_name(&self.image.name) {
-            errors.push(format!(
-                "image.name: '{}' must be lowercase (podman rejects uppercase image repository names)",
-                self.image.name
-            ));
-        }
-        if let Some(ref r) = self.image.image_ref {
-            if r.trim().is_empty() {
-                errors.push("image.image: must not be empty when set".into());
-            } else if !is_valid_image_ref(r) {
-                errors.push(format!(
-                    "image.image: '{r}' is not a valid image reference (expected [registry/]name[:tag][@sha256:<digest>], no spaces or shell characters)"
-                ));
-            }
-        }
+        sections::image::validate_image(self, &mut errors);
 
-        if self.container.name.trim().is_empty() {
-            errors.push("container.name: must not be empty".into());
-        } else if let Err(e) = validate_container_name("container", &self.container.name) {
-            errors.push(format!("container.name: {e}"));
-        }
-        if self.container.home.as_os_str().is_empty() {
-            errors.push("container.home: must not be empty".into());
-        }
-        if self.container.shell.trim().is_empty() {
-            errors.push("container.shell: must not be empty".into());
-        }
-        if self.container.slice.trim().is_empty() || self.container.slice.contains('\n') {
-            errors.push("container.slice: must be a non-empty systemd slice name".into());
-        }
-        if !(1..=10_000).contains(&self.container.cpu_weight) {
-            errors.push("container.cpu_weight: must be between 1 and 10000".into());
-        }
-        if let Some(dotfiles) = &self.dotfiles {
-            if dotfiles.source.trim().is_empty() {
-                errors.push("dotfiles.source: must not be empty".into());
-            } else if dotfiles.source == "host:" {
-                errors.push("dotfiles.source: host: must be followed by a directory path".into());
-            }
-            if dotfiles.target.trim().is_empty() {
-                errors.push("dotfiles.target: must not be empty".into());
-            } else {
-                let target = if dotfiles.target == "~" {
-                    ""
-                } else {
-                    dotfiles
-                        .target
-                        .strip_prefix("~/")
-                        .unwrap_or(&dotfiles.target)
-                };
-                let path = std::path::Path::new(target);
-                if path.is_absolute()
-                    || (target.starts_with('~')
-                        && dotfiles.target != "~"
-                        && !dotfiles.target.starts_with("~/"))
-                    || path.components().any(|part| {
-                        matches!(
-                            part,
-                            std::path::Component::ParentDir | std::path::Component::RootDir
-                        )
-                    })
-                {
-                    errors.push(
-                        "dotfiles.target: must be a path inside the container home (for example '~/.dotfiles')".into(),
-                    );
-                }
-            }
-            if dotfiles
-                .install
-                .as_ref()
-                .is_some_and(|cmd| cmd.trim().is_empty())
-            {
-                errors.push("dotfiles.install: must not be empty when set".into());
-            }
-        }
-        if let Some(ref mem) = self.container.memory {
-            if !is_valid_memory(mem) {
-                errors.push(format!(
-                    "container.memory: '{mem}' is not a valid memory limit (e.g. '2g', '512m')"
-                ));
-            }
-        }
-        if let Some(ref cpus) = self.container.cpus {
-            // `NaN`/`inf` parse as f64 but are meaningless as CPU counts;
-            // without the finiteness check they sailed through to
-            // `PodmanArgs=--cpus=NaN`.
-            let valid = cpus
-                .parse::<f64>()
-                .is_ok_and(|v| v.is_finite() && v > 0.0 && v <= MAX_CPUS);
-            if !valid {
-                errors.push(format!(
-                    "container.cpus: '{cpus}' is not a valid CPU count (e.g. '2.0', '0.5')"
-                ));
-            }
-        }
-        for (i, mount) in self.container.mounts.extra.iter().enumerate() {
-            if !mount.contains(':') {
-                errors.push(format!(
-                    "container.mounts.extra[{i}]: '{mount}' missing ':' separator (expected host:container[:options])"
-                ));
-            }
-        }
-        for (key, val) in &self.container.env.values {
-            if !is_valid_env_key(key) {
-                errors.push(format!(
-                    "container.env: invalid key '{key}' (use ^[A-Za-z_][A-Za-z0-9_]*$)"
-                ));
-            }
-            if key.contains('\n') {
-                errors.push(format!("container.env: key {key:?} contains newline"));
-            }
-            if val.contains('\n') {
-                errors.push(format!("container.env: value for {key:?} contains newline"));
-            }
-        }
+        sections::container::validate_container(self, &mut errors);
         errors.extend(safety::validate_safety(self));
         errors.extend(provision::validate_provision(&self.provision));
         errors.extend(caches::validate_caches(self));
@@ -200,272 +76,31 @@ impl Config {
         // host to ask, and every path would read as "missing" there.
         #[cfg(feature = "cli")]
         warnings.extend(host::host_path_warnings(self));
-        for (i, pattern) in self.container.env.forward.iter().enumerate() {
-            // A trailing `*` marks a prefix forward (`FOO_*`); the key
-            // itself must still be a valid env name.
-            let key = pattern.strip_suffix('*').unwrap_or(pattern);
-            if !is_valid_env_key(key) {
-                errors.push(format!(
-                    "container.env.forward[{i}]: '{pattern}' must be an environment key or PREFIX_*"
-                ));
-            }
-        }
-        for (name, service) in &self.container.services {
-            let valid_name = !name.is_empty()
-                && name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-            if !valid_name {
-                errors.push(format!("container.services: invalid service name '{name}'"));
-            }
-            let (command, env) = match service {
-                crate::config::ServiceConfig::Short(command) => (command, None),
-                crate::config::ServiceConfig::Detailed(detail) => {
-                    (&detail.command, Some(&detail.env))
-                }
-            };
-            if command.trim().is_empty() {
-                errors.push(format!(
-                    "container.services.{name}.command: must not be empty"
-                ));
-            }
-            // `restart` is a `ServiceRestart` enum: unknown spellings fail
-            // at parse time with the valid list, so there is nothing to
-            // re-check here.
-            if let Some(values) = env {
-                for (key, value) in values {
-                    if !is_valid_env_key(key)
-                        || value.chars().any(|c| matches!(c, '\0' | '\n' | '\r'))
-                    {
-                        errors.push(format!(
-                            "container.services.{name}.env: invalid environment entry '{key}'"
-                        ));
-                    }
-                }
-            }
-        }
+        sections::container::validate_env_forward_and_services(self, &mut errors);
 
         // `security.userns` is a `UsernsMode` enum: unknown spellings fail
         // at parse time with the valid list, so there is nothing to
         // re-check here.
 
-        // Network validation. `network.mode` is a `NetworkMode` enum:
-        // unknown spellings fail at parse time with the valid list.
-        if self.network.effective_mode() == crate::config::NetworkMode::None
-            && !self.network.ports.is_empty()
-        {
-            errors.push(
-                "network.ports: cannot publish ports when network mode is none/offline".into(),
-            );
-        }
+        sections::network::validate_network(self, &mut errors);
 
-        if self.integration.x11 && !self.integration.wayland {
-            errors.push(
-                "integration.x11: x11 needs wayland (the satellite is a Wayland client)".into(),
-            );
-        }
-        if self.integration.x11 && self.network.effective_mode() == crate::config::NetworkMode::Host
-        {
-            errors.push(
-                "integration.x11: x11 cannot use network.mode = \"host\" because DISPLAY=:0 could reach the host X server's abstract socket".into(),
-            );
-        }
+        sections::integration::validate_host_exec_allowlist(self, &mut errors);
 
-        for (i, port) in self.network.ports.iter().enumerate() {
-            if !port.contains(':') {
-                errors.push(format!(
-                    "network.ports[{i}]: '{port}' is invalid (expected 'hostPort:containerPort' or 'ip:hostPort:containerPort')"
-                ));
-            }
-        }
+        sections::security::validate_secrets(self, &mut errors);
 
-        if let Some(ref map) = self.integration.host_exec.allowlist {
-            for (alias, entry) in map {
-                let path = entry.path();
-                if !is_absolute_path(path) {
-                    errors.push(format!(
-                        "integration.host_exec.allowlist.{alias}: path '{path}' is not absolute (must start with '/')"
-                    ));
-                }
-                if let Some(secs) = entry.timeout_secs() {
-                    if secs < 1 {
-                        errors.push(format!(
-                            "integration.host_exec.allowlist.{alias}: timeout = {secs} is invalid \
-                             (allowed: whole seconds >= 1; omit the key for no timeout)"
-                        ));
-                    }
-                }
-                if alias.is_empty()
-                    || alias.contains('/')
-                    || alias.contains("..")
-                    || alias.contains('\0')
-                {
-                    errors.push(format!(
-                        "integration.host_exec.allowlist: alias '{alias}' is invalid (must not contain '/' or '..')"
-                    ));
-                }
-                const RESERVED: &[&str] = &[
-                    "podbox-guest",
-                    "podmgr-guest",
-                    "host-exec",
-                    "notify-send",
-                    "xdg-open",
-                    "podbox-clipboard",
-                    "podmgr-clipboard",
-                ];
-                if RESERVED.contains(&alias.as_str()) {
-                    errors.push(format!(
-                        "integration.host_exec.allowlist: alias '{alias}' is reserved"
-                    ));
-                }
-            }
-        }
+        sections::image::validate_packages(self, &mut errors);
 
-        // systemd-credential secrets become LoadCredential= names and
-        // /run/secrets/<name> file names: reject path separators and
-        // parent references, require the host-side path, and require a
-        // valid variable name when the target becomes Environment=KEY=….
-        for (i, entry) in self.security.secrets.iter().enumerate() {
-            let (name, secret_type, target, source, path) = match entry {
-                crate::config::SecretEntry::Simple(name) => (
-                    name,
-                    &crate::config::SecretType::Env,
-                    None,
-                    &crate::config::SecretSource::Podman,
-                    None,
-                ),
-                crate::config::SecretEntry::Detailed {
-                    name,
-                    secret_type,
-                    target,
-                    source,
-                    path,
-                    ..
-                } => (name, secret_type, target.as_ref(), source, path.as_ref()),
-            };
-            let prefix = format!("security.secrets[{i}]");
-            if name.is_empty()
-                || name.contains('/')
-                || name.contains('\\')
-                || name.split('/').any(|part| part == "..")
-            {
-                errors.push(format!(
-                    "{prefix}.name: '{name}' is not a safe credential filename (no '/', '\\\\' or '..')"
-                ));
-            }
-            if *source == crate::config::SecretSource::Systemd {
-                match path {
-                    Some(p) if !p.trim().is_empty() => {}
-                    _ => errors.push(format!(
-                        "{prefix}.path: required with source = \"systemd\" (host-side credential file)"
-                    )),
-                }
-                if *secret_type == crate::config::SecretType::Env
-                    && let Some(t) = target
-                    && !is_valid_env_key(t)
-                {
-                    errors.push(format!(
-                        "{prefix}.target: '{t}' must be a valid environment variable name"
-                    ));
-                }
-            }
-        }
+        sections::lifecycle::validate_on_stop(self, &mut warnings);
 
-        // Packages need a package manager: an undetectable image family
-        // with install entries would otherwise silently emit the wrong
-        // install command (dnf on Arch). Fail with the fix attached.
-        if !self.image.packages.install.is_empty()
-            && crate::codegen::distros::family_for_config(self)
-                == crate::codegen::distros::DistroFamily::Unknown
-        {
-            let image = self.image.image_ref.as_deref().unwrap_or(&self.image.base);
-            errors.push(format!(
-                "image.packages: cannot determine package manager for '{image}'; set image.packages.manager explicitly (\"apt\", \"dnf\", \"pacman\", \"apk\" or \"zypper\")"
-            ));
-        }
+        sections::integration::validate_host_exec_enabled(self, &mut errors);
 
-        // `lifecycle.on_stop` is deprecated: Quadlet runs containers with
-        // `--rm --replace`, so every box is ephemeral and there is nothing to
-        // keep. Warn when set explicitly, but keep parsing it.
-        if self.explicit_keys.contains("lifecycle.on_stop") {
-            warnings.push(
-                "warning: lifecycle.on_stop is deprecated and has no effect: Quadlet containers \
-                 are always ephemeral; state lives in the home volume and snapshots."
-                    .into(),
-            );
-        }
+        sections::integration::validate_dbus_talk(self, &mut warnings);
 
-        if self.integration.host_exec.enabled {
-            let has_allowlist = self
-                .integration
-                .host_exec
-                .allowlist
-                .as_ref()
-                .is_some_and(|m| !m.is_empty());
-            if !has_allowlist {
-                errors.push(
-                    "integration.host_exec: 'enabled' is true, but 'allowlist' is missing or empty. \
-                     For security, legacy open execution is blocked; you must explicitly define \
-                     allowed host commands."
-                        .into(),
-                );
-            }
-        }
+        sections::integration::validate_xdg_open(self, &mut errors);
 
-        for svc in &self.dbus.talk {
-            if is_portal_family(svc) {
-                warnings.push(format!(
-                    "warning: dbus.talk entry '{svc}' grants the container access to the full \
-                     xdg-desktop-portal bus surface (DynamicLauncher, Screenshot, ScreenCast, \
-                     Settings, ...). Prefer relying on the built-in interface-scoped portal rules \
-                     from integration.notify / integration.xdg_open instead."
-                ));
-            }
-        }
+        sections::integration::validate_dbus_switch(self, &mut errors);
 
-        // The scheme allowlist is security-relevant input: a typo like
-        // "HTTPS" would be parsed as a (never-matching) scheme and silently
-        // refuse exactly the traffic the user meant to allow. Refuse it here
-        // instead, while the definition file is still open for editing.
-        for (i, scheme) in self.integration.xdg_open.allowed_schemes.iter().enumerate() {
-            if !crate::config::types::is_scheme_token(scheme) {
-                errors.push(format!(
-                    "integration.xdg_open.allowed_schemes[{i}]: '{scheme}' is not a valid \
-                     scheme name (lowercase letters, digits, '-', '+' or '.', starting with a letter)"
-                ));
-            }
-        }
-
-        // D-Bus rules without the bus itself are dead config: with
-        // `integration.dbus` off the container gets no D-Bus at all, so talk,
-        // own, or a preset would be silently ignored. Fail fast instead.
-        if !self.integration.dbus
-            && (!self.dbus.talk.is_empty()
-                || !self.dbus.own.is_empty()
-                || self.dbus.preset != crate::config::DbusPreset::None)
-        {
-            errors.push(
-                "dbus: talk/own/preset rules are set but 'integration.dbus' is false, \
-                 so the container would get no D-Bus at all. Set 'integration.dbus = true' \
-                 to apply them."
-                    .into(),
-            );
-        }
-
-        let t = &self.lifecycle.idle_timeout;
-        if t != "off" {
-            if let Err(e) = parse_duration_secs(t) {
-                errors.push(format!(
-                    "lifecycle.idle_timeout: '{t}' is invalid ({e}; expected 'off', '30s', '5m', '1h')"
-                ));
-            }
-        }
-        if let Err(e) = parse_duration_secs(&self.image.pull_retry_delay) {
-            errors.push(format!(
-                "image.pull_retry_delay: '{}' is invalid ({e}; expected e.g. '5s')",
-                self.image.pull_retry_delay
-            ));
-        }
+        sections::lifecycle::validate_durations(self, &mut errors);
 
         if errors.is_empty() {
             (warnings, Ok(()))
