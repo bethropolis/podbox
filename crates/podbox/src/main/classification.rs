@@ -1,0 +1,288 @@
+use anyhow::Result;
+
+use super::super::handlers;
+use podbox::cli::{
+    Cli, Command, ConfigCommand, DotfilesCommand, ExportCommand, OutputFormat, ProvisionCommand,
+    SnapshotCommand,
+};
+use podbox::config;
+
+/// How a command reaches its definition.
+///
+/// The payload of [`ConfigNeed::Named`] is the command's own positional
+/// container name, if any; it seeds the global name chain the same way the
+/// positional name always did.
+#[derive(Debug)]
+pub(crate) enum ConfigNeed {
+    /// Self-contained: no shared definition, either because the command
+    /// needs none or because it resolves (and can repair) the file itself.
+    None,
+    /// Needs exactly one container's definition. `Some(name)` when the
+    /// command takes a positional name, `None` when the name lives in a
+    /// subcommand or comes only from the global chain. The payload documents
+    /// the shape of each classified command (and is how `Named` with a name
+    /// is distinguished in the exhaustive match); `target_name` keeps
+    /// gathering the full global chain for every command, so the value
+    /// itself is not read again.
+    #[allow(dead_code)]
+    Named(Option<String>),
+    /// Needs a definition but has no name of its own: the global chain
+    /// (with its machine-level auto-detection fallback) is the only source.
+    All,
+}
+
+/// Classify how a command reaches a definition file.
+///
+/// Exhaustive on purpose: adding a `Command` variant breaks this match and
+/// forces the command to declare its config needs (014: the missing
+/// classification is how `serve`/`compositor`/`stats` slipped past name
+/// validation once).
+pub(crate) fn needs_config(cmd: &Command) -> ConfigNeed {
+    match cmd {
+        // Handlers that load (or repair) a definition themselves for
+        // special error handling, or that need no definition at all.
+        Command::Cache { .. }
+        | Command::InternalStdinWatchdog { .. }
+        | Command::Completions { .. }
+        | Command::CompleteNames
+        | Command::Init { .. }
+        | Command::Create { .. }
+        | Command::Profile { .. }
+        | Command::List { .. }
+        | Command::Info { .. }
+        | Command::Watch { .. }
+        | Command::Clone { .. }
+        | Command::Use { .. }
+        | Command::Migrate { .. }
+        | Command::History { .. }
+        | Command::Edit { .. }
+        | Command::Serve { .. }
+        | Command::Compositor { .. }
+        | Command::FindDefinition { .. }
+        | Command::Doctor { .. }
+        | Command::Publish { .. } => ConfigNeed::None,
+        // Arg-flagged modes that must not depend on shared resolution:
+        // `--force` disables by name only, `--stale` removes containers
+        // whose config is already gone, `--all` needs no target at all.
+        // A plain `remove` joins them: it deletes state that is known by
+        // name, so a definition the validator rejects must not block the
+        // removal — it resolves (and loads leniently) on its own.
+        Command::Disable { force: true, .. }
+        | Command::Remove { .. }
+        | Command::Stop { all: true, .. } => ConfigNeed::None,
+        Command::Config {
+            config_cmd: ConfigCommand::Set { .. } | ConfigCommand::Validate { .. },
+        } => ConfigNeed::None,
+
+        // One definition, whose name comes from the command line
+        // (positional or subcommand) or the global chain.
+        Command::Build { name, .. }
+        | Command::Enable { name, .. }
+        | Command::Start { name, .. }
+        | Command::Restart { name, .. }
+        | Command::Status { name, .. }
+        | Command::Logs { name, .. }
+        | Command::Update { name, .. }
+        | Command::Diff { name, .. }
+        | Command::Restore { name, .. }
+        | Command::Rollback { name }
+        | Command::Inspect { name, .. }
+        | Command::Recover { name, .. }
+        | Command::Stats { name, .. }
+        | Command::Enter { name, .. } => ConfigNeed::Named(name.clone()),
+        Command::Disable {
+            name, force: false, ..
+        } => ConfigNeed::Named(name.clone()),
+        Command::Stop {
+            name, all: false, ..
+        } => ConfigNeed::Named(name.clone()),
+        Command::Config {
+            config_cmd: ConfigCommand::Get { .. },
+        }
+        | Command::Snapshot { .. }
+        | Command::Export { .. }
+        | Command::Dotfiles { .. }
+        | Command::Provision { .. }
+        | Command::Pull { .. } => ConfigNeed::Named(None),
+
+        // No name of any kind in the command: only the global chain.
+        Command::Exec { .. } | Command::Run { .. } | Command::TranslatePath { .. } => {
+            ConfigNeed::All
+        }
+    }
+}
+
+/// Whether the command forks `podman` (directly or through the guest/tooling).
+///
+/// Straight-edged default: a command not listed here requires `podman`, so
+/// new commands get the early clean error rather than a cryptic spawn
+/// failure deep in the stack.
+pub(crate) fn needs_podman(cmd: &Command) -> bool {
+    !matches!(
+        cmd,
+        Command::Completions { .. }
+            | Command::Profile { .. }
+            | Command::Serve { .. }
+            | Command::Compositor { .. }
+            | Command::CompleteNames
+            | Command::History { .. }
+            | Command::Info { .. }
+            | Command::Watch { .. }
+            | Command::Cache { .. }
+            | Command::InternalStdinWatchdog { .. }
+            | Command::Migrate { .. }
+            | Command::Publish { .. }
+            | Command::Dotfiles {
+                dotfiles_cmd: DotfilesCommand::Status { .. }
+            }
+            | Command::Provision {
+                provision_cmd: ProvisionCommand::Status { .. }
+            }
+    )
+}
+
+/// The `--output` format the invoked command was asked for, including the
+/// nested `provision status` / `snapshot list` / `config` / `export list`
+/// readers. Used once so machine-mode failures can print the structured
+/// error envelope (pretty for `json`, one line for `ndjson`). Typed the
+/// same way as [`needs_config`]: adding a variant means deciding whether it
+/// speaks machine mode.
+pub(crate) fn command_output_format(cmd: &Command) -> Option<OutputFormat> {
+    let is_machine =
+        |output: &OutputFormat| matches!(output, OutputFormat::Json | OutputFormat::Ndjson);
+    let format = match cmd {
+        Command::Status { output, .. }
+        | Command::Stats { output, .. }
+        | Command::Inspect { output, .. }
+        | Command::List { output, .. }
+        | Command::Info { output, .. }
+        | Command::Doctor { output, .. }
+        | Command::Diff { output, .. }
+        | Command::History { output, .. }
+        | Command::Config {
+            config_cmd:
+                ConfigCommand::Get { output, .. }
+                | ConfigCommand::Set { output, .. }
+                | ConfigCommand::Validate { output, .. },
+        }
+        | Command::Export {
+            export_cmd: ExportCommand::List { output },
+        }
+        | Command::Provision {
+            provision_cmd: ProvisionCommand::Status { output, .. },
+        }
+        | Command::Snapshot {
+            snapshot_cmd: SnapshotCommand::List { output, .. },
+        } => (*output).into(),
+        Command::Build { output, .. } | Command::Watch { output, .. } => (*output).into(),
+        Command::Publish { output, .. } => (*output).into(),
+        // Text-only commands. Grouped per variant so a new output format on
+        // any of them is a deliberate decision, not a default.
+        Command::Cache { .. }
+        | Command::InternalStdinWatchdog { .. }
+        | Command::Enable { .. }
+        | Command::Disable { .. }
+        | Command::Start { .. }
+        | Command::Stop { .. }
+        | Command::Restart { .. }
+        | Command::Exec { .. }
+        | Command::Run { .. }
+        | Command::Logs { .. }
+        | Command::Remove { .. }
+        | Command::Serve { .. }
+        | Command::Compositor { .. }
+        | Command::Enter { .. }
+        | Command::Create { .. }
+        | Command::Edit { .. }
+        | Command::Clone { .. }
+        | Command::Init { .. }
+        | Command::Update { .. }
+        | Command::Pull { .. }
+        | Command::Profile { .. }
+        | Command::Dotfiles {
+            dotfiles_cmd: DotfilesCommand::Sync { .. } | DotfilesCommand::Status { .. },
+        }
+        | Command::Provision {
+            provision_cmd: ProvisionCommand::Sync { .. },
+        }
+        | Command::Completions { .. }
+        | Command::Snapshot {
+            snapshot_cmd: SnapshotCommand::Create { .. } | SnapshotCommand::Prune { .. },
+        }
+        | Command::Restore { .. }
+        | Command::Rollback { .. }
+        | Command::Use { .. }
+        | Command::FindDefinition { .. }
+        | Command::Recover { .. }
+        | Command::TranslatePath { .. }
+        | Command::Migrate { .. }
+        | Command::CompleteNames
+        | Command::Export {
+            export_cmd:
+                ExportCommand::App { .. }
+                | ExportCommand::Bin { .. }
+                | ExportCommand::Clean
+                | ExportCommand::Remove { .. },
+        } => return None,
+    };
+    is_machine(&format).then_some(format)
+}
+
+/// Reject unsafe names before any command touches the filesystem or podman.
+///
+/// Names feed file paths (`quadlet_dir().join(name)`), unit names and podman
+/// arguments, so `.`, `..`, a leading `-` or a `/` must never get past here.
+/// Covers every place a name can enter: the global `-C`, positional names,
+/// `create --name`, `clone` (both names), profile names, and snapshot tags.
+pub(crate) fn validate_cli_names(cli: &Cli) -> Result<()> {
+    use podbox::cli::{CacheCommand, ProfileCommand, SnapshotCommand};
+    use podbox::config::validate_container_name as check;
+
+    if let Some(name) = &cli.container {
+        check("container", name)?;
+    }
+    if let Some(name) = handlers::extract_positional_name(&cli.command) {
+        check("container", &name)?;
+    }
+    match &cli.command {
+        Command::Create {
+            name: Some(name), ..
+        } => check("container", name)?,
+        Command::Init {
+            name: Some(name), ..
+        } => check("container", name)?,
+        Command::Clone { src, dst, .. } => {
+            check("container", src)?;
+            check("container", dst)?;
+        }
+        Command::Restore { tag, .. } => check("snapshot tag", tag)?,
+        Command::Cache {
+            cache_cmd: CacheCommand::Prune {
+                name: Some(name), ..
+            },
+        } => check("cache", name)?,
+        Command::Profile { profile_cmd } => match profile_cmd {
+            ProfileCommand::Show { name } => check("profile", name)?,
+            ProfileCommand::Export { name, .. } => check("profile", name)?,
+            ProfileCommand::Import {
+                name: Some(name), ..
+            } => check("profile", name)?,
+            _ => {}
+        },
+        Command::Snapshot {
+            snapshot_cmd: SnapshotCommand::Create { tag: Some(tag), .. },
+        } => check("snapshot tag", tag)?,
+        _ => {}
+    }
+    Ok(())
+}
+
+/// The container name a command targets: its positional name first, then
+/// `-C`, `$PODBOX_CONTAINER`, and the active context. The single seed for
+/// both the path-only lookups and full definition resolution.
+pub(crate) fn target_name(command: &Command, container: Option<&str>) -> Option<String> {
+    handlers::extract_positional_name(command)
+        .or_else(|| container.map(str::to_string))
+        .or_else(|| std::env::var("PODBOX_CONTAINER").ok())
+        .or_else(config::read_active_context)
+}
