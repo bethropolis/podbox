@@ -128,3 +128,9 @@ an allowlisted binary keeps its full host powers either way.
 
 See [config.md](config.md#integrationhost_exec) for the allowlist shape —
 and prefer wrapper scripts over general-purpose tools.
+
+Host-exec passes only terminal presentation variables from the guest to the
+host child (`TERM`, `COLORTERM`, `TERM_PROGRAM` and version fields, VTE/Konsole
+versions, terminal window/pane identifiers and `LANG`). Host control sockets
+such as `KITTY_LISTEN_ON`, `WEZTERM_UNIX_SOCKET`, `TMUX` and `STY` are not
+forwarded.

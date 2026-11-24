@@ -89,7 +89,7 @@ commands = ["dnf clean all"]
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `*` | string | — | Arbitrary environment variables passed to the container; explicit values always win over derived ones below |
-| `forward` | string[] | `[]` | Host variables to forward for `enter`, `exec`, and `run`; supports exact names and `PREFIX_*` patterns |
+| `forward` | string[] | `[]` | Extra host variables to forward for `enter`, `exec`, and `run`; supports exact names and `PREFIX_*` patterns. Terminal identity is forwarded automatically for interactive sessions and `host-exec`. |
 
 Derived variables (engine-set from the rest of the config, no TOML needed):
 
@@ -97,6 +97,20 @@ Derived variables (engine-set from the rest of the config, no TOML needed):
 |----------|--------------|---------|
 | `SHELL` | `container.shell` (`fish` → `/usr/bin/fish`, `bash` → `/bin/bash`, `zsh` → `/bin/zsh`, full paths verbatim) | `shell = "fish"` ⇒ `SHELL=/usr/bin/fish` |
 | `DISPLAY` | `integration.x11` | `x11 = true` ⇒ `DISPLAY=:0` |
+
+Terminal sessions (`enter`, `exec`) also receive the invoking terminal's
+identity automatically: `TERM`, `COLORTERM`, `TERM_PROGRAM`,
+`TERM_PROGRAM_VERSION`, `VTE_VERSION`, `KONSOLE_VERSION`,
+`KITTY_WINDOW_ID`, `WEZTERM_PANE`, `LC_TERMINAL` and related presentation
+variables where set. Podbox mounts the host terminfo database read-only so
+host-specific values such as `xterm-ghostty` resolve inside the container.
+`host-exec` applies the same presentation allowlist to its host child.
+
+Explicit `[container.env]` values and `-e KEY=VALUE` overrides win over the
+automatic terminal variables. Do not hardcode `TERM` unless you deliberately
+want to override the host terminal; terminal control sockets and multiplexer
+state (`KITTY_LISTEN_ON`, `WEZTERM_UNIX_SOCKET`, `TMUX`, `STY`) are never
+forwarded automatically.
 
 ```toml
 [container]
@@ -109,7 +123,7 @@ extra = ["~/Projects:/home/user/Projects:z"]
 
 [container.env]
 EDITOR = "nvim"
-TERM = "xterm-256color"
+PAGER = "less"
 forward = ["SSH_AUTH_SOCK", "AWS_*"]
 
 [container.services]
@@ -655,7 +669,7 @@ extra = ["~/Work:/home/user/Work:z"]
 
 [container.env]
 EDITOR = "nvim"
-TERM = "xterm-256color"
+PAGER = "less"
 # forward = ["HTTP_PROXY", "AWS_*"]  # Host vars copied in at exec time
 
 # ── Caches ─────────────────────────────────────────────

@@ -111,6 +111,7 @@ Key Quadlet settings (see [quadlet.md](quadlet.md) for full list):
 | `WorkingDir` | `/home/%u` | Default working directory |
 | `Volume` | `<context>/.flatpak-info:/.flatpak-info:ro` | Sandbox detection marker (portals) |
 | `Volume` | `%h/containers/<name>:/home/%u:Z` | Isolated home (never the host home) |
+| `Volume` | Host terminfo database → `/usr/share/terminfo:ro` | Terminal capability definitions |
 | `Volume` | `%t/podbox/<name>.sock:%t/podbox/<name>.sock` | Host-guest socket |
 | `Environment` | `HOST_USER`, `HOST_UID`, `HOST_GID` | Host identity injected |
 | `Environment` | `PATH=/run/podbox/bin:…` | Interceptor directory prepended |
