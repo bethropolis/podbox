@@ -3,6 +3,7 @@
 use super::super::*;
 use crate::config::GpuMode;
 use crate::config::OnStop;
+use crate::error::PodboxError;
 
 #[test]
 fn test_from_str_minimal() {
